@@ -41,6 +41,9 @@ class Config:
     hermes_model: str
     gemini_api_key: str
     gemini_model: str
+    elevenlabs_api_key: str
+    elevenlabs_voice_id: str
+    elevenlabs_model_id: str
     request_timeout: float
 
     @property
@@ -71,5 +74,9 @@ class Config:
             hermes_model=_optional("HERMES_MODEL", "hermes-4"),
             gemini_api_key=_required("GEMINI_API_KEY"),
             gemini_model=_optional("GEMINI_MODEL", "gemini-2.5-flash-lite"),
+            # ElevenLabs gives the agent its spoken voice (text-to-speech).
+            elevenlabs_api_key=_required("ELEVENLABS_API_KEY"),
+            elevenlabs_voice_id=_required("ELEVENLABS_VOICE_ID"),
+            elevenlabs_model_id=_optional("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5"),
             request_timeout=float(_optional("REQUEST_TIMEOUT_SECONDS", "60")),
         )
