@@ -62,6 +62,7 @@ class IntakeAgent:
         fields: list[IntakeField],
         *,
         use_hermes_closing: bool = True,
+        emit_closing: bool = True,
     ) -> None:
         if not fields:
             raise ValueError("IntakeAgent needs at least one field to collect")
@@ -69,6 +70,9 @@ class IntakeAgent:
         self._fields = fields
         self._gemini = GeminiTools(cfg)
         self._use_hermes_closing = use_hermes_closing
+        # When a scheduling phase follows, the driver handles the goodbye, so the
+        # intake shouldn't say one when the last form question is answered.
+        self._emit_closing = emit_closing
         self._transcript: list[str] = []
         self._captured: dict[str, str] = {}
         self._ask_counts: dict[str, int] = {}
@@ -93,7 +97,7 @@ class IntakeAgent:
                 self._pose(nxt), False, dict(self._captured), self._required_missing()
             )
 
-        closing = self._closing_message()
+        closing = self._closing_message() if self._emit_closing else ""
         return IntakeResult(closing, True, dict(self._captured), self._required_missing())
 
     # -- internals -------------------------------------------------------

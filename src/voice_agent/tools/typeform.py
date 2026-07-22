@@ -159,7 +159,21 @@ def _is_auto_ref(ref: str) -> bool:
     )
 
 
-def _short_slug(title: str, max_words: int = 4) -> str:
-    """A compact snake_case key from a question title (first few words)."""
+# Filler words dropped when slugging a question title into a field key.
+_STOPWORDS = {
+    "please", "give", "me", "us", "my", "your", "you", "the", "a", "an", "of",
+    "for", "to", "and", "so", "that", "this", "is", "are", "what", "which",
+    "can", "could", "would", "will", "i", "we", "do", "does", "may", "with",
+    "on", "in", "at", "kindly", "provide", "enter",
+}
+
+
+def _short_slug(title: str, max_words: int = 3) -> str:
+    """A compact, meaningful snake_case key from a question title.
+
+    Drops filler words ("Please give me your full name" -> "full_name"); if a
+    title is all filler, falls back to its first few words verbatim.
+    """
     words = re.sub(r"[^a-z0-9]+", " ", title.lower()).split()
-    return "_".join(words[:max_words])[:40]
+    meaningful = [w for w in words if w not in _STOPWORDS] or words
+    return "_".join(meaningful[:max_words])[:40]

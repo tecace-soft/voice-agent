@@ -30,6 +30,12 @@ def _optional(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip() or default
 
 
+def _sheet_id_from_link(link: str) -> str:
+    """Extract the spreadsheet id from a Google Sheets URL (empty if none)."""
+    match = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", link)
+    return match.group(1) if match else ""
+
+
 @dataclass(frozen=True)
 class Config:
     port: int
@@ -48,6 +54,10 @@ class Config:
     typeform_api_key: str
     typeform_form_id: str
     typeform_webhook_secret: str
+    google_api_email: str
+    google_sheets_key: str
+    google_sheets_id: str
+    cal_api_key: str
     request_timeout: float
 
     @property
@@ -88,5 +98,13 @@ class Config:
             # The env value is often pasted from an edit URL; keep only the id.
             typeform_form_id=re.split(r"[/?]", _optional("TYPEFORM_FORM_ID"))[0],
             typeform_webhook_secret=_optional("TYPEFORM_WEBHOOK_SECRET"),
+            # Google Sheets service-account (track user info) and Cal.com (schedule).
+            google_api_email=_optional("GOOGLE_API_EMAIL"),
+            google_sheets_key=_optional("GOOGLE_API_SHEETS_KEY"),
+            # Prefer the explicit id; otherwise pull it out of a full share link.
+            google_sheets_id=_optional("GOOGLE_SHEETS_ID") or _sheet_id_from_link(
+                _optional("SHEETS_LINK")
+            ),
+            cal_api_key=_optional("CAL_API_KEY"),
             request_timeout=float(_optional("REQUEST_TIMEOUT_SECONDS", "60")),
         )
