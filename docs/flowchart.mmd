@@ -1,0 +1,30 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'14px','lineColor':'#8a94a6','primaryColor':'#eceff3','primaryTextColor':'#222a36','primaryBorderColor':'#b9c2ce','edgeLabelBackground':'#eceff3'}}}%%
+flowchart TD
+    Start(["Call begins"]) --> Load["Load the questions<br/><b>Typeform</b>"]:::typeform
+    Load --> Ask["Ask the next question<br/><b>Gemini</b> phrases &middot; <b>ElevenLabs</b> speaks"]:::gemini
+    Ask --> Listen[/Caller answers/]:::caller
+    Listen --> Extract["Understand the answer<br/><b>Gemini</b>"]:::gemini
+    Extract --> Q1{"All required<br/>fields captured?"}
+    Q1 -->|No| Ask
+    Q1 -->|Yes| Slots["Find open slots in the timeframe<br/><b>Cal.com</b> &middot; weekdays, 8-5"]:::cal
+    Slots --> Q2{"Any slots<br/>available?"}
+    Q2 -->|No| Reframe["Ask for another timeframe<br/><b>ElevenLabs</b>"]:::voice
+    Reframe --> ReListen[/Caller responds/]:::caller
+    ReListen --> Slots
+    Q2 -->|Yes| Offer["Offer 2-3 concrete slots<br/><b>ElevenLabs</b>"]:::voice
+    Offer --> Pick[/Caller picks a time/]:::caller
+    Pick --> Interpret["Interpret the choice<br/><b>Gemini</b>"]:::gemini
+    Interpret --> Q3{"Understood?"}
+    Q3 -->|No| Offer
+    Q3 -->|Yes| Book["Create the booking<br/><b>Cal.com</b>"]:::cal
+    Book --> Save["Save the record<br/><b>Google Sheets</b>"]:::sheets
+    Save --> Bye["Warm goodbye<br/><b>Hermes</b> &middot; <b>ElevenLabs</b>"]:::hermes
+    Bye --> End(["Call ends"])
+
+    classDef typeform fill:#e7e9f7,stroke:#4a5bb0,color:#2b3470,stroke-width:1.5px;
+    classDef gemini fill:#d8f0eb,stroke:#1c8f84,color:#0f5951,stroke-width:1.5px;
+    classDef voice fill:#f7e0e4,stroke:#bd5566,color:#7a2f3a,stroke-width:1.5px;
+    classDef cal fill:#f4e7d1,stroke:#b0782c,color:#6e4a15,stroke-width:1.5px;
+    classDef sheets fill:#daefe2,stroke:#3f8f5c,color:#245638,stroke-width:1.5px;
+    classDef hermes fill:#eae1f6,stroke:#7d5bb0,color:#472f6e,stroke-width:1.5px;
+    classDef caller fill:#eceff3,stroke:#6b7686,color:#333b47,stroke-width:1.5px,stroke-dasharray:5 3;

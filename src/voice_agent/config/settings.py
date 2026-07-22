@@ -58,6 +58,12 @@ class Config:
     google_sheets_key: str
     google_sheets_id: str
     cal_api_key: str
+    twilio_account_sid: str
+    twilio_auth_token: str
+    twilio_phone_number: str
+    deepgram_api_key: str
+    public_base_url: str
+    cal_event_type_id: int
     request_timeout: float
 
     @property
@@ -106,5 +112,16 @@ class Config:
                 _optional("SHEETS_LINK")
             ),
             cal_api_key=_optional("CAL_API_KEY"),
+            # Telephony (Twilio phone line). Accept the short .env names first,
+            # falling back to the TWILIO_-prefixed ones.
+            twilio_account_sid=_optional("ACCOUNT_SID") or _optional("TWILIO_ACCOUNT_SID"),
+            twilio_auth_token=_optional("TWILIO_AUTH_TOKEN"),
+            twilio_phone_number=_optional("PHONE_NUMBER") or _optional("TWILIO_PHONE_NUMBER"),
+            # Optional: streaming speech-to-text, only for the Pipecat upgrade path.
+            deepgram_api_key=_optional("DEEPGRAM_API_KEY"),
+            # Public https base (e.g. an ngrok URL) that Twilio can reach for
+            # webhooks and audio; required for outbound calls.
+            public_base_url=_optional("PUBLIC_BASE_URL").rstrip("/"),
+            cal_event_type_id=int(_optional("CAL_EVENT_TYPE_ID", "6407082")),
             request_timeout=float(_optional("REQUEST_TIMEOUT_SECONDS", "60")),
         )

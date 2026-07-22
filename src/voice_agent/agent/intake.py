@@ -63,6 +63,7 @@ class IntakeAgent:
         *,
         use_hermes_closing: bool = True,
         emit_closing: bool = True,
+        greeting_prefix: str = "Hi, thanks for calling.",
     ) -> None:
         if not fields:
             raise ValueError("IntakeAgent needs at least one field to collect")
@@ -73,6 +74,8 @@ class IntakeAgent:
         # When a scheduling phase follows, the driver handles the goodbye, so the
         # intake shouldn't say one when the last form question is answered.
         self._emit_closing = emit_closing
+        # How the agent opens — differs for inbound vs outbound calls.
+        self._greeting_prefix = greeting_prefix.rstrip()
         self._transcript: list[str] = []
         self._captured: dict[str, str] = {}
         self._ask_counts: dict[str, int] = {}
@@ -80,7 +83,7 @@ class IntakeAgent:
     # -- public API ------------------------------------------------------
 
     def greeting(self) -> str:
-        return "Hi, thanks for calling. " + self._pose(self._fields[0])
+        return f"{self._greeting_prefix} " + self._pose(self._fields[0])
 
     def handle(self, user_text: str) -> IntakeResult:
         """Process one caller utterance and return the agent's next move."""

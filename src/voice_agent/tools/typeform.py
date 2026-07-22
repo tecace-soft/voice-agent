@@ -7,9 +7,13 @@ other tools. No answers are submitted back here; this only reads the questions.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import TYPE_CHECKING, Any
 
@@ -57,6 +61,29 @@ class TypeformClient:
     def form(self) -> dict[str, Any]:
         """Raw form definition."""
         return self._get(f"/forms/{self._form_id}")
+
+    def response_field_defs(self) -> list[dict[str, Any]]:
+        """Flat list of leaf field definitions (for mapping response answers)."""
+        out: list[dict[str, Any]] = []
+
+        def walk(nodes: list[dict[str, Any]]) -> None:
+            for node in nodes:
+                nested = node.get("properties", {}).get("fields")
+                if isinstance(nested, list) and nested:
+                    walk(nested)
+                else:
+                    out.append(node)
+
+        walk(self.form().get("fields", []))
+        return out
+
+    def completed_responses(self, since: str | None = None, page_size: int = 1000) -> list[dict]:
+        """Completed submissions, newest window first (optionally since an ISO time)."""
+        params: dict[str, Any] = {"page_size": page_size, "completed": "true"}
+        if since:
+            params["since"] = since
+        query = urllib.parse.urlencode(params)
+        return self._get(f"/forms/{self._form_id}/responses?{query}").get("items", [])
 
     def fields(self) -> list[IntakeField]:
         """Map the form's answerable questions to IntakeFields, in order.
@@ -177,3 +204,57 @@ def _short_slug(title: str, max_words: int = 3) -> str:
     words = re.sub(r"[^a-z0-9]+", " ", title.lower()).split()
     meaningful = [w for w in words if w not in _STOPWORDS] or words
     return "_".join(meaningful[:max_words])[:40]
+
+
+# -- webhook (form completion) --------------------------------------------
+
+def verify_webhook_signature(secret: str, body: bytes, header: str | None) -> bool:
+    """Check a Typeform webhook's `Typeform-Signature` header (sha256=base64)."""
+    if not secret:
+        return True  # no secret configured — verification disabled
+    if not header:
+        return False
+    digest = hmac.new(secret.encode(), body, hashlib.sha256).digest()
+    expected = "sha256=" + base64.b64encode(digest).decode()
+    return hmac.compare_digest(expected, header)
+
+
+def _answer_value(answer: dict[str, Any]) -> str | None:
+    atype = answer.get("type", "")
+    if atype == "choice":
+        return (answer.get("choice") or {}).get("label")
+    if atype == "choices":
+        return ", ".join((answer.get("choices") or {}).get("labels", []))
+    value = answer.get(atype)
+    return None if value is None else str(value)
+
+
+def record_from_response(item: dict[str, Any], field_defs: list[dict[str, Any]]) -> tuple[dict[str, str], str]:
+    """Parse a Responses-API item into (record, phone), given the field defs."""
+    return record_from_webhook({"definition": {"fields": field_defs}, "answers": item.get("answers", [])})
+
+
+def record_from_webhook(form_response: dict[str, Any]) -> tuple[dict[str, str], str]:
+    """Turn a submitted form_response into (record, phone_number).
+
+    `record` is keyed the same way the intake questions are (so scheduling reads
+    the timeframe, email, and name straight from it); `phone_number` is the
+    number to call back, or "" if the form has no phone field.
+    """
+    definitions = {
+        f.get("id"): f for f in (form_response.get("definition") or {}).get("fields", [])
+    }
+    record: dict[str, str] = {}
+    phone = ""
+    for answer in form_response.get("answers", []):
+        field = answer.get("field", {})
+        fdef = definitions.get(field.get("id"), field)
+        title = (fdef.get("title") or "").strip()
+        name = _field_name(fdef, title) if title else (field.get("ref") or "field")
+        value = _answer_value(answer)
+        if value is None:
+            continue
+        record[name] = value
+        if answer.get("type") == "phone_number":
+            phone = value
+    return record, phone

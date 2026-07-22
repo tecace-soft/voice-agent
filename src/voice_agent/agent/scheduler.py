@@ -102,6 +102,16 @@ class Scheduler:
         return _friendly(iso_start)
 
 
+def timeframe_from(record: dict[str, str]) -> str | None:
+    """Find the caller's timeframe answer without hardcoding the field name."""
+    for value in record.values():
+        if isinstance(value, str) and any(
+            w in value.lower() for w in ("today", "tomorrow", "week", "month")
+        ):
+            return value
+    return None
+
+
 def attendee_name(record: dict[str, str]) -> str:
     """Best-effort caller name across form shapes (first/last, full_name, etc.)."""
     parts = [record.get("first_name", ""), record.get("last_name", "")]
