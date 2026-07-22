@@ -28,6 +28,8 @@ class IntakeField:
     name: str
     description: str
     required: bool = True
+    question: str = ""                    # exact wording to ask (e.g. from Typeform)
+    choices: tuple[str, ...] = ()         # options for choice questions
 
 
 @dataclass
@@ -39,6 +41,10 @@ class IntakeResult:
     record: dict[str, str] = field(default_factory=dict)   # captured so far / final
     missing: list[str] = field(default_factory=list)       # required fields still needed
 
+
+# How many times a required-but-unanswered question is re-asked before the
+# agent moves on (prevents an unanswered required field from looping forever).
+MAX_ASKS_REQUIRED = 3
 
 _QUESTION_SYSTEM = (
     "You are a warm, efficient phone intake agent. Ask for ONE missing item in a "
@@ -65,12 +71,12 @@ class IntakeAgent:
         self._use_hermes_closing = use_hermes_closing
         self._transcript: list[str] = []
         self._captured: dict[str, str] = {}
+        self._ask_counts: dict[str, int] = {}
 
     # -- public API ------------------------------------------------------
 
     def greeting(self) -> str:
-        first = self._fields[0]
-        return f"Hi, thanks for calling. To get started, can I take your {_spoken(first.name)}?"
+        return "Hi, thanks for calling. " + self._pose(self._fields[0])
 
     def handle(self, user_text: str) -> IntakeResult:
         """Process one caller utterance and return the agent's next move."""
@@ -80,34 +86,67 @@ class IntakeAgent:
             " ".join(self._transcript), self._field_specs()
         )
         self._captured = extraction["values"]
-        missing = [
-            f.name for f in self._fields if f.required and not self._captured.get(f.name)
-        ]
 
-        if missing:
-            question = self._next_question(missing)
-            return IntakeResult(question, False, dict(self._captured), missing)
+        nxt = self._next_field()
+        if nxt is not None:
+            return IntakeResult(
+                self._pose(nxt), False, dict(self._captured), self._required_missing()
+            )
 
         closing = self._closing_message()
-        return IntakeResult(closing, True, dict(self._captured), [])
+        return IntakeResult(closing, True, dict(self._captured), self._required_missing())
 
     # -- internals -------------------------------------------------------
 
-    def _field_specs(self) -> list[dict[str, str]]:
-        return [{"name": f.name, "description": f.description} for f in self._fields]
+    def _next_field(self) -> IntakeField | None:
+        """The next question to ask, walking the form in order.
 
-    def _next_question(self, missing: list[str]) -> str:
-        target = missing[0]
-        described = next(f.description for f in self._fields if f.name == target)
-        prompt = (
-            f"Captured so far: {self._captured or 'nothing yet'}.\n"
-            f"Ask the caller for their {_spoken(target)} ({described})."
-        )
+        Every field is asked; a field drops out once it's answered, once an
+        optional field has been asked, or once a required field has been asked
+        MAX_ASKS_REQUIRED times (so an unanswered required question can't loop).
+        Returns None when there is nothing left to ask.
+        """
+        for f in self._fields:
+            if self._captured.get(f.name):
+                continue
+            asked = self._ask_counts.get(f.name, 0)
+            if f.required and asked < MAX_ASKS_REQUIRED:
+                return f
+            if not f.required and asked == 0:
+                return f
+        return None
+
+    def _required_missing(self) -> list[str]:
+        return [f.name for f in self._fields if f.required and not self._captured.get(f.name)]
+
+    def _field_specs(self) -> list[dict[str, str]]:
+        specs = []
+        for f in self._fields:
+            desc = f.description or f.question
+            if f.choices:
+                desc = f"{desc} (must be one of: {', '.join(f.choices)})"
+            specs.append({"name": f.name, "description": desc})
+        return specs
+
+    def _pose(self, field_obj: IntakeField) -> str:
+        """Ask a field and record that we asked it."""
+        self._ask_counts[field_obj.name] = self._ask_counts.get(field_obj.name, 0) + 1
+        return self._ask(field_obj)
+
+    def _ask(self, field_obj: IntakeField) -> str:
+        """Phrase a spoken question for one field, grounded in its exact wording."""
+        if field_obj.question:
+            grounding = f'Ask this question naturally, out loud: "{field_obj.question}"'
+        else:
+            grounding = f"Ask the caller for their {_spoken(field_obj.name)} ({field_obj.description})."
+        if field_obj.choices:
+            grounding += f" The options to read out are: {', '.join(field_obj.choices)}."
+        prompt = f"Captured so far: {self._captured or 'nothing yet'}.\n{grounding}"
         try:
             return self._gemini.generate(_QUESTION_SYSTEM, prompt)
         except Exception as exc:  # never let phrasing failure stall the intake
             log.warning("question phrasing failed (%s); using template", exc)
-            return f"Could I get your {_spoken(target)}?"
+            return field_obj.question or f"Could I get your {_spoken(field_obj.name)}?"
 
     def _closing_message(self) -> str:
         readback = ", ".join(f"{_spoken(k)}: {v}" for k, v in self._captured.items())

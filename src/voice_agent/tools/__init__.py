@@ -2,6 +2,7 @@
 
 from .gemini import GeminiTools
 from .hermes import HermesAuthError, HermesChat, HermesSession, status
+from .typeform import TypeformClient, TypeformError
 from .voice import ElevenLabsVoice, VoiceError
 
 __all__ = [
@@ -10,6 +11,8 @@ __all__ = [
     "HermesChat",
     "HermesSession",
     "status",
+    "TypeformClient",
+    "TypeformError",
     "ElevenLabsVoice",
     "VoiceError",
 ]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,6 +45,9 @@ class Config:
     elevenlabs_api_key: str
     elevenlabs_voice_id: str
     elevenlabs_model_id: str
+    typeform_api_key: str
+    typeform_form_id: str
+    typeform_webhook_secret: str
     request_timeout: float
 
     @property
@@ -78,5 +82,11 @@ class Config:
             elevenlabs_api_key=_required("ELEVENLABS_API_KEY"),
             elevenlabs_voice_id=_required("ELEVENLABS_VOICE_ID"),
             elevenlabs_model_id=_optional("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5"),
+            # Typeform supplies the questions the agent asks. Optional so the
+            # Hermes/voice scripts don't depend on it; the client validates.
+            typeform_api_key=_optional("TYPEFORM_API_KEY"),
+            # The env value is often pasted from an edit URL; keep only the id.
+            typeform_form_id=re.split(r"[/?]", _optional("TYPEFORM_FORM_ID"))[0],
+            typeform_webhook_secret=_optional("TYPEFORM_WEBHOOK_SECRET"),
             request_timeout=float(_optional("REQUEST_TIMEOUT_SECONDS", "60")),
         )

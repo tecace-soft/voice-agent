@@ -1,12 +1,14 @@
 """Interactive intake test — type as if you were the caller.
 
-    python scripts/try_intake.py
-    python scripts/try_intake.py --no-hermes   # skip the Hermes closing sub-task
-    python scripts/try_intake.py --voice        # speak each agent line via ElevenLabs
+    python scripts/try_intake.py             # questions from the Typeform form
+    python scripts/try_intake.py --demo       # use the built-in demo questions
+    python scripts/try_intake.py --no-hermes  # skip the Hermes closing sub-task
+    python scripts/try_intake.py --voice       # speak each agent line via ElevenLabs
 
-Drives the real IntakeAgent: Gemini extracts fields and phrases questions each
-turn; Hermes composes the closing confirmation (with a template fallback). With
---voice, every agent message is synthesized to data/turns/NN.mp3 and played.
+Drives the real IntakeAgent: the questions come from your Typeform form, Gemini
+extracts answers and phrases each question, and Hermes composes the closing
+confirmation (with a template fallback). With --voice, every agent line is
+spoken aloud.
 
 Commands:  :state  show captured record   :reset  start over   :quit
 """
@@ -17,14 +19,30 @@ import sys
 
 from voice_agent.agent import IntakeAgent, IntakeField
 from voice_agent.config import Config, ConfigError
+from voice_agent.tools.typeform import TypeformClient, TypeformError
 from voice_agent.tools.voice import ElevenLabsVoice, VoiceError
 
-FIELDS = [
+# Fallback questions when Typeform is unavailable or the form has none yet.
+DEMO_FIELDS = [
     IntakeField("full_name", "the caller's full name"),
     IntakeField("email", "an email address"),
     IntakeField("phone", "a phone number"),
     IntakeField("reason", "why they are getting in touch"),
 ]
+
+
+def _load_fields(cfg: Config, use_demo: bool) -> list[IntakeField]:
+    if use_demo:
+        print("questions: built-in demo set")
+        return DEMO_FIELDS
+    try:
+        fields = TypeformClient(cfg).fields()
+        print(f"questions: {len(fields)} from Typeform form {cfg.typeform_form_id}")
+        return fields
+    except TypeformError as exc:
+        print(f"questions: Typeform unavailable ({exc})")
+        print("           falling back to the built-in demo set. Pass --demo to skip this.")
+        return DEMO_FIELDS
 
 
 def main(argv: list[str]) -> int:
@@ -36,7 +54,8 @@ def main(argv: list[str]) -> int:
 
     use_hermes = "--no-hermes" not in argv
     speaker = _Speaker(cfg) if "--voice" in argv else None
-    agent = IntakeAgent(cfg, FIELDS, use_hermes_closing=use_hermes)
+    fields = _load_fields(cfg, use_demo="--demo" in argv)
+    agent = IntakeAgent(cfg, fields, use_hermes_closing=use_hermes)
     print(
         f"intake test — Gemini {cfg.gemini_model}, Hermes closing "
         f"{'on' if use_hermes else 'off'}, voice {'on' if speaker else 'off'}"
@@ -60,7 +79,7 @@ def main(argv: list[str]) -> int:
         if line in {":quit", ":q"}:
             return 0
         if line == ":reset":
-            agent = IntakeAgent(cfg, FIELDS, use_hermes_closing=use_hermes)
+            agent = IntakeAgent(cfg, fields, use_hermes_closing=use_hermes)
             print("(reset)")
             say(agent.greeting())
             continue
