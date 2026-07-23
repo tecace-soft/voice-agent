@@ -118,9 +118,10 @@ class Scheduler:
             '"requested_datetime": for "request", the specific date+time they asked for '
             f'as ISO 8601 with the {self._tz} UTC offset, resolved from now, else null}}. '
             'Use "pick" if they chose an offered time, "request" if they asked about a '
-            'DIFFERENT specific time, "decline" if they said no / none work. A plain '
-            'affirmative ("yes", "sure", "that works") when a single time is offered is '
-            '"pick" that time; a plain "no" is "decline".'
+            'DIFFERENT specific time, "others" if they asked what ELSE / other times are '
+            'available (without naming a specific one), "decline" if they said no / none '
+            'work. A plain affirmative ("yes", "sure", "that works") when a single time is '
+            'offered is "pick" that time; a plain "no" is "decline".'
         )
         try:
             data = _loads_json(self._gemini.generate(system, user, temperature=0))
@@ -136,6 +137,8 @@ class Scheduler:
             return Decision("unclear")
         if action == "request" and data.get("requested_datetime"):
             return Decision("request", requested=str(data["requested_datetime"]))
+        if action == "others":
+            return Decision("others")
         if action == "decline":
             return Decision("decline")
         return Decision("unclear")
@@ -173,6 +176,36 @@ class Scheduler:
                 best, nearest = diff, start
         return exact, nearest
 
+    def day_offer(self, day_iso: str, exclude: tuple[str, ...] = ()) -> Offer:
+        """A spread of free slots on the same day as `day_iso` (excluding some).
+
+        Empty options mean there are no other openings that day.
+        """
+        try:
+            day = datetime.datetime.fromisoformat(day_iso).astimezone(ZoneInfo(self._tz))
+        except ValueError:
+            return Offer("", [])
+        win_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+        win_end = win_start + datetime.timedelta(days=1)
+        fmt = "%Y-%m-%dT%H:%M:%SZ"
+        slots = self._cal.slots(
+            self._event_type_id,
+            win_start.astimezone(datetime.timezone.utc).strftime(fmt),
+            win_end.astimezone(datetime.timezone.utc).strftime(fmt),
+            time_zone=self._tz,
+        )
+        slots = _business_hours_only(slots, self._biz_start, self._biz_end)
+        excluded = set(exclude)
+        starts = [
+            s["start"] for d in sorted(slots) for s in slots[d] if s["start"] not in excluded
+        ]
+        if not starts:
+            return Offer("", [])
+        picked = _spread(starts, self._max_options)
+        labels = [_friendly(o) for o in picked]
+        body = labels[0] if len(labels) == 1 else ", ".join(labels[:-1]) + f", or {labels[-1]}"
+        return Offer(f"That day I also have {body}. Which of those works?", picked)
+
     def book(self, iso_start: str, record: dict[str, str]) -> dict:
         email = record.get("email", "")
         if not email:
@@ -186,11 +219,28 @@ class Scheduler:
     def friendly(iso_start: str) -> str:
         return _friendly(iso_start)
 
+    @staticmethod
+    def day_label(iso_start: str) -> str:
+        try:
+            return datetime.datetime.fromisoformat(iso_start).strftime("%A, %B %d")
+        except ValueError:
+            return "that day"
+
 
 def _loads_json(raw: str) -> dict:
     """Parse a JSON object out of an LLM reply (tolerating code fences/extra text)."""
     match = re.search(r"\{.*\}", raw, re.DOTALL)
     return json.loads(match.group(0)) if match else {}
+
+
+def _spread(items: list[str], n: int) -> list[str]:
+    """Pick up to n items evenly spaced across the list (e.g. morning/midday/late)."""
+    if len(items) <= n:
+        return items
+    if n == 1:
+        return [items[0]]
+    step = (len(items) - 1) / (n - 1)
+    return [items[round(i * step)] for i in range(n)]
 
 
 _SPEECH_LOCALES = {"korean": "ko-KR", "english": "en-US"}

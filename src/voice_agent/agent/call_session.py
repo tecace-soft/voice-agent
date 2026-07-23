@@ -88,6 +88,7 @@ class CallSession:
         self._chosen = ""       # slot the caller picked, booked during finalize()
         self._requested = ""    # a specific time the caller asked us to check
         self._candidate = ""    # a free slot we've proposed, awaiting yes/no
+        self._day = ""          # the day currently in focus, for "other times that day"
         # When the caller already answered the form (a post-submission callback),
         # skip intake and go straight to confirming a time.
         if prefilled:
@@ -221,10 +222,12 @@ class CallSession:
         if decision.action == "pick":
             return self._acknowledge_booking(decision.slot)
         if decision.action == "request":
-            self._requested = decision.requested
+            self._requested = self._day = decision.requested
             self._state = "checking"
             return Turn("Sure, let me check if that time is available. One moment.", "check")
-        if decision.action == "decline":
+        if decision.action == "others" and self._day:
+            return self._offer_day()
+        if decision.action in ("decline", "others"):
             return Turn("No problem. What day and time would you prefer?", "listen")
         # unclear
         self._slot_attempts += 1
@@ -263,16 +266,30 @@ class CallSession:
     def _handle_confirm(self, caller_text: str) -> Turn:
         decision = self._scheduler.decide(caller_text, [self._candidate])
         if decision.action == "request":       # asked about yet another time
-            self._requested = decision.requested
+            self._requested = self._day = decision.requested
             self._state = "checking"
             return Turn("Let me check that one. One moment.", "check")
         if decision.action == "pick":          # yes — book the proposed slot
             return self._acknowledge_booking(self._candidate)
-        if decision.action == "decline":       # no — back to the original openings
-            self._state = "scheduling"
-            return Turn("No problem. " + self._offer.message
-                        + " Or is there another time you'd like?", "listen")
+        # "no" or "what else that day?" — offer the day's other openings
+        if decision.action in ("decline", "others"):
+            return self._offer_day(exclude=(self._candidate,))
         return Turn("Sorry — would you like me to book that time? Please say yes or no.", "listen")
+
+    def _offer_day(self, exclude: tuple[str, ...] = ()) -> Turn:
+        """Offer the other free slots on the day in focus, or say there are none."""
+        offer = self._scheduler.day_offer(self._day, exclude=exclude)
+        if offer.options:
+            self._offer = offer
+            self._candidate = ""
+            self._state = "scheduling"
+            return Turn(offer.message, "listen")
+        self._state = "scheduling"
+        return Turn(
+            f"I'm sorry, I don't have any other openings on {Scheduler.day_label(self._day)}. "
+            "Would another day work?",
+            "listen",
+        )
 
     def _acknowledge_booking(self, slot: str) -> Turn:
         """Confirm the slot verbally now; the real booking happens in finalize()."""
