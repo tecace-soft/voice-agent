@@ -8,6 +8,7 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "websockets>=13.0",
     "flask>=3.0",
+    "PyJWT[crypto]>=2.8",
 ]
 
 [build-system]

@@ -102,6 +102,22 @@ class Scheduler:
         return _friendly(iso_start)
 
 
+_SPEECH_LOCALES = {"korean": "ko-KR", "english": "en-US"}
+
+
+def language_from(record: dict[str, str]) -> str:
+    """Detect the caller's chosen language from the record (default English)."""
+    for value in record.values():
+        if isinstance(value, str) and ("korea" in value.lower() or "한국" in value):
+            return "Korean"
+    return "English"
+
+
+def speech_locale(language: str) -> str:
+    """Twilio speech-recognition locale for a language (e.g. Korean -> ko-KR)."""
+    return _SPEECH_LOCALES.get(language.lower(), "en-US")
+
+
 def timeframe_from(record: dict[str, str]) -> str | None:
     """Find the caller's timeframe answer without hardcoding the field name."""
     for value in record.values():

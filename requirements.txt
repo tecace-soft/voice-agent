@@ -2,3 +2,4 @@ google-genai>=1.0.0
 python-dotenv>=1.0.1
 websockets>=13.0
 flask>=3.0            # phone server (Twilio webhooks)
+PyJWT[crypto]>=2.8    # Google Sheets service-account JWT (RS256)

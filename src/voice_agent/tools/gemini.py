@@ -106,6 +106,18 @@ class GeminiTools:
         )
         return (response.text or "").strip()
 
+    def translate(self, text: str, language: str) -> str:
+        """Translate one spoken line into natural `language` (for a phone call)."""
+        if not text.strip():
+            return text
+        system = (
+            f"You translate a voice agent's lines into natural, conversational, "
+            f"spoken {language}. Keep names, email addresses, and phone numbers "
+            f"exactly as written; render dates and times naturally in {language}. "
+            f"Reply with ONLY the translation — no notes, no quotes."
+        )
+        return self.generate(system, text, temperature=0.2)
+
 
 def _parse_json_object(raw: str | None) -> dict[str, Any]:
     """Gemini can return None when a response is blocked by a safety filter."""

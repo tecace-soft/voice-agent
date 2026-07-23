@@ -79,12 +79,25 @@ class ElevenLabsVoice:
         data = json.loads(body)
         return {"name": data.get("name", ""), "category": data.get("category", "")}
 
-    def synthesize(self, text: str) -> bytes:
-        """Return spoken-audio mp3 bytes for `text`."""
+    def synthesize(
+        self,
+        text: str,
+        *,
+        output_format: str = _OUTPUT_FORMAT,
+        optimize_latency: int | None = None,
+    ) -> bytes:
+        """Return spoken-audio mp3 bytes for `text`.
+
+        For phone calls, a smaller format (e.g. mp3_22050_32) plus
+        `optimize_latency` cuts synthesis + download time with no audible loss
+        over an 8 kHz line.
+        """
         if not text.strip():
             raise VoiceError("nothing to synthesize (empty text)")
-        query = urllib.parse.urlencode({"output_format": _OUTPUT_FORMAT})
-        url = f"{_API_ROOT}/text-to-speech/{self._voice_id}?{query}"
+        params: dict[str, object] = {"output_format": output_format}
+        if optimize_latency is not None:
+            params["optimize_streaming_latency"] = optimize_latency
+        url = f"{_API_ROOT}/text-to-speech/{self._voice_id}?{urllib.parse.urlencode(params)}"
         status, ctype, body = self._request(
             url,
             method="POST",

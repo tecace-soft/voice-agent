@@ -21,14 +21,19 @@ from dataclasses import dataclass
 
 from ..config import Config
 from ..tools.cal import CalError
+from ..tools.gemini import GeminiTools
 from ..tools.sheets import SheetsError
 from .fulfillment import Fulfillment
 from .intake import IntakeAgent, IntakeField
-from .scheduler import Scheduler, attendee_name, timeframe_from
+from .scheduler import Scheduler, attendee_name, language_from, speech_locale, timeframe_from
 
 log = logging.getLogger(__name__)
 
 MAX_SLOT_RETRIES = 2
+
+# Cache translations of repeated lines (fixed prompts) across calls.
+_LOCALIZE_CACHE: dict[tuple[str, str], str] = {}
+_LOCALIZE_CACHE_MAX = 2000
 
 # How the agent opens, depending on who placed the call.
 OPENINGS = {
@@ -55,12 +60,14 @@ class CallSession:
         use_hermes_closing: bool = True,
         create_bookings: bool = True,
         prefilled: dict[str, str] | None = None,
+        language: str | None = None,
     ) -> None:
         self._cfg = cfg
         self._fields = fields
         self._event_type_id = event_type_id
         self._direction = direction
         self._create_bookings = create_bookings
+        self._gemini = GeminiTools(cfg)
         self._agent = IntakeAgent(
             cfg,
             fields,
@@ -82,6 +89,14 @@ class CallSession:
         else:
             self._record = {}
             self._state = "intake"      # intake -> scheduling -> done
+        # Language: explicit wins; else read the form answer; else detect live as
+        # the caller answers the language question (first field).
+        if language is not None:
+            self._language, self._detect_language = language, False
+        elif prefilled:
+            self._language, self._detect_language = language_from(prefilled), False
+        else:
+            self._language, self._detect_language = "English", True
 
     @property
     def record(self) -> dict[str, str]:
@@ -92,19 +107,51 @@ class CallSession:
         """The chosen slot's ISO time, or '' if nothing was scheduled."""
         return self._booked_at
 
+    @property
+    def language(self) -> str:
+        return self._language
+
+    @property
+    def speech_locale(self) -> str:
+        """Twilio speech-recognition locale for the current language (e.g. ko-KR)."""
+        return speech_locale(self._language)
+
+    def localize(self, text: str) -> str:
+        """Render an English agent line in the caller's language (no-op for English)."""
+        if not text or self._language.lower().startswith("eng"):
+            return text
+        key = (self._language, text)
+        if key in _LOCALIZE_CACHE:
+            return _LOCALIZE_CACHE[key]
+        try:
+            out = self._gemini.translate(text, self._language)
+        except Exception as exc:  # noqa: BLE001 — fall back to English rather than fail
+            log.warning("translation failed (%s); speaking English", exc)
+            return text
+        if len(_LOCALIZE_CACHE) < _LOCALIZE_CACHE_MAX:
+            _LOCALIZE_CACHE[key] = out
+        return out
+
     def start(self) -> str:
         """The agent's opening line (it speaks first)."""
         if self._state == "confirm":
             name = attendee_name(self._record).split()[0]
             who = f" {name}" if name != "Caller" else ""
-            return (
+            greeting = (
                 f"Hi{who}, thanks for filling out the form. I'd like to get your "
                 "appointment booked — are you ready to pick a time?"
             )
-        return self._agent.greeting()
+        else:
+            greeting = self._agent.greeting()
+        return self.localize(greeting)
 
     def handle(self, caller_text: str) -> Turn:
-        """Advance the conversation by one caller turn."""
+        """Advance the conversation by one caller turn (reply in the caller's language)."""
+        turn = self._dispatch(caller_text)
+        self._refresh_language()
+        return Turn(self.localize(turn.reply), turn.ended)
+
+    def _dispatch(self, caller_text: str) -> Turn:
         if self._state == "confirm":
             return self._begin_scheduling()  # any reply moves us into scheduling
         if self._state == "intake":
@@ -112,6 +159,11 @@ class CallSession:
         if self._state == "scheduling":
             return self._handle_pick(caller_text)
         return Turn("", True)
+
+    def _refresh_language(self) -> None:
+        """Once the caller answers the language question, switch to it."""
+        if self._detect_language and self._record:
+            self._language = language_from(self._record)
 
     # -- intake phase ----------------------------------------------------
 

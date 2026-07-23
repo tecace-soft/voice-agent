@@ -37,6 +37,10 @@ from ..tools.voice import ElevenLabsVoice, VoiceError
 
 log = logging.getLogger(__name__)
 
+# Seconds of silence before Twilio decides the caller finished. "auto" adapts;
+# a fixed low value (e.g. "2") cuts dead-air but risks clipping a slow speaker.
+SPEECH_TIMEOUT = "auto"
+
 _DEMO_FIELDS = [
     IntakeField("full_name", "the caller's full name"),
     IntakeField("email", "an email address"),
@@ -70,7 +74,11 @@ def create_app(cfg: Config | None = None) -> Flask:
         """Synthesize `text` to an audio clip and return its play URL, or None."""
         try:
             clip_id = uuid.uuid4().hex
-            clips[clip_id] = voice.synthesize(text)
+            # Phone lines are 8 kHz, so a small format + latency-opt is faster to
+            # generate and for Twilio to fetch, with no audible loss.
+            clips[clip_id] = voice.synthesize(
+                text, output_format="mp3_22050_32", optimize_latency=3
+            )
             return f"{base_url()}/audio/{clip_id}.mp3"
         except VoiceError as exc:
             log.warning("TTS failed (%s); falling back to Twilio voice", exc)
@@ -83,12 +91,15 @@ def create_app(cfg: Config | None = None) -> Flask:
             return f"<Play>{escape(url)}</Play>"
         return f"<Say>{escape(text)}</Say>"
 
-    def gather(prompt_twiml: str) -> Response:
+    def gather(prompt_twiml: str, locale: str = "en-US") -> Response:
+        # phone_call + enhanced = better phone recognition (fewer retries); the
+        # caller can barge in over the prompt (Gather listens during <Play>).
         xml = (
             '<?xml version="1.0" encoding="UTF-8"?>'
             "<Response>"
             '<Gather input="speech" action="/voice/turn" method="POST" '
-            'speechTimeout="auto" actionOnEmptyResult="true">'
+            f'speechTimeout="{SPEECH_TIMEOUT}" speechModel="phone_call" enhanced="true" '
+            f'actionOnEmptyResult="true" language="{locale}">'
             f"{prompt_twiml}"
             "</Gather>"
             # If Gather returns without posting (rare), keep the line open.
@@ -150,7 +161,7 @@ def create_app(cfg: Config | None = None) -> Flask:
             direction=direction, prefilled=prefilled,
         )
         sessions[call_sid] = session
-        return gather(speak(session.start()))
+        return gather(speak(session.start()), session.speech_locale)
 
     @app.post("/voice/turn")
     def turn():
@@ -159,17 +170,18 @@ def create_app(cfg: Config | None = None) -> Flask:
         if session is None:  # unknown/expired call — restart cleanly
             session = CallSession(cfg, fields, event_type_id=cfg.cal_event_type_id)
             sessions[call_sid] = session
-            return gather(speak(session.start()))
+            return gather(speak(session.start()), session.speech_locale)
 
         said = request.values.get("SpeechResult", "").strip()
         if not said:
-            return gather(speak("Sorry, I didn't catch that. Could you say it again?"))
+            reprompt = session.localize("Sorry, I didn't catch that. Could you say it again?")
+            return gather(speak(reprompt), session.speech_locale)
 
         result = session.handle(said)
         if result.ended:
             sessions.pop(call_sid, None)
             return hangup(speak(result.reply))
-        return gather(speak(result.reply))
+        return gather(speak(result.reply), session.speech_locale)
 
     @app.get("/audio/<clip_id>.mp3")
     def audio(clip_id: str):
