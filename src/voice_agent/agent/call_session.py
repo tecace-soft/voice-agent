@@ -274,7 +274,11 @@ class CallSession:
         # "no" or "what else that day?" — offer the day's other openings
         if decision.action in ("decline", "others"):
             return self._offer_day(exclude=(self._candidate,))
-        return Turn("Sorry — would you like me to book that time? Please say yes or no.", "listen")
+        return Turn(
+            f"Sorry, I didn't catch that. Should I book {Scheduler.friendly(self._candidate)}, "
+            "or would you like to hear other times?",
+            "listen",
+        )
 
     def _offer_day(self, exclude: tuple[str, ...] = ()) -> Turn:
         """Offer the other free slots on the day in focus, or say there are none."""

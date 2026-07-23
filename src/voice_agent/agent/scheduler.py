@@ -113,15 +113,20 @@ class Scheduler:
             f"Right now it is {now.strftime('%A, %B %d, %Y, %I:%M %p')} ({self._tz}).\n"
             f"Times already offered:\n{numbered}\n\n"
             f'The caller said: "{user_text}"\n\n'
-            'Return JSON: {"action": one of "pick"/"request"/"decline"/"unclear", '
-            '"option_number": the chosen number for "pick" else null, '
-            '"requested_datetime": for "request", the specific date+time they asked for '
-            f'as ISO 8601 with the {self._tz} UTC offset, resolved from now, else null}}. '
-            'Use "pick" if they chose an offered time, "request" if they asked about a '
-            'DIFFERENT specific time, "others" if they asked what ELSE / other times are '
-            'available (without naming a specific one), "decline" if they said no / none '
-            'work. A plain affirmative ("yes", "sure", "that works") when a single time is '
-            'offered is "pick" that time; a plain "no" is "decline".'
+            'Return ONLY JSON like {"action": "...", "option_number": null, "requested_datetime": null}.\n'
+            '"action" is exactly one of:\n'
+            '- "pick": they accept or choose one of the offered times. Examples: "the first one", '
+            '"Friday works", "yes", "sure, that one", "let\'s do that". Set option_number (1-based).\n'
+            '- "request": they name a DIFFERENT specific time to check. Examples: "how about Tuesday '
+            'at 2", "can I do 3pm instead", "what about tomorrow morning". Set requested_datetime to '
+            'ISO 8601 with the ' + self._tz + ' UTC offset, resolved from now.\n'
+            '- "others": they do NOT want the offered time and want to hear OTHER available options '
+            'without naming a specific one. Examples: "that time does not work for me, are there other '
+            'available slots?", "that does not work, what else do you have?", "any other times?", '
+            '"something else that day", "none of those, what else". If they express dissatisfaction '
+            'AND ask for alternatives, use "others".\n'
+            '- "decline": a plain no with no follow-up. Examples: "no", "that will not work", "none of those".\n'
+            '- "unclear": you genuinely cannot tell.'
         )
         try:
             data = _loads_json(self._gemini.generate(system, user, temperature=0))
