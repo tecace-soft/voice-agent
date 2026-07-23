@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 import urllib.parse
 import urllib.request
 import uuid
@@ -221,6 +222,25 @@ def create_app(cfg: Config | None = None) -> Flask:
     return app
 
 
+def _e164(raw: str, default_country: str = "1") -> str:
+    """Best-effort E.164 (+countrycode…) so Twilio accepts the number.
+
+    A Google Forms text field yields whatever was typed ("(425) 478-7534",
+    "4254787534"); Twilio needs "+14254787534". A US 10-digit number gets +1;
+    an 11-digit 1xxxxxxxxxx or an already-+ number is respected.
+    """
+    raw = raw.strip()
+    keep_plus = raw.startswith("+")
+    digits = re.sub(r"\D", "", raw)
+    if not digits:
+        return raw
+    if keep_plus:
+        return "+" + digits
+    if len(digits) == 10:
+        return "+" + default_country + digits
+    return "+" + digits  # 11+ digits: assume it already carries a country code
+
+
 def place_call(cfg: Config, to_number: str, *, extra_params: dict[str, str] | None = None) -> str:
     """Place an outbound call via Twilio's REST API. Returns the call SID."""
     if not (cfg.twilio_account_sid and cfg.twilio_auth_token and cfg.twilio_phone_number):
@@ -228,10 +248,11 @@ def place_call(cfg: Config, to_number: str, *, extra_params: dict[str, str] | No
     if not cfg.public_base_url:
         raise RuntimeError("PUBLIC_BASE_URL must be set so Twilio can reach the server")
 
+    to = _e164(to_number)
     params = {"direction": "outbound", **(extra_params or {})}
     answer_url = f"{cfg.public_base_url}/voice/incoming?{urllib.parse.urlencode(params)}"
     form = urllib.parse.urlencode(
-        {"To": to_number, "From": cfg.twilio_phone_number, "Url": answer_url}
+        {"To": to, "From": cfg.twilio_phone_number, "Url": answer_url}
     ).encode()
     api = f"https://api.twilio.com/2010-04-01/Accounts/{cfg.twilio_account_sid}/Calls.json"
     auth = base64.b64encode(f"{cfg.twilio_account_sid}:{cfg.twilio_auth_token}".encode()).decode()
