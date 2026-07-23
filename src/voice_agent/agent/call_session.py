@@ -74,12 +74,16 @@ class CallSession:
         create_bookings: bool = True,
         prefilled: dict[str, str] | None = None,
         language: str | None = None,
+        callback: bool = False,
     ) -> None:
         self._cfg = cfg
         self._fields = fields
         self._event_type_id = event_type_id
         self._direction = direction
         self._create_bookings = create_bookings
+        # True when this call is the agent ringing back at a time the caller
+        # asked for earlier — changes the opening line (see start()).
+        self._is_callback = callback
         self._gemini = GeminiTools(cfg)
         self._agent = IntakeAgent(
             cfg,
@@ -165,10 +169,16 @@ class CallSession:
         if self._state == "confirm":
             name = attendee_name(self._record).split()[0]
             who = f" {name}" if name != "Caller" else ""
-            greeting = (
-                f"Hi{who}, thanks for filling out the form. I'd like to get your "
-                "appointment booked — are you ready to pick a time?"
-            )
+            if self._is_callback:
+                greeting = (
+                    f"Hello{who}, I'm calling back at the time you requested. "
+                    "Shall we schedule that appointment now?"
+                )
+            else:
+                greeting = (
+                    f"Hi{who}, thanks for filling out the form. I'd like to get your "
+                    "appointment booked — are you ready to pick a time?"
+                )
         else:
             greeting = self._agent.greeting()
         return self.localize(greeting)

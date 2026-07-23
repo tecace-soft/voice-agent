@@ -45,7 +45,7 @@ class CallbackQueue:
             self._save()
         log.info("callback scheduled for %s at %s", phone, due_at)
 
-    def run(self, trigger: Callable[[dict, str], str], interval: float = 30.0) -> None:
+    def run(self, trigger: Callable[..., str], interval: float = 30.0) -> None:
         """Poll for due callbacks and place them via `trigger(record, phone)`."""
         log.info("callback queue started (every %.0fs)", interval)
         while True:
@@ -55,7 +55,7 @@ class CallbackQueue:
                 log.warning("callback loop error: %s", exc)
             time.sleep(interval)
 
-    def _fire_due(self, trigger: Callable[[dict, str], str]) -> None:
+    def _fire_due(self, trigger: Callable[..., str]) -> None:
         now = datetime.datetime.now(datetime.timezone.utc)
         with self._lock:
             due = [item for item in self._items if _is_due(item, now)]
@@ -65,7 +65,7 @@ class CallbackQueue:
             self._save()
         for item in due:
             try:
-                trigger(item["record"], item["phone"])
+                trigger(item["record"], item["phone"], is_callback=True)
                 log.info("callback placed to %s", item["phone"])
             except Exception as exc:  # noqa: BLE001
                 log.warning("callback to %s failed: %s", item.get("phone"), exc)

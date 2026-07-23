@@ -1,7 +1,7 @@
 %%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'13px','lineColor':'#8a94a6','primaryColor':'#eceff3','primaryTextColor':'#222a36','primaryBorderColor':'#b9c2ce','edgeLabelBackground':'#eceff3'}}}%%
 flowchart TD
     %% ---- entry 1: outbound, triggered by a form submission ----
-    Form[/"Caller completes the Typeform online"/]:::caller --> Poll["Poll finds the new submission<br/><b>Typeform</b>"]:::typeform
+    Form[/"Caller submits the Google Form online"/]:::caller --> Poll["Poll finds the new submission<br/><b>Google Forms</b>"]:::forms
     Poll --> Call["Agent calls the person back<br/><b>Twilio</b>"]:::twilio
     Call --> Ready{"Ready to pick<br/>a time now?"}
     Ready -->|No, later| CB["Ask for a better time to call<br/><b>Gemini</b> · <b>ElevenLabs</b>"]:::voice
@@ -18,7 +18,7 @@ flowchart TD
     Done -->|Yes| Offer
 
     %% ---- scheduling: offer, then interpret the reply ----
-    Offer["Offer a few open times<br/><b>Cal.com</b> · weekdays 8-5 · <b>ElevenLabs</b>"]:::cal --> Resp[/"Caller responds"/]:::caller
+    Offer["Offer a few open times<br/><b>Cal.com</b> · weekdays 8-5 · <b>ElevenLabs</b>"]:::cal --> Resp[/Caller responds/]:::caller
     Resp --> Intent{"Interpret the reply<br/><b>Gemini</b>"}
     Intent -->|Picks a time / yes| Ack
     Intent -->|Asks a specific time| Check["Let me check that time<br/><b>Cal.com</b>"]:::cal
@@ -36,7 +36,7 @@ flowchart TD
     Save --> Confirm["Confirm the appointment, then goodbye<br/><b>ElevenLabs</b>"]:::voice
     Confirm --> End(["Call ends"])
 
-    classDef typeform fill:#e7e9f7,stroke:#4a5bb0,color:#2b3470,stroke-width:1.5px;
+    classDef forms fill:#e7e9f7,stroke:#4a5bb0,color:#2b3470,stroke-width:1.5px;
     classDef gemini fill:#d8f0eb,stroke:#1c8f84,color:#0f5951,stroke-width:1.5px;
     classDef voice fill:#f7e0e4,stroke:#bd5566,color:#7a2f3a,stroke-width:1.5px;
     classDef cal fill:#f4e7d1,stroke:#b0782c,color:#6e4a15,stroke-width:1.5px;

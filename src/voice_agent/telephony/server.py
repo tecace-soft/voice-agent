@@ -121,13 +121,20 @@ def create_app(cfg: Config | None = None) -> Flask:
         )
         return Response(xml, mimetype="text/xml")
 
-    def trigger_callback(record: dict[str, str], phone: str) -> str:
-        """Stash the form answers and call the person back. Returns the call SID."""
+    def trigger_callback(record: dict[str, str], phone: str, is_callback: bool = False) -> str:
+        """Stash the form answers and call the person. Returns the call SID.
+
+        `is_callback` marks a ring-back from the queue (the caller asked us to
+        call at this time) so the greeting differs from a first outreach.
+        """
         token = uuid.uuid4().hex
         pending[token] = record
+        extra = {"token": token}
+        if is_callback:
+            extra["callback"] = "1"
         try:
-            sid = place_call(cfg, phone, extra_params={"token": token})
-            log.info("callback placed to %s (sid %s)", phone, sid)
+            sid = place_call(cfg, phone, extra_params=extra)
+            log.info("%s placed to %s (sid %s)", "callback" if is_callback else "call", phone, sid)
             return sid
         except Exception:
             pending.pop(token, None)
@@ -143,10 +150,11 @@ def create_app(cfg: Config | None = None) -> Flask:
         call_sid = request.values.get("CallSid", uuid.uuid4().hex)
         direction = request.values.get("direction", "inbound")
         token = request.values.get("token", "")
+        is_callback = request.values.get("callback") == "1"
         prefilled = pending.pop(token, None) if token else None
         session = CallSession(
             cfg, fields, event_type_id=cfg.cal_event_type_id,
-            direction=direction, prefilled=prefilled,
+            direction=direction, prefilled=prefilled, callback=is_callback,
         )
         sessions[call_sid] = session
         return gather(speak(session.start()), session.speech_locale)

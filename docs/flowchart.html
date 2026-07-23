@@ -37,7 +37,7 @@
     // <foreignObject> and can be rasterized to a PNG canvas.
     const graph = `%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'14px','lineColor':'#8a94a6','primaryColor':'#eceff3','primaryTextColor':'#222a36','primaryBorderColor':'#b9c2ce','edgeLabelBackground':'#eceff3'}}}%%
 flowchart TD
-    Form[/"Caller completes the Typeform online"/]:::caller --> Poll["Poll finds the new submission<br/>Typeform"]:::typeform
+    Form[/"Caller submits the Google Form online"/]:::caller --> Poll["Poll finds the new submission<br/>Google Forms"]:::forms
     Poll --> Call["Agent calls the person back<br/>Twilio"]:::twilio
     Call --> Ready{"Ready to pick a time now?"}
     Ready -->|No, later| CB["Ask for a better time to call<br/>Gemini, ElevenLabs"]:::voice
@@ -69,7 +69,7 @@ flowchart TD
     Save --> Confirm["Confirm the appointment, then goodbye<br/>ElevenLabs"]:::voice
     Confirm --> End(["Call ends"])
 
-    classDef typeform fill:#e7e9f7,stroke:#4a5bb0,color:#2b3470,stroke-width:1.5px;
+    classDef forms fill:#e7e9f7,stroke:#4a5bb0,color:#2b3470,stroke-width:1.5px;
     classDef gemini fill:#d8f0eb,stroke:#1c8f84,color:#0f5951,stroke-width:1.5px;
     classDef voice fill:#f7e0e4,stroke:#bd5566,color:#7a2f3a,stroke-width:1.5px;
     classDef cal fill:#f4e7d1,stroke:#b0782c,color:#6e4a15,stroke-width:1.5px;
