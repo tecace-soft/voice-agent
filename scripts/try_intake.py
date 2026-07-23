@@ -22,7 +22,7 @@ import sys
 
 from voice_agent.agent import CallSession, IntakeField
 from voice_agent.config import Config, ConfigError
-from voice_agent.tools.typeform import TypeformClient, TypeformError
+from voice_agent.tools.google_forms import GoogleFormsClient, GoogleFormsError
 from voice_agent.tools.voice import ElevenLabsVoice, VoiceError
 
 # Cal.com event type to book (from `python scripts/verify_cal.py`).
@@ -42,11 +42,11 @@ def _load_fields(cfg: Config, use_demo: bool) -> list[IntakeField]:
         print("questions: built-in demo set")
         return DEMO_FIELDS
     try:
-        fields = TypeformClient(cfg).fields()
-        print(f"questions: {len(fields)} from Typeform form {cfg.typeform_form_id}")
+        fields = GoogleFormsClient(cfg).fields()
+        print(f"questions: {len(fields)} from Google Form {cfg.google_form_id}")
         return fields
-    except TypeformError as exc:
-        print(f"questions: Typeform unavailable ({exc})")
+    except GoogleFormsError as exc:
+        print(f"questions: Google Forms unavailable ({exc})")
         print("           falling back to the built-in demo set. Pass --demo to skip this.")
         return DEMO_FIELDS
 

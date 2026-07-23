@@ -28,12 +28,7 @@ from flask import Flask, Response, request
 from ..agent import CallSession, IntakeField
 from ..config import Config
 from .callbacks import CallbackQueue
-from ..tools.typeform import (
-    TypeformClient,
-    TypeformError,
-    record_from_webhook,
-    verify_webhook_signature,
-)
+from ..tools.google_forms import GoogleFormsClient, GoogleFormsError
 from ..tools.voice import ElevenLabsVoice, VoiceError
 
 log = logging.getLogger(__name__)
@@ -52,9 +47,9 @@ _DEMO_FIELDS = [
 
 def _load_fields(cfg: Config) -> list[IntakeField]:
     try:
-        return TypeformClient(cfg).fields()
-    except TypeformError as exc:
-        log.warning("Typeform unavailable (%s); using demo questions", exc)
+        return GoogleFormsClient(cfg).fields()
+    except GoogleFormsError as exc:
+        log.warning("Google Forms unavailable (%s); using demo questions", exc)
         return _DEMO_FIELDS
 
 
@@ -137,30 +132,10 @@ def create_app(cfg: Config | None = None) -> Flask:
             pending.pop(token, None)
             raise
 
-    # Exposed so the Typeform poller and the callback queue (same process) can
-    # place callbacks too.
+    # Exposed so the Google Forms poller and the callback queue (same process)
+    # can place callbacks too.
     app.trigger_callback = trigger_callback   # type: ignore[attr-defined]
     app.callback_queue = callbacks            # type: ignore[attr-defined]
-
-    @app.post("/typeform/webhook")
-    def typeform_webhook():
-        body = request.get_data()
-        if not verify_webhook_signature(
-            cfg.typeform_webhook_secret, body, request.headers.get("Typeform-Signature")
-        ):
-            return Response("bad signature", status=403)
-        record, phone = record_from_webhook(
-            (request.get_json(force=True, silent=True) or {}).get("form_response", {})
-        )
-        if not phone:
-            log.warning("form submission has no phone number; cannot call back")
-            return {"status": "no phone number in submission"}, 200
-        try:
-            sid = trigger_callback(record, phone)
-            return {"status": "calling", "to": phone, "call_sid": sid}, 200
-        except Exception as exc:  # noqa: BLE001 — ack Typeform so it doesn't retry-storm
-            log.warning("could not place callback: %s", exc)
-            return {"status": f"call failed: {exc}"}, 200
 
     @app.post("/voice/incoming")
     def incoming():

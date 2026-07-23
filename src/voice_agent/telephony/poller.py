@@ -1,9 +1,10 @@
-"""Poll Typeform for new completed submissions and place callbacks.
+"""Poll Google Forms for new submissions and place callbacks.
 
-The alternative to a push webhook: instead of Typeform POSTing to us (which needs
-a public HTTPS endpoint), we ASK Typeform's API for new submissions every few
-seconds — an ordinary outbound call, so no HTTPS/tunnel is needed. For each new
-submission with a phone number, we call the person back to finish scheduling.
+The alternative to a push webhook: instead of the form POSTing to us (Google
+Forms only pushes via Pub/Sub watches, which need extra infrastructure), we ASK
+the Forms API for new responses every few seconds — an ordinary outbound call,
+so no HTTPS/tunnel is needed. For each new submission with a phone number, we
+call the person back to finish scheduling.
 
 Processed submissions are remembered on disk so a restart doesn't re-call people.
 """
@@ -17,15 +18,15 @@ from pathlib import Path
 from typing import Callable
 
 from ..config import PROJECT_ROOT, Config
-from ..tools.typeform import TypeformClient, record_from_response
+from ..tools.google_forms import GoogleFormsClient, record_from_response
 
 log = logging.getLogger(__name__)
 
-_STATE_PATH = PROJECT_ROOT / "data" / "typeform_poll.json"
+_STATE_PATH = PROJECT_ROOT / "data" / "forms_poll.json"
 _MAX_REMEMBERED = 1000
 
 
-class TypeformPoller:
+class GoogleFormsPoller:
     def __init__(
         self,
         cfg: Config,
@@ -36,8 +37,8 @@ class TypeformPoller:
         self._cfg = cfg
         self._trigger = trigger
         self._interval = interval
-        self._client = TypeformClient(cfg)
-        self._defs = self._client.response_field_defs()
+        self._client = GoogleFormsClient(cfg)
+        self._defs = self._client.question_defs()
         self._since: str | None = None
         self._seen: list[str] = []
         self._load_state()
@@ -62,11 +63,11 @@ class TypeformPoller:
 
     def poll_once(self) -> int:
         """Check for new submissions; call each new one back. Returns count placed."""
-        items = self._client.completed_responses(since=self._since)
+        items = self._client.responses(since=self._since)
         placed = 0
-        for item in sorted(items, key=lambda x: x.get("submitted_at", "")):
-            token = item.get("token", "")
-            if not token or token in self._seen:
+        for item in sorted(items, key=lambda x: x.get("lastSubmittedTime", "")):
+            rid = item.get("responseId", "")
+            if not rid or rid in self._seen:
                 continue
             record, phone = record_from_response(item, self._defs)
             if phone:
@@ -77,15 +78,15 @@ class TypeformPoller:
                 except Exception as exc:  # noqa: BLE001
                     log.warning("callback failed for %s: %s", phone, exc)
             else:
-                log.warning("submission %s has no phone number; skipped", token)
-            self._seen.append(token)
-            self._since = item.get("submitted_at") or self._since
+                log.warning("submission %s has no phone number; skipped", rid)
+            self._seen.append(rid)
+            self._since = item.get("lastSubmittedTime") or self._since
         if placed or items:
             self._save_state()
         return placed
 
     def run(self) -> None:
-        log.info("Typeform poller started (every %.0fs)", self._interval)
+        log.info("Google Forms poller started (every %.0fs)", self._interval)
         while True:
             try:
                 self.poll_once()

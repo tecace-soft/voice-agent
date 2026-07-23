@@ -36,6 +36,23 @@ def _sheet_id_from_link(link: str) -> str:
     return match.group(1) if match else ""
 
 
+def _form_id_from_link(value: str) -> str:
+    """The Google Form's API id, from an editor URL or a raw id.
+
+    Only the editor id (`/forms/d/{id}/edit`) works with the Forms API. The
+    respondent links — a `forms.gle/...` short link or a published
+    `/forms/d/e/{id}/viewform` link — use a DIFFERENT id the API rejects, so we
+    return "" for those rather than a value that would only 404 later.
+    """
+    value = value.strip()
+    if "/forms/d/e/" in value or "forms.gle" in value:
+        return ""  # respondent link — not the API id; use the editor URL
+    match = re.search(r"/forms/d/([a-zA-Z0-9_-]+)", value)
+    if match:
+        return match.group(1)
+    return value if ("/" not in value and "?" not in value) else ""
+
+
 @dataclass(frozen=True)
 class Config:
     port: int
@@ -57,6 +74,7 @@ class Config:
     google_api_email: str
     google_sheets_key: str
     google_sheets_id: str
+    google_form_id: str
     cal_api_key: str
     twilio_account_sid: str
     twilio_auth_token: str
@@ -110,6 +128,11 @@ class Config:
             # Prefer the explicit id; otherwise pull it out of a full share link.
             google_sheets_id=_optional("GOOGLE_SHEETS_ID") or _sheet_id_from_link(
                 _optional("SHEETS_LINK")
+            ),
+            # Google Forms supplies the questions (and, via polling, triggers the
+            # callback on submission). Accepts a raw id or a full form URL.
+            google_form_id=_form_id_from_link(
+                _optional("GOOGLE_FORM_ID") or _optional("GOOGLE_FORM_LINK")
             ),
             cal_api_key=_optional("CAL_API_KEY"),
             # Telephony (Twilio phone line). Accept the short .env names first,

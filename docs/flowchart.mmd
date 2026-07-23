@@ -1,30 +1,45 @@
-%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'14px','lineColor':'#8a94a6','primaryColor':'#eceff3','primaryTextColor':'#222a36','primaryBorderColor':'#b9c2ce','edgeLabelBackground':'#eceff3'}}}%%
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'13px','lineColor':'#8a94a6','primaryColor':'#eceff3','primaryTextColor':'#222a36','primaryBorderColor':'#b9c2ce','edgeLabelBackground':'#eceff3'}}}%%
 flowchart TD
-    Start(["Call begins"]) --> Load["Load the questions<br/><b>Typeform</b>"]:::typeform
-    Load --> Ask["Ask the next question<br/><b>Gemini</b> phrases &middot; <b>ElevenLabs</b> speaks"]:::gemini
-    Ask --> Listen[/Caller answers/]:::caller
-    Listen --> Extract["Understand the answer<br/><b>Gemini</b>"]:::gemini
-    Extract --> Q1{"All required<br/>fields captured?"}
-    Q1 -->|No| Ask
-    Q1 -->|Yes| Slots["Find open slots in the timeframe<br/><b>Cal.com</b> &middot; weekdays, 8-5"]:::cal
-    Slots --> Q2{"Any slots<br/>available?"}
-    Q2 -->|No| Reframe["Ask for another timeframe<br/><b>ElevenLabs</b>"]:::voice
-    Reframe --> ReListen[/Caller responds/]:::caller
-    ReListen --> Slots
-    Q2 -->|Yes| Offer["Offer 2-3 concrete slots<br/><b>ElevenLabs</b>"]:::voice
-    Offer --> Pick[/Caller picks a time/]:::caller
-    Pick --> Interpret["Interpret the choice<br/><b>Gemini</b>"]:::gemini
-    Interpret --> Q3{"Understood?"}
-    Q3 -->|No| Offer
-    Q3 -->|Yes| Book["Create the booking<br/><b>Cal.com</b>"]:::cal
+    %% ---- entry 1: outbound, triggered by a form submission ----
+    Form[/"Caller completes the Typeform online"/]:::caller --> Poll["Poll finds the new submission<br/><b>Typeform</b>"]:::typeform
+    Poll --> Call["Agent calls the person back<br/><b>Twilio</b>"]:::twilio
+    Call --> Ready{"Ready to pick<br/>a time now?"}
+    Ready -->|No, later| CB["Ask for a better time to call<br/><b>Gemini</b> · <b>ElevenLabs</b>"]:::voice
+    CB --> Queue["Schedule the callback<br/><b>Twilio</b>"]:::twilio
+    Queue -. calls back at that time .-> Call
+    Ready -->|Yes| Offer
+
+    %% ---- entry 2: inbound, caller dials in ----
+    Dial(["Caller dials the number"]):::twilio --> Ask["Ask the language, then the form questions<br/><b>Gemini</b> asks · <b>ElevenLabs</b> speaks"]:::gemini
+    Ask --> Say[/"Caller answers"/]:::caller
+    Say --> Understand["Understand the answer<br/><b>Gemini</b>"]:::gemini
+    Understand --> Done{"All questions<br/>answered?"}
+    Done -->|No| Ask
+    Done -->|Yes| Offer
+
+    %% ---- scheduling: offer, then interpret the reply ----
+    Offer["Offer a few open times<br/><b>Cal.com</b> · weekdays 8-5 · <b>ElevenLabs</b>"]:::cal --> Resp[/"Caller responds"/]:::caller
+    Resp --> Intent{"Interpret the reply<br/><b>Gemini</b>"}
+    Intent -->|Picks a time / yes| Ack
+    Intent -->|Asks a specific time| Check["Let me check that time<br/><b>Cal.com</b>"]:::cal
+    Intent -->|Other times / no| Others["Offer that day's other openings<br/><b>Cal.com</b>"]:::cal
+    Others --> Resp
+    Check --> Free{"Is that<br/>time open?"}
+    Free -->|Yes| Prop["Propose that time"]:::cal
+    Free -->|No| Near["Propose the nearest opening"]:::cal
+    Prop --> Resp
+    Near --> Resp
+
+    %% ---- booking: acknowledge, then do the slow work, then confirm ----
+    Ack["Setting it up, one moment<br/><b>ElevenLabs</b>"]:::voice --> Book["Create the booking<br/><b>Cal.com</b>"]:::cal
     Book --> Save["Save the record<br/><b>Google Sheets</b>"]:::sheets
-    Save --> Bye["Warm goodbye<br/><b>Hermes</b> &middot; <b>ElevenLabs</b>"]:::hermes
-    Bye --> End(["Call ends"])
+    Save --> Confirm["Confirm the appointment, then goodbye<br/><b>ElevenLabs</b>"]:::voice
+    Confirm --> End(["Call ends"])
 
     classDef typeform fill:#e7e9f7,stroke:#4a5bb0,color:#2b3470,stroke-width:1.5px;
     classDef gemini fill:#d8f0eb,stroke:#1c8f84,color:#0f5951,stroke-width:1.5px;
     classDef voice fill:#f7e0e4,stroke:#bd5566,color:#7a2f3a,stroke-width:1.5px;
     classDef cal fill:#f4e7d1,stroke:#b0782c,color:#6e4a15,stroke-width:1.5px;
     classDef sheets fill:#daefe2,stroke:#3f8f5c,color:#245638,stroke-width:1.5px;
-    classDef hermes fill:#eae1f6,stroke:#7d5bb0,color:#472f6e,stroke-width:1.5px;
+    classDef twilio fill:#f7ddda,stroke:#c0453f,color:#7a2622,stroke-width:1.5px;
     classDef caller fill:#eceff3,stroke:#6b7686,color:#333b47,stroke-width:1.5px,stroke-dasharray:5 3;

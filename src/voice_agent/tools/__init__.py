@@ -2,6 +2,7 @@
 
 from .cal import CalClient, CalError
 from .gemini import GeminiTools
+from .google_forms import GoogleFormsClient, GoogleFormsError
 from .hermes import HermesAuthError, HermesChat, HermesSession, status
 from .sheets import SheetsClient, SheetsError
 from .typeform import TypeformClient, TypeformError
@@ -13,6 +14,8 @@ __all__ = [
     "HermesChat",
     "HermesSession",
     "status",
+    "GoogleFormsClient",
+    "GoogleFormsError",
     "TypeformClient",
     "TypeformError",
     "ElevenLabsVoice",
