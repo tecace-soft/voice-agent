@@ -27,6 +27,7 @@ from flask import Flask, Response, request
 
 from ..agent import CallSession, IntakeField
 from ..config import Config
+from .callbacks import CallbackQueue
 from ..tools.typeform import (
     TypeformClient,
     TypeformError,
@@ -66,6 +67,7 @@ def create_app(cfg: Config | None = None) -> Flask:
     sessions: dict[str, CallSession] = {}
     clips: dict[str, bytes] = {}
     pending: dict[str, dict[str, str]] = {}   # token -> form answers awaiting a callback
+    callbacks = CallbackQueue()               # future call-backs (caller wasn't ready)
 
     def base_url() -> str:
         return cfg.public_base_url or request.host_url.rstrip("/")
@@ -135,8 +137,10 @@ def create_app(cfg: Config | None = None) -> Flask:
             pending.pop(token, None)
             raise
 
-    # Exposed so the Typeform poller (same process) can place callbacks too.
-    app.trigger_callback = trigger_callback  # type: ignore[attr-defined]
+    # Exposed so the Typeform poller and the callback queue (same process) can
+    # place callbacks too.
+    app.trigger_callback = trigger_callback   # type: ignore[attr-defined]
+    app.callback_queue = callbacks            # type: ignore[attr-defined]
 
     @app.post("/typeform/webhook")
     def typeform_webhook():
@@ -193,6 +197,8 @@ def create_app(cfg: Config | None = None) -> Flask:
             # Say "one moment…" now; book + save while it plays, then confirm.
             return play_then(speak(result.reply), "/voice/finalize")
         if result.ended:
+            if session.callback_at and session.phone:
+                callbacks.add(session.record, session.phone, session.callback_at)
             sessions.pop(call_sid, None)
             return hangup(speak(result.reply))
         return gather(speak(result.reply), session.speech_locale)

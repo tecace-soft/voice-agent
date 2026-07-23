@@ -126,6 +126,8 @@ def main(argv: list[str]) -> int:
             if session.booked_at:
                 verb = "booked" if "--book" in argv else "would book (dry run)"
                 print(f"appointment: {verb} {session.booked_at}")
+            if session.callback_at:
+                print(f"callback scheduled: {session.callback_at} -> {session.phone}")
             return 0
 
 

@@ -264,6 +264,42 @@ def speech_locale(language: str) -> str:
     return _SPEECH_LOCALES.get(language.lower(), "en-US")
 
 
+def parse_time(gemini: GeminiTools, text: str, tz: str = DEFAULT_TIMEZONE) -> str:
+    """Resolve a spoken time ("tomorrow at 2", "Friday morning") to an ISO datetime."""
+    now = datetime.datetime.now(ZoneInfo(tz))
+    system = (
+        "Extract the single future date and time the caller wants. Output ONLY an "
+        "ISO 8601 datetime with the UTC offset, resolved from now, or the word none."
+    )
+    user = (
+        f"Right now it is {now.strftime('%A, %B %d, %Y, %I:%M %p')} ({tz}). "
+        f'The caller said: "{text}"'
+    )
+    try:
+        raw = gemini.generate(system, user, temperature=0).strip()
+    except Exception:  # noqa: BLE001
+        return ""
+    match = re.search(r"\d{4}-\d{2}-\d{2}T[\d:.+\-]+", raw)
+    if not match:
+        return ""
+    try:
+        datetime.datetime.fromisoformat(match.group(0))
+        return match.group(0)
+    except ValueError:
+        return ""
+
+
+def phone_from(record: dict[str, str]) -> str:
+    """Find the phone number in a record (a `phone` field, or a phone-shaped value)."""
+    for key, value in record.items():
+        if "phone" in key and value:
+            return value
+    for value in record.values():
+        if isinstance(value, str) and re.fullmatch(r"\+?[0-9][0-9\s\-().]{6,}", value):
+            return value
+    return ""
+
+
 def timeframe_from(record: dict[str, str]) -> str | None:
     """Find the caller's timeframe answer without hardcoding the field name."""
     for value in record.values():

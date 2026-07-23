@@ -39,6 +39,11 @@ def main(argv: list[str]) -> int:
 
     app = create_app(cfg)
 
+    # Always place due call-backs (callers who weren't ready earlier).
+    threading.Thread(
+        target=app.callback_queue.run, args=(app.trigger_callback,), daemon=True  # type: ignore[attr-defined]
+    ).start()
+
     if polling:
         poller = TypeformPoller(cfg, app.trigger_callback)  # type: ignore[attr-defined]
         threading.Thread(target=poller.run, daemon=True).start()

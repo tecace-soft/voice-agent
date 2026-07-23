@@ -25,7 +25,16 @@ from ..tools.gemini import GeminiTools
 from ..tools.sheets import SheetsError
 from .fulfillment import Fulfillment
 from .intake import IntakeAgent, IntakeField
-from .scheduler import Scheduler, attendee_name, language_from, speech_locale, timeframe_from
+from .scheduler import (
+    DEFAULT_TIMEZONE,
+    Scheduler,
+    attendee_name,
+    language_from,
+    parse_time,
+    phone_from,
+    speech_locale,
+    timeframe_from,
+)
 
 log = logging.getLogger(__name__)
 
@@ -89,6 +98,7 @@ class CallSession:
         self._requested = ""    # a specific time the caller asked us to check
         self._candidate = ""    # a free slot we've proposed, awaiting yes/no
         self._day = ""          # the day currently in focus, for "other times that day"
+        self._callback_at = ""  # if not ready now, when to call back instead
         # When the caller already answered the form (a post-submission callback),
         # skip intake and go straight to confirming a time.
         if prefilled:
@@ -114,6 +124,16 @@ class CallSession:
     def booked_at(self) -> str:
         """The chosen slot's ISO time, or '' if nothing was scheduled."""
         return self._booked_at
+
+    @property
+    def callback_at(self) -> str:
+        """If the caller wasn't ready, the ISO time to call them back (else '')."""
+        return self._callback_at
+
+    @property
+    def phone(self) -> str:
+        """The caller's phone number, from the record."""
+        return phone_from(self._record)
 
     @property
     def language(self) -> str:
@@ -177,7 +197,9 @@ class CallSession:
 
     def _dispatch(self, caller_text: str) -> Turn:
         if self._state == "confirm":
-            return self._begin_scheduling()  # any reply moves us into scheduling
+            return self._handle_ready(caller_text)
+        if self._state == "callback":
+            return self._handle_callback(caller_text)
         if self._state == "intake":
             return self._handle_intake(caller_text)
         if self._state == "scheduling":
@@ -185,6 +207,48 @@ class CallSession:
         if self._state == "confirm_slot":
             return self._handle_confirm(caller_text)
         return Turn("", "hangup")
+
+    # -- readiness / callback phase --------------------------------------
+
+    def _handle_ready(self, caller_text: str) -> Turn:
+        """The opening 'are you ready to pick a time?' — proceed or arrange a callback."""
+        if self._readiness(caller_text) == "not_ready":
+            self._state = "callback"
+            return Turn(
+                "No problem at all. When would be a good time for us to call you back "
+                "to set up your appointment?",
+                "listen",
+            )
+        return self._begin_scheduling()  # ready (or unclear) -> proceed
+
+    def _handle_callback(self, caller_text: str) -> Turn:
+        when = parse_time(self._gemini, caller_text, DEFAULT_TIMEZONE)
+        if not when:
+            return Turn(
+                "Sorry, when would be a good time to call you back? "
+                "For example, tomorrow at 2 PM.",
+                "listen",
+            )
+        self._callback_at = when
+        self._state = "done"
+        return Turn(
+            f"Perfect — we'll give you a call back on {Scheduler.friendly(when)}. "
+            "Talk to you then. Goodbye!",
+            "hangup",
+        )
+
+    def _readiness(self, caller_text: str) -> str:
+        """'ready' | 'not_ready' — is the caller ready to schedule now?"""
+        prompt = (
+            'The agent asked "Are you ready to pick an appointment time now?". '
+            f'The caller replied: "{caller_text}". Are they ready to continue now, '
+            "or do they want to be called back at another time?"
+        )
+        try:
+            return self._gemini.classify(prompt, ["ready", "not_ready"])["label"]
+        except Exception as exc:  # noqa: BLE001 — default to proceeding
+            log.warning("readiness check failed: %s", exc)
+            return "ready"
 
     def _refresh_language(self) -> None:
         """Once the caller answers the language question, switch to it."""
