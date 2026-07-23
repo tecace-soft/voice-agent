@@ -113,7 +113,11 @@ def main(argv: list[str]) -> int:
         turn = session.handle(line)
         print(f"       [captured: {session.record}]")
         say(turn.reply)
-        # After the "one moment" acknowledgement, do the booking and confirm.
+        # "check" (availability lookup) then "finalize" (booking) run their slow
+        # work after the spoken acknowledgement, same as the phone flow.
+        if turn.next == "check":
+            turn = session.check_availability()
+            say(turn.reply)
         if turn.next == "finalize":
             turn = session.finalize()
             say(turn.reply)

@@ -186,6 +186,9 @@ def create_app(cfg: Config | None = None) -> Flask:
             return gather(speak(reprompt), session.speech_locale)
 
         result = session.handle(said)
+        if result.next == "check":
+            # Say "let me check…" now; query availability while it plays.
+            return play_then(speak(result.reply), "/voice/check")
         if result.next == "finalize":
             # Say "one moment…" now; book + save while it plays, then confirm.
             return play_then(speak(result.reply), "/voice/finalize")
@@ -193,6 +196,15 @@ def create_app(cfg: Config | None = None) -> Flask:
             sessions.pop(call_sid, None)
             return hangup(speak(result.reply))
         return gather(speak(result.reply), session.speech_locale)
+
+    @app.route("/voice/check", methods=["POST", "GET"])
+    def check():
+        call_sid = request.values.get("CallSid", "")
+        session = sessions.get(call_sid)
+        if session is None:
+            return hangup(speak("Thanks, we'll be in touch. Goodbye!"))
+        turn = session.check_availability()   # the Cal.com availability lookup
+        return gather(speak(turn.reply), session.speech_locale)
 
     @app.route("/voice/finalize", methods=["POST", "GET"])
     def finalize():

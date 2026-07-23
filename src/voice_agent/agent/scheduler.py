@@ -9,8 +9,11 @@ reads back a few concrete choices, interprets which one the caller picked
 from __future__ import annotations
 
 import datetime
+import json
 import logging
+import re
 from dataclasses import dataclass
+from zoneinfo import ZoneInfo
 
 from ..config import Config
 from ..tools.cal import CalClient
@@ -29,6 +32,15 @@ BUSINESS_END_HOUR = 17
 class Offer:
     message: str            # what the agent says (the choices, read out)
     options: list[str]      # ISO start times backing each choice, in order
+
+
+@dataclass
+class Decision:
+    """What the caller wants, in response to offered times."""
+
+    action: str             # "pick" | "request" | "decline" | "unclear"
+    slot: str = ""          # for "pick": the chosen ISO start
+    requested: str = ""     # for "request": the asked-for time as ISO start
 
 
 class Scheduler:
@@ -88,6 +100,79 @@ class Scheduler:
             return None
         return options[int(choice) - 1]
 
+    def decide(self, user_text: str, options: list[str]) -> Decision:
+        """Interpret a scheduling reply: pick an option, request a specific time,
+        decline, or unclear. Requested times are resolved to ISO relative to now."""
+        now = datetime.datetime.now(ZoneInfo(self._tz))
+        numbered = "\n".join(f"{i + 1}. {_friendly(o)}" for i, o in enumerate(options)) or "(none)"
+        system = (
+            "You interpret a caller's reply while scheduling a phone appointment. "
+            "Output ONLY compact JSON, no prose."
+        )
+        user = (
+            f"Right now it is {now.strftime('%A, %B %d, %Y, %I:%M %p')} ({self._tz}).\n"
+            f"Times already offered:\n{numbered}\n\n"
+            f'The caller said: "{user_text}"\n\n'
+            'Return JSON: {"action": one of "pick"/"request"/"decline"/"unclear", '
+            '"option_number": the chosen number for "pick" else null, '
+            '"requested_datetime": for "request", the specific date+time they asked for '
+            f'as ISO 8601 with the {self._tz} UTC offset, resolved from now, else null}}. '
+            'Use "pick" if they chose an offered time, "request" if they asked about a '
+            'DIFFERENT specific time, "decline" if they said no / none work. A plain '
+            'affirmative ("yes", "sure", "that works") when a single time is offered is '
+            '"pick" that time; a plain "no" is "decline".'
+        )
+        try:
+            data = _loads_json(self._gemini.generate(system, user, temperature=0))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("scheduling interpretation failed: %s", exc)
+            return Decision("unclear")
+
+        action = str(data.get("action", "unclear"))
+        if action == "pick":
+            num = data.get("option_number")
+            if isinstance(num, int) and 1 <= num <= len(options):
+                return Decision("pick", slot=options[num - 1])
+            return Decision("unclear")
+        if action == "request" and data.get("requested_datetime"):
+            return Decision("request", requested=str(data["requested_datetime"]))
+        if action == "decline":
+            return Decision("decline")
+        return Decision("unclear")
+
+    def check_time(self, requested_iso: str) -> tuple[str, str]:
+        """Is `requested_iso` an open slot? Returns (exact_match, nearest_open).
+
+        Both are ISO starts; exact is "" if that time isn't open, nearest is ""
+        if nothing suitable is around it.
+        """
+        try:
+            req = datetime.datetime.fromisoformat(requested_iso)
+        except ValueError:
+            return "", ""
+        local = req.astimezone(ZoneInfo(self._tz))
+        win_start = local.replace(hour=0, minute=0, second=0, microsecond=0)
+        win_end = win_start + datetime.timedelta(days=2)
+        fmt = "%Y-%m-%dT%H:%M:%SZ"
+        slots = self._cal.slots(
+            self._event_type_id,
+            win_start.astimezone(datetime.timezone.utc).strftime(fmt),
+            win_end.astimezone(datetime.timezone.utc).strftime(fmt),
+            time_zone=self._tz,
+        )
+        slots = _business_hours_only(slots, self._biz_start, self._biz_end)
+        starts = [s["start"] for day in sorted(slots) for s in slots[day]]
+        if not starts:
+            return "", ""
+        exact, nearest, best = "", "", None
+        for start in starts:
+            diff = abs((datetime.datetime.fromisoformat(start) - req).total_seconds())
+            if diff < 60:
+                exact = start
+            if best is None or diff < best:
+                best, nearest = diff, start
+        return exact, nearest
+
     def book(self, iso_start: str, record: dict[str, str]) -> dict:
         email = record.get("email", "")
         if not email:
@@ -100,6 +185,12 @@ class Scheduler:
     @staticmethod
     def friendly(iso_start: str) -> str:
         return _friendly(iso_start)
+
+
+def _loads_json(raw: str) -> dict:
+    """Parse a JSON object out of an LLM reply (tolerating code fences/extra text)."""
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    return json.loads(match.group(0)) if match else {}
 
 
 _SPEECH_LOCALES = {"korean": "ko-KR", "english": "en-US"}

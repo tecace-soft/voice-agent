@@ -86,6 +86,8 @@ class CallSession:
         self._slot_attempts = 0
         self._booked_at = ""
         self._chosen = ""       # slot the caller picked, booked during finalize()
+        self._requested = ""    # a specific time the caller asked us to check
+        self._candidate = ""    # a free slot we've proposed, awaiting yes/no
         # When the caller already answered the form (a post-submission callback),
         # skip intake and go straight to confirming a time.
         if prefilled:
@@ -179,6 +181,8 @@ class CallSession:
             return self._handle_intake(caller_text)
         if self._state == "scheduling":
             return self._handle_pick(caller_text)
+        if self._state == "confirm_slot":
+            return self._handle_confirm(caller_text)
         return Turn("", "hangup")
 
     def _refresh_language(self) -> None:
@@ -213,19 +217,72 @@ class CallSession:
         return Turn(self._offer.message, "listen")
 
     def _handle_pick(self, caller_text: str) -> Turn:
-        chosen = self._scheduler.interpret(caller_text, self._offer.options)
-        if not chosen:
-            self._slot_attempts += 1
-            if self._slot_attempts <= MAX_SLOT_RETRIES:
-                return Turn("Sorry, I didn't catch which time. " + self._offer.message, "listen")
-            return self._finish()  # give up scheduling, still save the record
+        decision = self._scheduler.decide(caller_text, self._offer.options)
+        if decision.action == "pick":
+            return self._acknowledge_booking(decision.slot)
+        if decision.action == "request":
+            self._requested = decision.requested
+            self._state = "checking"
+            return Turn("Sure, let me check if that time is available. One moment.", "check")
+        if decision.action == "decline":
+            return Turn("No problem. What day and time would you prefer?", "listen")
+        # unclear
+        self._slot_attempts += 1
+        if self._slot_attempts <= MAX_SLOT_RETRIES:
+            return Turn(
+                "Sorry, I didn't catch that. " + self._offer.message
+                + " Or tell me a specific day and time you'd like.",
+                "listen",
+            )
+        return self._finish()  # give up scheduling, still save the record
 
-        # Acknowledge immediately; the actual booking happens in finalize() while
-        # this line is spoken, so the caller isn't left in silence.
-        self._chosen = chosen
+    def check_availability(self) -> Turn:
+        """Check a caller-requested time against Cal.com; propose it or the nearest
+        opening. Called after the 'let me check' line, so there's no dead air."""
+        try:
+            exact, nearest = self._scheduler.check_time(self._requested)
+        except CalError as exc:
+            log.warning("availability check failed: %s", exc)
+            exact = nearest = ""
+        if exact:
+            self._candidate = exact
+            self._state = "confirm_slot"
+            return Turn(self.localize(
+                f"Good news — {Scheduler.friendly(exact)} is available. "
+                "Would you like me to book it?"), "listen")
+        if nearest:
+            self._candidate = nearest
+            self._state = "confirm_slot"
+            return Turn(self.localize(
+                f"That time isn't open, but the closest I have is {Scheduler.friendly(nearest)}. "
+                "Would that work?"), "listen")
+        self._state = "scheduling"
+        return Turn(self.localize(
+            "I'm sorry, I don't have anything around then. " + self._offer.message), "listen")
+
+    def _handle_confirm(self, caller_text: str) -> Turn:
+        decision = self._scheduler.decide(caller_text, [self._candidate])
+        if decision.action == "request":       # asked about yet another time
+            self._requested = decision.requested
+            self._state = "checking"
+            return Turn("Let me check that one. One moment.", "check")
+        if decision.action == "pick":          # yes — book the proposed slot
+            return self._acknowledge_booking(self._candidate)
+        if decision.action == "decline":       # no — back to the original openings
+            self._state = "scheduling"
+            return Turn("No problem. " + self._offer.message
+                        + " Or is there another time you'd like?", "listen")
+        return Turn("Sorry — would you like me to book that time? Please say yes or no.", "listen")
+
+    def _acknowledge_booking(self, slot: str) -> Turn:
+        """Confirm the slot verbally now; the real booking happens in finalize()."""
+        self._chosen = slot
         self._state = "booking"
-        friendly = Scheduler.friendly(chosen)
-        return Turn(f"Great — I'm setting up your appointment for {friendly} now. One moment, please.", "finalize")
+        return Turn(
+            f"Great — I'm setting up your appointment for {Scheduler.friendly(slot)} now. "
+            "One moment, please.",
+            "finalize",
+        )
 
     # -- wrap up ---------------------------------------------------------
 
