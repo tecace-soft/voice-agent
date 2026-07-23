@@ -46,8 +46,12 @@ def main(argv: list[str]) -> int:
     ).start()
 
     if polling:
-        poller = GoogleFormsPoller(cfg, app.trigger_callback)  # type: ignore[attr-defined]
-        threading.Thread(target=poller.run, daemon=True).start()
+        try:
+            poller = GoogleFormsPoller(cfg, app.trigger_callback)  # type: ignore[attr-defined]
+            threading.Thread(target=poller.run, daemon=True).start()
+        except Exception as exc:  # noqa: BLE001 — never let a bad form config kill the server
+            print(f"  WARNING: Google Forms polling DISABLED — {exc}")
+            print("           (fix GOOGLE_FORM_ID in this box's .env, then restart)")
 
     app.run(host="0.0.0.0", port=cfg.port)
     return 0
