@@ -5,7 +5,6 @@ from .gemini import GeminiTools
 from .google_forms import GoogleFormsClient, GoogleFormsError
 from .hermes import HermesAuthError, HermesChat, HermesSession, status
 from .sheets import SheetsClient, SheetsError
-from .typeform import TypeformClient, TypeformError
 from .voice import ElevenLabsVoice, VoiceError
 
 __all__ = [
@@ -16,8 +15,6 @@ __all__ = [
     "status",
     "GoogleFormsClient",
     "GoogleFormsError",
-    "TypeformClient",
-    "TypeformError",
     "ElevenLabsVoice",
     "VoiceError",
     "SheetsClient",

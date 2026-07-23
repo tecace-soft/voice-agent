@@ -1,6 +1,6 @@
 """Show the questions the agent will ask, sourced from the Google Form.
 
-    python scripts/show_form.py
+    python scripts/checks/show_form.py
 
 Fetches the configured Google Form and prints each mapped question. Use it to
 confirm the Forms integration (API enabled, form shared with the service

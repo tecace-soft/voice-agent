@@ -1,11 +1,11 @@
 """Interactive intake test — type as if you were the caller.
 
-    python scripts/try_intake.py             # questions from the Typeform form
-    python scripts/try_intake.py --demo       # use the built-in demo questions
-    python scripts/try_intake.py --no-hermes  # skip the Hermes closing sub-task
-    python scripts/try_intake.py --voice       # speak each agent line via ElevenLabs
-    python scripts/try_intake.py --book        # actually create the Cal.com booking
-    python scripts/try_intake.py --outbound    # simulate the agent CALLING the person
+    python scripts/dev/try_intake.py             # questions from the Google Form
+    python scripts/dev/try_intake.py --demo       # use the built-in demo questions
+    python scripts/dev/try_intake.py --no-hermes  # skip the Hermes closing sub-task
+    python scripts/dev/try_intake.py --voice       # speak each agent line via ElevenLabs
+    python scripts/dev/try_intake.py --book        # actually create the Cal.com booking
+    python scripts/dev/try_intake.py --outbound    # simulate the agent CALLING the person
 
 Drives the shared CallSession — the same conversation engine the phone pipeline
 will use, for both inbound (person calls in) and outbound (agent calls out). On
@@ -28,7 +28,7 @@ from voice_agent.tools.voice import ElevenLabsVoice, VoiceError
 # Cal.com event type to book (from `python scripts/verify_cal.py`).
 CAL_EVENT_TYPE_ID = 6407082  # "Voice Agent Testing"
 
-# Fallback questions when Typeform is unavailable or the form has none yet.
+# Fallback questions when Google Forms is unavailable or the form has none yet.
 DEMO_FIELDS = [
     IntakeField("full_name", "the caller's full name"),
     IntakeField("email", "an email address"),

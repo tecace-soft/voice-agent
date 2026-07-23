@@ -1,6 +1,6 @@
 """End-to-end proof that we can talk to the Hermes agent.
 
-    python scripts/verify_hermes.py
+    python scripts/checks/verify_hermes.py
 
 Checks, in order: gateway status, cookie login, that an LLM is attached, and
 finally a live chat round-trip over the WebSocket. Exits non-zero on the first

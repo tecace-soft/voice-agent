@@ -1,6 +1,6 @@
 """Verify each part of the stack independently.
 
-    python scripts/check_connection.py
+    python scripts/checks/check_connection.py
 
 Gemini is exercised for real. Hermes is checked as far as it can be today:
 gateway status (no auth) and cookie login (if credentials are set). The native

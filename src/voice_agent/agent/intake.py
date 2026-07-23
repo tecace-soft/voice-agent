@@ -7,7 +7,7 @@ closing confirmation — and never on the critical path: if it is slow, errors, 
 wanders off using its tools, we fall back to a plain template so the intake
 still completes.
 
-The field list is passed in (it will come from the Typeform definition later);
+The field list is passed in (it comes from the Google Form definition);
 nothing here is hard-coded to a particular form.
 """
 
@@ -28,7 +28,7 @@ class IntakeField:
     name: str
     description: str
     required: bool = True
-    question: str = ""                    # exact wording to ask (e.g. from Typeform)
+    question: str = ""                    # exact wording to ask (e.g. from Google Forms)
     choices: tuple[str, ...] = ()         # options for choice questions
 
 

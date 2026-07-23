@@ -1,7 +1,7 @@
 """Interactive voice chat with the Hermes agent.
 
-    python scripts/chat_hermes.py            # type a message, hear Hermes reply
-    python scripts/chat_hermes.py --no-voice # text only, no audio
+    python scripts/dev/chat_hermes.py            # type a message, hear Hermes reply
+    python scripts/dev/chat_hermes.py --no-voice # text only, no audio
 
 Each message is sent to Hermes over its WebSocket; the reply is printed and
 (with voice on) spoken aloud through your speakers in the configured ElevenLabs

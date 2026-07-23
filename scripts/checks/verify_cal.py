@@ -1,6 +1,6 @@
 """Verify Cal.com scheduling access and list bookable event types.
 
-    python scripts/verify_cal.py
+    python scripts/checks/verify_cal.py
 
 Read-only: authenticates, prints the account, and lists event types with their
 ids (you'll need an event type id to create bookings). Does not book anything.

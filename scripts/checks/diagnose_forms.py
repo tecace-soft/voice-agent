@@ -1,6 +1,6 @@
 """One-shot health check for the Google Forms -> callback pipeline.
 
-    python scripts/diagnose_forms.py
+    python scripts/checks/diagnose_forms.py
 
 Read-only: places NO calls. Run it on the box to see exactly which link is
 broken — config, Forms API access, responses, the phone number, the poll state,

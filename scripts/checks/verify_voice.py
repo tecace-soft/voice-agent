@@ -1,6 +1,6 @@
 """Prove the ElevenLabs key + voice id work by synthesizing a sample line.
 
-    python scripts/verify_voice.py
+    python scripts/checks/verify_voice.py
 
 Validates the credentials, then writes a spoken sample to data/voice-sample.mp3
 so you can play it back and hear the configured voice.

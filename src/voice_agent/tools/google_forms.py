@@ -9,8 +9,8 @@ Setup (one-time): enable the Google Forms API in the Cloud project, and share
 the form with GOOGLE_API_EMAIL. Two read-only scopes are requested —
 forms.body.readonly (structure) and forms.responses.readonly (submissions).
 
-This mirrors the old Typeform tool: `fields()` yields the IntakeField list the
-agent asks from; `record_from_response()` maps a submission to (record, phone).
+`fields()` yields the IntakeField list the agent asks from;
+`record_from_response()` maps a submission to (record, phone).
 """
 
 from __future__ import annotations

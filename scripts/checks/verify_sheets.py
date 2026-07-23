@@ -1,6 +1,6 @@
 """Verify Google Sheets service-account access — including WRITE permission.
 
-    python scripts/verify_sheets.py
+    python scripts/checks/verify_sheets.py
 
 Reads the sheet, then appends a probe row and deletes it, so it confirms the
 service account can actually append tracking rows (Editor access), not just read.
