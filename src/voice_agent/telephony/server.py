@@ -115,6 +115,14 @@ def create_app(cfg: Config | None = None) -> Flask:
         )
         return Response(xml, mimetype="text/xml")
 
+    def play_then(prompt_twiml: str, target: str) -> Response:
+        """Speak a line, then fetch `target` — the slow work happens during playback."""
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            f"<Response>{prompt_twiml}<Redirect>{target}</Redirect></Response>"
+        )
+        return Response(xml, mimetype="text/xml")
+
     def trigger_callback(record: dict[str, str], phone: str) -> str:
         """Stash the form answers and call the person back. Returns the call SID."""
         token = uuid.uuid4().hex
@@ -178,10 +186,22 @@ def create_app(cfg: Config | None = None) -> Flask:
             return gather(speak(reprompt), session.speech_locale)
 
         result = session.handle(said)
+        if result.next == "finalize":
+            # Say "one moment…" now; book + save while it plays, then confirm.
+            return play_then(speak(result.reply), "/voice/finalize")
         if result.ended:
             sessions.pop(call_sid, None)
             return hangup(speak(result.reply))
         return gather(speak(result.reply), session.speech_locale)
+
+    @app.route("/voice/finalize", methods=["POST", "GET"])
+    def finalize():
+        call_sid = request.values.get("CallSid", "")
+        session = sessions.pop(call_sid, None)
+        if session is None:
+            return hangup(speak("Thanks, we'll be in touch. Goodbye!"))
+        turn = session.finalize()   # the actual Cal.com booking + Sheets save
+        return hangup(speak(turn.reply))
 
     @app.get("/audio/<clip_id>.mp3")
     def audio(clip_id: str):

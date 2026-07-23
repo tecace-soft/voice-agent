@@ -113,6 +113,10 @@ def main(argv: list[str]) -> int:
         turn = session.handle(line)
         print(f"       [captured: {session.record}]")
         say(turn.reply)
+        # After the "one moment" acknowledgement, do the booking and confirm.
+        if turn.next == "finalize":
+            turn = session.finalize()
+            say(turn.reply)
         if turn.ended:
             print(f"\nfinal record: {session.record}")
             if session.booked_at:

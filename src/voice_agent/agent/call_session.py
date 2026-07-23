@@ -44,8 +44,12 @@ OPENINGS = {
 
 @dataclass
 class Turn:
-    reply: str          # what the agent should say next
-    ended: bool         # True once the call should hang up
+    reply: str                 # what the agent should say next
+    next: str = "listen"       # "listen" (await reply) | "finalize" (do slow work) | "hangup"
+
+    @property
+    def ended(self) -> bool:
+        return self.next == "hangup"
 
 
 class CallSession:
@@ -81,6 +85,7 @@ class CallSession:
         self._offer = None
         self._slot_attempts = 0
         self._booked_at = ""
+        self._chosen = ""       # slot the caller picked, booked during finalize()
         # When the caller already answered the form (a post-submission callback),
         # skip intake and go straight to confirming a time.
         if prefilled:
@@ -149,7 +154,23 @@ class CallSession:
         """Advance the conversation by one caller turn (reply in the caller's language)."""
         turn = self._dispatch(caller_text)
         self._refresh_language()
-        return Turn(self.localize(turn.reply), turn.ended)
+        return Turn(self.localize(turn.reply), turn.next)
+
+    def finalize(self) -> Turn:
+        """Do the slow booking + save, then confirm. Called after the 'one moment'
+        acknowledgement is spoken, so the caller isn't left in silence."""
+        if self._chosen:
+            if self._create_bookings:
+                try:
+                    self._scheduler.book(self._chosen, self._record)
+                    self._booked_at = self._chosen
+                except (CalError, RuntimeError) as exc:
+                    log.warning("booking failed: %s", exc)
+            else:
+                self._booked_at = self._chosen  # intended slot, not actually booked
+        self._track()
+        self._state = "done"
+        return Turn(self.localize(self._confirmation()), "hangup")
 
     def _dispatch(self, caller_text: str) -> Turn:
         if self._state == "confirm":
@@ -158,7 +179,7 @@ class CallSession:
             return self._handle_intake(caller_text)
         if self._state == "scheduling":
             return self._handle_pick(caller_text)
-        return Turn("", True)
+        return Turn("", "hangup")
 
     def _refresh_language(self) -> None:
         """Once the caller answers the language question, switch to it."""
@@ -171,7 +192,7 @@ class CallSession:
         result = self._agent.handle(caller_text)
         self._record = result.record
         if not result.done:
-            return Turn(result.agent_message, False)
+            return Turn(result.agent_message, "listen")
         if self._scheduling_enabled:
             return self._begin_scheduling()
         return self._finish()
@@ -189,32 +210,29 @@ class CallSession:
             # No openings — the offer message already asks for another timeframe.
             return self._finish(closing=self._offer.message)
         self._state = "scheduling"
-        return Turn(self._offer.message, False)
+        return Turn(self._offer.message, "listen")
 
     def _handle_pick(self, caller_text: str) -> Turn:
         chosen = self._scheduler.interpret(caller_text, self._offer.options)
         if not chosen:
             self._slot_attempts += 1
             if self._slot_attempts <= MAX_SLOT_RETRIES:
-                return Turn("Sorry, I didn't catch which time. " + self._offer.message, False)
+                return Turn("Sorry, I didn't catch which time. " + self._offer.message, "listen")
             return self._finish()  # give up scheduling, still save the record
 
-        if self._create_bookings:
-            try:
-                self._scheduler.book(chosen, self._record)
-                self._booked_at = chosen
-            except (CalError, RuntimeError) as exc:
-                log.warning("booking failed: %s", exc)
-        else:
-            self._booked_at = chosen  # intended slot, not actually booked
-        return self._finish()
+        # Acknowledge immediately; the actual booking happens in finalize() while
+        # this line is spoken, so the caller isn't left in silence.
+        self._chosen = chosen
+        self._state = "booking"
+        friendly = Scheduler.friendly(chosen)
+        return Turn(f"Great — I'm setting up your appointment for {friendly} now. One moment, please.", "finalize")
 
     # -- wrap up ---------------------------------------------------------
 
     def _finish(self, closing: str | None = None) -> Turn:
         self._track()
         self._state = "done"
-        return Turn(closing or self._goodbye(), True)
+        return Turn(closing or self._goodbye(), "hangup")
 
     def _track(self) -> None:
         try:
@@ -222,9 +240,15 @@ class CallSession:
         except SheetsError as exc:
             log.warning("could not save record to Sheets: %s", exc)
 
-    def _goodbye(self) -> str:
+    def _confirmation(self) -> str:
+        """Spoken after the booking is actually created."""
         first = attendee_name(self._record).split()[0]
         hi = f", {first}" if first != "Caller" else ""
         if self._booked_at:
-            return f"You're all set{hi} — I've got you down for {Scheduler.friendly(self._booked_at)}. Goodbye!"
+            return f"You're all set{hi}! Your appointment is confirmed for {Scheduler.friendly(self._booked_at)}. Goodbye!"
+        return f"I'm sorry{hi}, I couldn't confirm that time just now — we'll follow up with you shortly. Goodbye!"
+
+    def _goodbye(self) -> str:
+        first = attendee_name(self._record).split()[0]
+        hi = f", {first}" if first != "Caller" else ""
         return f"Thanks{hi}, we'll be in touch. Goodbye!"
