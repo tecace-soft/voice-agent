@@ -22,9 +22,7 @@ It also works the other direction: a person can **dial the number**, answer the 
 
 ## How the flow works
 
-![Flow chart](docs/voice-agent-flowchart.png)
-
-*(Source: [`docs/flowchart.mmd`](docs/flowchart.mmd); the diagram below renders on GitHub.)*
+*Renders on GitHub. Also available as an image — [PNG](docs/voice-agent-flowchart.png) · [SVG](docs/voice-agent-flowchart.svg) — from source [`docs/flowchart.mmd`](docs/flowchart.mmd).*
 
 ```mermaid
 flowchart TD
