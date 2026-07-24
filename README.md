@@ -81,7 +81,7 @@ Our code owns the conversation; each external service handles one job:
 | **Cal.com** | Live availability and the actual booking | `tools/cal.py` |
 | **Google Sheets** | Tracks each completed intake as a row | `tools/sheets.py` |
 | **Twilio** | The phone line — inbound webhooks and outbound calls | `telephony/server.py` |
-| **Hermes** (optional/legacy) | A self-hosted agent for a bounded closing sub-task; **not used** in the current phone flow (the goodbye is a template line) | `tools/hermes.py` |
+| **Hermes** | Self-hosted agent that writes a short **post-call summary** into the tracking sheet — off the critical path (the caller has already hung up) | `tools/hermes.py`, `agent/summary.py` |
 
 Auth reuses one Google service account for **both** Sheets and Forms (a JWT signed with the service-account key, exchanged for an access token).
 
@@ -125,6 +125,7 @@ outbound:  confirm ─► scheduling ─► (booking) ─► done
 - **Outbound queue — no one is missed** — *every* outbound call (first-contact and ring-back) goes through one persisted queue that places calls **one at a time**, waits for each to finish, and **retries** failures (busy / no-answer / couldn't-place) with backoff before giving up. Safe even on a Twilio trial (1 concurrent call). Ring-backs are scheduled for the caller's requested time and use a **different greeting** ("I'm calling back at the time you requested…").
 - **Language** — the form's language answer (or the first inbound question) picks English or Korean; every agent line is translated and spoken in that language.
 - **Phone normalization** — form phone answers are plain text, so outbound numbers are normalized to E.164 (`4254787534` → `+14254787534`) before Twilio dials.
+- **Post-call summary** — once a call ends and the record is saved, the **Hermes** agent writes a one-line human-readable note ("Jordan Lee called and booked … Friday at 9 AM") into the row's `summary` column. This runs in a background thread, so it never delays the caller; it degrades to no note if Hermes is unreachable.
 
 ---
 

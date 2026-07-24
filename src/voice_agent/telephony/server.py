@@ -19,6 +19,7 @@ from __future__ import annotations
 import base64
 import logging
 import re
+import threading
 import urllib.parse
 import urllib.request
 import uuid
@@ -26,7 +27,8 @@ from xml.sax.saxutils import escape
 
 from flask import Flask, Response, request
 
-from ..agent import CallSession, IntakeField
+from ..agent import CallSession, Fulfillment, IntakeField
+from ..agent.summary import summarize_call
 from ..config import Config
 from .outbound import OutboundQueue
 from ..tools.google_forms import GoogleFormsClient, GoogleFormsError
@@ -145,6 +147,32 @@ def create_app(cfg: Config | None = None) -> Flask:
     app.trigger_callback = trigger_callback   # type: ignore[attr-defined]
     app.outbound_queue = outbound             # type: ignore[attr-defined]
 
+    def summarize_async(session: CallSession) -> None:
+        """Have Hermes summarize the finished call and write it to the sheet row.
+
+        Runs in a background thread — the caller has already hung up, so Hermes's
+        latency never touches the conversation. No-op if nothing was tracked.
+        """
+        if not session.tracked_row:
+            return
+
+        def work() -> None:
+            text = summarize_call(
+                cfg, session.record,
+                booked_at=session.booked_at,
+                callback_at=session.callback_at,
+                transcript=session.transcript,
+            )
+            if not text:
+                return
+            try:
+                Fulfillment(cfg, fields).note(session.tracked_row, text)
+                log.info("wrote Hermes call summary to row %d", session.tracked_row)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("could not write call summary: %s", exc)
+
+        threading.Thread(target=work, daemon=True).start()
+
     @app.post("/voice/incoming")
     def incoming():
         call_sid = request.values.get("CallSid", uuid.uuid4().hex)
@@ -186,6 +214,7 @@ def create_app(cfg: Config | None = None) -> Flask:
                     session.record, session.phone,
                     due_at=session.callback_at, is_callback=True,
                 )
+            summarize_async(session)   # Hermes notes, in the background
             sessions.pop(call_sid, None)
             return hangup(speak(result.reply))
         return gather(speak(result.reply), session.speech_locale)
@@ -206,6 +235,7 @@ def create_app(cfg: Config | None = None) -> Flask:
         if session is None:
             return hangup(speak("Thanks, we'll be in touch. Goodbye!"))
         turn = session.finalize()   # the actual Cal.com booking + Sheets save
+        summarize_async(session)    # Hermes notes, in the background
         return hangup(speak(turn.reply))
 
     @app.get("/audio/<clip_id>.mp3")

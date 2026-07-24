@@ -103,6 +103,8 @@ class CallSession:
         self._candidate = ""    # a free slot we've proposed, awaiting yes/no
         self._day = ""          # the day currently in focus, for "other times that day"
         self._callback_at = ""  # if not ready now, when to call back instead
+        self._transcript: list[str] = []  # spoken exchange, for the post-call summary
+        self._tracked_row = 0   # sheet row this call was saved to (0 = not tracked)
         # When the caller already answered the form (a post-submission callback),
         # skip intake and go straight to confirming a time.
         if prefilled:
@@ -138,6 +140,16 @@ class CallSession:
     def phone(self) -> str:
         """The caller's phone number, from the record."""
         return phone_from(self._record)
+
+    @property
+    def tracked_row(self) -> int:
+        """Sheet row this call was saved to (0 if nothing was tracked)."""
+        return self._tracked_row
+
+    @property
+    def transcript(self) -> str:
+        """The spoken exchange so far, for the post-call summary."""
+        return "\n".join(self._transcript)
 
     @property
     def language(self) -> str:
@@ -187,7 +199,11 @@ class CallSession:
         """Advance the conversation by one caller turn (reply in the caller's language)."""
         turn = self._dispatch(caller_text)
         self._refresh_language()
-        return Turn(self.localize(turn.reply), turn.next)
+        reply = self.localize(turn.reply)
+        self._transcript.append(f"Caller: {caller_text}")
+        if reply:
+            self._transcript.append(f"Agent: {reply}")
+        return Turn(reply, turn.next)
 
     def finalize(self) -> Turn:
         """Do the slow booking + save, then confirm. Called after the 'one moment'
@@ -388,7 +404,9 @@ class CallSession:
 
     def _track(self) -> None:
         try:
-            Fulfillment(self._cfg, self._fields).track(self._record, booked_at=self._booked_at)
+            self._tracked_row = Fulfillment(self._cfg, self._fields).track(
+                self._record, booked_at=self._booked_at
+            )
         except SheetsError as exc:
             log.warning("could not save record to Sheets: %s", exc)
 

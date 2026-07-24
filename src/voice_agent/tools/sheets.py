@@ -130,10 +130,29 @@ class SheetsClient:
         )
         return self._call(path, method="POST", body={"values": [values]})
 
+    def update_range(self, a1: str, values: list[list[str]]) -> None:
+        """Write a 2D block of values starting at `a1` (e.g. 'Sheet1!A1:H1')."""
+        path = f"/values/{urllib.parse.quote(a1)}?valueInputOption=USER_ENTERED"
+        self._call(path, method="PUT", body={"values": values})
+
+    def update_cell(self, a1: str, value: str) -> None:
+        """Write a single value to an A1 cell (e.g. 'Sheet1!H7')."""
+        self.update_range(a1, [[value]])
+
     def ensure_header(self, header: list[str], *, tab: str = "Sheet1") -> None:
-        """Write `header` as row 1 if the tab is currently empty."""
-        if not self.read(f"{tab}!A1:1"):
-            self.append_row(header, tab=tab)
+        """Ensure row 1 is exactly `header` — the current record layout.
+
+        Writes it when the tab is empty or the header row differs (e.g. a newly
+        added `summary` column), so the labels always match what `track()` writes.
+        Only the first `len(header)` cells are touched; data rows below and any
+        extra columns you've added beyond the schema are left alone.
+        """
+        rows = self.read(f"{tab}!1:1")
+        current = rows[0] if rows else []
+        if current[: len(header)] == header:
+            return
+        last = _col_letter(len(header))
+        self.update_range(f"{tab}!A1:{last}1", [header])
 
     def tab_gid(self, tab: str = "Sheet1") -> int:
         """Numeric sheetId of a tab (needed for structural edits like row delete)."""
@@ -165,3 +184,12 @@ class SheetsClient:
                 ]
             },
         )
+
+
+def _col_letter(n: int) -> str:
+    """1-based column number -> A1 letter (1->A, 8->H, 27->AA)."""
+    letters = ""
+    while n > 0:
+        n, remainder = divmod(n - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return letters
