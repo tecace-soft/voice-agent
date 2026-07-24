@@ -1,12 +1,13 @@
 %%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'13px','lineColor':'#8a94a6','primaryColor':'#eceff3','primaryTextColor':'#222a36','primaryBorderColor':'#b9c2ce','edgeLabelBackground':'#eceff3'}}}%%
 flowchart TD
-    %% ---- entry 1: outbound, triggered by a form submission ----
+    %% ---- entry 1: outbound — form submission -> queued call ----
     Form[/"Caller submits the Google Form online"/]:::caller --> Poll["Poll finds the new submission<br/><b>Google Forms</b>"]:::forms
-    Poll --> Call["Agent calls the person back<br/><b>Twilio</b>"]:::twilio
+    Poll --> Queue["Outbound call queue<br/>one at a time · retries · so no one is missed<br/><b>Twilio</b>"]:::twilio
+    Queue --> Call["Place the call<br/><b>Twilio</b>"]:::twilio
+    Call -. "no answer or busy: retry with backoff" .-> Queue
     Call --> Ready{"Ready to pick<br/>a time now?"}
     Ready -->|No, later| CB["Ask for a better time to call<br/><b>Gemini</b> · <b>ElevenLabs</b>"]:::voice
-    CB --> Queue["Schedule the callback<br/><b>Twilio</b>"]:::twilio
-    Queue -. calls back at that time .-> Call
+    CB -->|schedule ring-back| Queue
     Ready -->|Yes| Offer
 
     %% ---- entry 2: inbound, caller dials in ----

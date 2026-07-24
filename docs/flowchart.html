@@ -38,11 +38,12 @@
     const graph = `%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'14px','lineColor':'#8a94a6','primaryColor':'#eceff3','primaryTextColor':'#222a36','primaryBorderColor':'#b9c2ce','edgeLabelBackground':'#eceff3'}}}%%
 flowchart TD
     Form[/"Caller submits the Google Form online"/]:::caller --> Poll["Poll finds the new submission<br/>Google Forms"]:::forms
-    Poll --> Call["Agent calls the person back<br/>Twilio"]:::twilio
+    Poll --> Queue["Outbound call queue<br/>one at a time, retries, so no one is missed<br/>Twilio"]:::twilio
+    Queue --> Call["Place the call<br/>Twilio"]:::twilio
+    Call -. "no answer or busy: retry with backoff" .-> Queue
     Call --> Ready{"Ready to pick a time now?"}
     Ready -->|No, later| CB["Ask for a better time to call<br/>Gemini, ElevenLabs"]:::voice
-    CB --> Queue["Schedule the callback<br/>Twilio"]:::twilio
-    Queue -. calls back at that time .-> Call
+    CB -->|schedule ring-back| Queue
     Ready -->|Yes| Offer
 
     Dial(["Caller dials the number"]):::twilio --> Ask["Ask the language, then the questions<br/>Gemini asks, ElevenLabs speaks"]:::gemini
