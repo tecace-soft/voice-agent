@@ -34,10 +34,12 @@ def summarize_call(
     details = ", ".join(f"{k}: {v}" for k, v in record.items() if v)
 
     prompt = (
-        "You are logging notes after a phone scheduling call. In ONE or TWO short "
-        "sentences, summarize what happened for a colleague skimming the tracking "
-        "sheet — who called, what they wanted, and the outcome. Plain text only; "
-        "do not use any tools or write any files.\n\n"
+        "You are logging notes after a phone call where a lead was called back to book "
+        "a consultation. In ONE to THREE short sentences for the consultant, summarize: "
+        "who it was, what they're interested in, the outcome, and — importantly — any "
+        "questions or topics they raised that the consultant should follow up on "
+        "(pricing, contract, technical details, a request for a human, etc.). If there "
+        "are none, don't mention it. Plain text only; do not use any tools or write files.\n\n"
         f"Caller details: {details}\n"
         f"Outcome: the caller {outcome}.\n"
     )

@@ -107,10 +107,10 @@ class CallSession:
         self._transcript: list[str] = []  # spoken exchange, for the post-call summary
         self._tracked_row = 0   # sheet row this call was saved to (0 = not tracked)
         # When the caller already answered the form (a post-submission callback),
-        # skip intake and go straight to confirming a time.
+        # skip intake: check we've reached the right person, then confirm a time.
         if prefilled:
             self._record = dict(prefilled)
-            self._state = "confirm"     # confirm -> scheduling -> done
+            self._state = "identity"    # identity -> confirm -> scheduling -> done
         else:
             self._record = {}
             self._state = "intake"      # intake -> scheduling -> done
@@ -179,22 +179,38 @@ class CallSession:
 
     def start(self) -> str:
         """The agent's opening line (it speaks first)."""
-        if self._state == "confirm":
-            name = attendee_name(self._record).split()[0]
-            who = f" {name}" if name != "Caller" else ""
-            if self._is_callback:
-                greeting = (
-                    f"Hello{who}, I'm calling back at the time you requested. "
-                    "Shall we schedule that appointment now?"
-                )
-            else:
-                greeting = (
-                    f"Hi{who}, thanks for filling out the form. I'd like to get your "
-                    "appointment booked — are you ready to pick a time?"
-                )
+        if self._state == "identity":
+            name = self._first_name()
+            greeting = (
+                f"Hi, may I speak with {name}?" if name
+                else "Hi, is this the person who reached out to TecAce about AI consulting?"
+            )
+        elif self._state == "confirm":
+            greeting = self._intro()   # fallback if a session opens straight in confirm
         else:
             greeting = self._agent.greeting()
         return self.localize(greeting)
+
+    def _first_name(self) -> str:
+        name = attendee_name(self._record).split()[0]
+        return "" if name == "Caller" else name
+
+    def _intro(self) -> str:
+        """Tess's introduction + the readiness ask (State 1, right person)."""
+        name = self._first_name()
+        who = f" {name}" if name else ""
+        agent = self._cfg.agent_name
+        if self._is_callback:
+            return (
+                f"Hi{who}, this is {agent}, TecAce's AI assistant, calling back at the "
+                "time you requested. Do you have a quick minute to set up your "
+                "consultation call?"
+            )
+        return (
+            f"Hi{who}, this is {agent}, TecAce's AI assistant. You recently reached out "
+            "to us about AI transformation consulting — do you have a quick minute to "
+            "set up a call with one of our consultants?"
+        )
 
     def handle(self, caller_text: str) -> Turn:
         """Advance the conversation by one caller turn (reply in the caller's language)."""
@@ -223,6 +239,8 @@ class CallSession:
         return Turn(self.localize(self._confirmation()), "hangup")
 
     def _dispatch(self, caller_text: str) -> Turn:
+        if self._state == "identity":
+            return self._handle_identity(caller_text)
         if self._state == "confirm":
             return self._handle_ready(caller_text)
         if self._state == "callback":
@@ -236,6 +254,34 @@ class CallSession:
         return Turn("", "hangup")
 
     # -- readiness / callback phase --------------------------------------
+
+    def _handle_identity(self, caller_text: str) -> Turn:
+        """State 1: did we reach {lead_name}? Right person -> intro; wrong -> end."""
+        name = self._first_name() or "the person we're trying to reach"
+        prompt = (
+            f'The agent asked to speak with {name}. The person answered: '
+            f'"{caller_text}". Are they that person (or willing to speak), is it the '
+            "WRONG person / not available, or did they say something off-topic?"
+        )
+        try:
+            who = self._gemini.classify(
+                prompt, ["right_person", "wrong_person", "other"]
+            )["label"]
+        except Exception as exc:  # noqa: BLE001 — assume we reached them
+            log.warning("identity check failed: %s", exc)
+            who = "right_person"
+        if who == "wrong_person":
+            self._state = "done"
+            return Turn(
+                "Oh, my apologies for the interruption. We'll reach out again another "
+                "time. Have a great day!",
+                "hangup",
+            )
+        if who == "other":
+            ask = f"May I speak with {name}?" if self._first_name() else "May I confirm who I'm speaking with?"
+            return self._converse(caller_text, ask)
+        self._state = "confirm"      # reached them -> introduce + ask readiness
+        return Turn(self._intro(), "listen")
 
     def _handle_ready(self, caller_text: str) -> Turn:
         """The opening 'are you ready to pick a time?' — proceed or arrange a callback."""
@@ -256,9 +302,7 @@ class CallSession:
         """Field off-script talk (a question, small talk, 'say that again'), then
         naturally re-ask `ask`. Keeps the agent human without leaving the task."""
         try:
-            reply = smalltalk_reply(
-                self._gemini, self._cfg.agent_name, self._cfg.agent_org, caller_text, ask
-            )
+            reply = smalltalk_reply(self._gemini, self._cfg.agent_name, caller_text, ask)
         except Exception as exc:  # noqa: BLE001 — fall back to a plain re-ask
             log.warning("conversational reply failed: %s", exc)
             reply = f"Sorry, I didn't quite catch that. {ask}"
@@ -280,12 +324,17 @@ class CallSession:
         )
 
     def _readiness(self, caller_text: str) -> str:
-        """'ready' | 'not_ready' | 'other' — how the caller answered 'are you ready?'."""
+        """'ready' | 'not_ready' | 'other' — how the caller answered 'have a minute?'."""
         prompt = (
-            'The agent asked "Are you ready to pick an appointment time now?". '
-            f'The caller replied: "{caller_text}". Are they ready to continue now, '
-            "do they want to be called back at another time, or did they say "
-            "something off-topic (a question, small talk, unclear)?"
+            'The agent asked "Do you have a quick minute to set up a call?".\n'
+            f'The caller replied: "{caller_text}".\n\n'
+            "Pick the label:\n"
+            '- ready: they agree or have time now ("yes", "sure", "okay", "go ahead", '
+            '"I have a minute").\n'
+            "- not_ready: they clearly cannot talk now and want to be reached later "
+            '("not a good time", "I\'m busy", "call me back later", "try me tomorrow").\n'
+            "- other: anything else — a question, a request (such as asking for a human), "
+            "small talk, or something you cannot interpret."
         )
         try:
             return self._gemini.classify(prompt, ["ready", "not_ready", "other"])["label"]
@@ -423,14 +472,28 @@ class CallSession:
             log.warning("could not save record to Sheets: %s", exc)
 
     def _confirmation(self) -> str:
-        """Spoken after the booking is actually created."""
-        first = attendee_name(self._record).split()[0]
-        hi = f", {first}" if first != "Caller" else ""
+        """State 4 — spoken after the booking is created."""
+        first = self._first_name()
+        hi = f", {first}" if first else ""
         if self._booked_at:
-            return f"You're all set{hi}! Your appointment is confirmed for {Scheduler.friendly(self._booked_at)}. Goodbye!"
-        return f"I'm sorry{hi}, I couldn't confirm that time just now — we'll follow up with you shortly. Goodbye!"
+            email = self._record.get("email", "")
+            where = f" at {email}" if email else ""
+            return (
+                f"Great{hi} — you're all set for {Scheduler.friendly(self._booked_at)}. "
+                f"You'll get a confirmation email{where} with the meeting link, and our "
+                "consultant will review your inquiry before the call. "
+                "We look forward to speaking with you!"
+            )
+        return (
+            f"I'm sorry{hi}, I couldn't lock that in just now — our team will email you "
+            "a scheduling link so you can pick a time. Thanks, and have a great day!"
+        )
 
     def _goodbye(self) -> str:
-        first = attendee_name(self._record).split()[0]
-        hi = f", {first}" if first != "Caller" else ""
-        return f"Thanks{hi}, we'll be in touch. Goodbye!"
+        """State 6 — a polite close (used when scheduling didn't complete)."""
+        first = self._first_name()
+        hi = f", {first}" if first else ""
+        return (
+            f"No problem{hi} — our team will follow up with you by email. "
+            "Feel free to reach us anytime at tecace.com. Have a great day!"
+        )

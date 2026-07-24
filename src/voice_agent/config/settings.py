@@ -81,6 +81,7 @@ class Config:
     deepgram_api_key: str
     public_base_url: str
     cal_event_type_id: int
+    detect_voicemail: bool
     request_timeout: float
 
     @property
@@ -111,9 +112,9 @@ class Config:
             hermes_model=_optional("HERMES_MODEL", "hermes-4"),
             gemini_api_key=_required("GEMINI_API_KEY"),
             gemini_model=_optional("GEMINI_MODEL", "gemini-2.5-flash-lite"),
-            # The agent's spoken identity, used when it fields small talk.
-            agent_name=_optional("AGENT_NAME", "Alex"),
-            agent_org=_optional("AGENT_ORG"),
+            # The agent's spoken identity, used when it fields small talk / FAQs.
+            agent_name=_optional("AGENT_NAME", "Tess"),
+            agent_org=_optional("AGENT_ORG", "TecAce"),
             # ElevenLabs gives the agent its spoken voice (text-to-speech).
             elevenlabs_api_key=_required("ELEVENLABS_API_KEY"),
             elevenlabs_voice_id=_required("ELEVENLABS_VOICE_ID"),
@@ -142,5 +143,8 @@ class Config:
             # webhooks and audio; required for outbound calls.
             public_base_url=_optional("PUBLIC_BASE_URL").rstrip("/"),
             cal_event_type_id=int(_optional("CAL_EVENT_TYPE_ID", "6407082")),
+            # Ask Twilio to detect voicemail on outbound calls (leaves a message).
+            detect_voicemail=_optional("DETECT_VOICEMAIL", "true").lower()
+            in ("1", "true", "yes", "on"),
             request_timeout=float(_optional("REQUEST_TIMEOUT_SECONDS", "60")),
         )

@@ -132,7 +132,9 @@ outbound:  confirm ─► scheduling ─► (booking) ─► done
 
 - **Two-phase booking** — the slow work (Cal.com booking + Sheets write) happens *behind* a spoken acknowledgement, hiding latency.
 - **Natural "no" handling** — "that doesn't work, any other times?" routes to offering other slots, not a dead end.
-- **Small talk & off-script questions** — when a reply isn't a task answer ("what's your name?", "are you a robot?", "what was the first option again?"), the agent answers briefly **in character** (a configurable persona, `agent/persona.py`) and steers back to the task, instead of a robotic re-prompt. Genuine answers still route normally; works in Korean too.
+- **Identity check** — an outbound call opens with *"may I speak with {name}?"*; the wrong person gets a polite apology and the call ends.
+- **Small talk, FAQs & guardrails** — off-script replies ("what does TecAce do?", "how much does it cost?", "can I talk to a human?") are handled by **Tess**, the persona in `agent/persona.py`. She answers company questions from a built-in **FAQ knowledge base**, **defers** pricing / contracts / technical specifics to the consultant, routes human requests to a follow-up, and never guesses — then steers back to booking. Works in Korean too.
+- **Voicemail detection** — Twilio answering-machine detection; if a machine picks up, the agent leaves a short message instead of talking to a beep (`DETECT_VOICEMAIL`).
 - **Outbound queue — no one is missed** — *every* outbound call (first-contact and ring-back) goes through one persisted queue that places calls **one at a time**, waits for each to finish, and **retries** failures (busy / no-answer / couldn't-place) with backoff before giving up. Safe even on a Twilio trial (1 concurrent call). Ring-backs are scheduled for the caller's requested time and use a **different greeting** ("I'm calling back at the time you requested…").
 - **Language** — the form's language answer (or the first inbound question) picks English or Korean; every agent line is translated and spoken in that language.
 - **Phone normalization** — form phone answers are plain text, so outbound numbers are normalized to E.164 (`4254787534` → `+14254787534`) before Twilio dials.
@@ -204,7 +206,8 @@ cp .env.example .env               # then fill it in (see below)
 | Variable | Purpose |
 |---|---|
 | `GEMINI_API_KEY` | Gemini (understanding, interpretation, translation) |
-| `AGENT_NAME`, `AGENT_ORG` | The agent's spoken identity for small talk (default name `Alex`) |
+| `AGENT_NAME`, `AGENT_ORG` | The agent's spoken identity (default `Tess` / `TecAce`) |
+| `DETECT_VOICEMAIL` | Twilio answering-machine detection on outbound calls (default on) |
 | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` | The spoken voice |
 | `GOOGLE_FORM_ID` | The form (accepts a raw id or the **editor** URL — not a `forms.gle` link) |
 | `GOOGLE_API_EMAIL`, `GOOGLE_API_SHEETS_KEY` | Service account (shared by Forms **and** Sheets) |

@@ -180,6 +180,11 @@ def create_app(cfg: Config | None = None) -> Flask:
         token = request.values.get("token", "")
         is_callback = request.values.get("callback") == "1"
         prefilled = pending.pop(token, None) if token else None
+        # Voicemail (Twilio AMD): leave a short message instead of the live flow.
+        if request.values.get("AnsweredBy", "").startswith("machine"):
+            name = (prefilled or {}).get("full_name", "").split(" ")[0]
+            log.info("voicemail detected on %s; leaving a message", call_sid)
+            return hangup(speak(_voicemail_message(cfg, name)))
         session = CallSession(
             cfg, fields, event_type_id=cfg.cal_event_type_id,
             direction=direction, prefilled=prefilled, callback=is_callback,
@@ -282,6 +287,17 @@ def _e164(raw: str, default_country: str = "1") -> str:
     return "+" + digits  # 11+ digits: assume it already carries a country code
 
 
+def _voicemail_message(cfg: Config, name: str) -> str:
+    """Short message left when a call goes to voicemail (Twilio AMD)."""
+    who = f" {name}" if name else ""
+    return (
+        f"Hi{who}, this is {cfg.agent_name}, TecAce's AI assistant. We received your "
+        "inquiry about AI transformation consulting and would love to set up a quick "
+        "call with one of our consultants. We'll follow up by email as well. "
+        "Thanks, and talk soon!"
+    )
+
+
 def place_call(cfg: Config, to_number: str, *, extra_params: dict[str, str] | None = None) -> str:
     """Place an outbound call via Twilio's REST API. Returns the call SID."""
     if not (cfg.twilio_account_sid and cfg.twilio_auth_token and cfg.twilio_phone_number):
@@ -292,9 +308,12 @@ def place_call(cfg: Config, to_number: str, *, extra_params: dict[str, str] | No
     to = _e164(to_number)
     params = {"direction": "outbound", **(extra_params or {})}
     answer_url = f"{cfg.public_base_url}/voice/incoming?{urllib.parse.urlencode(params)}"
-    form = urllib.parse.urlencode(
-        {"To": to, "From": cfg.twilio_phone_number, "Url": answer_url}
-    ).encode()
+    fields = {"To": to, "From": cfg.twilio_phone_number, "Url": answer_url}
+    if cfg.detect_voicemail:
+        # Twilio waits for the greeting to end, then calls Url with AnsweredBy set,
+        # so we can leave a message when a machine picks up.
+        fields["MachineDetection"] = "DetectMessageEnd"
+    form = urllib.parse.urlencode(fields).encode()
     api = f"https://api.twilio.com/2010-04-01/Accounts/{cfg.twilio_account_sid}/Calls.json"
     auth = base64.b64encode(f"{cfg.twilio_account_sid}:{cfg.twilio_auth_token}".encode()).decode()
     req = urllib.request.Request(
