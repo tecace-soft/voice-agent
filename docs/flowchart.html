@@ -69,8 +69,11 @@ flowchart TD
     Book --> Save["Save the record<br/>Google Sheets"]:::sheets
     Save --> Confirm["Confirm the appointment, then goodbye<br/>ElevenLabs"]:::voice
     Confirm --> End(["Call ends"])
+    End -. "afterwards, caller has hung up" .-> Summary["Summarize the call<br/>Hermes"]:::hermes
+    Summary --> Note["Add the note to the record row<br/>Google Sheets"]:::sheets
 
     classDef forms fill:#e7e9f7,stroke:#4a5bb0,color:#2b3470,stroke-width:1.5px;
+    classDef hermes fill:#eae1f6,stroke:#7d5bb0,color:#472f6e,stroke-width:1.5px;
     classDef gemini fill:#d8f0eb,stroke:#1c8f84,color:#0f5951,stroke-width:1.5px;
     classDef voice fill:#f7e0e4,stroke:#bd5566,color:#7a2f3a,stroke-width:1.5px;
     classDef cal fill:#f4e7d1,stroke:#b0782c,color:#6e4a15,stroke-width:1.5px;

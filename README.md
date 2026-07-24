@@ -26,21 +26,25 @@ It also works the other direction: a person can **dial the number**, answer the 
 
 ```mermaid
 flowchart TD
-    Form[/"Caller submits the Google Form online"/]:::forms --> Poll["Poll finds the new submission<br/><b>Google Forms</b>"]:::forms
-    Poll --> Call["Agent calls the person back<br/><b>Twilio</b>"]:::twilio
+    %% ---- entry 1: outbound — form submission -> queued call ----
+    Form[/"Caller submits the Google Form online"/]:::caller --> Poll["Poll finds the new submission<br/><b>Google Forms</b>"]:::forms
+    Poll --> Queue["Outbound call queue<br/>one at a time · retries · so no one is missed<br/><b>Twilio</b>"]:::twilio
+    Queue --> Call["Place the call<br/><b>Twilio</b>"]:::twilio
+    Call -. "no answer or busy: retry with backoff" .-> Queue
     Call --> Ready{"Ready to pick<br/>a time now?"}
     Ready -->|No, later| CB["Ask for a better time to call<br/><b>Gemini</b> · <b>ElevenLabs</b>"]:::voice
-    CB --> Queue["Schedule the callback<br/><b>Twilio</b>"]:::twilio
-    Queue -. rings back at that time .-> Call
+    CB -->|schedule ring-back| Queue
     Ready -->|Yes| Offer
 
-    Dial(["Caller dials the number"]):::twilio --> Ask["Ask the language, then the questions<br/><b>Gemini</b> asks · <b>ElevenLabs</b> speaks"]:::gemini
-    Ask --> Say[/Caller answers/]:::caller
+    %% ---- entry 2: inbound, caller dials in ----
+    Dial(["Caller dials the number"]):::twilio --> Ask["Ask the language, then the form questions<br/><b>Gemini</b> asks · <b>ElevenLabs</b> speaks"]:::gemini
+    Ask --> Say[/"Caller answers"/]:::caller
     Say --> Understand["Understand the answer<br/><b>Gemini</b>"]:::gemini
     Understand --> Done{"All questions<br/>answered?"}
     Done -->|No| Ask
     Done -->|Yes| Offer
 
+    %% ---- scheduling: offer, then interpret the reply ----
     Offer["Offer a few open times<br/><b>Cal.com</b> · weekdays 8-5 · <b>ElevenLabs</b>"]:::cal --> Resp[/Caller responds/]:::caller
     Resp --> Intent{"Interpret the reply<br/><b>Gemini</b>"}
     Intent -->|Picks a time / yes| Ack
@@ -53,12 +57,18 @@ flowchart TD
     Prop --> Resp
     Near --> Resp
 
+    %% ---- booking: acknowledge, then do the slow work, then confirm ----
     Ack["Setting it up, one moment<br/><b>ElevenLabs</b>"]:::voice --> Book["Create the booking<br/><b>Cal.com</b>"]:::cal
     Book --> Save["Save the record<br/><b>Google Sheets</b>"]:::sheets
     Save --> Confirm["Confirm the appointment, then goodbye<br/><b>ElevenLabs</b>"]:::voice
     Confirm --> End(["Call ends"])
 
+    %% ---- after the call: background summary (caller has hung up) ----
+    End -. "afterwards · caller has hung up" .-> Summary["Summarize the call<br/><b>Hermes</b>"]:::hermes
+    Summary --> Note["Add the note to the record row<br/><b>Google Sheets</b>"]:::sheets
+
     classDef forms fill:#e7e9f7,stroke:#4a5bb0,color:#2b3470,stroke-width:1.5px;
+    classDef hermes fill:#eae1f6,stroke:#7d5bb0,color:#472f6e,stroke-width:1.5px;
     classDef gemini fill:#d8f0eb,stroke:#1c8f84,color:#0f5951,stroke-width:1.5px;
     classDef voice fill:#f7e0e4,stroke:#bd5566,color:#7a2f3a,stroke-width:1.5px;
     classDef cal fill:#f4e7d1,stroke:#b0782c,color:#6e4a15,stroke-width:1.5px;
@@ -155,7 +165,8 @@ src/voice_agent/
     call_session.py      # the turn-by-turn conversation state machine
     intake.py            # IntakeField + question-asking / Gemini extraction
     scheduler.py         # Cal.com slots, decide(), time parsing, helpers
-    fulfillment.py       # booking + Sheets tracking
+    fulfillment.py       # Sheets tracking (append record row, attach summary)
+    summary.py           # Hermes-written post-call summary
   tools/
     gemini.py  voice.py  cal.py  sheets.py  google_forms.py  hermes.py
   telephony/
