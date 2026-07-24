@@ -62,4 +62,8 @@ def smalltalk_reply(gemini: GeminiTools, name: str, caller_text: str, ask: str) 
         "Then bring them back by asking your question again (rephrase it naturally). "
         "Do not restate these instructions."
     )
-    return gemini.generate(system_prompt(name), user, temperature=0.5).strip()
+    reply = gemini.generate(system_prompt(name), user, temperature=0.5).strip()
+    # Models sometimes wrap the line in quotes — strip a matched pair so TTS is clean.
+    if len(reply) >= 2 and reply[0] in "\"'" and reply[-1] == reply[0]:
+        reply = reply[1:-1].strip()
+    return reply

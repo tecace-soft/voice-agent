@@ -116,14 +116,13 @@ The conversation engine is **`CallSession`** (`agent/call_session.py`) — a tur
 ### The states
 
 ```
-inbound:   intake ─────────────────────────► scheduling ─► (booking) ─► done
-outbound:  identity ─► confirm ─► purpose ──► scheduling ─► (booking) ─► done
-              │           └─► callback ─► done            (if "not ready")
-              └─► done  (wrong person / voicemail)
+inbound:   intake ──────────────────► scheduling ─► (booking) ─► done
+outbound:  confirm ─► purpose ───────► scheduling ─► (booking) ─► done
+              ├─► callback ─► done   (bad timing)
+              └─► done               (wrong person)
 ```
 
-- **identity** *(outbound)* — *"may I speak with {name}?"*; wrong person → polite apology + end. Right person → Tess introduces herself and asks for a quick minute.
-- **confirm** — readiness. Gemini classifies the reply as *ready* / *not ready* / *other* (off-script → the persona fields it).
+- **confirm** *(outbound)* — the whole of State 1 as **one** opening: *"Hi, may I speak with {name}? This is Tess, TecAce's AI assistant… do you have a quick minute?"* The first reply is classified *wrong person* (apology + end) / *ready* / *not ready* (→ callback) / *other* (off-script → the persona answers, then re-asks). No separate identity turn — that caused a double-greeting.
 - **callback** — if not ready, asks *when* to call back, resolves the spoken time, and queues a ring-back.
 - **purpose** *(outbound)* — confirms the lead's stated interest (*"you're interested in {purpose}, correct?"*); a correction is acknowledged and logged for the consultant.
 - **scheduling** — if the lead gave a **desired time**, it confirms *that* (proposing the nearest opening if it's taken); otherwise it offers a few live, business-hours slots. Gemini interprets each reply as **pick** · **request** a specific time · **others** · **decline** · off-script.
@@ -137,7 +136,7 @@ outbound:  identity ─► confirm ─► purpose ──► scheduling ─► (b
 - **Natural "no" handling** — "that doesn't work, any other times?" routes to offering other slots, not a dead end.
 - **Identity check** — an outbound call opens with *"may I speak with {name}?"*; the wrong person gets a polite apology and the call ends.
 - **Small talk, FAQs & guardrails** — off-script replies ("what does TecAce do?", "how much does it cost?", "can I talk to a human?") are handled by **Tess**, the persona in `agent/persona.py`. She answers company questions from a built-in **FAQ knowledge base**, **defers** pricing / contracts / technical specifics to the consultant, routes human requests to a follow-up, and never guesses — then steers back to booking. Works in Korean too.
-- **Voicemail detection** — Twilio answering-machine detection; if a machine picks up, the agent leaves a short message instead of talking to a beep (`DETECT_VOICEMAIL`).
+- **Voicemail detection** — Twilio **async** answering-machine detection: the agent starts talking the instant a human answers (no detection delay), and if a machine is detected it interrupts to leave a short message (`DETECT_VOICEMAIL`).
 - **Outbound queue — no one is missed** — *every* outbound call (first-contact and ring-back) goes through one persisted queue that places calls **one at a time**, waits for each to finish, and **retries** failures (busy / no-answer / couldn't-place) with backoff before giving up. Safe even on a Twilio trial (1 concurrent call). Ring-backs are scheduled for the caller's requested time and use a **different greeting** ("I'm calling back at the time you requested…").
 - **Language** — the form's language answer (or the first inbound question) picks English or Korean; every agent line is translated and spoken in that language.
 - **Phone normalization** — form phone answers are plain text, so outbound numbers are normalized to E.164 (`4254787534` → `+14254787534`) before Twilio dials.

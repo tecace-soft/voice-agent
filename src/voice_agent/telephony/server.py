@@ -186,17 +186,32 @@ def create_app(cfg: Config | None = None) -> Flask:
         token = request.values.get("token", "")
         is_callback = request.values.get("callback") == "1"
         prefilled = pending.pop(token, None) if token else None
-        # Voicemail (Twilio AMD): leave a short message instead of the live flow.
-        if request.values.get("AnsweredBy", "").startswith("machine"):
-            name = (prefilled or {}).get("full_name", "").split(" ")[0]
-            log.info("voicemail detected on %s; leaving a message", call_sid)
-            return hangup(speak(_voicemail_message(cfg, name)))
         session = CallSession(
             cfg, fields, event_type_id=cfg.cal_event_type_id,
             direction=direction, prefilled=prefilled, callback=is_callback,
         )
         sessions[call_sid] = session
         return gather(speak(session.start()), session.speech_locale)
+
+    @app.post("/voice/amd")
+    def amd():
+        """Async answering-machine result. If a machine picked up, interrupt the live
+        call and leave a short voicemail instead."""
+        call_sid = request.values.get("CallSid", "")
+        if not request.values.get("AnsweredBy", "").startswith("machine"):
+            return ("", 204)   # human (or unknown) — the conversation continues
+        session = sessions.pop(call_sid, None)
+        name = session.record.get("full_name", "").split(" ")[0] if session else ""
+        log.info("voicemail detected (async) on %s; leaving a message", call_sid)
+        try:
+            twiml = (
+                '<?xml version="1.0" encoding="UTF-8"?>'
+                f"<Response>{speak(_voicemail_message(cfg, name))}<Hangup/></Response>"
+            )
+            _update_call(cfg, call_sid, twiml)
+        except Exception as exc:  # noqa: BLE001 — never let this break anything
+            log.warning("could not leave voicemail on %s: %s", call_sid, exc)
+        return ("", 204)
 
     @app.post("/voice/turn")
     def turn():
@@ -345,9 +360,14 @@ def place_call(cfg: Config, to_number: str, *, extra_params: dict[str, str] | No
     answer_url = f"{cfg.public_base_url}/voice/incoming?{urllib.parse.urlencode(params)}"
     fields = {"To": to, "From": cfg.twilio_phone_number, "Url": answer_url}
     if cfg.detect_voicemail:
-        # Twilio waits for the greeting to end, then calls Url with AnsweredBy set,
-        # so we can leave a message when a machine picks up.
+        # ASYNC detection: the call connects and the agent speaks IMMEDIATELY, while
+        # Twilio classifies human-vs-machine in parallel and posts the result to
+        # /voice/amd. (Synchronous detection would hold the line for several seconds
+        # before we could say anything — the cause of the "long delay before speaking".)
         fields["MachineDetection"] = "DetectMessageEnd"
+        fields["AsyncAmd"] = "true"
+        fields["AsyncAmdStatusCallback"] = f"{cfg.public_base_url}/voice/amd"
+        fields["AsyncAmdStatusCallbackMethod"] = "POST"
     form = urllib.parse.urlencode(fields).encode()
     api = f"https://api.twilio.com/2010-04-01/Accounts/{cfg.twilio_account_sid}/Calls.json"
     auth = base64.b64encode(f"{cfg.twilio_account_sid}:{cfg.twilio_auth_token}".encode()).decode()
@@ -369,3 +389,14 @@ def call_status(cfg: Config, sid: str) -> str:
     req = urllib.request.Request(api, headers={"Authorization": f"Basic {auth}"})
     with urllib.request.urlopen(req, timeout=cfg.request_timeout) as resp:
         return json.load(resp).get("status", "")
+
+
+def _update_call(cfg: Config, call_sid: str, twiml: str) -> None:
+    """Redirect an in-progress Twilio call to new TwiML (used to leave a voicemail)."""
+    api = f"https://api.twilio.com/2010-04-01/Accounts/{cfg.twilio_account_sid}/Calls/{call_sid}.json"
+    auth = base64.b64encode(f"{cfg.twilio_account_sid}:{cfg.twilio_auth_token}".encode()).decode()
+    data = urllib.parse.urlencode({"Twiml": twiml}).encode()
+    req = urllib.request.Request(
+        api, data=data, headers={"Authorization": f"Basic {auth}"}, method="POST"
+    )
+    urllib.request.urlopen(req, timeout=cfg.request_timeout).close()

@@ -114,10 +114,10 @@ class CallSession:
         self._time_attempts = 0        # rounds of time alternatives offered (State 3)
         self._proposed: set[str] = set()  # slots already proposed, so we don't repeat
         # When the caller already answered the form (a post-submission callback),
-        # skip intake: check we've reached the right person, then confirm a time.
+        # skip intake and open with the full greeting (identity + intro + readiness).
         if prefilled:
             self._record = dict(prefilled)
-            self._state = "identity"    # identity -> confirm -> scheduling -> done
+            self._state = "confirm"     # confirm -> purpose -> scheduling -> done
         else:
             self._record = {}
             self._state = "intake"      # intake -> scheduling -> done
@@ -186,16 +186,7 @@ class CallSession:
 
     def start(self) -> str:
         """The agent's opening line (it speaks first)."""
-        if self._state == "identity":
-            name = self._first_name()
-            greeting = (
-                f"Hi, may I speak with {name}?" if name
-                else "Hi, is this the person who reached out to TecAce about AI consulting?"
-            )
-        elif self._state == "confirm":
-            greeting = self._intro()   # fallback if a session opens straight in confirm
-        else:
-            greeting = self._agent.greeting()
+        greeting = self._intro() if self._state == "confirm" else self._agent.greeting()
         return self.localize(greeting)
 
     def _first_name(self) -> str:
@@ -203,18 +194,19 @@ class CallSession:
         return "" if name == "Caller" else name
 
     def _intro(self) -> str:
-        """Tess's introduction + the readiness ask (State 1, right person)."""
-        name = self._first_name()
-        who = f" {name}" if name else ""
+        """State 1 as a single opening: reach the person, introduce Tess, ask for a minute."""
         agent = self._cfg.agent_name
+        name = self._first_name()
         if self._is_callback:
+            who = f" {name}" if name else ""
             return (
                 f"Hi{who}, this is {agent}, TecAce's AI assistant, calling back at the "
                 "time you requested. Do you have a quick minute to set up your "
                 "consultation call?"
             )
+        ask = f"may I speak with {name}? " if name else ""
         return (
-            f"Hi{who}, this is {agent}, TecAce's AI assistant. You recently reached out "
+            f"Hi, {ask}This is {agent}, TecAce's AI assistant. You recently reached out "
             "to us about AI transformation consulting — do you have a quick minute to "
             "set up a call with one of our consultants?"
         )
@@ -246,8 +238,6 @@ class CallSession:
         return Turn(self.localize(self._confirmation()), "hangup")
 
     def _dispatch(self, caller_text: str) -> Turn:
-        if self._state == "identity":
-            return self._handle_identity(caller_text)
         if self._state == "confirm":
             return self._handle_ready(caller_text)
         if self._state == "purpose":
@@ -262,49 +252,28 @@ class CallSession:
             return self._handle_confirm(caller_text)
         return Turn("", "hangup")
 
-    # -- readiness / callback phase --------------------------------------
-
-    def _handle_identity(self, caller_text: str) -> Turn:
-        """State 1: did we reach {lead_name}? Right person -> intro; wrong -> end."""
-        name = self._first_name() or "the person we're trying to reach"
-        prompt = (
-            f'The agent asked to speak with {name}. The person answered: '
-            f'"{caller_text}". Are they that person (or willing to speak), is it the '
-            "WRONG person / not available, or did they say something off-topic?"
-        )
-        try:
-            who = self._gemini.classify(
-                prompt, ["right_person", "wrong_person", "other"]
-            )["label"]
-        except Exception as exc:  # noqa: BLE001 — assume we reached them
-            log.warning("identity check failed: %s", exc)
-            who = "right_person"
-        if who == "wrong_person":
-            self._state = "done"
-            return Turn(
-                "Oh, my apologies for the interruption. We'll reach out again another "
-                "time. Have a great day!",
-                "hangup",
-            )
-        if who == "other":
-            ask = f"May I speak with {name}?" if self._first_name() else "May I confirm who I'm speaking with?"
-            return self._converse(caller_text, ask)
-        self._state = "confirm"      # reached them -> introduce + ask readiness
-        return Turn(self._intro(), "listen")
+    # -- opening reply / callback phase ----------------------------------
 
     def _handle_ready(self, caller_text: str) -> Turn:
-        """The opening 'are you ready to pick a time?' — proceed or arrange a callback."""
-        readiness = self._readiness(caller_text)
-        if readiness == "not_ready":
+        """First reply to the opening greeting: wrong person / ready / later / off-script."""
+        answer = self._readiness(caller_text)
+        if answer == "wrong_person":
+            self._state = "done"
+            return Turn(
+                "Oh, my apologies for the interruption — I may have the wrong number. "
+                "Have a great day!",
+                "hangup",
+            )
+        if answer == "not_ready":
             self._state = "callback"
             return Turn(
                 "No problem at all. When would be a good time for us to call you back "
                 "to set up your appointment?",
                 "listen",
             )
-        if readiness == "ready":
+        if answer == "ready":
             return self._begin_purpose()
-        # off-script (a question, small talk) — answer it, then re-ask
+        # off-script (a question, small talk, just "hello") — answer, then re-ask
         return self._converse(caller_text, "Do you have a quick minute to set this up?")
 
     # -- purpose confirmation (State 2) ----------------------------------
@@ -372,20 +341,26 @@ class CallSession:
         )
 
     def _readiness(self, caller_text: str) -> str:
-        """'ready' | 'not_ready' | 'other' — how the caller answered 'have a minute?'."""
+        """How the caller answered the opening: wrong_person | ready | not_ready | other."""
+        name = self._first_name() or "the lead"
         prompt = (
-            'The agent asked "Do you have a quick minute to set up a call?".\n'
-            f'The caller replied: "{caller_text}".\n\n'
+            f'The agent called and asked for {name}, then asked "do you have a quick '
+            f'minute to set up a call?".\n'
+            f'The person replied: "{caller_text}".\n\n'
             "Pick the label:\n"
-            '- ready: they agree or have time now ("yes", "sure", "okay", "go ahead", '
-            '"I have a minute").\n'
-            "- not_ready: they clearly cannot talk now and want to be reached later "
-            '("not a good time", "I\'m busy", "call me back later", "try me tomorrow").\n'
-            "- other: anything else — a question, a request (such as asking for a human), "
-            "small talk, or something you cannot interpret."
+            "- wrong_person: they are NOT that person / wrong number / that person isn't "
+            'available ("no one here by that name", "wrong number", "he\'s not here").\n'
+            '- ready: they are willing to continue now ("yes", "speaking", "this is '
+            'them", "sure", "okay", "I have a minute").\n'
+            "- not_ready: it's them but a bad time; reach them later "
+            '("not a good time", "I\'m busy", "call me back later").\n'
+            "- other: anything else — just \"hello\", a question, a request (like asking "
+            "for a human), small talk, or something you cannot interpret."
         )
         try:
-            return self._gemini.classify(prompt, ["ready", "not_ready", "other"])["label"]
+            return self._gemini.classify(
+                prompt, ["wrong_person", "ready", "not_ready", "other"]
+            )["label"]
         except Exception as exc:  # noqa: BLE001 — default to proceeding
             log.warning("readiness check failed: %s", exc)
             return "ready"
