@@ -122,7 +122,7 @@ outbound:  confirm ─► scheduling ─► (booking) ─► done
 
 - **Two-phase booking** — the slow work (Cal.com booking + Sheets write) happens *behind* a spoken acknowledgement, hiding latency.
 - **Natural "no" handling** — "that doesn't work, any other times?" routes to offering other slots, not a dead end.
-- **Callback queue** — a "not ready" caller is rung back at their requested time (Twilio can't schedule future calls, so we run our own persisted queue). The ring-back uses a **different greeting** ("I'm calling back at the time you requested…").
+- **Outbound queue — no one is missed** — *every* outbound call (first-contact and ring-back) goes through one persisted queue that places calls **one at a time**, waits for each to finish, and **retries** failures (busy / no-answer / couldn't-place) with backoff before giving up. Safe even on a Twilio trial (1 concurrent call). Ring-backs are scheduled for the caller's requested time and use a **different greeting** ("I'm calling back at the time you requested…").
 - **Language** — the form's language answer (or the first inbound question) picks English or Korean; every agent line is translated and spoken in that language.
 - **Phone normalization** — form phone answers are plain text, so outbound numbers are normalized to E.164 (`4254787534` → `+14254787534`) before Twilio dials.
 
@@ -140,8 +140,8 @@ outbound:  confirm ─► scheduling ─► (booking) ─► done
 
 Two background threads run alongside it:
 
-- **`GoogleFormsPoller`** (`telephony/poller.py`) — checks the Forms API every 30s; new submissions with a phone number trigger a callback. This is the no-webhook path — an ordinary outbound API call, so **no public HTTPS endpoint is required** (Google Forms has no simple push webhook anyway).
-- **`CallbackQueue`** (`telephony/callbacks.py`) — fires due ring-backs. Persisted to `data/callbacks.json` so a restart doesn't drop them.
+- **`GoogleFormsPoller`** (`telephony/poller.py`) — checks the Forms API every 30s; each new submission with a phone number is **enqueued** (not dialed directly). This is the no-webhook path — an ordinary outbound API call, so **no public HTTPS endpoint is required** (Google Forms has no simple push webhook anyway).
+- **`OutboundQueue`** (`telephony/outbound.py`) — the single worker that actually places calls: one at a time, waiting for each to complete, retrying failures with backoff. Persisted to `data/outbound_queue.json` so a restart never drops a pending call.
 
 ---
 
@@ -159,15 +159,15 @@ src/voice_agent/
     gemini.py  voice.py  cal.py  sheets.py  google_forms.py  hermes.py
   telephony/
     server.py            # Flask <-> Twilio bridge
-    poller.py            # GoogleFormsPoller (submission -> callback)
-    callbacks.py         # CallbackQueue (ring-backs)
+    poller.py            # GoogleFormsPoller (submission -> enqueue)
+    outbound.py          # OutboundQueue (all calls, one at a time, retried)
 scripts/
   run_phone.py           # run the phone server
   place_call.py          # place a one-off outbound call
   checks/                # connectivity & health checks (verify_*, diagnose_forms, show_form)
   dev/                   # interactive dev tools (try_intake, chat_hermes)
 docs/                    # the flow chart (mmd / html / png / svg)
-data/                    # runtime state (git-ignored): poll cursor, callback queue
+data/                    # runtime state (git-ignored): poll cursor, outbound queue
 ```
 
 ---

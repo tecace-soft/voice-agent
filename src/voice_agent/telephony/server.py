@@ -28,7 +28,7 @@ from flask import Flask, Response, request
 
 from ..agent import CallSession, IntakeField
 from ..config import Config
-from .callbacks import CallbackQueue
+from .outbound import OutboundQueue
 from ..tools.google_forms import GoogleFormsClient, GoogleFormsError
 from ..tools.voice import ElevenLabsVoice, VoiceError
 
@@ -63,7 +63,7 @@ def create_app(cfg: Config | None = None) -> Flask:
     sessions: dict[str, CallSession] = {}
     clips: dict[str, bytes] = {}
     pending: dict[str, dict[str, str]] = {}   # token -> form answers awaiting a callback
-    callbacks = CallbackQueue()               # future call-backs (caller wasn't ready)
+    outbound = OutboundQueue()                # all outbound calls, one at a time, retried
 
     def base_url() -> str:
         return cfg.public_base_url or request.host_url.rstrip("/")
@@ -140,10 +140,10 @@ def create_app(cfg: Config | None = None) -> Flask:
             pending.pop(token, None)
             raise
 
-    # Exposed so the Google Forms poller and the callback queue (same process)
-    # can place callbacks too.
+    # Exposed so the Google Forms poller can enqueue, and run_phone can start the
+    # queue worker (which places calls via trigger_callback).
     app.trigger_callback = trigger_callback   # type: ignore[attr-defined]
-    app.callback_queue = callbacks            # type: ignore[attr-defined]
+    app.outbound_queue = outbound             # type: ignore[attr-defined]
 
     @app.post("/voice/incoming")
     def incoming():
@@ -182,7 +182,10 @@ def create_app(cfg: Config | None = None) -> Flask:
             return play_then(speak(result.reply), "/voice/finalize")
         if result.ended:
             if session.callback_at and session.phone:
-                callbacks.add(session.record, session.phone, session.callback_at)
+                outbound.add(
+                    session.record, session.phone,
+                    due_at=session.callback_at, is_callback=True,
+                )
             sessions.pop(call_sid, None)
             return hangup(speak(result.reply))
         return gather(speak(result.reply), session.speech_locale)
@@ -271,3 +274,14 @@ def place_call(cfg: Config, to_number: str, *, extra_params: dict[str, str] | No
 
     with urllib.request.urlopen(req, timeout=cfg.request_timeout) as resp:
         return json.load(resp).get("sid", "")
+
+
+def call_status(cfg: Config, sid: str) -> str:
+    """The Twilio status of a call: queued/ringing/in-progress/completed/busy/…"""
+    import json
+
+    api = f"https://api.twilio.com/2010-04-01/Accounts/{cfg.twilio_account_sid}/Calls/{sid}.json"
+    auth = base64.b64encode(f"{cfg.twilio_account_sid}:{cfg.twilio_auth_token}".encode()).decode()
+    req = urllib.request.Request(api, headers={"Authorization": f"Basic {auth}"})
+    with urllib.request.urlopen(req, timeout=cfg.request_timeout) as resp:
+        return json.load(resp).get("status", "")

@@ -72,11 +72,11 @@ class GoogleFormsPoller:
             record, phone = record_from_response(item, self._defs)
             if phone:
                 try:
-                    self._trigger(record, phone)
+                    self._trigger(record, phone)   # enqueue; the queue paces + retries
                     placed += 1
-                    log.info("callback triggered for %s", phone)
+                    log.info("queued call for %s", phone)
                 except Exception as exc:  # noqa: BLE001
-                    log.warning("callback failed for %s: %s", phone, exc)
+                    log.warning("could not queue call for %s: %s", phone, exc)
             else:
                 log.warning("submission %s has no phone number; skipped", rid)
             self._seen.append(rid)

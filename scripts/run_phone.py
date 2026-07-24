@@ -17,6 +17,7 @@ import threading
 from voice_agent.config import Config, ConfigError
 from voice_agent.telephony import create_app
 from voice_agent.telephony.poller import GoogleFormsPoller
+from voice_agent.telephony.server import call_status
 
 
 def main(argv: list[str]) -> int:
@@ -40,14 +41,19 @@ def main(argv: list[str]) -> int:
 
     app = create_app(cfg)
 
-    # Always place due call-backs (callers who weren't ready earlier).
+    # The outbound queue places every call — first-contact and ring-backs — one at
+    # a time, with retries, so no one is missed. Runs regardless of --poll.
     threading.Thread(
-        target=app.callback_queue.run, args=(app.trigger_callback,), daemon=True  # type: ignore[attr-defined]
+        target=app.outbound_queue.run,  # type: ignore[attr-defined]
+        args=(app.trigger_callback, lambda sid: call_status(cfg, sid)),  # type: ignore[attr-defined]
+        daemon=True,
     ).start()
 
     if polling:
         try:
-            poller = GoogleFormsPoller(cfg, app.trigger_callback)  # type: ignore[attr-defined]
+            # New submissions are enqueued (not dialed directly) so the queue paces
+            # and retries them.
+            poller = GoogleFormsPoller(cfg, app.outbound_queue.add)  # type: ignore[attr-defined]
             threading.Thread(target=poller.run, daemon=True).start()
         except Exception as exc:  # noqa: BLE001 — never let a bad form config kill the server
             print(f"  WARNING: Google Forms polling DISABLED — {exc}")
