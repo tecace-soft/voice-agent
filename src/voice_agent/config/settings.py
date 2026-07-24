@@ -65,6 +65,8 @@ class Config:
     hermes_model: str
     gemini_api_key: str
     gemini_model: str
+    agent_name: str
+    agent_org: str
     elevenlabs_api_key: str
     elevenlabs_voice_id: str
     elevenlabs_model_id: str
@@ -109,6 +111,9 @@ class Config:
             hermes_model=_optional("HERMES_MODEL", "hermes-4"),
             gemini_api_key=_required("GEMINI_API_KEY"),
             gemini_model=_optional("GEMINI_MODEL", "gemini-2.5-flash-lite"),
+            # The agent's spoken identity, used when it fields small talk.
+            agent_name=_optional("AGENT_NAME", "Alex"),
+            agent_org=_optional("AGENT_ORG"),
             # ElevenLabs gives the agent its spoken voice (text-to-speech).
             elevenlabs_api_key=_required("ELEVENLABS_API_KEY"),
             elevenlabs_voice_id=_required("ELEVENLABS_VOICE_ID"),

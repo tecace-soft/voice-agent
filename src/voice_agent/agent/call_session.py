@@ -25,6 +25,7 @@ from ..tools.gemini import GeminiTools
 from ..tools.sheets import SheetsError
 from .fulfillment import Fulfillment
 from .intake import IntakeAgent, IntakeField
+from .persona import smalltalk_reply
 from .scheduler import (
     DEFAULT_TIMEZONE,
     Scheduler,
@@ -238,22 +239,37 @@ class CallSession:
 
     def _handle_ready(self, caller_text: str) -> Turn:
         """The opening 'are you ready to pick a time?' — proceed or arrange a callback."""
-        if self._readiness(caller_text) == "not_ready":
+        readiness = self._readiness(caller_text)
+        if readiness == "not_ready":
             self._state = "callback"
             return Turn(
                 "No problem at all. When would be a good time for us to call you back "
                 "to set up your appointment?",
                 "listen",
             )
-        return self._begin_scheduling()  # ready (or unclear) -> proceed
+        if readiness == "ready":
+            return self._begin_scheduling()
+        # off-script (a question, small talk) — answer it, then re-ask
+        return self._converse(caller_text, "Are you ready to pick an appointment time now?")
+
+    def _converse(self, caller_text: str, ask: str) -> Turn:
+        """Field off-script talk (a question, small talk, 'say that again'), then
+        naturally re-ask `ask`. Keeps the agent human without leaving the task."""
+        try:
+            reply = smalltalk_reply(
+                self._gemini, self._cfg.agent_name, self._cfg.agent_org, caller_text, ask
+            )
+        except Exception as exc:  # noqa: BLE001 — fall back to a plain re-ask
+            log.warning("conversational reply failed: %s", exc)
+            reply = f"Sorry, I didn't quite catch that. {ask}"
+        return Turn(reply, "listen")
 
     def _handle_callback(self, caller_text: str) -> Turn:
         when = parse_time(self._gemini, caller_text, DEFAULT_TIMEZONE)
         if not when:
-            return Turn(
-                "Sorry, when would be a good time to call you back? "
-                "For example, tomorrow at 2 PM.",
-                "listen",
+            return self._converse(
+                caller_text,
+                "When would be a good time to call you back? For example, tomorrow at 2 PM.",
             )
         self._callback_at = when
         self._state = "done"
@@ -264,14 +280,15 @@ class CallSession:
         )
 
     def _readiness(self, caller_text: str) -> str:
-        """'ready' | 'not_ready' — is the caller ready to schedule now?"""
+        """'ready' | 'not_ready' | 'other' — how the caller answered 'are you ready?'."""
         prompt = (
             'The agent asked "Are you ready to pick an appointment time now?". '
             f'The caller replied: "{caller_text}". Are they ready to continue now, '
-            "or do they want to be called back at another time?"
+            "do they want to be called back at another time, or did they say "
+            "something off-topic (a question, small talk, unclear)?"
         )
         try:
-            return self._gemini.classify(prompt, ["ready", "not_ready"])["label"]
+            return self._gemini.classify(prompt, ["ready", "not_ready", "other"])["label"]
         except Exception as exc:  # noqa: BLE001 — default to proceeding
             log.warning("readiness check failed: %s", exc)
             return "ready"
@@ -319,14 +336,10 @@ class CallSession:
             return self._offer_day()
         if decision.action in ("decline", "others"):
             return Turn("No problem. What day and time would you prefer?", "listen")
-        # unclear
+        # not a scheduling answer — likely a question or small talk
         self._slot_attempts += 1
         if self._slot_attempts <= MAX_SLOT_RETRIES:
-            return Turn(
-                "Sorry, I didn't catch that. " + self._offer.message
-                + " Or tell me a specific day and time you'd like.",
-                "listen",
-            )
+            return self._converse(caller_text, self._offer.message)
         return self._finish()  # give up scheduling, still save the record
 
     def check_availability(self) -> Turn:
@@ -364,10 +377,9 @@ class CallSession:
         # "no" or "what else that day?" — offer the day's other openings
         if decision.action in ("decline", "others"):
             return self._offer_day(exclude=(self._candidate,))
-        return Turn(
-            f"Sorry, I didn't catch that. Should I book {Scheduler.friendly(self._candidate)}, "
-            "or would you like to hear other times?",
-            "listen",
+        # off-script — answer, then re-ask whether to book the proposed time
+        return self._converse(
+            caller_text, f"Should I book {Scheduler.friendly(self._candidate)}?"
         )
 
     def _offer_day(self, exclude: tuple[str, ...] = ()) -> Turn:
