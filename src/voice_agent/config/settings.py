@@ -82,6 +82,12 @@ class Config:
     public_base_url: str
     cal_event_type_id: int
     detect_voicemail: bool
+    smtp_host: str
+    smtp_port: int
+    smtp_username: str
+    smtp_password: str
+    smtp_from: str
+    notify_email: str
     request_timeout: float
 
     @property
@@ -146,5 +152,12 @@ class Config:
             # Ask Twilio to detect voicemail on outbound calls (leaves a message).
             detect_voicemail=_optional("DETECT_VOICEMAIL", "true").lower()
             in ("1", "true", "yes", "on"),
+            # SMTP for the post-call team email (CRM push). Optional — off if unset.
+            smtp_host=_optional("SMTP_HOST"),
+            smtp_port=int(_optional("SMTP_PORT", "587")),
+            smtp_username=_optional("SMTP_USERNAME"),
+            smtp_password=_optional("SMTP_PASSWORD"),
+            smtp_from=_optional("SMTP_FROM") or _optional("SMTP_USERNAME"),
+            notify_email=_optional("NOTIFY_EMAIL"),
             request_timeout=float(_optional("REQUEST_TIMEOUT_SECONDS", "60")),
         )

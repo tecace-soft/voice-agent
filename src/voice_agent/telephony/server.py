@@ -27,11 +27,12 @@ from xml.sax.saxutils import escape
 
 from flask import Flask, Response, request
 
-from ..agent import CallSession, Fulfillment, IntakeField
+from ..agent import CallSession, Fulfillment, IntakeField, Scheduler
 from ..agent.summary import summarize_call
 from ..config import Config
 from .outbound import OutboundQueue
 from ..tools.google_forms import GoogleFormsClient, GoogleFormsError
+from ..tools.notify import EmailNotifier
 from ..tools.voice import ElevenLabsVoice, VoiceError
 
 log = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ def create_app(cfg: Config | None = None) -> Flask:
     clips: dict[str, bytes] = {}
     pending: dict[str, dict[str, str]] = {}   # token -> form answers awaiting a callback
     outbound = OutboundQueue()                # all outbound calls, one at a time, retried
+    notifier = EmailNotifier(cfg)             # post-call team email (CRM push)
 
     def base_url() -> str:
         return cfg.public_base_url or request.host_url.rstrip("/")
@@ -148,10 +150,10 @@ def create_app(cfg: Config | None = None) -> Flask:
     app.outbound_queue = outbound             # type: ignore[attr-defined]
 
     def summarize_async(session: CallSession) -> None:
-        """Have Hermes summarize the finished call and write it to the sheet row.
+        """Post-call outputs: Hermes summary -> sheet row, and a team email (CRM push).
 
-        Runs in a background thread — the caller has already hung up, so Hermes's
-        latency never touches the conversation. No-op if nothing was tracked.
+        Runs in a background thread — the caller has already hung up, so this never
+        touches the conversation. No-op if nothing was tracked.
         """
         if not session.tracked_row:
             return
@@ -163,13 +165,17 @@ def create_app(cfg: Config | None = None) -> Flask:
                 callback_at=session.callback_at,
                 transcript=session.transcript,
             )
-            if not text:
-                return
-            try:
-                Fulfillment(cfg, fields).note(session.tracked_row, text)
-                log.info("wrote Hermes call summary to row %d", session.tracked_row)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("could not write call summary: %s", exc)
+            if text:
+                try:
+                    Fulfillment(cfg, fields).note(session.tracked_row, text)
+                    log.info("wrote Hermes call summary to row %d", session.tracked_row)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("could not write call summary: %s", exc)
+            if notifier.configured:
+                subject, body = _post_call_email(
+                    session.record, session.booked_at, session.callback_at, text
+                )
+                notifier.send(subject, body)
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -285,6 +291,35 @@ def _e164(raw: str, default_country: str = "1") -> str:
     if len(digits) == 10:
         return "+" + default_country + digits
     return "+" + digits  # 11+ digits: assume it already carries a country code
+
+
+def _post_call_email(
+    record: dict[str, str], booked_at: str, callback_at: str, summary: str
+) -> tuple[str, str]:
+    """Compose the team notification (confirmed time, purpose, follow-ups, contact)."""
+    name = record.get("full_name") or "Lead"
+    if booked_at:
+        outcome = f"Booked a consultation for {Scheduler.friendly(booked_at)}"
+    elif callback_at:
+        outcome = f"Requested a callback at {Scheduler.friendly(callback_at)}"
+    else:
+        outcome = "No appointment booked"
+    subject = f"Lead call — {name}: {outcome}"
+    body = "\n".join(
+        [
+            f"Lead:    {name}",
+            f"Email:   {record.get('email', '')}",
+            f"Phone:   {record.get('phone', '')}",
+            f"Purpose: {record.get('purpose') or '(not given)'}",
+            f"Wanted:  {record.get('desired_time', '')}",
+            "",
+            f"Outcome: {outcome}",
+            "",
+            "Notes / follow-ups for the consultant:",
+            f"  {summary or '(no summary available)'}",
+        ]
+    )
+    return subject, body
 
 
 def _voicemail_message(cfg: Config, name: str) -> str:

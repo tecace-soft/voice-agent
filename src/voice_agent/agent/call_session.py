@@ -28,11 +28,14 @@ from .intake import IntakeAgent, IntakeField
 from .persona import smalltalk_reply
 from .scheduler import (
     DEFAULT_TIMEZONE,
+    Offer,
     Scheduler,
     attendee_name,
+    desired_time_from,
     language_from,
     parse_time,
     phone_from,
+    purpose_from,
     speech_locale,
     timeframe_from,
 )
@@ -40,6 +43,8 @@ from .scheduler import (
 log = logging.getLogger(__name__)
 
 MAX_SLOT_RETRIES = 2
+# Rounds of time alternatives before falling back to emailing a scheduling link.
+MAX_TIME_ALTERNATIVES = 2
 
 # Cache translations of repeated lines (fixed prompts) across calls.
 _LOCALIZE_CACHE: dict[tuple[str, str], str] = {}
@@ -106,6 +111,8 @@ class CallSession:
         self._callback_at = ""  # if not ready now, when to call back instead
         self._transcript: list[str] = []  # spoken exchange, for the post-call summary
         self._tracked_row = 0   # sheet row this call was saved to (0 = not tracked)
+        self._time_attempts = 0        # rounds of time alternatives offered (State 3)
+        self._proposed: set[str] = set()  # slots already proposed, so we don't repeat
         # When the caller already answered the form (a post-submission callback),
         # skip intake: check we've reached the right person, then confirm a time.
         if prefilled:
@@ -243,6 +250,8 @@ class CallSession:
             return self._handle_identity(caller_text)
         if self._state == "confirm":
             return self._handle_ready(caller_text)
+        if self._state == "purpose":
+            return self._handle_purpose(caller_text)
         if self._state == "callback":
             return self._handle_callback(caller_text)
         if self._state == "intake":
@@ -294,9 +303,48 @@ class CallSession:
                 "listen",
             )
         if readiness == "ready":
-            return self._begin_scheduling()
+            return self._begin_purpose()
         # off-script (a question, small talk) — answer it, then re-ask
-        return self._converse(caller_text, "Are you ready to pick an appointment time now?")
+        return self._converse(caller_text, "Do you have a quick minute to set this up?")
+
+    # -- purpose confirmation (State 2) ----------------------------------
+
+    def _begin_purpose(self) -> Turn:
+        """State 2: confirm the interest the lead gave on the form."""
+        purpose = purpose_from(self._record)
+        if not purpose:
+            return self._begin_scheduling()   # nothing to confirm
+        self._state = "purpose"
+        return Turn(
+            f"Just to make sure I have this right — you're interested in {purpose}, "
+            "is that correct?",
+            "listen",
+        )
+
+    def _handle_purpose(self, caller_text: str) -> Turn:
+        purpose = purpose_from(self._record)
+        prompt = (
+            f'The agent asked the lead to confirm they\'re interested in "{purpose}".\n'
+            f'The lead replied: "{caller_text}".\n\n'
+            "Pick the label:\n"
+            "- correct: they confirmed it's right (yes, correct, that's right).\n"
+            "- different: they corrected it or added other details about what they want.\n"
+            "- other: a question, small talk, or something you cannot interpret."
+        )
+        try:
+            label = self._gemini.classify(prompt, ["correct", "different", "other"])["label"]
+        except Exception as exc:  # noqa: BLE001 — assume it's right and move on
+            log.warning("purpose check failed: %s", exc)
+            label = "correct"
+        if label == "other":
+            return self._converse(caller_text, f"You're interested in {purpose}, is that correct?")
+        if label == "different":
+            # Log the clarification (it's captured in the transcript -> consultant note).
+            turn = self._begin_scheduling()
+            return Turn(
+                "Got it — I'll make sure our consultant knows that. " + turn.reply, turn.next
+            )
+        return self._begin_scheduling()  # correct
 
     def _converse(self, caller_text: str, ask: str) -> Turn:
         """Field off-script talk (a question, small talk, 'say that again'), then
@@ -362,16 +410,59 @@ class CallSession:
 
     def _begin_scheduling(self) -> Turn:
         self._scheduler = Scheduler(self._cfg, self._event_type_id)
+        # Always fetch the timeframe's openings first — used as the fallback list
+        # whether or not the lead named a specific desired time.
         try:
             self._offer = self._scheduler.offer(timeframe_from(self._record))
         except CalError as exc:
             log.warning("could not fetch slots: %s", exc)
             return self._finish()
+        # State 3: if the lead gave a specific desired time on the form, confirm THAT
+        # first rather than reading out a list.
+        desired = self._desired_iso()
+        if desired:
+            return self._confirm_desired(desired)
+        return self._offer_list()
+
+    def _offer_list(self) -> Turn:
+        """Read out a few openings and let the caller pick (no desired time given)."""
         if not self._offer.options:
             # No openings — the offer message already asks for another timeframe.
             return self._finish(closing=self._offer.message)
         self._state = "scheduling"
         return Turn(self._offer.message, "listen")
+
+    def _desired_iso(self) -> str:
+        raw = desired_time_from(self._record)
+        return parse_time(self._gemini, raw, DEFAULT_TIMEZONE) if raw else ""
+
+    def _confirm_desired(self, desired_iso: str) -> Turn:
+        """State 3: confirm the lead's desired time; propose the nearest if it's taken."""
+        try:
+            exact, nearest = self._scheduler.check_time(desired_iso)
+        except CalError as exc:
+            log.warning("desired-time check failed: %s", exc)
+            exact = nearest = ""
+        if exact:
+            self._candidate = self._day = exact
+            self._proposed.add(exact)
+            self._state = "confirm_slot"
+            return Turn(
+                f"You mentioned {Scheduler.friendly(exact)} would work for you. I can "
+                "confirm a 30-minute consultation call at that time — does that still work?",
+                "listen",
+            )
+        if nearest:
+            self._candidate = self._day = nearest
+            self._proposed.add(nearest)
+            self._state = "confirm_slot"
+            return Turn(
+                f"You mentioned {Scheduler.friendly(desired_iso)}, but that time isn't "
+                f"open anymore. The closest I have is {Scheduler.friendly(nearest)} — "
+                "would that work?",
+                "listen",
+            )
+        return self._offer_list()   # nothing near the desired time — offer the list
 
     def _handle_pick(self, caller_text: str) -> Turn:
         decision = self._scheduler.decide(caller_text, self._offer.options)
@@ -381,15 +472,13 @@ class CallSession:
             self._requested = self._day = decision.requested
             self._state = "checking"
             return Turn("Sure, let me check if that time is available. One moment.", "check")
-        if decision.action == "others" and self._day:
-            return self._offer_day()
         if decision.action in ("decline", "others"):
-            return Turn("No problem. What day and time would you prefer?", "listen")
+            return self._offer_alternatives()
         # not a scheduling answer — likely a question or small talk
         self._slot_attempts += 1
         if self._slot_attempts <= MAX_SLOT_RETRIES:
             return self._converse(caller_text, self._offer.message)
-        return self._finish()  # give up scheduling, still save the record
+        return self._finish(closing=self._scheduling_link_message())
 
     def check_availability(self) -> Turn:
         """Check a caller-requested time against Cal.com; propose it or the nearest
@@ -423,27 +512,42 @@ class CallSession:
             return Turn("Let me check that one. One moment.", "check")
         if decision.action == "pick":          # yes — book the proposed slot
             return self._acknowledge_booking(self._candidate)
-        # "no" or "what else that day?" — offer the day's other openings
+        # "no" or "what else?" — offer a couple of alternatives (State 3 "No")
         if decision.action in ("decline", "others"):
-            return self._offer_day(exclude=(self._candidate,))
+            return self._offer_alternatives(exclude=(self._candidate,))
         # off-script — answer, then re-ask whether to book the proposed time
         return self._converse(
             caller_text, f"Should I book {Scheduler.friendly(self._candidate)}?"
         )
 
-    def _offer_day(self, exclude: tuple[str, ...] = ()) -> Turn:
-        """Offer the other free slots on the day in focus, or say there are none."""
-        offer = self._scheduler.day_offer(self._day, exclude=exclude)
-        if offer.options:
-            self._offer = offer
-            self._candidate = ""
-            self._state = "scheduling"
-            return Turn(offer.message, "listen")
+    def _offer_alternatives(self, exclude: tuple[str, ...] = ()) -> Turn:
+        """State 3 'No' — propose up to 2 calendar alternatives; after a few tries,
+        fall back to emailing a scheduling link."""
+        self._proposed.update(exclude)
+        self._time_attempts += 1
+        if self._time_attempts > MAX_TIME_ALTERNATIVES:
+            return self._finish(closing=self._scheduling_link_message())
+        # Prefer other openings on the day in focus; else fall back to the timeframe list.
+        if self._day:
+            pool = self._scheduler.day_offer(self._day, exclude=tuple(self._proposed)).options
+        else:
+            pool = self._offer.options
+        options = [o for o in pool if o not in self._proposed][:2]
+        if not options:
+            return self._finish(closing=self._scheduling_link_message())
+        self._proposed.update(options)
+        self._candidate = ""
         self._state = "scheduling"
-        return Turn(
-            f"I'm sorry, I don't have any other openings on {Scheduler.day_label(self._day)}. "
-            "Would another day work?",
-            "listen",
+        friendly = " or ".join(Scheduler.friendly(o) for o in options)
+        self._offer = Offer(f"How about {friendly}?", options)
+        return Turn(self._offer.message, "listen")
+
+    def _scheduling_link_message(self) -> str:
+        first = self._first_name()
+        hi = f", {first}" if first else ""
+        return (
+            f"No problem{hi} — I'll have our team email you a scheduling link so you can "
+            "pick the time that works best. Thanks so much, and have a great day!"
         )
 
     def _acknowledge_booking(self, slot: str) -> Turn:
@@ -482,7 +586,7 @@ class CallSession:
                 f"Great{hi} — you're all set for {Scheduler.friendly(self._booked_at)}. "
                 f"You'll get a confirmation email{where} with the meeting link, and our "
                 "consultant will review your inquiry before the call. "
-                "We look forward to speaking with you!"
+                f"Thanks{hi}, we look forward to speaking with you — have a great day!"
             )
         return (
             f"I'm sorry{hi}, I couldn't lock that in just now — our team will email you "

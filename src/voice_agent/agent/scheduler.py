@@ -310,6 +310,22 @@ def timeframe_from(record: dict[str, str]) -> str | None:
     return None
 
 
+def purpose_from(record: dict[str, str]) -> str:
+    """The lead's stated interest/purpose, if the form captured one."""
+    for key, value in record.items():
+        if "purpose" in key and value:
+            return value
+    return ""
+
+
+def desired_time_from(record: dict[str, str]) -> str:
+    """The specific time the lead asked for on the form (free text), if any."""
+    for key, value in record.items():
+        if ("desired" in key or "preferred" in key) and value:
+            return value
+    return ""
+
+
 def attendee_name(record: dict[str, str]) -> str:
     """Best-effort caller name across form shapes (first/last, full_name, etc.)."""
     parts = [record.get("first_name", ""), record.get("last_name", "")]

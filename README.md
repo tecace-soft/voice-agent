@@ -116,17 +116,20 @@ The conversation engine is **`CallSession`** (`agent/call_session.py`) — a tur
 ### The states
 
 ```
-inbound:   intake ─► scheduling ─► (booking) ─► done
-outbound:  confirm ─► scheduling ─► (booking) ─► done
-                └─► callback ─► done         (if "not ready")
+inbound:   intake ─────────────────────────► scheduling ─► (booking) ─► done
+outbound:  identity ─► confirm ─► purpose ──► scheduling ─► (booking) ─► done
+              │           └─► callback ─► done            (if "not ready")
+              └─► done  (wrong person / voicemail)
 ```
 
-- **intake** — asks each form question in turn; Gemini extracts the answer from free speech and loops until every field is captured. (Inbound only; outbound calls already have the answers from the form.)
-- **confirm** — the outbound opener ("are you ready to pick a time?"). Gemini classifies the reply as *ready* or *not ready*.
-- **callback** — if not ready, asks *when* to call back, resolves the spoken time (e.g. "tomorrow at 2") to a concrete time, and queues a ring-back.
-- **scheduling** — offers a few live, business-hours slots. Gemini interprets the reply as one of: **pick** a slot · **request** a specific time · **others** (hear more that day) · **decline** · **unclear**.
-- **checking / confirm_slot** — when the caller names a specific time, it checks Cal.com and proposes that exact time or the **nearest** opening for a yes/no.
-- **booking** — two-phase: acknowledge ("setting it up, one moment"), then book + save while that plays, then confirm — so there's no dead air.
+- **identity** *(outbound)* — *"may I speak with {name}?"*; wrong person → polite apology + end. Right person → Tess introduces herself and asks for a quick minute.
+- **confirm** — readiness. Gemini classifies the reply as *ready* / *not ready* / *other* (off-script → the persona fields it).
+- **callback** — if not ready, asks *when* to call back, resolves the spoken time, and queues a ring-back.
+- **purpose** *(outbound)* — confirms the lead's stated interest (*"you're interested in {purpose}, correct?"*); a correction is acknowledged and logged for the consultant.
+- **scheduling** — if the lead gave a **desired time**, it confirms *that* (proposing the nearest opening if it's taken); otherwise it offers a few live, business-hours slots. Gemini interprets each reply as **pick** · **request** a specific time · **others** · **decline** · off-script.
+- **checking / confirm_slot** — checks a specific time against Cal.com and proposes that time or the **nearest** opening for a yes/no.
+- **booking** — two-phase: acknowledge ("setting it up, one moment"), then book + save while that plays, then confirm (with the confirmation-email + consultant-review note).
+- **intake** *(inbound only)* — asks each form question in turn; Gemini extracts the answer and loops until every field is captured.
 
 ### Key behaviors
 
@@ -138,7 +141,7 @@ outbound:  confirm ─► scheduling ─► (booking) ─► done
 - **Outbound queue — no one is missed** — *every* outbound call (first-contact and ring-back) goes through one persisted queue that places calls **one at a time**, waits for each to finish, and **retries** failures (busy / no-answer / couldn't-place) with backoff before giving up. Safe even on a Twilio trial (1 concurrent call). Ring-backs are scheduled for the caller's requested time and use a **different greeting** ("I'm calling back at the time you requested…").
 - **Language** — the form's language answer (or the first inbound question) picks English or Korean; every agent line is translated and spoken in that language.
 - **Phone normalization** — form phone answers are plain text, so outbound numbers are normalized to E.164 (`4254787534` → `+14254787534`) before Twilio dials.
-- **Post-call summary** — once a call ends and the record is saved, the **Hermes** agent writes a one-line human-readable note ("Jordan Lee called and booked … Friday at 9 AM") into the row's `summary` column. This runs in a background thread, so it never delays the caller; it degrades to no note if Hermes is unreachable.
+- **Post-call outputs (CRM + email)** — once a call ends and the record is saved, a background thread has **Hermes** write a one-line summary (with any pricing/technical/human questions flagged for the consultant) into the row's `summary` column, **and** emails the team the confirmed time, purpose, follow-ups, and contact (`SMTP_*` / `NOTIFY_EMAIL`; skipped if unconfigured). Never delays the caller.
 
 ---
 
@@ -215,6 +218,7 @@ cp .env.example .env               # then fill it in (see below)
 | `CAL_API_KEY`, `CAL_EVENT_TYPE_ID` | Cal.com scheduling |
 | `ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `PHONE_NUMBER` | Twilio phone line |
 | `PUBLIC_BASE_URL` | How Twilio reaches this server, e.g. `http://<box-ip>:3001` |
+| `SMTP_*`, `NOTIFY_EMAIL` | Post-call team email (CRM push); optional, off if unset |
 | `PORT` | Port the server listens on (default 3000) |
 
 **Google one-time setup:** enable the **Google Forms API** in the Cloud project, and share **both** the form and the sheet with `GOOGLE_API_EMAIL` as an **Editor** (viewer isn't enough for the Forms API). The form needs a **phone-number question** or there's no one to call back.
@@ -248,6 +252,7 @@ python scripts/checks/diagnose_forms.py    # health-check the Forms -> callback 
 python scripts/checks/verify_cal.py        # Cal.com connectivity + event types
 python scripts/checks/verify_sheets.py     # Sheets auth + append
 python scripts/checks/verify_voice.py      # ElevenLabs TTS
+python scripts/checks/verify_email.py      # SMTP post-call email (sends a test)
 ```
 
 ---
