@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -19,6 +20,19 @@ from pathlib import Path
 from ..config import Config
 
 _API_ROOT = "https://api.elevenlabs.io/v1"
+
+# How brand words should be SPOKEN. Applied only to the audio text — records,
+# logs, and transcripts keep the real spelling. Add pairs here as needed.
+_PRONUNCIATIONS = [
+    (re.compile(r"\bTecAce\b", re.IGNORECASE), "Tech Ace"),  # e.g. "TecAce", "tecace.com"
+]
+
+
+def _for_speech(text: str) -> str:
+    """Rewrite tricky words phonetically so the TTS engine says them correctly."""
+    for pattern, say in _PRONUNCIATIONS:
+        text = pattern.sub(say, text)
+    return text
 # 44.1 kHz / 128 kbps mp3 — a good default for saving speech to a file.
 _OUTPUT_FORMAT = "mp3_44100_128"
 # Raw 16-bit mono PCM for inline playback. 24 kHz is the highest the free tier
@@ -101,7 +115,7 @@ class ElevenLabsVoice:
         status, ctype, body = self._request(
             url,
             method="POST",
-            body={"text": text, "model_id": self._model_id},
+            body={"text": _for_speech(text), "model_id": self._model_id},
             accept="audio/mpeg",
         )
         if status >= 400:
@@ -126,7 +140,7 @@ class ElevenLabsVoice:
         status, ctype, body = self._request(
             url,
             method="POST",
-            body={"text": text, "model_id": self._model_id},
+            body={"text": _for_speech(text), "model_id": self._model_id},
             accept="audio/pcm",
         )
         if status >= 400:
