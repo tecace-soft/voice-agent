@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import re
 import textwrap
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -49,6 +50,12 @@ def normalize_private_key(raw: str) -> str:
 
 
 class SheetsClient:
+    # Access token shared across ALL instances (keyed by service-account email),
+    # so the many short-lived SheetsClients per call — track(), note() — reuse one
+    # token instead of each doing its own JWT exchange. Minted once per ~hour.
+    _token_cache: dict[str, tuple[str, float]] = {}
+    _token_lock = threading.Lock()
+
     def __init__(self, cfg: Config) -> None:
         if not cfg.google_api_email or not cfg.google_sheets_key:
             raise SheetsError("GOOGLE_API_EMAIL / GOOGLE_API_SHEETS_KEY not set in .env.")
@@ -58,14 +65,23 @@ class SheetsClient:
         self._email = cfg.google_api_email
         self._key = normalize_private_key(cfg.google_sheets_key)
         self._sheet_id = cfg.google_sheets_id
-        self._token: str | None = None
-        self._token_exp = 0.0
 
     # -- auth ------------------------------------------------------------
 
     def _access_token(self) -> str:
-        if self._token and time.time() < self._token_exp - 60:
-            return self._token
+        cached = SheetsClient._token_cache.get(self._email)
+        if cached and time.time() < cached[1] - 60:
+            return cached[0]
+        with SheetsClient._token_lock:
+            # Re-check: another thread may have minted it while we waited.
+            cached = SheetsClient._token_cache.get(self._email)
+            if cached and time.time() < cached[1] - 60:
+                return cached[0]
+            token, expires_in = self._mint_token()
+            SheetsClient._token_cache[self._email] = (token, time.time() + expires_in)
+            return token
+
+    def _mint_token(self) -> tuple[str, float]:
         now = int(time.time())
         assertion = jwt.encode(
             {
@@ -88,9 +104,7 @@ class SheetsClient:
                 payload = json.load(response)
         except urllib.error.HTTPError as exc:
             raise SheetsError(f"token request failed [{exc.code}]: {exc.read()[:200]!r}") from exc
-        self._token = payload["access_token"]
-        self._token_exp = time.time() + payload.get("expires_in", 3600)
-        return self._token
+        return payload["access_token"], payload.get("expires_in", 3600)
 
     # -- transport -------------------------------------------------------
 
