@@ -121,6 +121,7 @@ class CallSession:
         self._transcript: list[str] = []  # spoken exchange, for the post-call summary
         self._tracked_row = 0   # sheet row this call was saved to (0 = not tracked)
         self._summarized = False  # guard: post-call outputs (email/summary) run once
+        self._clarify_attempts = 0     # times we've re-asked the purpose (State 2)
         self._time_attempts = 0        # rounds of time alternatives offered (State 3)
         self._proposed: set[str] = set()  # slots already proposed, so we don't repeat
         self._pending_think: tuple[str, str] = ()  # (caller_text, ask) for think()
@@ -272,6 +273,8 @@ class CallSession:
             return self._handle_ready(caller_text)
         if self._state == "purpose":
             return self._handle_purpose(caller_text)
+        if self._state == "clarify_purpose":
+            return self._handle_clarify_purpose(caller_text)
         if self._state == "callback":
             return self._handle_callback(caller_text)
         if self._state == "intake":
@@ -365,21 +368,34 @@ class CallSession:
             f'The lead replied: "{caller_text}".\n\n'
             "Pick the label:\n"
             "- correct: they confirmed it's right (yes, correct, that's right).\n"
-            "- different: they corrected it or added other details about what they want.\n"
+            "- different: they gave a DIFFERENT or additional description of what they "
+            "actually want — there is real substance to note (e.g. \"no, we need X\").\n"
+            "- rejected: they said it's NOT right / no, but did NOT say what they do "
+            'want — a bare "no", "that\'s not it", "not really" (we must ask them).\n'
             "- other: a question, small talk, or something you cannot interpret."
         )
         try:
-            label = self._gemini.classify(prompt, ["correct", "different", "other"])["label"]
+            label = self._gemini.classify(
+                prompt, ["correct", "different", "rejected", "other"]
+            )["label"]
         except Exception as exc:  # noqa: BLE001 — assume it's right and move on
             log.warning("purpose check failed: %s", exc)
             label = "correct"
         if label == "other":
             return self._converse(caller_text, f"You're interested in {purpose}, is that correct?")
+        if label == "rejected":
+            # They said the form's purpose is wrong but didn't say what they want.
+            # Don't just log "no" — ask, and capture their real answer (State 2).
+            self._state = "clarify_purpose"
+            return Turn(
+                "Oh, no problem — so I can pass the right details to our consultant, "
+                "could you tell me a bit about what you're hoping to get help with?",
+                "listen",
+            )
         if label == "different":
-            # State 2 'different': log what they actually said to the record (so it
-            # reaches the sheet + the post-call note), acknowledge, and move on. The
-            # end-of-call Hermes summary distills the clarification for the consultant
-            # from the transcript — no model call here on the critical path.
+            # They gave real details: log them to the record (so it reaches the sheet
+            # + the post-call note), acknowledge, and move on. The end-of-call Hermes
+            # summary distills it for the consultant — no model call on the hot path.
             self._absorb_purpose(caller_text)
             turn = self._begin_scheduling()
             return Turn(
@@ -387,15 +403,52 @@ class CallSession:
             )
         return self._begin_scheduling()  # correct
 
-    def _absorb_purpose(self, caller_text: str) -> None:
+    def _handle_clarify_purpose(self, caller_text: str) -> Turn:
+        """State 2 follow-up: the lead rejected the form's purpose and we asked what
+        they actually want. Note a real answer (or an "I'm not sure") as the corrected
+        purpose and move on; field an actual question ONCE, then proceed regardless so
+        it can never loop."""
+        if self._clarify_attempts < 1 and self._asks_question(caller_text):
+            self._clarify_attempts += 1
+            return self._converse(caller_text, "What are you hoping to get help with?")
+        self._absorb_purpose(caller_text, corrected=True)
+        turn = self._begin_scheduling()
+        return Turn(
+            "Thanks — I'll make sure our consultant knows that. " + turn.reply, turn.next
+        )
+
+    def _asks_question(self, caller_text: str) -> bool:
+        """True if the reply is the caller asking US something rather than describing
+        their need — so we field it instead of logging it as their purpose."""
+        prompt = (
+            "The agent asked the lead what they're hoping to get help with.\n"
+            f'The lead replied: "{caller_text}".\n\n'
+            "Pick the label:\n"
+            "- answered: they described a need, goal, or topic — or said they're not "
+            "sure — anything we can simply note down and move on.\n"
+            "- question: they asked the agent a question instead of answering."
+        )
+        try:
+            return self._gemini.classify(prompt, ["answered", "question"])["label"] == "question"
+        except Exception as exc:  # noqa: BLE001 — just note it and move on
+            log.warning("clarify-purpose check failed: %s", exc)
+            return False
+
+    def _absorb_purpose(self, caller_text: str, *, corrected: bool = False) -> None:
         """Log the lead's corrected/added interest to the record so it reaches the
         consultant notes (sheet + post-call summary). No summarizing here — the
-        end-of-call Hermes summary does that from the full transcript."""
+        end-of-call Hermes summary does that from the full transcript. `corrected`
+        marks a reply that REPLACES a purpose the lead rejected (vs. adds detail)."""
         detail = caller_text.strip()
         if not detail:
             return
         prior = self._record.get("purpose", "")
-        self._record["purpose"] = f"{prior} | added: {detail}" if prior else detail
+        if not prior:
+            self._record["purpose"] = detail
+        elif corrected:
+            self._record["purpose"] = f"{prior} (lead corrected) -> {detail}"
+        else:
+            self._record["purpose"] = f"{prior} | added: {detail}"
 
     def _converse(self, caller_text: str, ask: str) -> Turn:
         """Field off-script talk. Speak a brief filler NOW ("one moment…") and defer
