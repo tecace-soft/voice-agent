@@ -33,7 +33,26 @@ from ..config import Config
 from .outbound import OutboundQueue
 from ..tools.google_forms import GoogleFormsClient, GoogleFormsError
 from ..tools.notify import EmailNotifier
-from ..tools.voice import ElevenLabsVoice, VoiceError
+from ..tools.voice import ElevenLabsVoice, VoiceError, _for_speech
+
+# Twilio/Amazon Polly voices used when ElevenLabs is unavailable (e.g. out of
+# credits) — a decent free fallback so testing never goes silent. Chosen to match
+# the language of the (already-localized) text so Korean isn't read by an English
+# voice. Extend _FALLBACK_VOICES for more languages.
+_HANGUL = re.compile(r"[가-힣㄰-㆏ᄀ-ᇿ]")
+_FALLBACK_VOICES = {
+    "ko-KR": "Polly.Seoyeon",   # Korean
+    "en-US": "Polly.Joanna",    # English (default)
+}
+
+
+def _fallback_say(text: str) -> str:
+    """A Polly <Say> in a voice matched to the text's language."""
+    lang = "ko-KR" if _HANGUL.search(text) else "en-US"
+    return (
+        f'<Say voice="{_FALLBACK_VOICES[lang]}" language="{lang}">'
+        f"{escape(_for_speech(text))}</Say>"
+    )
 
 log = logging.getLogger(__name__)
 
@@ -88,22 +107,27 @@ def create_app(cfg: Config | None = None) -> Flask:
             return None
 
     def speak(text: str) -> str:
-        """TwiML to say `text` — <Play> the ElevenLabs clip, or <Say> as fallback."""
+        """TwiML to say `text` — <Play> the ElevenLabs clip, or a Polly <Say> fallback
+        (used when ElevenLabs is unavailable, e.g. out of credits)."""
         url = voice_clip(text)
         if url:
             return f"<Play>{escape(url)}</Play>"
-        return f"<Say>{escape(text)}</Say>"
+        return _fallback_say(text)
 
     def gather(prompt_twiml: str, locale: str = "en-US") -> Response:
-        # phone_call + enhanced = better phone recognition (fewer retries); the
-        # caller can barge in over the prompt (Gather listens during <Play>).
+        # Play the prompt FIRST, then listen. If the prompt is *inside* <Gather>,
+        # the recognizer hears the agent's own audio over the phone line and
+        # transcribes it as if the caller spoke — so the agent "answers itself" and
+        # moves on without waiting. Playing first (no barge-in) fixes that.
+        # phone_call + enhanced = better phone recognition; timeout = how long to
+        # wait for the caller to start speaking after the prompt.
         xml = (
             '<?xml version="1.0" encoding="UTF-8"?>'
             "<Response>"
+            f"{prompt_twiml}"
             '<Gather input="speech" action="/voice/turn" method="POST" '
             f'speechTimeout="{SPEECH_TIMEOUT}" speechModel="phone_call" enhanced="true" '
-            f'actionOnEmptyResult="true" language="{locale}">'
-            f"{prompt_twiml}"
+            f'actionOnEmptyResult="true" language="{locale}" timeout="7">'
             "</Gather>"
             # If Gather returns without posting (rare), keep the line open.
             "<Redirect>/voice/turn</Redirect>"
