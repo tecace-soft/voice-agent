@@ -27,12 +27,15 @@ _PRONUNCIATIONS = [
     (re.compile(r"\bTecAce\b", re.IGNORECASE), "Tech Ace"),  # e.g. "TecAce", "tecace.com"
 ]
 
+# On-the-hour times read better without the minutes: "2:00 PM" -> "2 PM".
+_TIME_ON_HOUR = re.compile(r"\b(1[0-2]|[1-9]):00(\s*[AaPp]\.?[Mm])")
+
 
 def _for_speech(text: str) -> str:
-    """Rewrite tricky words phonetically so the TTS engine says them correctly."""
+    """Rewrite tricky words/times so the TTS engine says them naturally."""
     for pattern, say in _PRONUNCIATIONS:
         text = pattern.sub(say, text)
-    return text
+    return _TIME_ON_HOUR.sub(r"\1\2", text)
 # 44.1 kHz / 128 kbps mp3 — a good default for saving speech to a file.
 _OUTPUT_FORMAT = "mp3_44100_128"
 # Raw 16-bit mono PCM for inline playback. 24 kHz is the highest the free tier

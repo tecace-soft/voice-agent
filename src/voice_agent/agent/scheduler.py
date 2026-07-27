@@ -392,8 +392,13 @@ def _pick_diverse(slots: dict, n: int) -> list[str]:
 
 
 def _friendly(iso_start: str) -> str:
-    """'2026-07-22T12:15:00.000-07:00' -> 'Wednesday, July 22 at 12:15 PM'."""
+    """A spoken-friendly time: on the hour drops the minutes.
+
+    '...T12:00...' -> 'Wednesday, July 22 at 12 PM';
+    '...T12:15...' -> 'Wednesday, July 22 at 12:15 PM'.
+    """
     dt = datetime.datetime.fromisoformat(iso_start)
     hour12 = dt.hour % 12 or 12
     ampm = "AM" if dt.hour < 12 else "PM"
-    return f"{dt.strftime('%A, %B')} {dt.day} at {hour12}:{dt.minute:02d} {ampm}"
+    clock = f"{hour12} {ampm}" if dt.minute == 0 else f"{hour12}:{dt.minute:02d} {ampm}"
+    return f"{dt.strftime('%A, %B')} {dt.day} at {clock}"
