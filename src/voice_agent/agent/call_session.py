@@ -120,6 +120,7 @@ class CallSession:
         self._callback_at = ""  # if not ready now, when to call back instead
         self._transcript: list[str] = []  # spoken exchange, for the post-call summary
         self._tracked_row = 0   # sheet row this call was saved to (0 = not tracked)
+        self._summarized = False  # guard: post-call outputs (email/summary) run once
         self._time_attempts = 0        # rounds of time alternatives offered (State 3)
         self._proposed: set[str] = set()  # slots already proposed, so we don't repeat
         self._pending_think: tuple[str, str] = ()  # (caller_text, ask) for think()

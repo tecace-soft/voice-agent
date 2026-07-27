@@ -219,6 +219,9 @@ def create_app(cfg: Config | None = None) -> Flask:
         """
         if not (session.booked_at or session.callback_at or session.tracked_row):
             return
+        if session._summarized:   # idempotent — never send the post-call email twice
+            return
+        session._summarized = True
 
         def work() -> None:
             try:
