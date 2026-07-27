@@ -66,6 +66,7 @@ def create_app(cfg: Config | None = None) -> Flask:
     sessions: dict[str, CallSession] = {}
     clips: dict[str, bytes] = {}
     pending: dict[str, dict[str, str]] = {}   # token -> form answers awaiting a callback
+    thinking: dict[str, dict] = {}            # CallSid -> deferred off-script reply in flight
     outbound = OutboundQueue()                # all outbound calls, one at a time, retried
     notifier = EmailNotifier(cfg)             # post-call team email (CRM push)
 
@@ -234,6 +235,14 @@ def create_app(cfg: Config | None = None) -> Flask:
         if result.next == "finalize":
             # Say "one moment…" now; book + save while it plays, then confirm.
             return play_then(speak(result.reply), "/voice/finalize")
+        if result.next == "think":
+            # Say a brief filler now; generate the (slower) off-script reply in the
+            # background WHILE it plays, so the caller doesn't hear silence.
+            holder: dict = {}
+            th = threading.Thread(target=lambda: holder.update(turn=session.think()), daemon=True)
+            th.start()
+            thinking[call_sid] = {"thread": th, "holder": holder}
+            return play_then(speak(result.reply), "/voice/think")
         if result.ended:
             if session.callback_at and session.phone:
                 outbound.add(
@@ -252,6 +261,23 @@ def create_app(cfg: Config | None = None) -> Flask:
         if session is None:
             return hangup(speak("Thanks, we'll be in touch. Goodbye!"))
         turn = session.check_availability()   # the Cal.com availability lookup
+        return gather(speak(turn.reply), session.speech_locale)
+
+    @app.route("/voice/think", methods=["POST", "GET"])
+    def think():
+        # The off-script reply was generated in the background during the filler.
+        call_sid = request.values.get("CallSid", "")
+        session = sessions.get(call_sid)
+        if session is None:
+            return hangup(speak("Thanks, we'll be in touch. Goodbye!"))
+        entry = thinking.pop(call_sid, None)
+        if entry:
+            entry["thread"].join(timeout=cfg.request_timeout)   # usually already done
+            turn = entry["holder"].get("turn")
+        else:
+            turn = session.think()   # fallback if the background task was lost
+        if turn is None:   # generation still running or failed — keep the line alive
+            turn = session.think()
         return gather(speak(turn.reply), session.speech_locale)
 
     @app.route("/voice/finalize", methods=["POST", "GET"])

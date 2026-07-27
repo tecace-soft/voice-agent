@@ -115,6 +115,9 @@ def main(argv: list[str]) -> int:
         say(turn.reply)
         # "check" (availability lookup) then "finalize" (booking) run their slow
         # work after the spoken acknowledgement, same as the phone flow.
+        if turn.next == "think":
+            turn = session.think()   # the off-script reply (masked by a filler on the phone)
+            say(turn.reply)
         if turn.next == "check":
             turn = session.check_availability()
             say(turn.reply)

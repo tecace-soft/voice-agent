@@ -199,6 +199,31 @@ class HermesChat:
         return asyncio.run(self.ask_async(text, timeout=timeout))
 
 
+class HermesTools:
+    """Text generation via the Hermes agent (its configured model, e.g. gpt-5.6-sol).
+
+    Mirrors `GeminiTools.generate(system, user)` so it can stand in as the app's
+    "brain" for generative work. Combines the system + user prompt into one chat
+    turn. Each call logs in and opens a fresh WebSocket session (~0.4s overhead);
+    a persistent per-call session is a planned optimisation.
+    """
+
+    def __init__(self, cfg: Config) -> None:
+        self._cfg = cfg
+
+    def generate(
+        self, system: str, user: str, *, temperature: float = 0.4, timeout: float = 10.0
+    ) -> str:
+        """Return the agent's reply to `system` + `user` (temperature is advisory).
+
+        Timeout is deliberately tight for the live-call path: the Hermes agent can
+        occasionally decide to use tools (browse/verify) and take tens of seconds —
+        past this, the caller waits instead of getting the Gemini fallback.
+        """
+        prompt = f"{system}\n\n{user}" if system else user
+        return HermesChat(HermesSession(self._cfg)).ask(prompt, timeout=timeout).strip()
+
+
 def status(cfg: Config) -> dict[str, Any]:
     """Unauthenticated /api/status — useful for a liveness/gateway check."""
     session = HermesSession(cfg)

@@ -12,7 +12,13 @@ state): the same fallback answers company questions and defers out-of-scope ones
 
 from __future__ import annotations
 
-from ..tools.gemini import GeminiTools
+from typing import Protocol
+
+
+class _Brain(Protocol):
+    """Anything that can generate text — GeminiTools or HermesTools."""
+
+    def generate(self, system: str, user: str, *, temperature: float = ...) -> str: ...
 
 # What Tess may state as fact. Everything not here must be deferred, not guessed.
 _KNOWLEDGE_BASE = """\
@@ -51,7 +57,7 @@ def system_prompt(name: str) -> str:
     )
 
 
-def smalltalk_reply(gemini: GeminiTools, name: str, caller_text: str, ask: str) -> str:
+def smalltalk_reply(brain: _Brain, name: str, caller_text: str, ask: str) -> str:
     """A short spoken reply that answers off-script talk / FAQs, then re-asks `ask`."""
     user = (
         f'The caller just said: "{caller_text}"\n'
@@ -62,7 +68,7 @@ def smalltalk_reply(gemini: GeminiTools, name: str, caller_text: str, ask: str) 
         "Then bring them back by asking your question again (rephrase it naturally). "
         "Do not restate these instructions."
     )
-    reply = gemini.generate(system_prompt(name), user, temperature=0.5).strip()
+    reply = brain.generate(system_prompt(name), user, temperature=0.5).strip()
     # Models sometimes wrap the line in quotes — strip a matched pair so TTS is clean.
     if len(reply) >= 2 and reply[0] in "\"'" and reply[-1] == reply[0]:
         reply = reply[1:-1].strip()

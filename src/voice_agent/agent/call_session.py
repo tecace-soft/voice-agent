@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from ..config import Config
 from ..tools.cal import CalError
 from ..tools.gemini import GeminiTools
+from ..tools.hermes import HermesTools
 from ..tools.sheets import SheetsError
 from .fulfillment import Fulfillment
 from .intake import IntakeAgent, IntakeField
@@ -45,6 +46,14 @@ log = logging.getLogger(__name__)
 MAX_SLOT_RETRIES = 2
 # Rounds of time alternatives before falling back to emailing a scheduling link.
 MAX_TIME_ALTERNATIVES = 2
+# Lines spoken while the (slower) off-script answer is generated, so the caller
+# hears a natural beat instead of silence. ~2-3s each to cover the think time;
+# rotated to avoid repetition.
+_FILLERS = [
+    "Sure, let me look into that for you — one moment.",
+    "That's a good question. Let me check on that for you.",
+    "Let me pull that up for you, just a second.",
+]
 
 # Cache translations of repeated lines (fixed prompts) across calls.
 _LOCALIZE_CACHE: dict[tuple[str, str], str] = {}
@@ -91,6 +100,7 @@ class CallSession:
         # asked for earlier — changes the opening line (see start()).
         self._is_callback = callback
         self._gemini = GeminiTools(cfg)
+        self._hermes = HermesTools(cfg)   # generative brain (gpt-5.6), Gemini fallback
         self._agent = IntakeAgent(
             cfg,
             fields,
@@ -113,6 +123,8 @@ class CallSession:
         self._tracked_row = 0   # sheet row this call was saved to (0 = not tracked)
         self._time_attempts = 0        # rounds of time alternatives offered (State 3)
         self._proposed: set[str] = set()  # slots already proposed, so we don't repeat
+        self._pending_think: tuple[str, str] = ()  # (caller_text, ask) for think()
+        self._filler_i = -1            # rotates the "one moment…" filler lines
         # When the caller already answered the form (a post-submission callback),
         # skip intake and open with the full greeting (identity + intro + readiness).
         if prefilled:
@@ -316,14 +328,30 @@ class CallSession:
         return self._begin_scheduling()  # correct
 
     def _converse(self, caller_text: str, ask: str) -> Turn:
-        """Field off-script talk (a question, small talk, 'say that again'), then
-        naturally re-ask `ask`. Keeps the agent human without leaving the task."""
-        try:
-            reply = smalltalk_reply(self._gemini, self._cfg.agent_name, caller_text, ask)
-        except Exception as exc:  # noqa: BLE001 — fall back to a plain re-ask
-            log.warning("conversational reply failed: %s", exc)
-            reply = f"Sorry, I didn't quite catch that. {ask}"
-        return Turn(reply, "listen")
+        """Field off-script talk. Speak a brief filler NOW ("one moment…") and defer
+        the (slower) Hermes answer to think(), which the caller layer runs while the
+        filler plays — so the caller hears a natural beat, not silence."""
+        self._pending_think = (caller_text, ask)
+        self._filler_i = (self._filler_i + 1) % len(_FILLERS)
+        return Turn(_FILLERS[self._filler_i], "think")
+
+    def think(self) -> Turn:
+        """Generate the deferred off-script reply (Hermes, Gemini fallback). Runs
+        during the filler playback, so its latency is masked."""
+        caller_text, ask = self._pending_think or ("", "")
+        reply = ""
+        if self._cfg.use_hermes_brain:
+            try:
+                reply = smalltalk_reply(self._hermes, self._cfg.agent_name, caller_text, ask)
+            except Exception as exc:  # noqa: BLE001 — fall back to Gemini
+                log.warning("Hermes reply failed (%s); using Gemini", exc)
+        if not reply:
+            try:
+                reply = smalltalk_reply(self._gemini, self._cfg.agent_name, caller_text, ask)
+            except Exception as exc:  # noqa: BLE001 — last resort: a plain re-ask
+                log.warning("conversational reply failed: %s", exc)
+                reply = f"Sorry, I didn't quite catch that. {ask}"
+        return Turn(self.localize(reply), "listen")
 
     def _handle_callback(self, caller_text: str) -> Turn:
         when = parse_time(self._gemini, caller_text, DEFAULT_TIMEZONE)

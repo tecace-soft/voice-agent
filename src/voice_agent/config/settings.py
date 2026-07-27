@@ -65,6 +65,7 @@ class Config:
     hermes_model: str
     gemini_api_key: str
     gemini_model: str
+    use_hermes_brain: bool
     agent_name: str
     agent_org: str
     elevenlabs_api_key: str
@@ -118,6 +119,10 @@ class Config:
             hermes_model=_optional("HERMES_MODEL", "hermes-4"),
             gemini_api_key=_required("GEMINI_API_KEY"),
             gemini_model=_optional("GEMINI_MODEL", "gemini-2.5-flash-lite"),
+            # Route the agent's generative replies through Hermes (its model, e.g.
+            # gpt-5.6-sol), falling back to Gemini. Off -> Gemini only.
+            use_hermes_brain=_optional("USE_HERMES_BRAIN", "true").lower()
+            in ("1", "true", "yes", "on"),
             # The agent's spoken identity, used when it fields small talk / FAQs.
             agent_name=_optional("AGENT_NAME", "Tess"),
             agent_org=_optional("AGENT_ORG", "TecAce"),
