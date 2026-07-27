@@ -27,7 +27,8 @@ _PRONUNCIATIONS = [
     (re.compile(r"\bTecAce\b", re.IGNORECASE), "Tech Ace"),  # e.g. "TecAce", "tecace.com"
 ]
 
-# On-the-hour times read better without the minutes: "2:00 PM" -> "2 PM".
+# On-the-hour times read better without the minutes: "2:00 PM" -> "2 PM" (keeps
+# AM/PM; the bare ":00" otherwise gets read as "o'clock" / "two hundred").
 _TIME_ON_HOUR = re.compile(r"\b(1[0-2]|[1-9]):00(\s*[AaPp]\.?[Mm])")
 
 
@@ -36,11 +37,22 @@ def _for_speech(text: str) -> str:
     for pattern, say in _PRONUNCIATIONS:
         text = pattern.sub(say, text)
     return _TIME_ON_HOUR.sub(r"\1\2", text)
+
+
 # 44.1 kHz / 128 kbps mp3 — a good default for saving speech to a file.
 _OUTPUT_FORMAT = "mp3_44100_128"
 # Raw 16-bit mono PCM for inline playback. 24 kHz is the highest the free tier
 # allows (pcm_44100 needs a paid plan); it's plenty for speech.
 _PCM_SAMPLE_RATE = 24000
+# Higher stability = steadier pacing (the flash model can otherwise speed up /
+# drift on longer lines, e.g. the final confirmation). speed 1.0 = normal rate.
+_VOICE_SETTINGS = {
+    "stability": 0.6,
+    "similarity_boost": 0.8,
+    "style": 0.0,
+    "use_speaker_boost": True,
+    "speed": 1.0,
+}
 
 
 class VoiceError(RuntimeError):
@@ -118,7 +130,11 @@ class ElevenLabsVoice:
         status, ctype, body = self._request(
             url,
             method="POST",
-            body={"text": _for_speech(text), "model_id": self._model_id},
+            body={
+                "text": _for_speech(text),
+                "model_id": self._model_id,
+                "voice_settings": _VOICE_SETTINGS,
+            },
             accept="audio/mpeg",
         )
         if status >= 400:
@@ -143,7 +159,11 @@ class ElevenLabsVoice:
         status, ctype, body = self._request(
             url,
             method="POST",
-            body={"text": _for_speech(text), "model_id": self._model_id},
+            body={
+                "text": _for_speech(text),
+                "model_id": self._model_id,
+                "voice_settings": _VOICE_SETTINGS,
+            },
             accept="audio/pcm",
         )
         if status >= 400:
