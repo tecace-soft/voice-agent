@@ -250,8 +250,6 @@ def create_app(cfg: Config | None = None) -> Flask:
 
         threading.Thread(target=work, daemon=True).start()
 
-        threading.Thread(target=work, daemon=True).start()
-
     @app.post("/voice/incoming")
     def incoming():
         call_sid = request.values.get("CallSid", uuid.uuid4().hex)
