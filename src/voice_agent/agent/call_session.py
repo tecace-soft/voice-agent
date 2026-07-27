@@ -23,7 +23,6 @@ from ..config import Config
 from ..tools.cal import CalError
 from ..tools.gemini import GeminiTools
 from ..tools.hermes import HermesTools
-from ..tools.sheets import SheetsError
 from .fulfillment import Fulfillment
 from .intake import IntakeAgent, IntakeField
 from .persona import smalltalk_reply
@@ -571,11 +570,14 @@ class CallSession:
         return Turn(closing or self._goodbye(), "hangup")
 
     def _track(self) -> None:
+        # Saving to Sheets is a non-critical side effect — a failure here (auth,
+        # network, quota, anything) must NEVER crash the call. Log and move on so
+        # the caller still hears their confirmation.
         try:
             self._tracked_row = Fulfillment(self._cfg, self._fields).track(
                 self._record, booked_at=self._booked_at
             )
-        except SheetsError as exc:
+        except Exception as exc:  # noqa: BLE001 — tracking must not break the call
             log.warning("could not save record to Sheets: %s", exc)
 
     def _confirmation(self) -> str:

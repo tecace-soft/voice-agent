@@ -171,6 +171,19 @@ def create_app(cfg: Config | None = None) -> Flask:
         )
         return Response(xml, mimetype="text/xml")
 
+    @app.errorhandler(Exception)
+    def on_unhandled(exc: Exception):
+        """Safety net: never let a caller hear Twilio's raw 'application error'. On any
+        unhandled error in a voice webhook, say a graceful line and hang up; the
+        exception is logged so we can fix the real cause."""
+        log.exception("unhandled error on %s", request.path)
+        if request.path.startswith("/voice/"):
+            return hangup(speak(
+                "I'm sorry, something went wrong on our end. Our team will follow up "
+                "with you shortly. Goodbye!"
+            ))
+        return {"error": str(exc)}, 500
+
     def trigger_callback(record: dict[str, str], phone: str, is_callback: bool = False) -> str:
         """Stash the form answers and call the person. Returns the call SID.
 
@@ -200,30 +213,39 @@ def create_app(cfg: Config | None = None) -> Flask:
     def summarize_async(session: CallSession) -> None:
         """Post-call outputs: Hermes summary -> sheet row, and a team email (CRM push).
 
-        Runs in a background thread — the caller has already hung up, so this never
-        touches the conversation. No-op if nothing was tracked.
+        Runs in a background thread — the caller has already hung up. Fires on any real
+        outcome (booked / callback / tracked); the email does NOT depend on the Sheets
+        write succeeding.
         """
-        if not session.tracked_row:
+        if not (session.booked_at or session.callback_at or session.tracked_row):
             return
 
         def work() -> None:
-            text = summarize_call(
-                cfg, session.record,
-                booked_at=session.booked_at,
-                callback_at=session.callback_at,
-                transcript=session.transcript,
-            )
-            if text:
-                try:
-                    Fulfillment(cfg, fields).note(session.tracked_row, text)
-                    log.info("wrote Hermes call summary to row %d", session.tracked_row)
-                except Exception as exc:  # noqa: BLE001
-                    log.warning("could not write call summary: %s", exc)
-            if notifier.configured:
-                subject, body = _post_call_email(
-                    session.record, session.booked_at, session.callback_at, text
+            try:
+                text = summarize_call(
+                    cfg, session.record,
+                    booked_at=session.booked_at,
+                    callback_at=session.callback_at,
+                    transcript=session.transcript,
                 )
-                notifier.send(subject, body)
+                if text and session.tracked_row:   # only annotate the row if we have one
+                    try:
+                        Fulfillment(cfg, fields).note(session.tracked_row, text)
+                        log.info("wrote Hermes call summary to row %d", session.tracked_row)
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("could not write call summary: %s", exc)
+                if notifier.configured:
+                    subject, body = _post_call_email(
+                        session.record, session.booked_at, session.callback_at, text
+                    )
+                    notifier.send(subject, body)
+                elif session.booked_at:
+                    log.info("post-call email skipped: SMTP not configured "
+                             "(set SMTP_* + NOTIFY_EMAIL in .env)")
+            except Exception as exc:  # noqa: BLE001 — background; log, never swallow silently
+                log.warning("post-call outputs failed: %s", exc)
+
+        threading.Thread(target=work, daemon=True).start()
 
         threading.Thread(target=work, daemon=True).start()
 

@@ -104,6 +104,8 @@ class SheetsClient:
                 payload = json.load(response)
         except urllib.error.HTTPError as exc:
             raise SheetsError(f"token request failed [{exc.code}]: {exc.read()[:200]!r}") from exc
+        except urllib.error.URLError as exc:   # network/timeout
+            raise SheetsError(f"could not reach Google token endpoint: {exc.reason}") from exc
         return payload["access_token"], payload.get("expires_in", 3600)
 
     # -- transport -------------------------------------------------------
@@ -125,6 +127,8 @@ class SheetsClient:
                     f"permission denied (403). Share the sheet with {self._email} as Editor."
                 ) from exc
             raise SheetsError(f"Sheets API error [{exc.code}]: {detail}") from exc
+        except urllib.error.URLError as exc:   # network/timeout — wrap so callers catch it
+            raise SheetsError(f"could not reach Sheets: {exc.reason}") from exc
 
     # -- public API ------------------------------------------------------
 
