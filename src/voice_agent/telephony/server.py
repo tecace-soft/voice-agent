@@ -17,12 +17,14 @@ server; a multi-worker deployment would move it to a shared store.
 from __future__ import annotations
 
 import base64
+import hashlib
 import logging
 import re
 import threading
 import urllib.parse
 import urllib.request
 import uuid
+from collections import OrderedDict
 from xml.sax.saxutils import escape
 
 from flask import Flask, Response, request
@@ -39,6 +41,13 @@ from ..tools.voice import ElevenLabsVoice, VoiceError, _for_speech
 # credits) — a decent free fallback so testing never goes silent. Chosen to match
 # the language of the (already-localized) text so Korean isn't read by an English
 # voice. Extend _FALLBACK_VOICES for more languages.
+# Max synthesized clips kept in memory (LRU). ~256 covers concurrent calls plus
+# Twilio's fetch/retry window; frequently-spoken lines stay warm.
+_MAX_CLIPS = 256
+# Max pending callback records (form answers awaiting the call to connect). A
+# safety bound in case a queued call never connects (the record is normally
+# popped the instant the call is answered).
+_MAX_PENDING = 512
 _HANGUL = re.compile(r"[가-힣㄰-㆏ᄀ-ᇿ]")
 _FALLBACK_VOICES = {
     "ko-KR": "Polly.Seoyeon",   # Korean
@@ -83,8 +92,13 @@ def create_app(cfg: Config | None = None) -> Flask:
     voice = ElevenLabsVoice(cfg)
 
     sessions: dict[str, CallSession] = {}
-    clips: dict[str, bytes] = {}
-    pending: dict[str, dict[str, str]] = {}   # token -> form answers awaiting a callback
+    # Synthesized audio, keyed by a hash of the text so identical lines (fillers,
+    # re-prompts, repeated confirmations) are synthesized once — saves latency and
+    # ElevenLabs credits. Bounded LRU so it never grows without limit.
+    clips: OrderedDict[str, bytes] = OrderedDict()
+    # token -> form answers awaiting a callback (popped when the call connects;
+    # bounded in case a call never connects).
+    pending: OrderedDict[str, dict[str, str]] = OrderedDict()
     thinking: dict[str, dict] = {}            # CallSid -> deferred off-script reply in flight
     outbound = OutboundQueue()                # all outbound calls, one at a time, retried
     notifier = EmailNotifier(cfg)             # post-call team email (CRM push)
@@ -93,18 +107,25 @@ def create_app(cfg: Config | None = None) -> Flask:
         return cfg.public_base_url or request.host_url.rstrip("/")
 
     def voice_clip(text: str) -> str | None:
-        """Synthesize `text` to an audio clip and return its play URL, or None."""
+        """Synthesize `text` to an audio clip and return its play URL, or None.
+
+        Identical text reuses the cached clip (same hash key). Phone lines are
+        8 kHz, so a small format + latency-opt is faster to generate and fetch.
+        """
+        clip_id = hashlib.sha1(text.encode("utf-8")).hexdigest()[:24]
+        if clip_id in clips:
+            clips.move_to_end(clip_id)   # mark most-recently used
+            return f"{base_url()}/audio/{clip_id}.mp3"
         try:
-            clip_id = uuid.uuid4().hex
-            # Phone lines are 8 kHz, so a small format + latency-opt is faster to
-            # generate and for Twilio to fetch, with no audible loss.
             clips[clip_id] = voice.synthesize(
                 text, output_format="mp3_22050_32", optimize_latency=3
             )
-            return f"{base_url()}/audio/{clip_id}.mp3"
         except VoiceError as exc:
             log.warning("TTS failed (%s); falling back to Twilio voice", exc)
             return None
+        while len(clips) > _MAX_CLIPS:
+            clips.popitem(last=False)     # evict the oldest
+        return f"{base_url()}/audio/{clip_id}.mp3"
 
     def speak(text: str) -> str:
         """TwiML to say `text` — <Play> the ElevenLabs clip, or a Polly <Say> fallback
@@ -158,6 +179,8 @@ def create_app(cfg: Config | None = None) -> Flask:
         """
         token = uuid.uuid4().hex
         pending[token] = record
+        while len(pending) > _MAX_PENDING:
+            pending.popitem(last=False)   # drop the oldest un-connected record
         extra = {"token": token}
         if is_callback:
             extra["callback"] = "1"
@@ -319,7 +342,19 @@ def create_app(cfg: Config | None = None) -> Flask:
         data = clips.get(clip_id)
         if data is None:
             return Response(status=404)
+        clips.move_to_end(clip_id)   # keep a clip that's still being fetched warm
         return Response(data, mimetype="audio/mpeg")
+
+    @app.post("/voice/status")
+    def call_status_cb():
+        """Twilio call-status callback. Fires when a call ends (answered, no-answer,
+        dropped, …); we clear its in-memory state so nothing leaks on a dropped call."""
+        call_sid = request.values.get("CallSid", "")
+        if call_sid:
+            sessions.pop(call_sid, None)
+            thinking.pop(call_sid, None)
+        log.info("call %s ended (%s); cleaned up", call_sid, request.values.get("CallStatus", ""))
+        return ("", 204)
 
     @app.post("/call")
     def call_out():
@@ -408,7 +443,15 @@ def place_call(cfg: Config, to_number: str, *, extra_params: dict[str, str] | No
     to = _e164(to_number)
     params = {"direction": "outbound", **(extra_params or {})}
     answer_url = f"{cfg.public_base_url}/voice/incoming?{urllib.parse.urlencode(params)}"
-    fields = {"To": to, "From": cfg.twilio_phone_number, "Url": answer_url}
+    fields = {
+        "To": to,
+        "From": cfg.twilio_phone_number,
+        "Url": answer_url,
+        # Notified when the call ends (any reason) so the server frees its state.
+        "StatusCallback": f"{cfg.public_base_url}/voice/status",
+        "StatusCallbackEvent": "completed",
+        "StatusCallbackMethod": "POST",
+    }
     if cfg.detect_voicemail:
         # ASYNC detection: the call connects and the agent speaks IMMEDIATELY, while
         # Twilio classifies human-vs-machine in parallel and posts the result to
