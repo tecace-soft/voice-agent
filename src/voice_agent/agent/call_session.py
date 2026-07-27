@@ -129,7 +129,11 @@ class CallSession:
         # skip intake and open with the full greeting (identity + intro + readiness).
         if prefilled:
             self._record = dict(prefilled)
-            self._state = "confirm"     # confirm -> purpose -> scheduling -> done
+            # State 1 is a two-beat identity check: ask for the lead first, then
+            # introduce + pitch once they confirm. With no name to verify against,
+            # skip straight to the intro.
+            #   identity -> confirm -> purpose -> scheduling -> done
+            self._state = "identity" if self._first_name() else "confirm"
         else:
             self._record = {}
             self._state = "intake"      # intake -> scheduling -> done
@@ -198,27 +202,39 @@ class CallSession:
 
     def start(self) -> str:
         """The agent's opening line (it speaks first)."""
-        greeting = self._intro() if self._state == "confirm" else self._agent.greeting()
+        if self._state == "identity":
+            greeting = self._identity_ask()      # State 1, beat 1
+        elif self._state == "confirm":
+            greeting = self._intro()             # State 1, beat 2 (no name to verify)
+        else:
+            greeting = self._agent.greeting()
         return self.localize(greeting)
 
     def _first_name(self) -> str:
         name = attendee_name(self._record).split()[0]
         return "" if name == "Caller" else name
 
+    def _identity_ask(self) -> str:
+        """State 1, beat 1: reach the person before pitching (identity check first)."""
+        return f"Hi, may I speak with {self._first_name()}?"
+
     def _intro(self) -> str:
-        """State 1 as a single opening: reach the person, introduce Tess, ask for a minute."""
+        """State 1, beat 2: introduce Tess and ask for a minute.
+
+        Reached once identity is confirmed (or immediately when there's no name to
+        check against). Does NOT re-ask 'may I speak with…' — beat 1 did that.
+        """
         agent = self._cfg.agent_name
         name = self._first_name()
+        who = f" {name}" if name else ""
         if self._is_callback:
-            who = f" {name}" if name else ""
             return (
                 f"Hi{who}, this is {agent}, TecAce's AI assistant, calling back at the "
                 "time you requested. Do you have a quick minute to set up your "
                 "consultation call?"
             )
-        ask = f"may I speak with {name}? " if name else ""
         return (
-            f"Hi, {ask}This is {agent}, TecAce's AI assistant. You recently reached out "
+            f"Hi{who}, this is {agent}, TecAce's AI assistant. You recently reached out "
             "to us about AI transformation consulting — do you have a quick minute to "
             "set up a call with one of our consultants?"
         )
@@ -250,6 +266,8 @@ class CallSession:
         return Turn(self.localize(self._confirmation()), "hangup")
 
     def _dispatch(self, caller_text: str) -> Turn:
+        if self._state == "identity":
+            return self._handle_identity(caller_text)
         if self._state == "confirm":
             return self._handle_ready(caller_text)
         if self._state == "purpose":
@@ -266,6 +284,44 @@ class CallSession:
 
     # -- opening reply / callback phase ----------------------------------
 
+    def _handle_identity(self, caller_text: str) -> Turn:
+        """State 1, beat-1 reply: is this the right person? Then introduce + pitch."""
+        label = self._identity_check(caller_text)
+        if label == "wrong_person":
+            self._state = "done"
+            return Turn(
+                "Oh, my apologies for the interruption — I may have the wrong number. "
+                "Feel free to reach us anytime at tecace.com. Have a great day!",
+                "hangup",
+            )
+        if label == "right_person":
+            self._state = "confirm"
+            return Turn(self._intro(), "listen")   # beat 2, now that we've reached them
+        # off-script ("who's calling?", "what's this about?") — answer, then re-ask
+        return self._converse(caller_text, f"May I speak with {self._first_name()}?")
+
+    def _identity_check(self, caller_text: str) -> str:
+        """Beat-1 reply: right_person | wrong_person | other."""
+        name = self._first_name() or "the lead"
+        prompt = (
+            f'The agent called and asked "may I speak with {name}?".\n'
+            f'The person replied: "{caller_text}".\n\n'
+            "Pick the label:\n"
+            "- right_person: this IS them or they're coming to the phone "
+            '("speaking", "this is he/she", "that\'s me", "yes", "yeah this is them").\n'
+            "- wrong_person: they are NOT that person / wrong number / that person "
+            'isn\'t available ("no one here by that name", "wrong number", "he\'s not here").\n'
+            '- other: a question ("who\'s calling?", "what\'s this about?"), small talk, '
+            "or something you cannot interpret."
+        )
+        try:
+            return self._gemini.classify(
+                prompt, ["right_person", "wrong_person", "other"]
+            )["label"]
+        except Exception as exc:  # noqa: BLE001 — default to proceeding as the right person
+            log.warning("identity check failed: %s", exc)
+            return "right_person"
+
     def _handle_ready(self, caller_text: str) -> Turn:
         """First reply to the opening greeting: wrong person / ready / later / off-script."""
         answer = self._readiness(caller_text)
@@ -273,7 +329,7 @@ class CallSession:
             self._state = "done"
             return Turn(
                 "Oh, my apologies for the interruption — I may have the wrong number. "
-                "Have a great day!",
+                "Feel free to reach us anytime at tecace.com. Have a great day!",
                 "hangup",
             )
         if answer == "not_ready":
@@ -320,12 +376,26 @@ class CallSession:
         if label == "other":
             return self._converse(caller_text, f"You're interested in {purpose}, is that correct?")
         if label == "different":
-            # Log the clarification (it's captured in the transcript -> consultant note).
+            # State 2 'different': log what they actually said to the record (so it
+            # reaches the sheet + the post-call note), acknowledge, and move on. The
+            # end-of-call Hermes summary distills the clarification for the consultant
+            # from the transcript — no model call here on the critical path.
+            self._absorb_purpose(caller_text)
             turn = self._begin_scheduling()
             return Turn(
                 "Got it — I'll make sure our consultant knows that. " + turn.reply, turn.next
             )
         return self._begin_scheduling()  # correct
+
+    def _absorb_purpose(self, caller_text: str) -> None:
+        """Log the lead's corrected/added interest to the record so it reaches the
+        consultant notes (sheet + post-call summary). No summarizing here — the
+        end-of-call Hermes summary does that from the full transcript."""
+        detail = caller_text.strip()
+        if not detail:
+            return
+        prior = self._record.get("purpose", "")
+        self._record["purpose"] = f"{prior} | added: {detail}" if prior else detail
 
     def _converse(self, caller_text: str, ask: str) -> Turn:
         """Field off-script talk. Speak a brief filler NOW ("one moment…") and defer
