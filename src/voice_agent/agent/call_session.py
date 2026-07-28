@@ -121,7 +121,6 @@ class CallSession:
         self._transcript: list[str] = []  # spoken exchange, for the post-call summary
         self._tracked_row = 0   # sheet row this call was saved to (0 = not tracked)
         self._summarized = False  # guard: post-call outputs (email/summary) run once
-        self._clarify_attempts = 0     # times we've re-asked the purpose (State 2)
         self._time_attempts = 0        # rounds of time alternatives offered (State 3)
         self._proposed: set[str] = set()  # slots already proposed, so we don't repeat
         self._pending_think: tuple[str, str] = ()  # (caller_text, ask) for think()
@@ -405,34 +404,14 @@ class CallSession:
 
     def _handle_clarify_purpose(self, caller_text: str) -> Turn:
         """State 2 follow-up: the lead rejected the form's purpose and we asked what
-        they actually want. Note a real answer (or an "I'm not sure") as the corrected
-        purpose and move on; field an actual question ONCE, then proceed regardless so
-        it can never loop."""
-        if self._clarify_attempts < 1 and self._asks_question(caller_text):
-            self._clarify_attempts += 1
-            return self._converse(caller_text, "What are you hoping to get help with?")
+        they actually want. Log their answer as the corrected purpose and move on to
+        scheduling. (No extra classify on the hot path; `_begin_scheduling` already
+        degrades gracefully if Cal.com is slow or unreachable.)"""
         self._absorb_purpose(caller_text, corrected=True)
         turn = self._begin_scheduling()
         return Turn(
             "Thanks — I'll make sure our consultant knows that. " + turn.reply, turn.next
         )
-
-    def _asks_question(self, caller_text: str) -> bool:
-        """True if the reply is the caller asking US something rather than describing
-        their need — so we field it instead of logging it as their purpose."""
-        prompt = (
-            "The agent asked the lead what they're hoping to get help with.\n"
-            f'The lead replied: "{caller_text}".\n\n'
-            "Pick the label:\n"
-            "- answered: they described a need, goal, or topic — or said they're not "
-            "sure — anything we can simply note down and move on.\n"
-            "- question: they asked the agent a question instead of answering."
-        )
-        try:
-            return self._gemini.classify(prompt, ["answered", "question"])["label"] == "question"
-        except Exception as exc:  # noqa: BLE001 — just note it and move on
-            log.warning("clarify-purpose check failed: %s", exc)
-            return False
 
     def _absorb_purpose(self, caller_text: str, *, corrected: bool = False) -> None:
         """Log the lead's corrected/added interest to the record so it reaches the
@@ -535,14 +514,17 @@ class CallSession:
     # -- scheduling phase ------------------------------------------------
 
     def _begin_scheduling(self) -> Turn:
-        self._scheduler = Scheduler(self._cfg, self._event_type_id)
-        # Always fetch the timeframe's openings first — used as the fallback list
-        # whether or not the lead named a specific desired time.
+        # Entering State 3 makes several network calls (Cal.com openings, time parse,
+        # availability). ANY failure must degrade gracefully — offer to email a
+        # scheduling link — never crash the turn with "an error occurred".
         try:
+            self._scheduler = Scheduler(self._cfg, self._event_type_id)
+            # Fetch the timeframe's openings first — the fallback list, whether or not
+            # the lead named a specific desired time.
             self._offer = self._scheduler.offer(timeframe_from(self._record))
-        except CalError as exc:
-            log.warning("could not fetch slots: %s", exc)
-            return self._finish()
+        except Exception as exc:  # noqa: BLE001 — Cal/network failure -> graceful fallback
+            log.warning("could not start scheduling: %s", exc)
+            return self._finish(closing=self._scheduling_link_message())
         # State 3: if the lead gave a specific desired time on the form, confirm THAT
         # first rather than reading out a list.
         desired = self._desired_iso()
@@ -560,13 +542,19 @@ class CallSession:
 
     def _desired_iso(self) -> str:
         raw = desired_time_from(self._record)
-        return parse_time(self._gemini, raw, DEFAULT_TIMEZONE) if raw else ""
+        if not raw:
+            return ""
+        try:
+            return parse_time(self._gemini, raw, DEFAULT_TIMEZONE)
+        except Exception as exc:  # noqa: BLE001 — a failed parse just skips the desired-time step
+            log.warning("could not parse desired time %r: %s", raw, exc)
+            return ""
 
     def _confirm_desired(self, desired_iso: str) -> Turn:
         """State 3: confirm the lead's desired time; propose the nearest if it's taken."""
         try:
             exact, nearest = self._scheduler.check_time(desired_iso)
-        except CalError as exc:
+        except Exception as exc:  # noqa: BLE001 — availability failure -> fall back to the list
             log.warning("desired-time check failed: %s", exc)
             exact = nearest = ""
         if exact:
@@ -611,7 +599,7 @@ class CallSession:
         opening. Called after the 'let me check' line, so there's no dead air."""
         try:
             exact, nearest = self._scheduler.check_time(self._requested)
-        except CalError as exc:
+        except Exception as exc:  # noqa: BLE001 — availability failure -> re-offer the list
             log.warning("availability check failed: %s", exc)
             exact = nearest = ""
         if exact:
