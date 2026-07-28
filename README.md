@@ -14,7 +14,7 @@ one git history.
 |---|---|---|---|
 | **Voice Intake Agent** | [`voice-agent-app/`](voice-agent-app/) | Active | A phone agent that collects a lead's details from a Google Form, calls them back, and books a consultation by voice (English/Korean), with live Cal.com availability. See its [README](voice-agent-app/README.md). |
 | **Admin Dashboard** | [`admin-dashboard-app/`](admin-dashboard-app/) | Planned (stub) | The web dashboard the Admin uses to manage and monitor the system. Talks to the shared backend. Stack TBD. |
-| **Backend** | [`backend-app/`](backend-app/) | Planned (stub) | The shared API service owning the system's data and logic — used by the Admin Dashboard, and eventually by the voice agent. Stack TBD. |
+| **Backend** | [`backend-app/`](backend-app/) | In progress | The shared API service owning the system's data and logic — used by the Admin Dashboard, and eventually by the voice agent. **Elysia + Bun** (TypeScript). See its [README](backend-app/README.md). |
 
 ---
 
@@ -28,14 +28,16 @@ voice-agent/                  ← repo root (this README, the shared git history
 │   └── README.md  .env  .env.example
 ├── admin-dashboard-app/      ← Admin dashboard frontend (stub; stack TBD)
 │   └── README.md
-├── backend-app/              ← shared API service (stub; stack TBD)
+├── backend-app/              ← shared API service — Elysia + Bun (in progress)
+│   ├── src/  (index.ts, app.ts, routes/, config/)
+│   ├── package.json  tsconfig.json
 │   └── README.md  .env.example
 ├── .gitignore                ← shared; patterns are non-anchored so they apply in every app
 └── .claude/                  ← workspace-level tooling settings
 ```
 
-The dashboard and backend are **stubs** right now — directories with a README describing
-their intended role. Scaffold each one when its tech stack is chosen.
+The **admin dashboard** is still a stub (README only, stack TBD). The **backend** is now
+scaffolded with Elysia + Bun — see its README to run it.
 
 **What lives where**
 - **Per app** (inside each app directory): source code, `pyproject.toml`/dependencies,
