@@ -13,7 +13,8 @@ one git history.
 | App | Directory | Status | What it is |
 |---|---|---|---|
 | **Voice Intake Agent** | [`voice-agent-app/`](voice-agent-app/) | Active | A phone agent that collects a lead's details from a Google Form, calls them back, and books a consultation by voice (English/Korean), with live Cal.com availability. See its [README](voice-agent-app/README.md). |
-| _(next app)_ | _TBD_ | Planned | _A second application will be added here — fill in this row when it lands._ |
+| **Admin Dashboard** | [`admin-dashboard-app/`](admin-dashboard-app/) | Planned (stub) | The web dashboard the Admin uses to manage and monitor the system. Talks to the shared backend. Stack TBD. |
+| **Backend** | [`backend-app/`](backend-app/) | Planned (stub) | The shared API service owning the system's data and logic — used by the Admin Dashboard, and eventually by the voice agent. Stack TBD. |
 
 ---
 
@@ -21,14 +22,20 @@ one git history.
 
 ```
 voice-agent/                  ← repo root (this README, the shared git history)
-├── voice-agent-app/          ← the voice intake agent (see its own README)
+├── voice-agent-app/          ← the voice intake agent (Active; see its own README)
 │   ├── src/  scripts/  docs/  data/
 │   ├── pyproject.toml  requirements.txt
 │   └── README.md  .env  .env.example
-├── <next-app>/               ← future application (own src/, config, README)
+├── admin-dashboard-app/      ← Admin dashboard frontend (stub; stack TBD)
+│   └── README.md
+├── backend-app/              ← shared API service (stub; stack TBD)
+│   └── README.md  .env.example
 ├── .gitignore                ← shared; patterns are non-anchored so they apply in every app
 └── .claude/                  ← workspace-level tooling settings
 ```
+
+The dashboard and backend are **stubs** right now — directories with a README describing
+their intended role. Scaffold each one when its tech stack is chosen.
 
 **What lives where**
 - **Per app** (inside each app directory): source code, `pyproject.toml`/dependencies,
