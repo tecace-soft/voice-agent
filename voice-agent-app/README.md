@@ -165,7 +165,10 @@ Two background threads run alongside it:
 
 ## Project layout
 
+This app is the `voice-agent-app/` directory of the repo (paths below are relative to it):
+
 ```
+voice-agent-app/
 src/voice_agent/
   config/settings.py     # all env-backed configuration (Config.load())
   agent/
@@ -194,9 +197,10 @@ data/                    # runtime state (git-ignored): poll cursor, outbound qu
 
 ## Setup
 
-Requires **Python 3.11+**.
+Requires **Python 3.11+**. This app lives in the **`voice-agent-app/`** subdirectory of the repo (it sits alongside other apps), so run everything from there.
 
 ```bash
+cd voice-agent-app                 # the app root (holds pyproject.toml, src/, .env)
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e .                   # editable install (src layout)
@@ -262,6 +266,7 @@ python scripts/checks/verify_email.py      # SMTP post-call email (sends a test)
 
 ```bash
 cd ~/voice-agent && git pull
+cd voice-agent-app                       # the app now lives in this subdirectory
 source .venv/bin/activate               # the package lives in the venv
 pkill -9 -f run_phone                    # stop the old server
 nohup python scripts/run_phone.py --poll > ~/server.log 2>&1 &
