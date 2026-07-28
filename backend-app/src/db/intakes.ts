@@ -1,5 +1,18 @@
 import { sql } from "./client";
 
+// The callback lifecycle a client record moves through:
+//   new        — just submitted by the form, waiting for the agent
+//   contacted  — the agent reached the person
+//   booked     — a consultation was scheduled
+//   unreachable — the agent could not get through
+export const INTAKE_STATUSES = [
+  "new",
+  "contacted",
+  "booked",
+  "unreachable",
+] as const;
+export type IntakeStatus = (typeof INTAKE_STATUSES)[number];
+
 // The fields collected for a callback intake (camelCase — matches the API body).
 export interface IntakeInput {
   language: string;
@@ -10,7 +23,7 @@ export interface IntakeInput {
   dateTime: string; // ISO 8601 date-time
 }
 
-// A stored intake row, plus the DB-generated id/timestamp.
+// A stored intake row, plus the DB-managed status/timestamps.
 export interface IntakeRecord {
   id: string;
   language: string;
@@ -19,7 +32,9 @@ export interface IntakeRecord {
   phoneNumber: string;
   purpose: string;
   scheduledAt: string;
+  status: IntakeStatus;
   createdAt: string;
+  updatedAt: string;
 }
 
 // Shared column list, mapping the snake_case schema back to the camelCase shape the
@@ -32,7 +47,9 @@ const RETURN_COLUMNS = sql`
   phone_number AS "phoneNumber",
   purpose,
   scheduled_at AS "scheduledAt",
-  created_at   AS "createdAt"
+  status,
+  created_at   AS "createdAt",
+  updated_at   AS "updatedAt"
 `;
 
 // Persist one intake and return the stored row.
@@ -49,6 +66,7 @@ export async function insertIntake(input: IntakeInput): Promise<IntakeRecord> {
 // Optional filters the dashboard can apply to the list. All are combined with AND;
 // omitted fields are ignored.
 export interface IntakeFilters {
+  status?: IntakeStatus; // lifecycle state — the agent polls `status=new`
   language?: string; // exact match, case-insensitive
   q?: string; // substring search across name / email / purpose
   scheduledFrom?: string; // ISO 8601 — scheduled_at >= this
@@ -63,6 +81,9 @@ type SqlFragment = typeof RETURN_COLUMNS;
 // Every value is interpolated as a bound parameter, so this is injection-safe.
 function whereClause(filters: IntakeFilters): SqlFragment {
   const conditions: SqlFragment[] = [];
+  if (filters.status) {
+    conditions.push(sql`status = ${filters.status}`);
+  }
   if (filters.language) {
     conditions.push(sql`lower(language) = lower(${filters.language})`);
   }
@@ -114,6 +135,21 @@ export async function getIntake(id: string): Promise<IntakeRecord | null> {
     SELECT ${RETURN_COLUMNS}
     FROM intakes
     WHERE id = ${id}::uuid
+  `;
+  return (row as IntakeRecord | undefined) ?? null;
+}
+
+// Advance a client's lifecycle status (used by the agent to record what happened) and
+// bump updated_at. Returns the updated row, or null if no intake has that id.
+export async function updateIntakeStatus(
+  id: string,
+  status: IntakeStatus,
+): Promise<IntakeRecord | null> {
+  const [row] = await sql`
+    UPDATE intakes
+    SET status = ${status}, updated_at = now()
+    WHERE id = ${id}::uuid
+    RETURNING ${RETURN_COLUMNS}
   `;
   return (row as IntakeRecord | undefined) ?? null;
 }

@@ -59,17 +59,30 @@ curl 'http://localhost:8000/intake?scheduledFrom=2026-08-01T00:00:00Z&scheduledT
 
 # Fetch one by id:
 curl http://localhost:8000/intake/<id>       # -> {"intake":{...}}  (404 if absent)
+
+# Agent workflow: poll the queue, then write back the outcome.
+curl 'http://localhost:8000/intake?status=new'               # clients still needing a call
+curl -X PATCH http://localhost:8000/intake/<id>/status \
+  -H 'content-type: application/json' -d '{"status":"booked"}'
+# -> {"status":"updated","intake":{...,"status":"booked"}}
 ```
 
 ### Intake API
 
-| Method & path | Purpose | Notes |
-| --- | --- | --- |
-| `POST /intake` | Create an intake | Validates body; **201** with the stored record |
-| `GET /intake` | List intakes, newest first | Paging: `?limit` (1–200, default 50), `?offset` (default 0). Filters (optional, AND-combined): `?language` (exact, case-insensitive), `?q` (substring over name/email/purpose), `?scheduledFrom` / `?scheduledTo` (ISO date-time range). Returns `{total,limit,offset,intakes}` — `total` reflects the filters. |
-| `GET /intake/:id` | Fetch one intake | `id` must be a UUID; **404** if not found |
+One `intakes` record is shared by all three consumers: the **form** creates it, the
+**agent** reads the queue and records the outcome, the **dashboard** displays it.
 
-Record shape (camelCase): `id, language, name, email, phoneNumber, purpose, scheduledAt, createdAt`.
+Lifecycle (`status`): **`new`** (just submitted) → **`contacted`** (agent reached them) →
+**`booked`** (consultation scheduled) *or* **`unreachable`** (couldn't get through).
+
+| Method & path | Consumer | Notes |
+| --- | --- | --- |
+| `POST /intake` | Form | Validates body; **201** with the stored record. New records start as `new`. |
+| `GET /intake` | Dashboard / Agent | List, newest first. Paging: `?limit` (1–200, default 50), `?offset` (default 0). Filters (optional, AND-combined): `?status`, `?language` (exact, case-insensitive), `?q` (substring over name/email/purpose), `?scheduledFrom` / `?scheduledTo` (ISO date-time range). Returns `{total,limit,offset,intakes}` — `total` reflects the filters. The agent polls `?status=new`. |
+| `GET /intake/:id` | Dashboard / Agent | Fetch one intake. `id` must be a UUID; **404** if not found. |
+| `PATCH /intake/:id/status` | Agent | Advance the lifecycle: body `{"status":"contacted"\|"booked"\|"unreachable"\|"new"}`. **404** if not found; **422** on an unknown status. |
+
+Record shape (camelCase): `id, language, name, email, phoneNumber, purpose, scheduledAt, status, createdAt, updatedAt`.
 
 Other scripts: `bun run typecheck` (tsc, no emit) · `bun run build` (bundle to `dist/`).
 
@@ -84,11 +97,11 @@ backend-app/
       env.ts           # typed environment access (Bun auto-loads .env)
     db/
       client.ts        # shared Postgres client + schema init (Bun native SQL)
-      intakes.ts       # intakes repository (insertIntake)
+      intakes.ts       # intakes repository (create / list / get / update status)
       migrate.ts       # standalone migration entrypoint (bun run db:migrate)
     routes/
       health.ts        # health/liveness controller
-      intake.ts        # POST /intake — validate + persist a callback intake
+      intake.ts        # intake API — create, list/filter, get, advance status
   package.json
   tsconfig.json
   .env.example

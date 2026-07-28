@@ -4,10 +4,19 @@ import {
   getIntake,
   insertIntake,
   listIntakes,
+  updateIntakeStatus,
 } from "../db/intakes";
 
-// Intake controller: create + read the callback intakes the voice agent / dashboard
-// collect, backed by Postgres.
+// The lifecycle states, as a reusable validation schema (query filter + PATCH body).
+const statusSchema = t.Union([
+  t.Literal("new"),
+  t.Literal("contacted"),
+  t.Literal("booked"),
+  t.Literal("unreachable"),
+]);
+
+// Intake controller: create + read + advance the callback intakes the form, dashboard,
+// and voice agent share, backed by Postgres.
 // Elysia best practice: one `Elysia` instance per controller, method-chained so the
 // `body`/`query`/`params` schemas stay type-inferred end to end.
 export const intake = new Elysia()
@@ -35,6 +44,7 @@ export const intake = new Elysia()
     "/intake",
     async ({ query }) => {
       const filters = {
+        status: query.status,
         language: query.language,
         q: query.q,
         scheduledFrom: query.scheduledFrom,
@@ -51,6 +61,7 @@ export const intake = new Elysia()
         limit: t.Integer({ minimum: 1, maximum: 200, default: 50 }),
         offset: t.Integer({ minimum: 0, default: 0 }),
         // Filters (all optional, combined with AND).
+        status: t.Optional(statusSchema),
         language: t.Optional(t.String({ minLength: 1 })),
         q: t.Optional(t.String({ minLength: 1 })),
         scheduledFrom: t.Optional(t.String({ format: "date-time" })),
@@ -68,5 +79,18 @@ export const intake = new Elysia()
     },
     {
       params: t.Object({ id: t.String({ format: "uuid" }) }),
+    },
+  )
+  // Advance a client's lifecycle status — the agent writes back what happened.
+  .patch(
+    "/intake/:id/status",
+    async ({ params, body, status }) => {
+      const record = await updateIntakeStatus(params.id, body.status);
+      if (!record) return status(404, { status: "not_found" });
+      return { status: "updated", intake: record };
+    },
+    {
+      params: t.Object({ id: t.String({ format: "uuid" }) }),
+      body: t.Object({ status: statusSchema }),
     },
   );
