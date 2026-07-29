@@ -1,4 +1,4 @@
-import { sql } from "./client";
+import { sql } from "./client.js";
 
 // The callback lifecycle a client record moves through:
 //   new         — just submitted by the form, waiting for the agent

@@ -1,5 +1,5 @@
 import { Elysia, t } from "elysia";
-import { env } from "../config/env";
+import { env } from "../config/env.js";
 import {
   bookIntake,
   cancelBooking,
@@ -9,7 +9,7 @@ import {
   insertIntake,
   listIntakes,
   updateIntakeStatus,
-} from "../db/intakes";
+} from "../db/intakes.js";
 
 // Statuses the agent may set directly via PATCH. `canceled` is intentionally NOT here —
 // canceling goes through DELETE /intake/:id/booking, which enforces "must be booked".

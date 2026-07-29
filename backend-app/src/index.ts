@@ -1,6 +1,6 @@
-import { app } from "./app";
-import { env } from "./config/env";
-import { initDb } from "./db/client";
+import { app } from "./app.js";
+import { env } from "./config/env.js";
+import { initDb } from "./db/client.js";
 
 // Entrypoint: ensure the schema exists, then start the HTTP server.
 // `bun run src/index.ts` (or `bun run dev` to watch).

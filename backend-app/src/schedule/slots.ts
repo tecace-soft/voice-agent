@@ -1,4 +1,4 @@
-import type { ScheduleConfig } from "../config/env";
+import type { ScheduleConfig } from "../config/env.js";
 
 // Pure slot-grid logic: turn business-hours config + a set of already-booked instants
 // into a grid of bookable slots, each marked available or taken. Timezone-aware, no DB.

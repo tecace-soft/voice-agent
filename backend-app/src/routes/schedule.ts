@@ -1,13 +1,13 @@
 import { Elysia, t } from "elysia";
-import { env } from "../config/env";
-import { listBookedTimes } from "../db/intakes";
+import { env } from "../config/env.js";
+import { listBookedTimes } from "../db/intakes.js";
 import {
   checkAvailability,
   dateRange,
   localDateOf,
   slotsForDate,
   suggestSlots,
-} from "../schedule/slots";
+} from "../schedule/slots.js";
 
 // How many days a single /schedule range query may span (guards response size).
 const MAX_RANGE_DAYS = 62;

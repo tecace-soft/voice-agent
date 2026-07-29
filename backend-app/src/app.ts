@@ -1,9 +1,9 @@
 import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
-import { env } from "./config/env";
-import { health } from "./routes/health";
-import { intake } from "./routes/intake";
-import { schedule } from "./routes/schedule";
+import { env } from "./config/env.js";
+import { health } from "./routes/health.js";
+import { intake } from "./routes/intake.js";
+import { schedule } from "./routes/schedule.js";
 
 // Compose the application from controllers. Exported WITHOUT `.listen()` so tests can
 // call it directly (e.g. `app.handle(new Request(...))`) and so the entrypoint owns

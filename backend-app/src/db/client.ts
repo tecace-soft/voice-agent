@@ -1,5 +1,5 @@
 import postgres from "postgres";
-import { env } from "../config/env";
+import { env } from "../config/env.js";
 
 // postgres.js — a runtime-agnostic Postgres client (works on both Bun locally and the
 // Node runtime on Vercel; `Bun.SQL` would not run on Node). A single shared, pooled

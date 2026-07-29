@@ -1,4 +1,4 @@
-import { app } from "../src/app";
+import { app } from "../src/app.js";
 
 // Vercel serverless entry point.
 // Elysia's `app.handle(request)` is a web-standard fetch handler (Request -> Response),
