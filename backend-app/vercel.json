@@ -1,5 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "echo 'No framework build — Vercel builds the api/ serverless functions'",
-  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
+  "buildCommand": "echo 'No custom build step — Vercel serves the Elysia app (src/app.ts default export)'"
 }

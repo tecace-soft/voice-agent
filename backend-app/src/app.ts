@@ -18,3 +18,8 @@ export const app = new Elysia()
   .use(schedule);
 
 export type App = typeof app;
+
+// Default export = the Elysia app itself, which Vercel's Elysia framework preset serves
+// as the deployment (it wraps the app's fetch handler). Local dev still uses the named
+// export via `src/index.ts` (app.listen), and tests use `app.handle(...)`.
+export default app;
