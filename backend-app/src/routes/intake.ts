@@ -1,18 +1,32 @@
 import { Elysia, t } from "elysia";
+import { env } from "../config/env";
 import {
+  bookIntake,
+  cancelBooking,
   countIntakes,
+  deleteIntake,
   getIntake,
   insertIntake,
   listIntakes,
   updateIntakeStatus,
 } from "../db/intakes";
 
-// The lifecycle states, as a reusable validation schema (query filter + PATCH body).
-const statusSchema = t.Union([
+// Statuses the agent may set directly via PATCH. `canceled` is intentionally NOT here —
+// canceling goes through DELETE /intake/:id/booking, which enforces "must be booked".
+const settableStatusSchema = t.Union([
   t.Literal("new"),
   t.Literal("contacted"),
   t.Literal("booked"),
   t.Literal("unreachable"),
+]);
+
+// All lifecycle states — used for the list `?status` filter (dashboard can filter canceled).
+const filterStatusSchema = t.Union([
+  t.Literal("new"),
+  t.Literal("contacted"),
+  t.Literal("booked"),
+  t.Literal("unreachable"),
+  t.Literal("canceled"),
 ]);
 
 // Intake controller: create + read + advance the callback intakes the form, dashboard,
@@ -61,7 +75,7 @@ export const intake = new Elysia()
         limit: t.Integer({ minimum: 1, maximum: 200, default: 50 }),
         offset: t.Integer({ minimum: 0, default: 0 }),
         // Filters (all optional, combined with AND).
-        status: t.Optional(statusSchema),
+        status: t.Optional(filterStatusSchema),
         language: t.Optional(t.String({ minLength: 1 })),
         q: t.Optional(t.String({ minLength: 1 })),
         scheduledFrom: t.Optional(t.String({ format: "date-time" })),
@@ -82,15 +96,66 @@ export const intake = new Elysia()
     },
   )
   // Advance a client's lifecycle status — the agent writes back what happened.
+  // Booking is special: it must not collide with an existing booked slot, so it goes
+  // through the conflict-checked path and returns 409 if the slot is already taken.
   .patch(
     "/intake/:id/status",
     async ({ params, body, status }) => {
+      if (body.status === "booked") {
+        const result = await bookIntake(params.id, env.schedule.slotMinutes);
+        if (!result.ok) {
+          if (result.reason === "not_found") return status(404, { status: "not_found" });
+          if (result.reason === "in_past") {
+            return status(422, {
+              status: "in_past",
+              message: "That time is in the past and can't be booked.",
+            });
+          }
+          return status(409, {
+            status: "slot_taken",
+            message: "That time overlaps an existing booking.",
+          });
+        }
+        return { status: "updated", intake: result.intake };
+      }
+
       const record = await updateIntakeStatus(params.id, body.status);
       if (!record) return status(404, { status: "not_found" });
       return { status: "updated", intake: record };
     },
     {
       params: t.Object({ id: t.String({ format: "uuid" }) }),
-      body: t.Object({ status: statusSchema }),
+      body: t.Object({ status: settableStatusSchema }),
+    },
+  )
+  // Cancel a client's booking — booked -> canceled, which frees the slot. The client
+  // record is kept (visible in the dashboard as canceled).
+  .delete(
+    "/intake/:id/booking",
+    async ({ params, status }) => {
+      const result = await cancelBooking(params.id);
+      if (!result.ok) {
+        if (result.reason === "not_found") return status(404, { status: "not_found" });
+        return status(409, {
+          status: "not_booked",
+          message: "That client has no active booking to cancel.",
+        });
+      }
+      return { status: "canceled", intake: result.intake };
+    },
+    {
+      params: t.Object({ id: t.String({ format: "uuid" }) }),
+    },
+  )
+  // Permanently delete a client (hard delete). Frees their slot if they were booked.
+  .delete(
+    "/intake/:id",
+    async ({ params, status }) => {
+      const deleted = await deleteIntake(params.id);
+      if (!deleted) return status(404, { status: "not_found" });
+      return { status: "deleted", id: params.id };
+    },
+    {
+      params: t.Object({ id: t.String({ format: "uuid" }) }),
     },
   );

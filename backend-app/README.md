@@ -64,7 +64,22 @@ curl http://localhost:8000/intake/<id>       # -> {"intake":{...}}  (404 if abse
 curl 'http://localhost:8000/intake?status=new'               # clients still needing a call
 curl -X PATCH http://localhost:8000/intake/<id>/status \
   -H 'content-type: application/json' -d '{"status":"booked"}'
-# -> {"status":"updated","intake":{...,"status":"booked"}}
+# -> {"status":"updated","intake":{...,"status":"booked"}}   (409 if the slot is taken)
+
+# Cancel a booking (frees the slot, keeps the client) — or delete the client outright.
+curl -X DELETE http://localhost:8000/intake/<id>/booking   # -> {"status":"canceled",...}
+curl -X DELETE http://localhost:8000/intake/<id>           # -> {"status":"deleted","id":"..."}
+
+# Schedule: which slots are taken vs. available (derived from booked intakes).
+curl 'http://localhost:8000/schedule?from=2026-08-03&to=2026-08-07'
+# -> {"timezone":"...","slotMinutes":30,"days":[{"date":"2026-08-03","slots":[{"start","end","available"},...]}]}
+curl 'http://localhost:8000/schedule/availability?dateTime=2026-08-03T09:00:00Z'
+# -> {"dateTime":"...","available":true,"reason":"available"}
+
+# Wanted slot taken? Get the nearest available alternatives (closest first).
+curl 'http://localhost:8000/schedule/suggestions?dateTime=2026-08-03T12:00:00Z&limit=3'
+# -> {"requested":{...,"available":false,"reason":"taken"},
+#     "suggestions":[{"start","end","date","minutesFromWanted":-60}, ...]}
 ```
 
 ### Intake API
@@ -73,16 +88,36 @@ One `intakes` record is shared by all three consumers: the **form** creates it, 
 **agent** reads the queue and records the outcome, the **dashboard** displays it.
 
 Lifecycle (`status`): **`new`** (just submitted) → **`contacted`** (agent reached them) →
-**`booked`** (consultation scheduled) *or* **`unreachable`** (couldn't get through).
+**`booked`** (consultation scheduled) *or* **`unreachable`** (couldn't get through). A
+booking can later be **`canceled`**, which frees its slot but keeps the client record.
 
 | Method & path | Consumer | Notes |
 | --- | --- | --- |
 | `POST /intake` | Form | Validates body; **201** with the stored record. New records start as `new`. |
 | `GET /intake` | Dashboard / Agent | List, newest first. Paging: `?limit` (1–200, default 50), `?offset` (default 0). Filters (optional, AND-combined): `?status`, `?language` (exact, case-insensitive), `?q` (substring over name/email/purpose), `?scheduledFrom` / `?scheduledTo` (ISO date-time range). Returns `{total,limit,offset,intakes}` — `total` reflects the filters. The agent polls `?status=new`. |
 | `GET /intake/:id` | Dashboard / Agent | Fetch one intake. `id` must be a UUID; **404** if not found. |
-| `PATCH /intake/:id/status` | Agent | Advance the lifecycle: body `{"status":"contacted"\|"booked"\|"unreachable"\|"new"}`. **404** if not found; **422** on an unknown status. |
+| `PATCH /intake/:id/status` | Agent | Advance the lifecycle: body `{"status":"contacted"\|"booked"\|"unreachable"\|"new"}` (not `canceled` — see below). **404** if not found; **422** on an unknown status. Booking is guarded — **409** if the slot overlaps an existing booking, **422** if it's in the past. |
+| `DELETE /intake/:id/booking` | Dashboard / Agent | Cancel a booking: `booked → canceled`, freeing the slot; the client record is kept. **404** if not found; **409** (`not_booked`) if the client has no active booking. |
+| `DELETE /intake/:id` | Dashboard | Permanently delete a client (hard delete). Frees their slot if booked. **200** `{status:"deleted"}`; **404** if not found. |
 
 Record shape (camelCase): `id, language, name, email, phoneNumber, purpose, scheduledAt, status, createdAt, updatedAt`.
+
+### Schedule API
+
+The bookable **slot grid** = business hours (`SCHEDULE_*` env, see `.env.example`) in a
+timezone, split into fixed-length slots. A slot is **taken** when a `booked` intake's
+window overlaps it; **available** otherwise. Booked times are derived from the `intakes`
+table — no separate bookings store.
+
+| Method & path | Purpose | Notes |
+| --- | --- | --- |
+| `GET /schedule` | Slot grid for a date range | `?from=YYYY-MM-DD` (required), `?to=YYYY-MM-DD` (defaults to `from`; max 62 days). Returns `{timezone, slotMinutes, days:[{date, slots:[{start, end, available}]}]}`. Non-workdays yield an empty `slots` array. |
+| `GET /schedule/availability` | Check one specific instant | `?dateTime=<ISO>`. Returns `{dateTime, available, reason}` where reason is `available` / `in_past` / `taken` / `not_a_slot_boundary` / `outside_business_hours`. A time earlier than now is always `in_past`. |
+| `GET /schedule/suggestions` | Nearest available slots to a wanted time | `?dateTime=<ISO>` (required), `?limit` (1–20, default 3), `?withinDays` (1–62, default 14). Returns `{requested:{dateTime,available,reason}, suggestions:[{start,end,date,minutesFromWanted}]}`. Suggestions are free, **future** slots ordered by distance from the wanted time (ties → earlier first); it skips weekends/off-hours automatically. Works even when the request is in the past: the search anchors at today, so a past date rolls forward to today's remaining slots (if any) or the next open day. The agent uses this whenever the requested slot comes back `taken` or `in_past`. |
+
+Booking is guarded at the write: `PATCH /intake/:id/status → booked` returns **409** if the
+requested time overlaps an already-booked slot (window = `SCHEDULE_SLOT_MINUTES`), and
+**422** (`in_past`) if the slot has already passed.
 
 Other scripts: `bun run typecheck` (tsc, no emit) · `bun run build` (bundle to `dist/`).
 
@@ -94,14 +129,17 @@ backend-app/
     index.ts           # entrypoint — starts the HTTP server (app.listen)
     app.ts             # composes the Elysia app from controllers (exported, testable)
     config/
-      env.ts           # typed environment access (Bun auto-loads .env)
+      env.ts           # typed environment access, incl. schedule config (Bun auto-loads .env)
     db/
       client.ts        # shared Postgres client + schema init (Bun native SQL)
-      intakes.ts       # intakes repository (create / list / get / update status)
+      intakes.ts       # intakes repository (create / list / get / update status / book)
       migrate.ts       # standalone migration entrypoint (bun run db:migrate)
+    schedule/
+      slots.ts         # pure, timezone-aware slot-grid logic (no DB)
     routes/
       health.ts        # health/liveness controller
       intake.ts        # intake API — create, list/filter, get, advance status
+      schedule.ts      # schedule API — slot grid + single-time availability
   package.json
   tsconfig.json
   .env.example
