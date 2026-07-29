@@ -121,7 +121,7 @@ export async function listIntakes(
     ORDER BY created_at DESC
     LIMIT ${limit} OFFSET ${offset}
   `;
-  return rows as IntakeRecord[];
+  return rows as unknown as IntakeRecord[];
 }
 
 // Count matching intakes (same filters) — lets the dashboard show "N of M" / paging.
@@ -170,7 +170,7 @@ export async function listBookedTimes(
     sql``,
   );
   const rows = await sql`SELECT scheduled_at FROM intakes ${where}`;
-  return (rows as { scheduled_at: string }[]).map((r) =>
+  return (rows as unknown as { scheduled_at: string }[]).map((r) =>
     new Date(r.scheduled_at).getTime(),
   );
 }

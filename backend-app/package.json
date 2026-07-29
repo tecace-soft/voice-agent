@@ -1,7 +1,7 @@
 {
   "name": "backend-app",
   "version": "0.1.0",
-  "description": "Shared backend API (Elysia + Bun) for the Admin dashboard and, later, the voice agent.",
+  "description": "Shared backend API (Elysia; Bun locally, Vercel/Node in prod) for the Admin dashboard and, later, the voice agent.",
   "type": "module",
   "module": "src/index.ts",
   "scripts": {
@@ -12,7 +12,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "elysia": "^1.4.29"
+    "@elysiajs/cors": "^1.4.2",
+    "elysia": "^1.4.29",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",

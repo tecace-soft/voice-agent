@@ -58,10 +58,19 @@ if (workdays.length === 0) {
   throw new Error("SCHEDULE_WORKDAYS must list ISO weekdays 1–7 (e.g. 1,2,3,4,5).");
 }
 
+// Allowed CORS origins for browser calls (the Vercel frontends). Comma-separated list,
+// e.g. "https://form.example.com,https://admin.example.com". Unset => allow any origin
+// (fine for local/dev; set explicit origins in production).
+const corsOrigins = (process.env.CORS_ORIGIN ?? "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   port: Number(process.env.PORT ?? 8000),
   databaseUrl,
+  corsOrigins,
   schedule: {
     timezone: assertTimeZone(process.env.SCHEDULE_TIMEZONE ?? "UTC"),
     workdays,

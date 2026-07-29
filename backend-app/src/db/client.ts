@@ -1,10 +1,17 @@
-import { SQL } from "bun";
+import postgres from "postgres";
 import { env } from "../config/env";
 
-// Bun ships a native PostgreSQL client (`Bun.SQL`) — no external driver dependency.
-// A single shared, connection-pooled client for the whole app. Import `sql` and use it
-// as a tagged template: values are sent as bound parameters, so this is injection-safe.
-export const sql = new SQL(env.databaseUrl);
+// postgres.js — a runtime-agnostic Postgres client (works on both Bun locally and the
+// Node runtime on Vercel; `Bun.SQL` would not run on Node). A single shared, pooled
+// client; use it as a tagged template so values are sent as bound parameters (injection-safe).
+// `prepare: false` keeps it compatible with connection poolers such as Neon's / Vercel
+// Postgres' PgBouncer (transaction pooling doesn't support server-side prepared statements).
+export const sql = postgres(env.databaseUrl, {
+  prepare: false,
+  // Our schema setup is idempotent (IF NOT EXISTS / DROP IF EXISTS), which emits routine
+  // NOTICEs; suppress them so migrate output stays clean.
+  onnotice: () => {},
+});
 
 // Create the schema if it does not exist. Called once on startup (and by the migrate
 // script). Kept idempotent so it is safe to run every boot in development. Statements

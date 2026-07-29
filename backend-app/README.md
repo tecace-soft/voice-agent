@@ -3,8 +3,9 @@
 The shared backend / API service — the single place that owns the system's data and
 business logic, exposed over an HTTP API.
 
-Built with **[Elysia](https://elysiajs.com/)** on the **[Bun](https://bun.sh/)** runtime
-(TypeScript, end-to-end type-safe).
+Built with **[Elysia](https://elysiajs.com/)** (TypeScript, end-to-end type-safe). Runs on
+**[Bun](https://bun.sh/)** locally and deploys to **Vercel** as serverless functions on the
+Node runtime — the code is runtime-agnostic (Postgres access is via **[postgres.js](https://github.com/porsager/postgres)**, not a Bun-only API).
 
 ## Role in the workspace
 
@@ -23,13 +24,14 @@ bun install
 cp .env.example .env          # then adjust (PORT, NODE_ENV, DATABASE_URL)
 ```
 
-Point `DATABASE_URL` at a Postgres instance. The server uses Bun's native Postgres client
-(no external driver) and creates the `intakes` table automatically on startup; you can also
-run migrations explicitly:
+Point `DATABASE_URL` at a Postgres instance, then create the schema:
 
 ```bash
-bun run db:migrate            # create/update the schema, then exit
+bun run db:migrate            # create/update the `intakes` table, then exit
 ```
+
+(Running locally with `bun run dev` also creates the schema on startup; the Vercel
+deployment does not — run `db:migrate` against your database once.)
 
 ## Running it
 
@@ -121,25 +123,47 @@ requested time overlaps an already-booked slot (window = `SCHEDULE_SLOT_MINUTES`
 
 Other scripts: `bun run typecheck` (tsc, no emit) · `bun run build` (bundle to `dist/`).
 
+## Deploying to Vercel
+
+The API deploys to Vercel as serverless functions (Node runtime — needed for the Postgres
+TCP connection). Elysia's `app.handle(request)` is a web-standard handler; `api/index.ts`
+exposes it per HTTP method and `vercel.json` rewrites every path to it, so Elysia does all
+the routing.
+
+1. **Import the repo** into a Vercel project, **Root Directory = `backend-app`**.
+2. **Build Command:** leave empty (Vercel builds the `api/` functions itself — don't run
+   the Bun-specific `build` script).
+3. **Environment variables** (Project Settings → Environment Variables): `DATABASE_URL`
+   (use Vercel Postgres/Neon's **pooled** connection string, with `?sslmode=require`),
+   the `SCHEDULE_*` vars, and `CORS_ORIGIN` (your frontends' URLs).
+4. **Create the tables once:** run `bun run db:migrate` locally with `DATABASE_URL` pointed
+   at the Vercel/Neon database (the serverless functions don't migrate on cold start).
+
+Locally it still runs as a normal Bun server (`bun run dev`); the same code runs on Node
+under Vercel because Postgres access uses postgres.js, not a Bun-only API.
+
 ## Project layout
 
 ```
 backend-app/
+  api/
+    index.ts           # Vercel serverless entry — forwards each method to app.handle
+  vercel.json          # rewrites all paths to /api (Elysia handles routing)
   src/
-    index.ts           # entrypoint — starts the HTTP server (app.listen)
-    app.ts             # composes the Elysia app from controllers (exported, testable)
+    index.ts           # local entrypoint — starts the HTTP server (app.listen, Bun)
+    app.ts             # composes the Elysia app from controllers (exported, testable) + CORS
     config/
-      env.ts           # typed environment access, incl. schedule config (Bun auto-loads .env)
+      env.ts           # typed env access — DB, CORS, schedule config
     db/
-      client.ts        # shared Postgres client + schema init (Bun native SQL)
-      intakes.ts       # intakes repository (create / list / get / update status / book)
+      client.ts        # shared postgres.js client + schema init
+      intakes.ts       # intakes repository (create / list / get / status / book / cancel / delete)
       migrate.ts       # standalone migration entrypoint (bun run db:migrate)
     schedule/
       slots.ts         # pure, timezone-aware slot-grid logic (no DB)
     routes/
       health.ts        # health/liveness controller
-      intake.ts        # intake API — create, list/filter, get, advance status
-      schedule.ts      # schedule API — slot grid + single-time availability
+      intake.ts        # intake API — create, list/filter, get, advance status, cancel, delete
+      schedule.ts      # schedule API — slot grid, availability, suggestions
   package.json
   tsconfig.json
   .env.example
