@@ -29,6 +29,7 @@ export async function initDb(): Promise<void> {
       purpose      TEXT NOT NULL,
       scheduled_at TIMESTAMPTZ NOT NULL,
       status       TEXT NOT NULL DEFAULT 'new',
+      notes        TEXT,
       created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
     )
@@ -36,6 +37,8 @@ export async function initDb(): Promise<void> {
   // Forward-compat for tables created before these columns existed.
   await sql`ALTER TABLE intakes ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'new'`;
   await sql`ALTER TABLE intakes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`;
+  // `notes` holds the agent's post-call summary (free text; null until written).
+  await sql`ALTER TABLE intakes ADD COLUMN IF NOT EXISTS notes TEXT`;
   // Reconcile the allowed-status constraint (drop + re-add keeps it correct as the
   // lifecycle grows — existing values are always a subset of the new list, so it's safe).
   await sql`ALTER TABLE intakes DROP CONSTRAINT IF EXISTS intakes_status_check`;

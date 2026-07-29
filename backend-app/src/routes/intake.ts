@@ -8,6 +8,7 @@ import {
   getIntake,
   insertIntake,
   listIntakes,
+  setIntakeNotes,
   updateIntakeStatus,
 } from "../db/intakes.js";
 
@@ -97,12 +98,13 @@ export const intake = new Elysia()
   )
   // Advance a client's lifecycle status — the agent writes back what happened.
   // Booking is special: it must not collide with an existing booked slot, so it goes
-  // through the conflict-checked path and returns 409 if the slot is already taken.
+  // through the conflict-checked path (409 if taken). When booking, an optional `dateTime`
+  // books the client at the slot they chose on the call, rather than their form time.
   .patch(
     "/intake/:id/status",
     async ({ params, body, status }) => {
       if (body.status === "booked") {
-        const result = await bookIntake(params.id, env.schedule.slotMinutes);
+        const result = await bookIntake(params.id, env.schedule.slotMinutes, body.dateTime);
         if (!result.ok) {
           if (result.reason === "not_found") return status(404, { status: "not_found" });
           if (result.reason === "in_past") {
@@ -125,7 +127,24 @@ export const intake = new Elysia()
     },
     {
       params: t.Object({ id: t.String({ format: "uuid" }) }),
-      body: t.Object({ status: settableStatusSchema }),
+      body: t.Object({
+        status: settableStatusSchema,
+        // Only used when status is "booked": the caller-chosen slot to book at.
+        dateTime: t.Optional(t.String({ format: "date-time" })),
+      }),
+    },
+  )
+  // Attach the agent's post-call summary to a client (free text).
+  .patch(
+    "/intake/:id/notes",
+    async ({ params, body, status }) => {
+      const record = await setIntakeNotes(params.id, body.notes);
+      if (!record) return status(404, { status: "not_found" });
+      return { status: "updated", intake: record };
+    },
+    {
+      params: t.Object({ id: t.String({ format: "uuid" }) }),
+      body: t.Object({ notes: t.String() }),
     },
   )
   // Cancel a client's booking — booked -> canceled, which frees the slot. The client

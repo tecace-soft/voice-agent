@@ -35,6 +35,7 @@ export interface IntakeRecord {
   purpose: string;
   scheduledAt: string;
   status: IntakeStatus;
+  notes: string | null; // agent's post-call summary (null until written)
   createdAt: string;
   updatedAt: string;
 }
@@ -50,6 +51,7 @@ const RETURN_COLUMNS = sql`
   purpose,
   scheduled_at AS "scheduledAt",
   status,
+  notes,
   created_at   AS "createdAt",
   updated_at   AS "updatedAt"
 `;
@@ -180,25 +182,32 @@ export type BookResult =
   | { ok: true; intake: IntakeRecord }
   | { ok: false; reason: "not_found" | "conflict" | "in_past" };
 
-// Atomically mark a client 'booked' — but only if their slot is not in the past and no
-// other booked client's window overlaps theirs (slotMinutes on each side). A single
-// conditional UPDATE keeps the checks and the write in one statement so two overlapping
-// bookings can't both win.
+// Atomically book a client. `at` is the time to book — the slot the caller chose on the
+// call; when omitted it books the intake's existing scheduled_at (the form-requested
+// time). Booking sets scheduled_at to the effective time, but only if it is not in the
+// past and no other booked client's window overlaps it (slotMinutes on each side). A
+// single conditional UPDATE keeps the checks and the write in one statement so two
+// overlapping bookings can't both win. The `::timestamptz` cast types the (possibly null)
+// param so COALESCE can fall back to the existing time.
 export async function bookIntake(
   id: string,
   slotMinutes: number,
+  at?: string,
 ): Promise<BookResult> {
+  const target = at ?? null;
   const [row] = await sql`
-    UPDATE intakes AS target
-    SET status = 'booked', updated_at = now()
-    WHERE target.id = ${id}::uuid
-      AND target.scheduled_at >= now()
+    UPDATE intakes AS t
+    SET status = 'booked',
+        scheduled_at = COALESCE(${target}::timestamptz, t.scheduled_at),
+        updated_at = now()
+    WHERE t.id = ${id}::uuid
+      AND COALESCE(${target}::timestamptz, t.scheduled_at) >= now()
       AND NOT EXISTS (
-        SELECT 1 FROM intakes AS other
-        WHERE other.status = 'booked'
-          AND other.id <> target.id
-          AND other.scheduled_at >  target.scheduled_at - make_interval(mins => ${slotMinutes})
-          AND other.scheduled_at <  target.scheduled_at + make_interval(mins => ${slotMinutes})
+        SELECT 1 FROM intakes AS o
+        WHERE o.status = 'booked'
+          AND o.id <> t.id
+          AND o.scheduled_at > COALESCE(${target}::timestamptz, t.scheduled_at) - make_interval(mins => ${slotMinutes})
+          AND o.scheduled_at < COALESCE(${target}::timestamptz, t.scheduled_at) + make_interval(mins => ${slotMinutes})
       )
     RETURNING ${RETURN_COLUMNS}
   `;
@@ -206,10 +215,26 @@ export async function bookIntake(
   // Zero rows updated: distinguish missing id vs. past slot vs. conflict.
   const existing = await getIntake(id);
   if (!existing) return { ok: false, reason: "not_found" };
-  if (new Date(existing.scheduledAt).getTime() < Date.now()) {
+  const effective = at ?? existing.scheduledAt;
+  if (new Date(effective).getTime() < Date.now()) {
     return { ok: false, reason: "in_past" };
   }
   return { ok: false, reason: "conflict" };
+}
+
+// Attach the agent's post-call summary to an intake. Returns the updated row, or null if
+// no intake has that id.
+export async function setIntakeNotes(
+  id: string,
+  notes: string,
+): Promise<IntakeRecord | null> {
+  const [row] = await sql`
+    UPDATE intakes
+    SET notes = ${notes}, updated_at = now()
+    WHERE id = ${id}::uuid
+    RETURNING ${RETURN_COLUMNS}
+  `;
+  return (row as IntakeRecord | undefined) ?? null;
 }
 
 // Cancel a client's booking: booked -> canceled, which frees the slot (only `booked`

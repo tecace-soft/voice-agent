@@ -98,11 +98,12 @@ booking can later be **`canceled`**, which frees its slot but keeps the client r
 | `POST /intake` | Form | Validates body; **201** with the stored record. New records start as `new`. |
 | `GET /intake` | Dashboard / Agent | List, newest first. Paging: `?limit` (1–200, default 50), `?offset` (default 0). Filters (optional, AND-combined): `?status`, `?language` (exact, case-insensitive), `?q` (substring over name/email/purpose), `?scheduledFrom` / `?scheduledTo` (ISO date-time range). Returns `{total,limit,offset,intakes}` — `total` reflects the filters. The agent polls `?status=new`. |
 | `GET /intake/:id` | Dashboard / Agent | Fetch one intake. `id` must be a UUID; **404** if not found. |
-| `PATCH /intake/:id/status` | Agent | Advance the lifecycle: body `{"status":"contacted"\|"booked"\|"unreachable"\|"new"}` (not `canceled` — see below). **404** if not found; **422** on an unknown status. Booking is guarded — **409** if the slot overlaps an existing booking, **422** if it's in the past. |
+| `PATCH /intake/:id/status` | Agent | Advance the lifecycle: body `{"status":"contacted"\|"booked"\|"unreachable"\|"new"}` (not `canceled` — see below). When booking, an optional **`dateTime`** books the client at the slot they chose on the call (else their form time). **404** if not found; **422** on unknown status. Booking is guarded — **409** if the slot overlaps an existing booking, **422** if it's in the past. |
+| `PATCH /intake/:id/notes` | Agent | Attach the post-call summary: body `{"notes":"..."}`. **404** if not found. |
 | `DELETE /intake/:id/booking` | Dashboard / Agent | Cancel a booking: `booked → canceled`, freeing the slot; the client record is kept. **404** if not found; **409** (`not_booked`) if the client has no active booking. |
 | `DELETE /intake/:id` | Dashboard | Permanently delete a client (hard delete). Frees their slot if booked. **200** `{status:"deleted"}`; **404** if not found. |
 
-Record shape (camelCase): `id, language, name, email, phoneNumber, purpose, scheduledAt, status, createdAt, updatedAt`.
+Record shape (camelCase): `id, language, name, email, phoneNumber, purpose, scheduledAt, status, notes, createdAt, updatedAt`.
 
 ### Schedule API
 
