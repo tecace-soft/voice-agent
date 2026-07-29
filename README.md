@@ -14,6 +14,7 @@ one git history.
 |---|---|---|---|
 | **Voice Intake Agent** | [`voice-agent-app/`](voice-agent-app/) | Active | A phone agent that collects a lead's details from a Google Form, calls them back, and books a consultation by voice (English/Korean), with live Cal.com availability. See its [README](voice-agent-app/README.md). |
 | **Admin Dashboard** | [`admin-dashboard-app/`](admin-dashboard-app/) | Planned (stub) | The web dashboard the Admin uses to manage and monitor the system. Talks to the shared backend. Stack TBD. |
+| **Form** | [`form-app/`](form-app/) | In progress | The client-facing web form a lead fills in to request a callback (language, name, email, phone, purpose, date/time). Submits to the shared backend; intended to replace the Google Form. **React + Vite** (TypeScript). See its [README](form-app/README.md). |
 | **Backend** | [`backend-app/`](backend-app/) | In progress | The shared API service owning the system's data and logic — used by the Admin Dashboard, and eventually by the voice agent. **Elysia + Bun** (TypeScript). See its [README](backend-app/README.md). |
 
 ---
@@ -28,6 +29,10 @@ voice-agent/                  ← repo root (this README, the shared git history
 │   └── README.md  .env  .env.example
 ├── admin-dashboard-app/      ← Admin dashboard frontend (stub; stack TBD)
 │   └── README.md
+├── form-app/                 ← client-facing intake form — React + Vite (in progress)
+│   ├── src/  (App.tsx, api/)
+│   ├── index.html  vite.config.ts  package.json  tsconfig.json
+│   └── README.md  .env.example
 ├── backend-app/              ← shared API service — Elysia + Bun (in progress)
 │   ├── src/  (index.ts, app.ts, routes/, config/)
 │   ├── package.json  tsconfig.json

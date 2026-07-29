@@ -1,0 +1,24 @@
+{
+  "name": "form-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Client-facing intake form (React + Vite) that submits leads to the backend API.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "typescript": "5",
+    "vite": "^8.1.5"
+  }
+}
