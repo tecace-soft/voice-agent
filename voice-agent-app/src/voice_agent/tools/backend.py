@@ -79,11 +79,15 @@ class BackendClient:
 
     # -- scheduling ------------------------------------------------------
 
+    def schedule_grid(self, from_date: str, to_date: str) -> dict[str, Any]:
+        """The raw slot grid {timezone, slotMinutes, days:[{date, slots}]} for a date range."""
+        return self._call(f"/schedule?{self._query(**{'from': from_date, 'to': to_date})}")
+
     def available_slots(self, from_date: str, to_date: str) -> list[str]:
         """ISO start times of every open slot in [from_date, to_date] (dates YYYY-MM-DD)."""
-        data = self._call(f"/schedule?{self._query(**{'from': from_date, 'to': to_date})}")
+        grid = self.schedule_grid(from_date, to_date)
         starts: list[str] = []
-        for day in data.get("days", []):
+        for day in grid.get("days", []):
             for slot in day.get("slots", []):
                 if slot.get("available"):
                     starts.append(slot["start"])
