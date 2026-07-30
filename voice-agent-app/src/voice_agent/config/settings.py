@@ -108,8 +108,12 @@ class Config:
             backend_url=_optional("BACKEND_URL").rstrip("/"),
             # Cal.com — used ONLY to create the meeting (calendar invite + join link) when
             # a booking is confirmed; the backend still owns availability + the booking.
+            # CAL_EVENT_ID is the event type that carries the Teams/video config (falls back
+            # to the older CAL_EVENT_TYPE_ID name, then a default).
             cal_api_key=_optional("CAL_API_KEY"),
-            cal_event_type_id=int(_optional("CAL_EVENT_TYPE_ID", "0")),
+            cal_event_type_id=int(
+                _optional("CAL_EVENT_ID") or _optional("CAL_EVENT_TYPE_ID", "6407082")
+            ),
             # Telephony (Twilio phone line). Accept the short .env names first,
             # falling back to the TWILIO_-prefixed ones.
             twilio_account_sid=_optional("ACCOUNT_SID") or _optional("TWILIO_ACCOUNT_SID"),
