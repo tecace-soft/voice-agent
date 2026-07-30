@@ -118,6 +118,12 @@ class BackendClient:
         data = self._call(f"/intake/{intake_id}/status", method="PATCH", body=body)
         return data.get("intake", {})
 
+    def record_attempt(self, intake_id: str) -> dict[str, Any]:
+        """Count one more call attempt against a lead (atomic increment on the backend).
+        Returns the updated intake — read `attempts` to decide when to give up."""
+        data = self._call(f"/intake/{intake_id}/attempt", method="POST")
+        return data.get("intake", {})
+
     def set_status(self, intake_id: str, status: str) -> dict[str, Any]:
         """Set a lead's status (contacted / unreachable / new)."""
         data = self._call(

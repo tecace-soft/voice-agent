@@ -1,4 +1,4 @@
-import type { AgentPrompt, IntakeList, IntakeStatus } from "./types";
+import type { AgentPrompt, IntakeList, IntakeRecord, IntakeStatus } from "./types";
 
 // Single place that talks to the backend API. Every screen reads through here, so the
 // UI never builds URLs or parses responses itself. Base URL comes from VITE_BACKEND_URL
@@ -14,13 +14,16 @@ export class BackendError extends Error {
   }
 }
 
-async function get<T>(path: string): Promise<T> {
+async function request<T>(method: string, path: string): Promise<T> {
   if (!BASE_URL) {
     throw new BackendError("Backend URL is not configured (set VITE_BACKEND_URL).", 0);
   }
   let res: Response;
   try {
-    res = await fetch(`${BASE_URL}${path}`, { headers: { accept: "application/json" } });
+    res = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers: { accept: "application/json" },
+    });
   } catch {
     throw new BackendError("Couldn't reach the server.", 0);
   }
@@ -37,6 +40,8 @@ async function get<T>(path: string): Promise<T> {
   }
   return (text ? JSON.parse(text) : {}) as T;
 }
+
+const get = <T>(path: string): Promise<T> => request<T>("GET", path);
 
 export interface IntakeQuery {
   status?: IntakeStatus;
@@ -55,6 +60,19 @@ export function listIntakes(query: IntakeQuery = {}): Promise<IntakeList> {
   }
   const qs = params.toString();
   return get<IntakeList>(`/intake${qs ? `?${qs}` : ""}`);
+}
+
+// Cancel a client's booking (booked → canceled; frees the slot). The client record is
+// kept. Returns the updated record.
+export function cancelBooking(
+  id: string,
+): Promise<{ status: string; intake: IntakeRecord }> {
+  return request("DELETE", `/intake/${id}/booking`);
+}
+
+// Permanently delete a client (hard delete). Frees their slot if they were booked.
+export function deleteClient(id: string): Promise<{ status: string; id: string }> {
+  return request("DELETE", `/intake/${id}`);
 }
 
 // The agent's current prompt + scenario (read-only for now).

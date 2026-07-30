@@ -6,6 +6,7 @@ import {
   countIntakes,
   deleteIntake,
   getIntake,
+  incrementIntakeAttempts,
   insertIntake,
   listIntakes,
   setIntakeNotes,
@@ -132,6 +133,20 @@ export const intake = new Elysia()
         // Only used when status is "booked": the caller-chosen slot to book at.
         dateTime: t.Optional(t.String({ format: "date-time" })),
       }),
+    },
+  )
+  // Record a call attempt against a client (atomic increment). The agent calls this each
+  // time it places a call and reads back `attempts` to decide when to give up (past a
+  // configured max it PATCHes the status to `unreachable`, so the poller stops calling).
+  .post(
+    "/intake/:id/attempt",
+    async ({ params, status }) => {
+      const record = await incrementIntakeAttempts(params.id);
+      if (!record) return status(404, { status: "not_found" });
+      return { status: "updated", intake: record };
+    },
+    {
+      params: t.Object({ id: t.String({ format: "uuid" }) }),
     },
   )
   // Attach the agent's post-call summary to a client (free text).

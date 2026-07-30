@@ -36,6 +36,7 @@ export interface IntakeRecord {
   scheduledAt: string;
   status: IntakeStatus;
   notes: string | null; // agent's post-call summary (null until written)
+  attempts: number; // how many times the agent has tried to call this lead
   createdAt: string;
   updatedAt: string;
 }
@@ -52,6 +53,7 @@ const RETURN_COLUMNS = sql`
   scheduled_at AS "scheduledAt",
   status,
   notes,
+  attempts,
   created_at   AS "createdAt",
   updated_at   AS "updatedAt"
 `;
@@ -152,6 +154,22 @@ export async function updateIntakeStatus(
   const [row] = await sql`
     UPDATE intakes
     SET status = ${status}, updated_at = now()
+    WHERE id = ${id}::uuid
+    RETURNING ${RETURN_COLUMNS}
+  `;
+  return (row as IntakeRecord | undefined) ?? null;
+}
+
+// Record one more call attempt against a client (atomic increment) and bump updated_at.
+// The agent calls this each time it places a call; it reads the returned `attempts` to
+// decide when to give up. A single UPDATE keeps concurrent increments from racing.
+// Returns the updated row, or null if no intake has that id.
+export async function incrementIntakeAttempts(
+  id: string,
+): Promise<IntakeRecord | null> {
+  const [row] = await sql`
+    UPDATE intakes
+    SET attempts = attempts + 1, updated_at = now()
     WHERE id = ${id}::uuid
     RETURNING ${RETURN_COLUMNS}
   `;

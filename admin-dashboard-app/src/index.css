@@ -97,6 +97,41 @@ h2 {
   font-weight: 600;
 }
 
+/* ---- buttons / row actions ---- */
+.btn {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #111827;
+  border-radius: 8px;
+  padding: 0.4rem 0.7rem;
+}
+.btn:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-sm {
+  font-size: 0.85rem;
+  padding: 0.3rem 0.55rem;
+}
+.btn-danger {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+.btn-danger:hover:not(:disabled) {
+  background: #fee2e2;
+}
+.actions {
+  display: flex;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
 /* ---- filters ---- */
 .filters {
   display: flex;

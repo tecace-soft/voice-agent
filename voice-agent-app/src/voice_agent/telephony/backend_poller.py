@@ -9,6 +9,12 @@ Each triggered lead's id is remembered in-memory so a lead isn't re-queued befor
 its call completes; the call flow then writes the lead's real outcome back to the
 backend (contacted / booked / unreachable), which is the durable de-dup across
 restarts.
+
+Leads who never answer stay "new", so without a bound the poller would re-call them
+forever (every restart re-picks them). To stop that, each placed call is counted on
+the backend (POST /intake/:id/attempt); once a lead reaches MAX_CALL_ATTEMPTS we
+mark it `unreachable` — it leaves the "new" queue and the calls stop. Booked/contacted
+leads leave "new" on their own, so only genuinely-unreachable leads hit the cap.
 """
 
 from __future__ import annotations
@@ -21,6 +27,10 @@ from ..config import Config
 from ..tools.backend import BackendClient, BackendError
 
 log = logging.getLogger(__name__)
+
+# How many times to call a lead before giving up and marking it `unreachable`.
+# Hardcoded for now; revisit if we want this configurable later.
+MAX_CALL_ATTEMPTS = 3
 
 
 def record_from_intake(intake: dict) -> tuple[dict[str, str], str]:
@@ -57,24 +67,58 @@ class BackendIntakePoller:
         self._seen: set[str] = set()
 
     def poll_once(self) -> int:
-        """Check for new leads; call each new one back. Returns count placed."""
+        """Check for new leads; call each new one back. Returns count placed.
+
+        A lead that has already been called `MAX_CALL_ATTEMPTS` times is marked
+        `unreachable` instead of called again, so we stop chasing people who never
+        answer (the `attempts` count is persisted on the backend, so the cap holds
+        across restarts too).
+        """
         intakes = self._client.new_intakes()
         placed = 0
         for intake in intakes:
             intake_id = str(intake.get("id", ""))
             if not intake_id or intake_id in self._seen:
                 continue
+            self._seen.add(intake_id)  # processed this run either way (call, skip, or retire)
+
             record, phone = record_from_intake(intake)
-            if phone:
-                try:
-                    self._trigger(record, phone)   # enqueue; the queue paces + retries
-                    placed += 1
-                    log.info("queued call for %s (intake %s)", phone, intake_id)
-                except Exception as exc:  # noqa: BLE001
-                    log.warning("could not queue call for %s: %s", phone, exc)
-            else:
+            if not phone:
                 log.warning("intake %s has no phone number; skipped", intake_id)
-            self._seen.add(intake_id)
+                continue
+
+            attempts = int(intake.get("attempts", 0) or 0)
+            if attempts >= MAX_CALL_ATTEMPTS:
+                # Out of retries — retire the lead so it drops out of the "new" queue.
+                try:
+                    self._client.set_status(intake_id, "unreachable")
+                    log.info(
+                        "intake %s unreachable after %d attempts; no longer calling",
+                        intake_id,
+                        attempts,
+                    )
+                except BackendError as exc:
+                    log.warning("could not mark %s unreachable: %s", intake_id, exc)
+                continue
+
+            try:
+                self._trigger(record, phone)   # enqueue; the queue paces + retries
+            except Exception as exc:  # noqa: BLE001
+                log.warning("could not queue call for %s: %s", phone, exc)
+                continue
+            placed += 1
+            log.info(
+                "queued call for %s (intake %s, attempt %d/%d)",
+                phone,
+                intake_id,
+                attempts + 1,
+                MAX_CALL_ATTEMPTS,
+            )
+            # Count this attempt (best-effort — a counter hiccup shouldn't block the call).
+            try:
+                self._client.record_attempt(intake_id)
+            except BackendError as exc:
+                log.warning("could not record attempt for %s: %s", intake_id, exc)
         return placed
 
     def run(self) -> None:

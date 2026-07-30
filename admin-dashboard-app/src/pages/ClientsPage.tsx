@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { listIntakes } from "../api/backend";
+import { cancelBooking, deleteClient, listIntakes } from "../api/backend";
 import type { IntakeRecord, IntakeStatus } from "../api/types";
 import { formatDateTime } from "../lib";
 import { AsyncState, StatusBadge } from "../ui";
@@ -12,6 +12,38 @@ export function ClientsPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<"" | IntakeStatus>("");
   const [q, setQ] = useState("");
+  // The row whose delete/cancel request is in flight (disables its buttons), and the
+  // last action error to surface.
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function onCancelBooking(r: IntakeRecord) {
+    if (!window.confirm(`Cancel ${r.name}'s booking? This frees the slot.`)) return;
+    setBusyId(r.id);
+    setActionError(null);
+    try {
+      const { intake } = await cancelBooking(r.id);
+      setRows((prev) => prev.map((x) => (x.id === r.id ? intake : x)));
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Couldn't cancel the booking.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onDelete(r: IntakeRecord) {
+    if (!window.confirm(`Permanently delete ${r.name}? This can't be undone.`)) return;
+    setBusyId(r.id);
+    setActionError(null);
+    try {
+      await deleteClient(r.id);
+      setRows((prev) => prev.filter((x) => x.id !== r.id));
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Couldn't delete the client.");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   // Fetch by status on the server; filter the search text client-side (snappier, no
   // request per keystroke).
@@ -67,6 +99,7 @@ export function ClientsPage() {
       </div>
 
       <AsyncState loading={loading} error={error} />
+      {actionError && <p className="error">{actionError}</p>}
 
       {!loading && !error && (
         <>
@@ -84,6 +117,7 @@ export function ClientsPage() {
                   <th>Requested time</th>
                   <th>Status</th>
                   <th>Notes</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -101,11 +135,29 @@ export function ClientsPage() {
                       <StatusBadge status={r.status} />
                     </td>
                     <td className="notes">{r.notes ?? <span className="muted">—</span>}</td>
+                    <td className="actions">
+                      {r.status === "booked" && (
+                        <button
+                          className="btn btn-sm"
+                          disabled={busyId === r.id}
+                          onClick={() => onCancelBooking(r)}
+                        >
+                          Cancel booking
+                        </button>
+                      )}
+                      <button
+                        className="btn btn-sm btn-danger"
+                        disabled={busyId === r.id}
+                        onClick={() => onDelete(r)}
+                      >
+                        Delete
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="muted center">
+                    <td colSpan={8} className="muted center">
                       No clients{q || status ? " match the filters" : " yet"}.
                     </td>
                   </tr>
