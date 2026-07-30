@@ -48,6 +48,8 @@ class Config:
     elevenlabs_voice_id: str
     elevenlabs_model_id: str
     backend_url: str
+    cal_api_key: str
+    cal_event_type_id: int
     twilio_account_sid: str
     twilio_auth_token: str
     twilio_phone_number: str
@@ -104,6 +106,10 @@ class Config:
             # The shared backend API (leads, scheduling, status) — the voice agent's
             # single source instead of Cal.com + Google Sheets. No trailing slash.
             backend_url=_optional("BACKEND_URL").rstrip("/"),
+            # Cal.com — used ONLY to create the meeting (calendar invite + join link) when
+            # a booking is confirmed; the backend still owns availability + the booking.
+            cal_api_key=_optional("CAL_API_KEY"),
+            cal_event_type_id=int(_optional("CAL_EVENT_TYPE_ID", "0")),
             # Telephony (Twilio phone line). Accept the short .env names first,
             # falling back to the TWILIO_-prefixed ones.
             twilio_account_sid=_optional("ACCOUNT_SID") or _optional("TWILIO_ACCOUNT_SID"),

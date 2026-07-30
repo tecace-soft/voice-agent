@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from ..config import Config
 from ..tools.backend import BackendClient, BackendError
+from ..tools.cal import CalClient, CalError
 from ..tools.gemini import GeminiTools
 
 log = logging.getLogger(__name__)
@@ -184,7 +185,9 @@ class Scheduler:
         return Offer(f"That day I also have {_join(picked)}. Which of those works?", picked)
 
     def book(self, iso_start: str, record: dict[str, str]) -> dict:
-        """Book the caller's lead at the chosen slot on the backend.
+        """Book the caller's lead at the chosen slot on the backend (the authoritative
+        booking + conflict check), then create the Cal.com meeting so the lead gets a
+        calendar invite + join link.
 
         Raises BackendError on conflict / past / not found (caught by the call flow),
         or RuntimeError if the record has no backend intake id.
@@ -192,7 +195,31 @@ class Scheduler:
         intake_id = intake_id_from(record)
         if not intake_id:
             raise RuntimeError("cannot book: no backend intake id in the record")
-        return self._backend.book(intake_id, iso_start)
+        result = self._backend.book(intake_id, iso_start)
+        self._create_meeting(iso_start, record)   # best-effort; must not undo the booking
+        return result
+
+    def _create_meeting(self, iso_start: str, record: dict[str, str]) -> None:
+        """Create the Cal.com meeting (invite + link) for a confirmed booking. Cal.com is
+        used only for this — the backend already booked the slot. Best-effort: a failure
+        here is logged and swallowed so the (successful) booking still stands."""
+        if not self._cfg.cal_api_key:
+            return
+        email = record.get("email", "")
+        if not email:
+            log.warning("no email on the record; skipping the Cal.com meeting invite")
+            return
+        try:
+            CalClient(self._cfg).create_booking(
+                self._cfg.cal_event_type_id,
+                iso_start,
+                name=attendee_name(record),
+                email=email,
+                time_zone=self._tz,
+            )
+            log.info("created Cal.com meeting + invite for %s at %s", email, iso_start)
+        except CalError as exc:  # noqa: BLE001 — never undo a successful booking
+            log.warning("could not create the Cal.com meeting/invite: %s", exc)
 
     @staticmethod
     def friendly(iso_start: str) -> str:
