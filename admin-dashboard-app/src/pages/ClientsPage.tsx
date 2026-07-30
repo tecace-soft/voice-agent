@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { cancelBooking, deleteClient, listIntakes } from "../api/backend";
+import { deleteClient, listIntakes } from "../api/backend";
 import type { IntakeRecord, IntakeStatus } from "../api/types";
 import { formatDateTime } from "../lib";
 import { AsyncState, StatusBadge } from "../ui";
@@ -16,20 +16,6 @@ export function ClientsPage() {
   // last action error to surface.
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-
-  async function onCancelBooking(r: IntakeRecord) {
-    if (!window.confirm(`Cancel ${r.name}'s booking? This frees the slot.`)) return;
-    setBusyId(r.id);
-    setActionError(null);
-    try {
-      const { intake } = await cancelBooking(r.id);
-      setRows((prev) => prev.map((x) => (x.id === r.id ? intake : x)));
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Couldn't cancel the booking.");
-    } finally {
-      setBusyId(null);
-    }
-  }
 
   async function onDelete(r: IntakeRecord) {
     if (!window.confirm(`Permanently delete ${r.name}? This can't be undone.`)) return;
@@ -136,15 +122,6 @@ export function ClientsPage() {
                     </td>
                     <td className="notes">{r.notes ?? <span className="muted">—</span>}</td>
                     <td className="actions">
-                      {r.status === "booked" && (
-                        <button
-                          className="btn btn-sm"
-                          disabled={busyId === r.id}
-                          onClick={() => onCancelBooking(r)}
-                        >
-                          Cancel booking
-                        </button>
-                      )}
                       <button
                         className="btn btn-sm btn-danger"
                         disabled={busyId === r.id}

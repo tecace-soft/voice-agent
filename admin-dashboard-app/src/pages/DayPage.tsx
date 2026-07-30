@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { listIntakes } from "../api/backend";
+import { cancelBooking, listIntakes } from "../api/backend";
 import type { IntakeRecord } from "../api/types";
 import { formatDateLong, formatTime, pacificDate } from "../lib";
 import { AsyncState } from "../ui";
@@ -10,6 +10,24 @@ export function DayPage() {
   const [appts, setAppts] = useState<IntakeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The appointment whose cancel request is in flight, and the last action error.
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function onCancelBooking(a: IntakeRecord) {
+    if (!window.confirm(`Cancel ${a.name}'s booking? This frees the slot.`)) return;
+    setBusyId(a.id);
+    setActionError(null);
+    try {
+      await cancelBooking(a.id);
+      // Canceled bookings are no longer "booked", so drop them from the day view.
+      setAppts((prev) => prev.filter((x) => x.id !== a.id));
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Couldn't cancel the booking.");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -46,6 +64,7 @@ export function DayPage() {
       </div>
 
       <AsyncState loading={loading} error={error} />
+      {actionError && <p className="error">{actionError}</p>}
 
       {!loading && !error &&
         (appts.length === 0 ? (
@@ -63,6 +82,13 @@ export function DayPage() {
                   <div>{a.purpose}</div>
                   {a.notes && <div className="appt-notes">{a.notes}</div>}
                 </div>
+                <button
+                  className="btn btn-sm btn-danger"
+                  disabled={busyId === a.id}
+                  onClick={() => onCancelBooking(a)}
+                >
+                  Cancel booking
+                </button>
               </li>
             ))}
           </ul>

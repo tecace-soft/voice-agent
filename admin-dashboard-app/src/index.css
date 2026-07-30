@@ -296,6 +296,7 @@ td.notes {
 .appt {
   display: flex;
   gap: 1rem;
+  align-items: flex-start;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
@@ -305,6 +306,9 @@ td.notes {
   font-weight: 700;
   color: #2563eb;
   min-width: 84px;
+}
+.appt-body {
+  flex: 1;
 }
 .appt-name {
   font-weight: 600;
