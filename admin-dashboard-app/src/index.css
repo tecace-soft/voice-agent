@@ -1,0 +1,298 @@
+:root {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #1a1a1a;
+  background: #f4f5f7;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+a {
+  color: #2563eb;
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* ---- shell ---- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 0 1.5rem;
+  height: 56px;
+  background: #111827;
+  color: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.brand {
+  font-weight: 700;
+}
+.nav {
+  display: flex;
+  gap: 1.25rem;
+}
+.nav a {
+  color: #cbd5e1;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.25rem 0;
+  border-bottom: 2px solid transparent;
+}
+.nav a:hover {
+  color: #fff;
+  text-decoration: none;
+}
+.nav a.active {
+  color: #fff;
+  border-bottom-color: #2563eb;
+}
+
+.content {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+h1 {
+  font-size: 1.5rem;
+  margin: 0.25rem 0;
+}
+h2 {
+  font-size: 1.05rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.muted {
+  color: #6b7280;
+}
+.error {
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+}
+.center {
+  text-align: center;
+}
+.back {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* ---- filters ---- */
+.filters {
+  display: flex;
+  gap: 0.5rem;
+}
+.filters input,
+.filters select {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font: inherit;
+  background: #fff;
+}
+.filters input {
+  min-width: 240px;
+}
+
+/* ---- table ---- */
+.table-wrap {
+  overflow-x: auto;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+th,
+td {
+  text-align: left;
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid #f0f1f3;
+  vertical-align: top;
+}
+th {
+  background: #f9fafb;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #6b7280;
+}
+tbody tr:last-child td {
+  border-bottom: none;
+}
+td.notes {
+  max-width: 260px;
+  color: #374151;
+}
+
+/* ---- status badges ---- */
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge-new {
+  background: #eef2ff;
+  color: #3730a3;
+}
+.badge-contacted {
+  background: #fef9c3;
+  color: #854d0e;
+}
+.badge-booked {
+  background: #dcfce7;
+  color: #166534;
+}
+.badge-unreachable {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+.badge-canceled {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* ---- calendar ---- */
+.month-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 600;
+}
+.month-nav button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+.month-nav button:hover {
+  background: #f3f4f6;
+}
+.calendar {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.cal-weekday {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+  padding: 0.25rem 0;
+}
+.cal-cell {
+  min-height: 84px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font: inherit;
+}
+.cal-cell.empty {
+  background: transparent;
+  border: none;
+  cursor: default;
+}
+.cal-cell:not(.empty):hover {
+  border-color: #2563eb;
+}
+.cal-cell.has {
+  background: #f0f7ff;
+  border-color: #bfdbfe;
+}
+.cal-day {
+  font-weight: 600;
+  color: #374151;
+}
+.cal-count {
+  align-self: flex-start;
+  background: #2563eb;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+}
+
+/* ---- day appointments ---- */
+.appts {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.appt {
+  display: flex;
+  gap: 1rem;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+}
+.appt-time {
+  font-weight: 700;
+  color: #2563eb;
+  min-width: 84px;
+}
+.appt-name {
+  font-weight: 600;
+}
+.appt-notes {
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed #e5e7eb;
+  color: #374151;
+  font-size: 0.92rem;
+}
+
+/* ---- prompt ---- */
+.prompt-block {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1rem 1.15rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: #1f2937;
+  overflow-x: auto;
+}

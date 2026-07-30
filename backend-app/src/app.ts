@@ -3,6 +3,7 @@ import { Elysia } from "elysia";
 import { env } from "./config/env.js";
 import { health } from "./routes/health.js";
 import { intake } from "./routes/intake.js";
+import { prompt } from "./routes/prompt.js";
 import { schedule } from "./routes/schedule.js";
 
 // Compose the application from controllers. Exported WITHOUT `.listen()` so tests can
@@ -15,7 +16,8 @@ export const app = new Elysia()
   .get("/", () => ({ name: "backend-app", message: "Elysia is running" }))
   .use(health)
   .use(intake)
-  .use(schedule);
+  .use(schedule)
+  .use(prompt);
 
 export type App = typeof app;
 

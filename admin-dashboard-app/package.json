@@ -1,0 +1,25 @@
+{
+  "name": "admin-dashboard-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Admin dashboard (React + Vite) — clients, booking calendar, and the agent prompt.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.5",
+    "typescript": "5",
+    "vite": "^8.2.0"
+  }
+}

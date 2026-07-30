@@ -13,7 +13,7 @@ one git history.
 | App | Directory | Status | What it is |
 |---|---|---|---|
 | **Voice Intake Agent** | [`voice-agent-app/`](voice-agent-app/) | Active | A phone agent that collects a lead's details from a Google Form, calls them back, and books a consultation by voice (English/Korean), with live Cal.com availability. See its [README](voice-agent-app/README.md). |
-| **Admin Dashboard** | [`admin-dashboard-app/`](admin-dashboard-app/) | Planned (stub) | The web dashboard the Admin uses to manage and monitor the system. Talks to the shared backend. Stack TBD. |
+| **Admin Dashboard** | [`admin-dashboard-app/`](admin-dashboard-app/) | In progress | The web dashboard the Admin uses to monitor the system — clients + booking status, a booking calendar, and the agent's prompt. Reads from the shared backend. **React + Vite** (TypeScript). See its [README](admin-dashboard-app/README.md). |
 | **Form** | [`form-app/`](form-app/) | In progress | The client-facing web form a lead fills in to request a callback (language, name, email, phone, purpose, date/time). Submits to the shared backend; intended to replace the Google Form. **React + Vite** (TypeScript). See its [README](form-app/README.md). |
 | **Backend** | [`backend-app/`](backend-app/) | In progress | The shared API service owning the system's data and logic — used by the Admin Dashboard, and eventually by the voice agent. **Elysia + Bun** (TypeScript). See its [README](backend-app/README.md). |
 
@@ -27,8 +27,10 @@ voice-agent/                  ← repo root (this README, the shared git history
 │   ├── src/  scripts/  docs/  data/
 │   ├── pyproject.toml  requirements.txt
 │   └── README.md  .env  .env.example
-├── admin-dashboard-app/      ← Admin dashboard frontend (stub; stack TBD)
-│   └── README.md
+├── admin-dashboard-app/      ← Admin dashboard — React + Vite (in progress)
+│   ├── src/  (App.tsx, pages/, api/)
+│   ├── index.html  vite.config.ts  package.json  tsconfig.json
+│   └── README.md  .env.example
 ├── form-app/                 ← client-facing intake form — React + Vite (in progress)
 │   ├── src/  (App.tsx, api/)
 │   ├── index.html  vite.config.ts  package.json  tsconfig.json
@@ -41,8 +43,8 @@ voice-agent/                  ← repo root (this README, the shared git history
 └── .claude/                  ← workspace-level tooling settings
 ```
 
-The **admin dashboard** is still a stub (README only, stack TBD). The **backend** is now
-scaffolded with Elysia + Bun — see its README to run it.
+The **form** and **admin dashboard** are React + Vite apps; the **backend** is Elysia + Bun.
+Each has its own README with setup/run/deploy steps.
 
 **What lives where**
 - **Per app** (inside each app directory): source code, `pyproject.toml`/dependencies,

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.local
+*.log
+
+# Env files are per-machine; keep the template tracked.
+.env
+.env.*
+!.env.example
