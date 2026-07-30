@@ -210,15 +210,18 @@ class Scheduler:
             log.warning("no email on the record; skipping the Cal.com meeting invite")
             return
         try:
-            CalClient(self._cfg).create_booking(
+            booking = CalClient(self._cfg).create_booking(
                 self._cfg.cal_event_type_id,
                 iso_start,
                 name=attendee_name(record),
                 email=email,
                 time_zone=self._tz,
             )
-            log.info("created Cal.com meeting + invite for %s at %s", email, iso_start)
-        except CalError as exc:  # noqa: BLE001 — never undo a successful booking
+            log.info(
+                "created Cal.com meeting + invite for %s at %s (uid %s)",
+                email, iso_start, booking.get("uid", "?"),
+            )
+        except Exception as exc:  # noqa: BLE001 — best-effort; never undo a successful booking
             log.warning("could not create the Cal.com meeting/invite: %s", exc)
 
     @staticmethod
