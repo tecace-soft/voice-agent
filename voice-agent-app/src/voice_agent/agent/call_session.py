@@ -17,13 +17,13 @@ final transcript to `handle()` and speaks `turn.reply` back with ElevenLabs.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 
 from ..config import Config
-from ..tools.cal import CalError
+from ..tools.backend import BackendClient, BackendError
 from ..tools.gemini import GeminiTools
 from ..tools.hermes import HermesTools
-from .fulfillment import Fulfillment
 from .intake import IntakeAgent, IntakeField
 from .persona import smalltalk_reply
 from .scheduler import (
@@ -32,6 +32,7 @@ from .scheduler import (
     Scheduler,
     attendee_name,
     desired_time_from,
+    intake_id_from,
     language_from,
     parse_time,
     phone_from,
@@ -39,6 +40,10 @@ from .scheduler import (
     speech_locale,
     timeframe_from,
 )
+
+# Backend leads carry the desired time as an ISO instant; detect that so we can skip a
+# Gemini round-trip that would only re-parse it.
+_ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}")
 
 log = logging.getLogger(__name__)
 
@@ -81,7 +86,6 @@ class CallSession:
         cfg: Config,
         fields: list[IntakeField],
         *,
-        event_type_id: int,
         direction: str = "inbound",
         opening: str | None = None,
         use_hermes_closing: bool = True,
@@ -92,7 +96,6 @@ class CallSession:
     ) -> None:
         self._cfg = cfg
         self._fields = fields
-        self._event_type_id = event_type_id
         self._direction = direction
         self._create_bookings = create_bookings
         # True when this call is the agent ringing back at a time the caller
@@ -107,8 +110,8 @@ class CallSession:
             emit_closing=False,
             greeting_prefix=opening or OPENINGS.get(direction, OPENINGS["inbound"]),
         )
-        # Scheduling runs only when Cal.com is configured.
-        self._scheduling_enabled = bool(cfg.cal_api_key)
+        # Scheduling runs only when the backend is configured.
+        self._scheduling_enabled = bool(cfg.backend_url)
         self._scheduler: Scheduler | None = None
         self._offer = None
         self._slot_attempts = 0
@@ -119,7 +122,7 @@ class CallSession:
         self._day = ""          # the day currently in focus, for "other times that day"
         self._callback_at = ""  # if not ready now, when to call back instead
         self._transcript: list[str] = []  # spoken exchange, for the post-call summary
-        self._tracked_row = 0   # sheet row this call was saved to (0 = not tracked)
+        self._tracked = False   # whether the call's outcome was written to the backend
         self._summarized = False  # guard: post-call outputs (email/summary) run once
         self._time_attempts = 0        # rounds of time alternatives offered (State 3)
         self._proposed: set[str] = set()  # slots already proposed, so we don't repeat
@@ -167,8 +170,9 @@ class CallSession:
 
     @property
     def tracked_row(self) -> int:
-        """Sheet row this call was saved to (0 if nothing was tracked)."""
-        return self._tracked_row
+        """1 if the call's outcome was recorded on the backend, else 0. (Kept as an int
+        named `tracked_row` so the server's 'did we record anything?' check is unchanged.)"""
+        return 1 if self._tracked else 0
 
     @property
     def transcript(self) -> str:
@@ -257,7 +261,7 @@ class CallSession:
                 try:
                     self._scheduler.book(self._chosen, self._record)
                     self._booked_at = self._chosen
-                except (CalError, RuntimeError) as exc:
+                except (BackendError, RuntimeError) as exc:
                     log.warning("booking failed: %s", exc)
             else:
                 self._booked_at = self._chosen  # intended slot, not actually booked
@@ -518,7 +522,7 @@ class CallSession:
         # availability). ANY failure must degrade gracefully — offer to email a
         # scheduling link — never crash the turn with "an error occurred".
         try:
-            self._scheduler = Scheduler(self._cfg, self._event_type_id)
+            self._scheduler = Scheduler(self._cfg)
             # Fetch the timeframe's openings first — the fallback list, whether or not
             # the lead named a specific desired time.
             self._offer = self._scheduler.offer(timeframe_from(self._record))
@@ -544,6 +548,9 @@ class CallSession:
         raw = desired_time_from(self._record)
         if not raw:
             return ""
+        # A backend lead's desired time is already an ISO instant — use it directly.
+        if _ISO_RE.match(raw.strip()):
+            return raw.strip()
         try:
             return parse_time(self._gemini, raw, DEFAULT_TIMEZONE)
         except Exception as exc:  # noqa: BLE001 — a failed parse just skips the desired-time step
@@ -682,15 +689,20 @@ class CallSession:
         return Turn(closing or self._goodbye(), "hangup")
 
     def _track(self) -> None:
-        # Saving to Sheets is a non-critical side effect — a failure here (auth,
-        # network, quota, anything) must NEVER crash the call. Log and move on so
-        # the caller still hears their confirmation.
+        # Record the call's outcome on the backend. Booking already set 'booked' (via the
+        # scheduler), so here we only mark a reached-but-not-booked lead 'contacted'.
+        # A failure here (network, anything) must NEVER crash the call — log and move on
+        # so the caller still hears their confirmation.
+        intake_id = intake_id_from(self._record)
+        if not intake_id or not self._cfg.backend_url:
+            return
+        self._tracked = True
+        if self._booked_at:
+            return   # already 'booked' by the scheduler — don't re-touch the booking
         try:
-            self._tracked_row = Fulfillment(self._cfg, self._fields).track(
-                self._record, booked_at=self._booked_at
-            )
+            BackendClient(self._cfg).set_status(intake_id, "contacted")
         except Exception as exc:  # noqa: BLE001 — tracking must not break the call
-            log.warning("could not save record to Sheets: %s", exc)
+            log.warning("could not update lead status on the backend: %s", exc)
 
     def _confirmation(self) -> str:
         """State 4 — spoken after the booking is created."""

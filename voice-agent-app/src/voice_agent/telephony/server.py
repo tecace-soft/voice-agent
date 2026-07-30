@@ -29,11 +29,11 @@ from xml.sax.saxutils import escape
 
 from flask import Flask, Response, request
 
-from ..agent import CallSession, Fulfillment, IntakeField, Scheduler
+from ..agent import CallSession, IntakeField, Scheduler
 from ..agent.summary import summarize_call
 from ..config import Config
 from .outbound import OutboundQueue
-from ..tools.google_forms import GoogleFormsClient, GoogleFormsError
+from ..tools.backend import BackendClient
 from ..tools.notify import EmailNotifier
 from ..tools.voice import ElevenLabsVoice, VoiceError, _for_speech
 
@@ -78,11 +78,9 @@ _DEMO_FIELDS = [
 
 
 def _load_fields(cfg: Config) -> list[IntakeField]:
-    try:
-        return GoogleFormsClient(cfg).fields()
-    except GoogleFormsError as exc:
-        log.warning("Google Forms unavailable (%s); using demo questions", exc)
-        return _DEMO_FIELDS
+    # Questions asked of an inbound (non-prefilled) caller. Outbound calls to backend
+    # leads arrive prefilled, so they skip intake entirely.
+    return _DEMO_FIELDS
 
 
 def create_app(cfg: Config | None = None) -> Flask:
@@ -231,10 +229,11 @@ def create_app(cfg: Config | None = None) -> Flask:
                     callback_at=session.callback_at,
                     transcript=session.transcript,
                 )
-                if text and session.tracked_row:   # only annotate the row if we have one
+                intake_id = session.record.get("_intake_id", "")
+                if text and intake_id:   # attach the summary to the lead on the backend
                     try:
-                        Fulfillment(cfg, fields).note(session.tracked_row, text)
-                        log.info("wrote Hermes call summary to row %d", session.tracked_row)
+                        BackendClient(cfg).set_notes(intake_id, text)
+                        log.info("wrote call summary to intake %s", intake_id)
                     except Exception as exc:  # noqa: BLE001
                         log.warning("could not write call summary: %s", exc)
                 if notifier.configured:
@@ -258,7 +257,7 @@ def create_app(cfg: Config | None = None) -> Flask:
         is_callback = request.values.get("callback") == "1"
         prefilled = pending.pop(token, None) if token else None
         session = CallSession(
-            cfg, fields, event_type_id=cfg.cal_event_type_id,
+            cfg, fields,
             direction=direction, prefilled=prefilled, callback=is_callback,
         )
         sessions[call_sid] = session
@@ -289,7 +288,7 @@ def create_app(cfg: Config | None = None) -> Flask:
         call_sid = request.values.get("CallSid", "")
         session = sessions.get(call_sid)
         if session is None:  # unknown/expired call — restart cleanly
-            session = CallSession(cfg, fields, event_type_id=cfg.cal_event_type_id)
+            session = CallSession(cfg, fields)
             sessions[call_sid] = session
             return gather(speak(session.start()), session.speech_locale)
 

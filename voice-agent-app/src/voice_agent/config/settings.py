@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,29 +29,6 @@ def _optional(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip() or default
 
 
-def _sheet_id_from_link(link: str) -> str:
-    """Extract the spreadsheet id from a Google Sheets URL (empty if none)."""
-    match = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", link)
-    return match.group(1) if match else ""
-
-
-def _form_id_from_link(value: str) -> str:
-    """The Google Form's API id, from an editor URL or a raw id.
-
-    Only the editor id (`/forms/d/{id}/edit`) works with the Forms API. The
-    respondent links — a `forms.gle/...` short link or a published
-    `/forms/d/e/{id}/viewform` link — use a DIFFERENT id the API rejects, so we
-    return "" for those rather than a value that would only 404 later.
-    """
-    value = value.strip()
-    if "/forms/d/e/" in value or "forms.gle" in value:
-        return ""  # respondent link — not the API id; use the editor URL
-    match = re.search(r"/forms/d/([a-zA-Z0-9_-]+)", value)
-    if match:
-        return match.group(1)
-    return value if ("/" not in value and "?" not in value) else ""
-
-
 @dataclass(frozen=True)
 class Config:
     port: int
@@ -71,17 +47,12 @@ class Config:
     elevenlabs_api_key: str
     elevenlabs_voice_id: str
     elevenlabs_model_id: str
-    google_api_email: str
-    google_sheets_key: str
-    google_sheets_id: str
-    google_form_id: str
-    cal_api_key: str
+    backend_url: str
     twilio_account_sid: str
     twilio_auth_token: str
     twilio_phone_number: str
     deepgram_api_key: str
     public_base_url: str
-    cal_event_type_id: int
     detect_voicemail: bool
     smtp_host: str
     smtp_port: int
@@ -130,19 +101,9 @@ class Config:
             elevenlabs_api_key=_required("ELEVENLABS_API_KEY"),
             elevenlabs_voice_id=_required("ELEVENLABS_VOICE_ID"),
             elevenlabs_model_id=_optional("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5"),
-            # Google Sheets service-account (track user info) and Cal.com (schedule).
-            google_api_email=_optional("GOOGLE_API_EMAIL"),
-            google_sheets_key=_optional("GOOGLE_API_SHEETS_KEY"),
-            # Prefer the explicit id; otherwise pull it out of a full share link.
-            google_sheets_id=_optional("GOOGLE_SHEETS_ID") or _sheet_id_from_link(
-                _optional("SHEETS_LINK")
-            ),
-            # Google Forms supplies the questions (and, via polling, triggers the
-            # callback on submission). Accepts a raw id or a full form URL.
-            google_form_id=_form_id_from_link(
-                _optional("GOOGLE_FORM_ID") or _optional("GOOGLE_FORM_LINK")
-            ),
-            cal_api_key=_optional("CAL_API_KEY"),
+            # The shared backend API (leads, scheduling, status) — the voice agent's
+            # single source instead of Cal.com + Google Sheets. No trailing slash.
+            backend_url=_optional("BACKEND_URL").rstrip("/"),
             # Telephony (Twilio phone line). Accept the short .env names first,
             # falling back to the TWILIO_-prefixed ones.
             twilio_account_sid=_optional("ACCOUNT_SID") or _optional("TWILIO_ACCOUNT_SID"),
@@ -153,7 +114,6 @@ class Config:
             # Public https base (e.g. an ngrok URL) that Twilio can reach for
             # webhooks and audio; required for outbound calls.
             public_base_url=_optional("PUBLIC_BASE_URL").rstrip("/"),
-            cal_event_type_id=int(_optional("CAL_EVENT_TYPE_ID", "6407082")),
             # Ask Twilio to detect voicemail on outbound calls (leaves a message).
             detect_voicemail=_optional("DETECT_VOICEMAIL", "true").lower()
             in ("1", "true", "yes", "on"),

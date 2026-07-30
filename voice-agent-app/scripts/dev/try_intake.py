@@ -1,16 +1,15 @@
 """Interactive intake test — type as if you were the caller.
 
-    python scripts/dev/try_intake.py             # questions from the Google Form
-    python scripts/dev/try_intake.py --demo       # use the built-in demo questions
+    python scripts/dev/try_intake.py             # inbound (person calls in)
     python scripts/dev/try_intake.py --no-hermes  # skip the Hermes closing sub-task
     python scripts/dev/try_intake.py --voice       # speak each agent line via ElevenLabs
-    python scripts/dev/try_intake.py --book        # actually create the Cal.com booking
+    python scripts/dev/try_intake.py --book        # actually book on the backend
     python scripts/dev/try_intake.py --outbound    # simulate the agent CALLING the person
 
 Drives the shared CallSession — the same conversation engine the phone pipeline
-will use, for both inbound (person calls in) and outbound (agent calls out). On
-completion the record is appended to Google Sheets; a slot is offered/chosen,
-and with --book the booking is really created.
+uses, for both inbound (person calls in) and outbound (agent calls out). Slots and
+booking go through the backend (BACKEND_URL). Note: booking needs a real backend
+lead (an intake id), so with this demo/inbound record --book won't lock in a time.
 
 Commands:  :state  show captured record   :reset  start over   :quit
 """
@@ -22,13 +21,9 @@ import sys
 
 from voice_agent.agent import CallSession, IntakeField
 from voice_agent.config import Config, ConfigError
-from voice_agent.tools.google_forms import GoogleFormsClient, GoogleFormsError
 from voice_agent.tools.voice import ElevenLabsVoice, VoiceError
 
-# Cal.com event type to book (from `python scripts/verify_cal.py`).
-CAL_EVENT_TYPE_ID = 6407082  # "Voice Agent Testing"
-
-# Fallback questions when Google Forms is unavailable or the form has none yet.
+# Questions asked of an inbound caller (outbound calls to backend leads are prefilled).
 DEMO_FIELDS = [
     IntakeField("full_name", "the caller's full name"),
     IntakeField("email", "an email address"),
@@ -37,25 +32,10 @@ DEMO_FIELDS = [
 ]
 
 
-def _load_fields(cfg: Config, use_demo: bool) -> list[IntakeField]:
-    if use_demo:
-        print("questions: built-in demo set")
-        return DEMO_FIELDS
-    try:
-        fields = GoogleFormsClient(cfg).fields()
-        print(f"questions: {len(fields)} from Google Form {cfg.google_form_id}")
-        return fields
-    except GoogleFormsError as exc:
-        print(f"questions: Google Forms unavailable ({exc})")
-        print("           falling back to the built-in demo set. Pass --demo to skip this.")
-        return DEMO_FIELDS
-
-
 def _new_session(cfg: Config, fields: list[IntakeField], argv: list[str]) -> CallSession:
     return CallSession(
         cfg,
         fields,
-        event_type_id=CAL_EVENT_TYPE_ID,
         direction="outbound" if "--outbound" in argv else "inbound",
         use_hermes_closing="--no-hermes" not in argv,
         create_bookings="--book" in argv,
@@ -72,7 +52,7 @@ def main(argv: list[str]) -> int:
         return 1
 
     speaker = _Speaker(cfg) if "--voice" in argv else None
-    fields = _load_fields(cfg, use_demo="--demo" in argv)
+    fields = DEMO_FIELDS
     session = _new_session(cfg, fields, argv)
     print(
         f"intake test — {'OUTBOUND (agent calls out)' if '--outbound' in argv else 'INBOUND (person calls in)'}, "

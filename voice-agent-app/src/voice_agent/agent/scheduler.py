@@ -1,9 +1,10 @@
-"""Interactive scheduling: offer real Cal.com slots and let the caller pick.
+"""Interactive scheduling: offer real openings from the backend and let the caller pick.
 
-After the intake questions are answered, the agent uses the caller's timeframe
-answer (Today / This Week / This Month) to fetch live openings from Cal.com,
-reads back a few concrete choices, interprets which one the caller picked
-(via Gemini), and books it.
+After the intake questions are answered, the agent asks the shared backend for open
+slots (its schedule grid), reads back a few concrete choices, interprets which one the
+caller picked (via Gemini), and books it on the backend — updating the lead's record to
+the chosen time. Migrated from Cal.com to the backend API; the public interface is
+unchanged, so `call_session.py` uses it the same way.
 """
 
 from __future__ import annotations
@@ -16,16 +17,14 @@ from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 
 from ..config import Config
-from ..tools.cal import CalClient
+from ..tools.backend import BackendClient, BackendError
 from ..tools.gemini import GeminiTools
 
 log = logging.getLogger(__name__)
 
+# The timezone spoken times are interpreted in ("tomorrow at 2"). Keep it matching the
+# backend's SCHEDULE_TIMEZONE so the instants the agent resolves line up with its slots.
 DEFAULT_TIMEZONE = "America/Los_Angeles"
-# Only offer slots that start within business hours, Mon–Fri. A slot's start
-# hour must be in [START, END): 8 AM up to (but not including) 5 PM.
-BUSINESS_START_HOUR = 8
-BUSINESS_END_HOUR = 17
 
 
 @dataclass
@@ -38,7 +37,7 @@ class Offer:
 class Decision:
     """What the caller wants, in response to offered times."""
 
-    action: str             # "pick" | "request" | "decline" | "unclear"
+    action: str             # "pick" | "request" | "others" | "decline" | "unclear"
     slot: str = ""          # for "pick": the chosen ISO start
     requested: str = ""     # for "request": the asked-for time as ISO start
 
@@ -47,38 +46,33 @@ class Scheduler:
     def __init__(
         self,
         cfg: Config,
-        event_type_id: int,
+        event_type_id: int | None = None,   # vestigial (Cal.com) — ignored, kept for callers
         *,
         timezone: str = DEFAULT_TIMEZONE,
         max_options: int = 3,
-        business_hours: tuple[int, int] = (BUSINESS_START_HOUR, BUSINESS_END_HOUR),
     ) -> None:
         self._cfg = cfg
-        self._cal = CalClient(cfg)
+        self._backend = BackendClient(cfg)
         self._gemini = GeminiTools(cfg)
-        self._event_type_id = event_type_id
         self._tz = timezone
         self._max_options = max_options
-        self._biz_start, self._biz_end = business_hours
 
     def offer(self, timeframe: str | None) -> Offer:
         """Fetch openings in `timeframe` and phrase a pick-one question."""
-        start, end = _window(timeframe)
-        slots = self._cal.slots(self._event_type_id, start, end, time_zone=self._tz)
-        slots = _business_hours_only(slots, self._biz_start, self._biz_end)
-        options = _pick_diverse(slots, self._max_options)
+        from_date, to_date = _window_dates(timeframe)
+        try:
+            starts = _future(self._backend.available_slots(from_date, to_date))
+        except BackendError as exc:  # network/backend failure -> caller layer degrades
+            log.warning("could not fetch openings: %s", exc)
+            starts = []
+        options = _pick_across_days(starts, self._max_options)
         if not options:
             return Offer(
                 "I'm sorry, I don't see any open times in that range. "
                 "Would a different timeframe work?",
                 [],
             )
-        labels = [_friendly(o) for o in options]
-        if len(labels) == 1:
-            body = labels[0]
-        else:
-            body = ", ".join(labels[:-1]) + f", or {labels[-1]}"
-        return Offer(f"I have a few openings: {body}. Which works best for you?", options)
+        return Offer(f"I have a few openings: {_join(options)}. Which works best for you?", options)
 
     def interpret(self, user_text: str, options: list[str]) -> str | None:
         """Map the caller's reply to one of the offered ISO options, or None."""
@@ -93,7 +87,7 @@ class Scheduler:
         )
         try:
             choice = self._gemini.classify(prompt, labels)["label"]
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             log.warning("slot interpretation failed: %s", exc)
             return None
         if choice == "none":
@@ -151,74 +145,54 @@ class Scheduler:
     def check_time(self, requested_iso: str) -> tuple[str, str]:
         """Is `requested_iso` an open slot? Returns (exact_match, nearest_open).
 
-        Both are ISO starts; exact is "" if that time isn't open, nearest is ""
-        if nothing suitable is around it.
+        Both are ISO starts; exact is "" if that time isn't open, nearest is "" if
+        nothing suitable is around it. Availability + suggestions come from the backend.
         """
         try:
-            req = datetime.datetime.fromisoformat(requested_iso)
-        except ValueError:
+            avail = self._backend.availability(requested_iso)
+        except BackendError as exc:  # noqa: BLE001 — availability failure -> nothing
+            log.warning("availability check failed: %s", exc)
             return "", ""
-        local = req.astimezone(ZoneInfo(self._tz))
-        win_start = local.replace(hour=0, minute=0, second=0, microsecond=0)
-        win_end = win_start + datetime.timedelta(days=2)
-        fmt = "%Y-%m-%dT%H:%M:%SZ"
-        slots = self._cal.slots(
-            self._event_type_id,
-            win_start.astimezone(datetime.timezone.utc).strftime(fmt),
-            win_end.astimezone(datetime.timezone.utc).strftime(fmt),
-            time_zone=self._tz,
-        )
-        slots = _business_hours_only(slots, self._biz_start, self._biz_end)
-        starts = [s["start"] for day in sorted(slots) for s in slots[day]]
-        if not starts:
+        if avail.get("available"):
+            return requested_iso, ""
+        try:
+            nearby = self._backend.suggestions(requested_iso, limit=1)
+        except BackendError as exc:  # noqa: BLE001
+            log.warning("suggestions lookup failed: %s", exc)
             return "", ""
-        exact, nearest, best = "", "", None
-        for start in starts:
-            diff = abs((datetime.datetime.fromisoformat(start) - req).total_seconds())
-            if diff < 60:
-                exact = start
-            if best is None or diff < best:
-                best, nearest = diff, start
-        return exact, nearest
+        nearest = nearby[0]["start"] if nearby else ""
+        return "", nearest
 
     def day_offer(self, day_iso: str, exclude: tuple[str, ...] = ()) -> Offer:
         """A spread of free slots on the same day as `day_iso` (excluding some).
 
         Empty options mean there are no other openings that day.
         """
-        try:
-            day = datetime.datetime.fromisoformat(day_iso).astimezone(ZoneInfo(self._tz))
-        except ValueError:
+        date = _date_of(day_iso)
+        if not date:
             return Offer("", [])
-        win_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
-        win_end = win_start + datetime.timedelta(days=1)
-        fmt = "%Y-%m-%dT%H:%M:%SZ"
-        slots = self._cal.slots(
-            self._event_type_id,
-            win_start.astimezone(datetime.timezone.utc).strftime(fmt),
-            win_end.astimezone(datetime.timezone.utc).strftime(fmt),
-            time_zone=self._tz,
-        )
-        slots = _business_hours_only(slots, self._biz_start, self._biz_end)
+        try:
+            starts = _future(self._backend.available_slots(date, date))
+        except BackendError as exc:  # noqa: BLE001
+            log.warning("could not fetch day openings: %s", exc)
+            return Offer("", [])
         excluded = set(exclude)
-        starts = [
-            s["start"] for d in sorted(slots) for s in slots[d] if s["start"] not in excluded
-        ]
+        starts = [s for s in starts if s not in excluded]
         if not starts:
             return Offer("", [])
         picked = _spread(starts, self._max_options)
-        labels = [_friendly(o) for o in picked]
-        body = labels[0] if len(labels) == 1 else ", ".join(labels[:-1]) + f", or {labels[-1]}"
-        return Offer(f"That day I also have {body}. Which of those works?", picked)
+        return Offer(f"That day I also have {_join(picked)}. Which of those works?", picked)
 
     def book(self, iso_start: str, record: dict[str, str]) -> dict:
-        email = record.get("email", "")
-        if not email:
-            raise RuntimeError("cannot book without an email address in the record")
-        return self._cal.create_booking(
-            self._event_type_id, iso_start, name=attendee_name(record), email=email,
-            time_zone=self._tz,
-        )
+        """Book the caller's lead at the chosen slot on the backend.
+
+        Raises BackendError on conflict / past / not found (caught by the call flow),
+        or RuntimeError if the record has no backend intake id.
+        """
+        intake_id = intake_id_from(record)
+        if not intake_id:
+            raise RuntimeError("cannot book: no backend intake id in the record")
+        return self._backend.book(intake_id, iso_start)
 
     @staticmethod
     def friendly(iso_start: str) -> str:
@@ -227,15 +201,26 @@ class Scheduler:
     @staticmethod
     def day_label(iso_start: str) -> str:
         try:
-            return datetime.datetime.fromisoformat(iso_start).strftime("%A, %B %d")
+            dt = datetime.datetime.fromisoformat(iso_start)
         except ValueError:
             return "that day"
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(ZoneInfo(DEFAULT_TIMEZONE))
+        return dt.strftime("%A, %B %d")
 
 
 def _loads_json(raw: str) -> dict:
     """Parse a JSON object out of an LLM reply (tolerating code fences/extra text)."""
     match = re.search(r"\{.*\}", raw, re.DOTALL)
     return json.loads(match.group(0)) if match else {}
+
+
+def _join(options: list[str]) -> str:
+    """Phrase a list of ISO starts as 'A, B, or C' (friendly, spoken)."""
+    labels = [_friendly(o) for o in options]
+    if len(labels) == 1:
+        return labels[0]
+    return ", ".join(labels[:-1]) + f", or {labels[-1]}"
 
 
 def _spread(items: list[str], n: int) -> list[str]:
@@ -248,7 +233,70 @@ def _spread(items: list[str], n: int) -> list[str]:
     return [items[round(i * step)] for i in range(n)]
 
 
+def _pick_across_days(starts: list[str], n: int) -> list[str]:
+    """Prefer the first opening on each of the first n days; then fill in from each day.
+
+    `starts` are chronologically ordered ISO instants (as the backend returns them).
+    """
+    by_day: dict[str, list[str]] = {}
+    for start in starts:
+        by_day.setdefault(start[:10], []).append(start)  # group by the ISO date prefix
+    picked: list[str] = []
+    for day in sorted(by_day):
+        picked.append(by_day[day][0])
+        if len(picked) >= n:
+            return picked
+    for day in sorted(by_day):
+        for start in by_day[day][1:]:
+            picked.append(start)
+            if len(picked) >= n:
+                return picked
+    return picked
+
+
+def _future(starts: list[str]) -> list[str]:
+    """Drop any slot that has already started (the grid marks taken-ness, not past-ness)."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    kept: list[str] = []
+    for start in starts:
+        try:
+            if datetime.datetime.fromisoformat(start) > now:
+                kept.append(start)
+        except ValueError:
+            continue
+    return kept
+
+
+def _window_dates(timeframe: str | None) -> tuple[str, str]:
+    """Map a spoken timeframe to a (from, to) date range (YYYY-MM-DD) for the grid."""
+    today = datetime.datetime.now(datetime.timezone.utc).date()
+    label = (timeframe or "").strip().lower()
+    if "today" in label:
+        end = today
+    elif "week" in label:
+        end = today + datetime.timedelta(days=7)
+    elif "month" in label:
+        end = today + datetime.timedelta(days=30)
+    else:
+        end = today + datetime.timedelta(days=14)
+    return today.isoformat(), end.isoformat()
+
+
+def _date_of(iso_start: str) -> str:
+    """The calendar date (YYYY-MM-DD, UTC) of an ISO instant, or '' if unparseable."""
+    try:
+        dt = datetime.datetime.fromisoformat(iso_start)
+    except ValueError:
+        return ""
+    return dt.astimezone(datetime.timezone.utc).date().isoformat()
+
+
 _SPEECH_LOCALES = {"korean": "ko-KR", "english": "en-US"}
+
+
+def intake_id_from(record: dict[str, str]) -> str:
+    """The backend intake id the poller stashed on the record (for status/booking)."""
+    return record.get("_intake_id", "")
 
 
 def language_from(record: dict[str, str]) -> str:
@@ -338,66 +386,15 @@ def attendee_name(record: dict[str, str]) -> str:
     return "Caller"
 
 
-def _window(timeframe: str | None) -> tuple[str, str]:
-    """Map a spoken timeframe to an ISO (start, end) search window in UTC."""
-    now = datetime.datetime.now(datetime.timezone.utc)
-    label = (timeframe or "").strip().lower()
-    if "today" in label:
-        end = now.replace(hour=23, minute=59, second=0, microsecond=0)
-    elif "week" in label:
-        end = now + datetime.timedelta(days=7)
-    elif "month" in label:
-        end = now + datetime.timedelta(days=30)
-    else:
-        end = now + datetime.timedelta(days=14)
-    fmt = "%Y-%m-%dT%H:%M:%SZ"
-    return now.strftime(fmt), end.strftime(fmt)
-
-
-def _business_hours_only(slots: dict, start_hour: int, end_hour: int) -> dict:
-    """Drop weekend days and any slot starting outside [start_hour, end_hour)."""
-    kept: dict[str, list] = {}
-    for day, entries in slots.items():
-        good = [e for e in entries if _in_business_hours(e.get("start", ""), start_hour, end_hour)]
-        if good:
-            kept[day] = good
-    return kept
-
-
-def _in_business_hours(iso_start: str, start_hour: int, end_hour: int) -> bool:
-    try:
-        dt = datetime.datetime.fromisoformat(iso_start)
-    except ValueError:
-        return False
-    if dt.weekday() >= 5:  # Saturday=5, Sunday=6
-        return False
-    return start_hour <= dt.hour < end_hour
-
-
-def _pick_diverse(slots: dict, n: int) -> list[str]:
-    """Prefer the first opening on each of the first n days; then fill in."""
-    picked: list[str] = []
-    for day in sorted(slots):
-        entries = slots[day]
-        if isinstance(entries, list) and entries:
-            picked.append(entries[0]["start"])
-        if len(picked) >= n:
-            return picked
-    for day in sorted(slots):  # not enough distinct days — take more from each
-        for entry in slots.get(day, [])[1:]:
-            picked.append(entry["start"])
-            if len(picked) >= n:
-                return picked
-    return picked
-
-
 def _friendly(iso_start: str) -> str:
-    """A spoken-friendly time: on the hour drops the minutes.
+    """A spoken-friendly time in the business timezone: on the hour drops the minutes.
 
-    '...T12:00...' -> 'Wednesday, July 22 at 12 PM';
-    '...T12:15...' -> 'Wednesday, July 22 at 12:15 PM'.
+    Backend slots are UTC instants ('...T15:00:00.000Z'), so convert to the schedule
+    timezone first — '...T15:00Z' (8 AM Pacific) -> 'Thursday, July 30 at 8 AM'.
     """
     dt = datetime.datetime.fromisoformat(iso_start)
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(ZoneInfo(DEFAULT_TIMEZONE))
     hour12 = dt.hour % 12 or 12
     ampm = "AM" if dt.hour < 12 else "PM"
     clock = f"{hour12} {ampm}" if dt.minute == 0 else f"{hour12}:{dt.minute:02d} {ampm}"

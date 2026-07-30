@@ -1,11 +1,11 @@
 """Run the phone server that answers Twilio calls.
 
     python scripts/run_phone.py          # answer calls only
-    python scripts/run_phone.py --poll    # also poll Google Forms and call submitters back
+    python scripts/run_phone.py --poll    # also poll the backend and call new leads back
 
-`--poll` is the no-webhook path: the server checks Google Forms for new
-submissions every 30s and calls the person back — no public HTTPS endpoint
-needed. Set PUBLIC_BASE_URL to how Twilio reaches this server (e.g.
+`--poll` is the no-webhook path: the server checks the backend for new leads
+(GET /intake?status=new) every 30s and calls the person back — no public HTTPS
+endpoint needed. Set PUBLIC_BASE_URL to how Twilio reaches this server (e.g.
 http://<box-ip>:3000).
 """
 
@@ -16,7 +16,7 @@ import threading
 
 from voice_agent.config import Config, ConfigError
 from voice_agent.telephony import create_app
-from voice_agent.telephony.poller import GoogleFormsPoller
+from voice_agent.telephony.backend_poller import BackendIntakePoller
 from voice_agent.telephony.server import call_status
 
 
@@ -34,7 +34,7 @@ def main(argv: list[str]) -> int:
     print(f"phone server on :{cfg.port}")
     print(f"  inbound webhook  -> {base}/voice/incoming   (set this on your Twilio number)")
     print(f"  outbound trigger -> POST {base}/call   (or: python scripts/place_call.py <number>)")
-    print(f"  Forms polling    -> {'ON (calls back new submissions)' if polling else 'off (pass --poll)'}")
+    print(f"  Backend polling  -> {'ON (calls back new leads)' if polling else 'off (pass --poll)'}")
     print(f"  health           -> {base}/health")
     if not cfg.public_base_url:
         print("  note: PUBLIC_BASE_URL not set — set it to how Twilio reaches this server.")
@@ -51,13 +51,12 @@ def main(argv: list[str]) -> int:
 
     if polling:
         try:
-            # New submissions are enqueued (not dialed directly) so the queue paces
-            # and retries them.
-            poller = GoogleFormsPoller(cfg, app.outbound_queue.add)  # type: ignore[attr-defined]
+            # New leads are enqueued (not dialed directly) so the queue paces + retries.
+            poller = BackendIntakePoller(cfg, app.outbound_queue.add)  # type: ignore[attr-defined]
             threading.Thread(target=poller.run, daemon=True).start()
-        except Exception as exc:  # noqa: BLE001 — never let a bad form config kill the server
-            print(f"  WARNING: Google Forms polling DISABLED — {exc}")
-            print("           (fix GOOGLE_FORM_ID in this box's .env, then restart)")
+        except Exception as exc:  # noqa: BLE001 — never let a bad config kill the server
+            print(f"  WARNING: backend lead polling DISABLED — {exc}")
+            print("           (set BACKEND_URL in this box's .env, then restart)")
 
     app.run(host="0.0.0.0", port=cfg.port)
     return 0
