@@ -1,7 +1,35 @@
+/* TecAce-branded theme for the intake form — same tokens as the admin dashboard:
+   deep navy ink on a soft blue-gray canvas, white surface, brand blue accent, and the
+   signature blue gradient (here as a strip across the top of the card). */
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Inter:wght@400;500;600&display=swap");
+
 :root {
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  color: #1a1a1a;
-  background: #f4f5f7;
+  /* text */
+  --ink: #1b2559; /* headings, strong text — TecAce navy */
+  --body: #414c6e; /* body copy */
+  --muted: #838ca6; /* secondary / captions */
+  /* surfaces */
+  --bg: #f4f7fb; /* page canvas (the hero's blue-gray tint) */
+  --surface: #ffffff; /* card */
+  --border: #e4e9f2; /* hairlines */
+  --border-strong: #c9d2e3; /* input outlines */
+  /* brand accents */
+  --primary: #2f6be0; /* brand blue — links, focus, primary button */
+  --primary-dark: #2456c0;
+  --primary-tint: #eef4fe;
+  /* signature strip — shades of blue: cyan-blue -> brand blue -> deep blue */
+  --gradient: linear-gradient(90deg, #22a7f0 0%, #2f6be0 52%, #1b3fa0 100%);
+  /* danger */
+  --danger: #d92d4b;
+  --danger-tint: #fdeef1;
+  --danger-border: #f6c9d3;
+  /* type */
+  --font-head: "Poppins", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+
+  font-family: var(--font-body);
+  color: var(--body);
+  background: var(--bg);
   line-height: 1.5;
 }
 
@@ -17,22 +45,39 @@ body {
 }
 
 .card {
-  background: #fff;
+  position: relative;
+  overflow: hidden; /* clips the top gradient strip to the rounded corners */
+  background: var(--surface);
   width: 100%;
   max-width: 480px;
   padding: 2rem;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow:
+    0 1px 3px rgba(27, 37, 89, 0.06),
+    0 12px 32px rgba(27, 37, 89, 0.07);
+}
+.card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background: var(--gradient);
 }
 
 h1 {
-  margin: 0 0 0.25rem;
+  margin: 0.4rem 0 0.25rem;
+  font-family: var(--font-head);
   font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--ink);
 }
 
 .subtitle {
   margin: 0 0 1.5rem;
-  color: #6b7280;
+  color: var(--muted);
 }
 
 .field {
@@ -45,24 +90,26 @@ h1 {
 label {
   font-weight: 600;
   font-size: 0.9rem;
+  color: var(--ink);
 }
 
 input,
 select,
 textarea {
   padding: 0.6rem 0.7rem;
-  border: 1px solid #d1d5db;
+  border: 1.5px solid var(--border-strong);
   border-radius: 8px;
   font: inherit;
-  background: #fff;
+  color: var(--ink);
+  background: var(--surface);
 }
 
 input:focus,
 select:focus,
 textarea:focus {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--primary);
   outline-offset: 1px;
-  border-color: #2563eb;
+  border-color: var(--primary);
 }
 
 textarea {
@@ -76,15 +123,16 @@ button {
   padding: 0.75rem;
   border: none;
   border-radius: 8px;
-  background: #2563eb;
+  background: var(--primary);
   color: #fff;
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+  transition: background 0.15s;
 }
 
 button:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: var(--primary-dark);
 }
 
 button:disabled {
@@ -93,9 +141,9 @@ button:disabled {
 }
 
 .error {
-  background: #fef2f2;
-  color: #b91c1c;
-  border: 1px solid #fecaca;
+  background: var(--danger-tint);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
   padding: 0.6rem 0.75rem;
   border-radius: 8px;
   margin-bottom: 1rem;

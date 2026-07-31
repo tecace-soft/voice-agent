@@ -20,7 +20,8 @@
   --primary-tint: #eef4fe;
   --brand-pink: #e0219b;
   --brand-purple: #8a35d9;
-  --gradient: linear-gradient(90deg, #e0219b 0%, #8a35d9 52%, #2f6be0 100%);
+  /* topbar divider — shades of blue: cyan-blue -> brand blue -> deep blue */
+  --gradient: linear-gradient(90deg, #22a7f0 0%, #2f6be0 52%, #1b3fa0 100%);
   /* danger (rose-red — reads destructive, still sits in the brand's warm-to-cool range) */
   --danger: #d92d4b;
   --danger-tint: #fdeef1;
