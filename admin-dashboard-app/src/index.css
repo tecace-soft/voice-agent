@@ -1,7 +1,38 @@
+/* TecAce-branded theme for the admin dashboard.
+   Palette + type taken from tecace.com: deep navy ink on a soft blue-gray canvas,
+   white surfaces, and the signature pink -> purple -> blue gradient as the accent.
+   All tokens live in :root so the look can be retuned in one place. */
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Inter:wght@400;500;600&display=swap");
+
 :root {
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  color: #1a1a1a;
-  background: #f4f5f7;
+  /* text */
+  --ink: #1b2559; /* headings, strong text, logo — TecAce navy */
+  --body: #414c6e; /* body copy */
+  --muted: #838ca6; /* secondary / captions */
+  /* surfaces */
+  --bg: #f4f7fb; /* page canvas (the hero's blue-gray tint) */
+  --surface: #ffffff; /* cards, table, topbar */
+  --border: #e4e9f2; /* hairlines */
+  --border-strong: #c9d2e3; /* input / button outlines */
+  /* brand accents */
+  --primary: #2f6be0; /* brand blue — links, active, focus, interactive */
+  --primary-dark: #2456c0;
+  --primary-tint: #eef4fe;
+  --brand-pink: #e0219b;
+  --brand-purple: #8a35d9;
+  --gradient: linear-gradient(90deg, #e0219b 0%, #8a35d9 52%, #2f6be0 100%);
+  /* danger (rose-red — reads destructive, still sits in the brand's warm-to-cool range) */
+  --danger: #d92d4b;
+  --danger-tint: #fdeef1;
+  --danger-border: #f6c9d3;
+  /* shape + type */
+  --radius: 10px;
+  --font-head: "Poppins", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+
+  font-family: var(--font-body);
+  color: var(--body);
+  background: var(--bg);
   line-height: 1.5;
 }
 
@@ -14,11 +45,16 @@ body {
 }
 
 a {
-  color: #2563eb;
+  color: var(--primary);
   text-decoration: none;
 }
 a:hover {
   text-decoration: underline;
+}
+
+:where(button, a, input, select):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 /* ---- shell ---- */
@@ -27,34 +63,41 @@ a:hover {
   align-items: center;
   gap: 2rem;
   padding: 0 1.5rem;
-  height: 56px;
-  background: #111827;
-  color: #fff;
+  height: 60px;
+  background: var(--surface);
+  color: var(--ink);
+  /* signature gradient strip along the bottom edge of the header */
+  border-bottom: 3px solid;
+  border-image: var(--gradient) 1;
   position: sticky;
   top: 0;
   z-index: 10;
 }
 .brand {
+  font-family: var(--font-head);
   font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }
 .nav {
   display: flex;
   gap: 1.25rem;
 }
 .nav a {
-  color: #cbd5e1;
+  color: var(--body);
   font-weight: 600;
   font-size: 0.95rem;
   padding: 0.25rem 0;
   border-bottom: 2px solid transparent;
 }
 .nav a:hover {
-  color: #fff;
+  color: var(--ink);
   text-decoration: none;
 }
 .nav a.active {
-  color: #fff;
-  border-bottom-color: #2563eb;
+  color: var(--primary);
+  border-bottom-color: var(--primary);
 }
 
 .content {
@@ -71,21 +114,27 @@ a:hover {
   margin-bottom: 1rem;
 }
 h1 {
+  font-family: var(--font-head);
   font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--ink);
   margin: 0.25rem 0;
 }
 h2 {
+  font-family: var(--font-head);
   font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ink);
   margin: 1.5rem 0 0.5rem;
 }
 
 .muted {
-  color: #6b7280;
+  color: var(--muted);
 }
 .error {
-  color: #b91c1c;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  color: var(--danger);
+  background: var(--danger-tint);
+  border: 1px solid var(--danger-border);
   padding: 0.6rem 0.75rem;
   border-radius: 8px;
 }
@@ -100,15 +149,22 @@ h2 {
 /* ---- buttons / row actions ---- */
 .btn {
   font: inherit;
+  font-weight: 600;
   cursor: pointer;
-  border: 1px solid #d1d5db;
-  background: #fff;
-  color: #111827;
+  border: 1.5px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink);
   border-radius: 8px;
-  padding: 0.4rem 0.7rem;
+  padding: 0.4rem 0.8rem;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
 }
 .btn:hover:not(:disabled) {
-  background: #f3f4f6;
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-tint);
 }
 .btn:disabled {
   opacity: 0.5;
@@ -116,15 +172,17 @@ h2 {
 }
 .btn-sm {
   font-size: 0.85rem;
-  padding: 0.3rem 0.55rem;
+  padding: 0.3rem 0.6rem;
 }
 .btn-danger {
-  border-color: #fecaca;
-  background: #fef2f2;
-  color: #b91c1c;
+  border-color: var(--danger-border);
+  background: var(--danger-tint);
+  color: var(--danger);
 }
 .btn-danger:hover:not(:disabled) {
-  background: #fee2e2;
+  border-color: var(--danger);
+  color: var(--danger);
+  background: #fbe0e6;
 }
 .actions {
   display: flex;
@@ -140,20 +198,24 @@ h2 {
 .filters input,
 .filters select {
   padding: 0.5rem 0.6rem;
-  border: 1px solid #d1d5db;
+  border: 1.5px solid var(--border-strong);
   border-radius: 8px;
   font: inherit;
-  background: #fff;
+  color: var(--ink);
+  background: var(--surface);
 }
 .filters input {
   min-width: 240px;
+}
+.filters input::placeholder {
+  color: var(--muted);
 }
 
 /* ---- table ---- */
 .table-wrap {
   overflow-x: auto;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
 }
 table {
@@ -165,22 +227,25 @@ th,
 td {
   text-align: left;
   padding: 0.7rem 0.85rem;
-  border-bottom: 1px solid #f0f1f3;
+  border-bottom: 1px solid var(--border);
   vertical-align: top;
 }
 th {
-  background: #f9fafb;
+  background: #f6f8fc;
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: #6b7280;
+  color: var(--muted);
 }
 tbody tr:last-child td {
   border-bottom: none;
 }
+tbody tr:hover td {
+  background: #fafbfe;
+}
 td.notes {
   max-width: 260px;
-  color: #374151;
+  color: var(--body);
 }
 
 /* ---- status badges ---- */
@@ -193,24 +258,24 @@ td.notes {
   white-space: nowrap;
 }
 .badge-new {
-  background: #eef2ff;
-  color: #3730a3;
+  background: #eef4fe;
+  color: #2456c0;
 }
 .badge-contacted {
-  background: #fef9c3;
-  color: #854d0e;
+  background: #fef3d6;
+  color: #92610a;
 }
 .badge-booked {
-  background: #dcfce7;
-  color: #166534;
+  background: #dff5e5;
+  color: #14713a;
 }
 .badge-unreachable {
-  background: #f3f4f6;
-  color: #4b5563;
+  background: #eef0f5;
+  color: #5b6683;
 }
 .badge-canceled {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--danger-tint);
+  color: #a51d3b;
 }
 
 /* ---- calendar ---- */
@@ -218,19 +283,24 @@ td.notes {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  font-family: var(--font-head);
   font-weight: 600;
+  color: var(--ink);
 }
 .month-nav button {
   width: 32px;
   height: 32px;
-  border: 1px solid #d1d5db;
-  background: #fff;
+  border: 1.5px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink);
   border-radius: 8px;
   font-size: 1.1rem;
   cursor: pointer;
 }
 .month-nav button:hover {
-  background: #f3f4f6;
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-tint);
 }
 .calendar {
   display: grid;
@@ -241,15 +311,15 @@ td.notes {
   text-align: center;
   font-size: 0.75rem;
   font-weight: 700;
-  color: #6b7280;
+  color: var(--muted);
   text-transform: uppercase;
   padding: 0.25rem 0;
 }
 .cal-cell {
   min-height: 84px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface);
   padding: 0.4rem 0.5rem;
   text-align: left;
   cursor: pointer;
@@ -264,26 +334,26 @@ td.notes {
   cursor: default;
 }
 .cal-cell:not(.empty):hover {
-  border-color: #2563eb;
+  border-color: var(--primary);
 }
 .cal-cell.has {
-  background: #f0f7ff;
-  border-color: #bfdbfe;
+  background: var(--primary-tint);
+  border-color: #cfe0fb;
 }
-/* Current day: an amber edge ring, distinct from the blue "booked" tint and still
-   visible when the cell is colored. Inset box-shadow keeps it on the edges without
-   nudging layout. Placed after .has so its border color wins on a booked today. */
+/* Current day: a brand-pink edge ring — distinct from the blue "booked" tint, on-brand,
+   and still visible when the cell is colored. Inset box-shadow keeps it on the edges
+   without nudging layout. Placed after .has so its border color wins on a booked today. */
 .cal-cell.today {
-  border-color: #f59e0b;
-  box-shadow: inset 0 0 0 2px #f59e0b;
+  border-color: var(--brand-pink);
+  box-shadow: inset 0 0 0 2px var(--brand-pink);
 }
 .cal-day {
   font-weight: 600;
-  color: #374151;
+  color: var(--ink);
 }
 .cal-count {
   align-self: flex-start;
-  background: #2563eb;
+  background: var(--primary);
   color: #fff;
   font-size: 0.72rem;
   font-weight: 600;
@@ -304,14 +374,15 @@ td.notes {
   display: flex;
   gap: 1rem;
   align-items: flex-start;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.85rem 1rem;
 }
 .appt-time {
-  font-weight: 700;
-  color: #2563eb;
+  font-family: var(--font-head);
+  font-weight: 600;
+  color: var(--primary);
   min-width: 84px;
 }
 .appt-body {
@@ -319,19 +390,20 @@ td.notes {
 }
 .appt-name {
   font-weight: 600;
+  color: var(--ink);
 }
 .appt-notes {
   margin-top: 0.4rem;
   padding-top: 0.4rem;
-  border-top: 1px dashed #e5e7eb;
-  color: #374151;
+  border-top: 1px dashed var(--border);
+  color: var(--body);
   font-size: 0.92rem;
 }
 
 /* ---- prompt ---- */
 .prompt-block {
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1rem 1.15rem;
   white-space: pre-wrap;
@@ -339,6 +411,6 @@ td.notes {
   font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
   font-size: 0.85rem;
   line-height: 1.55;
-  color: #1f2937;
+  color: var(--ink);
   overflow-x: auto;
 }
