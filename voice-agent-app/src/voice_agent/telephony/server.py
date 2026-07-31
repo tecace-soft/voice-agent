@@ -69,18 +69,19 @@ log = logging.getLogger(__name__)
 # a fixed low value (e.g. "2") cuts dead-air but risks clipping a slow speaker.
 SPEECH_TIMEOUT = "auto"
 
-_DEMO_FIELDS = [
+# Questions an inbound caller is asked so they can book themselves: who they are, an
+# email for the confirmation, and the day/time they want. Their phone number is taken
+# automatically from the incoming call (Twilio's `From`), so we don't ask for it.
+_INBOUND_FIELDS = [
     IntakeField("full_name", "the caller's full name"),
-    IntakeField("email", "an email address"),
-    IntakeField("phone", "a phone number"),
-    IntakeField("reason", "why they are getting in touch"),
+    IntakeField("email", "an email address to send the confirmation to"),
+    IntakeField("desired_time", "the day and time they'd like their appointment"),
 ]
 
 
 def _load_fields(cfg: Config) -> list[IntakeField]:
-    # Questions asked of an inbound (non-prefilled) caller. Outbound calls to backend
-    # leads arrive prefilled, so they skip intake entirely.
-    return _DEMO_FIELDS
+    # Outbound calls to backend leads arrive prefilled, so they skip intake entirely.
+    return _INBOUND_FIELDS
 
 
 def create_app(cfg: Config | None = None) -> Flask:
@@ -256,9 +257,14 @@ def create_app(cfg: Config | None = None) -> Flask:
         token = request.values.get("token", "")
         is_callback = request.values.get("callback") == "1"
         prefilled = pending.pop(token, None) if token else None
+        # For an INBOUND caller we already know their number — Twilio sends it as `From`.
+        # (Outbound leads arrive prefilled with their real number, and `From` there is our
+        # own Twilio line, so only use it when there's no prefilled record.)
+        caller_phone = "" if prefilled else request.values.get("From", "")
         session = CallSession(
             cfg, fields,
             direction=direction, prefilled=prefilled, callback=is_callback,
+            caller_phone=caller_phone,
         )
         sessions[call_sid] = session
         return gather(speak(session.start()), session.speech_locale)

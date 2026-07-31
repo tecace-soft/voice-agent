@@ -218,7 +218,7 @@ class Scheduler:
             name=attendee_name(record),
             email=record.get("email", ""),
             phone_number=phone_from(record),
-            purpose=purpose_from(record) or record.get("reason", "") or "Inbound call",
+            purpose=purpose_from(record) or record.get("reason", "") or "Consultation (inbound call)",
             date_time=iso_start,
         )
         intake_id = str(created.get("id", ""))

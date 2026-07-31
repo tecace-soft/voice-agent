@@ -93,11 +93,15 @@ class CallSession:
         prefilled: dict[str, str] | None = None,
         language: str | None = None,
         callback: bool = False,
+        caller_phone: str = "",
     ) -> None:
         self._cfg = cfg
         self._fields = fields
         self._direction = direction
         self._create_bookings = create_bookings
+        # An inbound caller's own number (from Twilio's `From`); folded into the record
+        # when scheduling begins, since we don't ask an inbound caller for their phone.
+        self._caller_phone = caller_phone
         # True when this call is the agent ringing back at a time the caller
         # asked for earlier — changes the opening line (see start()).
         self._is_callback = callback
@@ -520,6 +524,10 @@ class CallSession:
     # -- scheduling phase ------------------------------------------------
 
     def _begin_scheduling(self) -> Turn:
+        # Fold in the inbound caller's own number (we didn't ask for it) so the lead we
+        # create at booking has a phone. No-op for outbound (record already has one).
+        if self._caller_phone and "phone" not in self._record:
+            self._record["phone"] = self._caller_phone
         # Entering State 3 makes several network calls (Cal.com openings, time parse,
         # availability). ANY failure must degrade gracefully — offer to email a
         # scheduling link — never crash the turn with "an error occurred".
