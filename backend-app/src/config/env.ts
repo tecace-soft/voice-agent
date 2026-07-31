@@ -66,6 +66,20 @@ const corsOrigins = (process.env.CORS_ORIGIN ?? "")
   .map((o) => o.trim())
   .filter(Boolean);
 
+// --- Cal.com (meeting link only) -------------------------------------------------
+// The backend owns availability + the booking; Cal.com is used ONLY to create the
+// meeting (calendar invite + join link) when a booking is confirmed, and to cancel it
+// when the booking is deleted — so a freed slot can be cleanly re-booked. Both optional:
+// with no CAL_API_KEY the Cal.com step is skipped and bookings still work (just no link).
+const calApiKey = process.env.CAL_API_KEY?.trim() ?? "";
+// The event type carrying the video/Teams config. CAL_EVENT_ID preferred; the older
+// CAL_EVENT_TYPE_ID name is accepted as a fallback.
+const calEventIdRaw = (process.env.CAL_EVENT_ID ?? process.env.CAL_EVENT_TYPE_ID ?? "").trim();
+const calEventId = calEventIdRaw ? Number(calEventIdRaw) : 0;
+if (calApiKey && (!Number.isInteger(calEventId) || calEventId <= 0)) {
+  throw new Error("CAL_EVENT_ID must be a positive integer when CAL_API_KEY is set.");
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   port: Number(process.env.PORT ?? 8000),
@@ -77,6 +91,11 @@ export const env = {
     startMinutes,
     endMinutes,
     slotMinutes,
+  },
+  cal: {
+    apiKey: calApiKey,
+    eventId: calEventId,
+    enabled: Boolean(calApiKey && calEventId),
   },
 } as const;
 

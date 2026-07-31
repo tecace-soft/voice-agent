@@ -37,6 +37,7 @@ export interface IntakeRecord {
   status: IntakeStatus;
   notes: string | null; // agent's post-call summary (null until written)
   attempts: number; // how many times the agent has tried to call this lead
+  calUid: string | null; // Cal.com booking uid for the active meeting (null if none)
   createdAt: string;
   updatedAt: string;
 }
@@ -54,6 +55,7 @@ const RETURN_COLUMNS = sql`
   status,
   notes,
   attempts,
+  cal_uid      AS "calUid",
   created_at   AS "createdAt",
   updated_at   AS "updatedAt"
 `;
@@ -154,6 +156,22 @@ export async function updateIntakeStatus(
   const [row] = await sql`
     UPDATE intakes
     SET status = ${status}, updated_at = now()
+    WHERE id = ${id}::uuid
+    RETURNING ${RETURN_COLUMNS}
+  `;
+  return (row as IntakeRecord | undefined) ?? null;
+}
+
+// Store (or clear) the Cal.com booking uid for an intake's meeting. Called after the
+// meeting is created (uid) and after it's canceled (null). Returns the updated row, or
+// null if no intake has that id.
+export async function setCalUid(
+  id: string,
+  calUid: string | null,
+): Promise<IntakeRecord | null> {
+  const [row] = await sql`
+    UPDATE intakes
+    SET cal_uid = ${calUid}, updated_at = now()
     WHERE id = ${id}::uuid
     RETURNING ${RETURN_COLUMNS}
   `;
@@ -273,9 +291,14 @@ export async function cancelBooking(id: string): Promise<CancelResult> {
   return { ok: false, reason: existing ? "not_booked" : "not_found" };
 }
 
-// Permanently delete a client record (hard delete). Returns true if a row was removed.
-// If the client was booked, their slot frees up automatically.
-export async function deleteIntake(id: string): Promise<boolean> {
-  const [row] = await sql`DELETE FROM intakes WHERE id = ${id}::uuid RETURNING id`;
-  return Boolean(row);
+// Permanently delete a client record (hard delete). Returns the deleted row's Cal.com
+// uid (so the caller can cancel that meeting), or null if no row was removed. If the
+// client was booked, their slot frees up automatically.
+export async function deleteIntake(
+  id: string,
+): Promise<{ calUid: string | null } | null> {
+  const [row] = await sql`
+    DELETE FROM intakes WHERE id = ${id}::uuid RETURNING cal_uid AS "calUid"
+  `;
+  return (row as { calUid: string | null } | undefined) ?? null;
 }

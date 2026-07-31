@@ -1,4 +1,5 @@
 import { Elysia, t } from "elysia";
+import { cancelMeeting, createMeeting } from "../cal/client.js";
 import { env } from "../config/env.js";
 import {
   bookIntake,
@@ -9,6 +10,7 @@ import {
   incrementIntakeAttempts,
   insertIntake,
   listIntakes,
+  setCalUid,
   setIntakeNotes,
   updateIntakeStatus,
 } from "../db/intakes.js";
@@ -119,7 +121,12 @@ export const intake = new Elysia()
             message: "That time overlaps an existing booking.",
           });
         }
-        return { status: "updated", intake: result.intake };
+        // Best-effort: create the Cal.com meeting (invite + link) and remember its uid so
+        // we can cancel that exact meeting later. A Cal.com hiccup must not undo the booking.
+        let intake = result.intake;
+        const uid = await createMeeting(intake);
+        if (uid) intake = (await setCalUid(intake.id, uid)) ?? intake;
+        return { status: "updated", intake };
       }
 
       const record = await updateIntakeStatus(params.id, body.status);
@@ -175,7 +182,14 @@ export const intake = new Elysia()
           message: "That client has no active booking to cancel.",
         });
       }
-      return { status: "canceled", intake: result.intake };
+      // Cancel the Cal.com meeting for the freed slot, then clear the stored uid so the
+      // time is clean on both sides and can be re-booked with a fresh link.
+      let intake = result.intake;
+      if (intake.calUid) {
+        await cancelMeeting(intake.calUid);
+        intake = (await setCalUid(params.id, null)) ?? intake;
+      }
+      return { status: "canceled", intake };
     },
     {
       params: t.Object({ id: t.String({ format: "uuid" }) }),
@@ -187,6 +201,8 @@ export const intake = new Elysia()
     async ({ params, status }) => {
       const deleted = await deleteIntake(params.id);
       if (!deleted) return status(404, { status: "not_found" });
+      // If the client had a meeting, cancel it on Cal.com so the slot frees there too.
+      if (deleted.calUid) await cancelMeeting(deleted.calUid);
       return { status: "deleted", id: params.id };
     },
     {

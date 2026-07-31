@@ -31,6 +31,7 @@ export async function initDb(): Promise<void> {
       status       TEXT NOT NULL DEFAULT 'new',
       notes        TEXT,
       attempts     INTEGER NOT NULL DEFAULT 0,
+      cal_uid      TEXT,
       created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
     )
@@ -43,6 +44,10 @@ export async function initDb(): Promise<void> {
   // `attempts` counts how many times the agent has tried to call this lead. The agent
   // bounds retries on it: past a max, it marks the lead `unreachable` so calls stop.
   await sql`ALTER TABLE intakes ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0`;
+  // `cal_uid` = the Cal.com booking uid for this intake's meeting (null when there's no
+  // active meeting). We store it on booking so we can cancel that exact Cal.com booking
+  // when the booking is canceled/deleted — freeing the slot so it can be cleanly re-booked.
+  await sql`ALTER TABLE intakes ADD COLUMN IF NOT EXISTS cal_uid TEXT`;
   // Reconcile the allowed-status constraint (drop + re-add keeps it correct as the
   // lifecycle grows — existing values are always a subset of the new list, so it's safe).
   await sql`ALTER TABLE intakes DROP CONSTRAINT IF EXISTS intakes_status_check`;
