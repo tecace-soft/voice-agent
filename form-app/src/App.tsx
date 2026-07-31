@@ -122,7 +122,7 @@ export function App() {
         </div>
 
         <button type="submit" disabled={submitting}>
-          {submitting ? "Submitting…" : "Request callback"}
+          {submitting ? "Submitting…" : "Request Scheduling"}
         </button>
       </form>
     </main>
