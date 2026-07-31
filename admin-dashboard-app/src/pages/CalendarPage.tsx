@@ -61,7 +61,7 @@ export function CalendarPage() {
   const countByDay = useMemo(() => {
     const map: Record<string, number> = {};
     for (const b of booked) {
-      if (isPast(b.scheduledAt)) continue; // don't count appointments whose time has passed
+      if (isPast(b.scheduledAt)) continue; // count only bookings that haven't happened yet
       const day = pacificDate(b.scheduledAt);
       map[day] = (map[day] ?? 0) + 1;
     }
@@ -115,11 +115,12 @@ export function CalendarPage() {
               if (!cell) return <div key={`e${i}`} className="cal-cell empty" />;
               const count = countByDay[cell.date] ?? 0;
               const isToday = cell.date === todayStr;
+              const isPastDay = cell.date < todayStr; // string compare works for YYYY-MM-DD
               return (
                 <button
                   key={cell.date}
                   type="button"
-                  className={`cal-cell${count ? " has" : ""}${isToday ? " today" : ""}`}
+                  className={`cal-cell${count ? " has" : ""}${isToday ? " today" : ""}${isPastDay ? " past" : ""}`}
                   aria-current={isToday ? "date" : undefined}
                   onClick={() => navigate(`/calendar/${cell.date}`)}
                 >
