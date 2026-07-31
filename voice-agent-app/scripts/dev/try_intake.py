@@ -5,6 +5,9 @@
     python scripts/dev/try_intake.py --voice       # speak each agent line via ElevenLabs
     python scripts/dev/try_intake.py --book        # actually book on the backend
     python scripts/dev/try_intake.py --outbound    # simulate the agent CALLING the person
+    python scripts/dev/try_intake.py --from +15551234567  # simulate a known caller ID
+                                                   # (so the agent CONFIRMS that number
+                                                   #  instead of asking for one)
 
 Drives the shared CallSession — the same conversation engine the phone pipeline
 uses, for both inbound (person calls in) and outbound (agent calls out). Slots and
@@ -32,6 +35,16 @@ DEMO_FIELDS = [
 ]
 
 
+def _caller_phone(argv: list[str]) -> str:
+    """Simulated inbound caller ID from `--from <number>` / `--from=<number>`."""
+    for i, arg in enumerate(argv):
+        if arg.startswith("--from="):
+            return arg.split("=", 1)[1]
+        if arg == "--from" and i + 1 < len(argv):
+            return argv[i + 1]
+    return ""
+
+
 def _new_session(cfg: Config, fields: list[IntakeField], argv: list[str]) -> CallSession:
     return CallSession(
         cfg,
@@ -39,6 +52,7 @@ def _new_session(cfg: Config, fields: list[IntakeField], argv: list[str]) -> Cal
         direction="outbound" if "--outbound" in argv else "inbound",
         use_hermes_closing="--no-hermes" not in argv,
         create_bookings="--book" in argv,
+        caller_phone=_caller_phone(argv),
     )
 
 

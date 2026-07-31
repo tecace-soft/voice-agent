@@ -261,6 +261,8 @@ def create_app(cfg: Config | None = None) -> Flask:
         # (Outbound leads arrive prefilled with their real number, and `From` there is our
         # own Twilio line, so only use it when there's no prefilled record.)
         caller_phone = "" if prefilled else request.values.get("From", "")
+        if not prefilled:
+            log.info("inbound call — caller ID: %s", caller_phone or "(withheld/unknown)")
         session = CallSession(
             cfg, fields,
             direction=direction, prefilled=prefilled, callback=is_callback,

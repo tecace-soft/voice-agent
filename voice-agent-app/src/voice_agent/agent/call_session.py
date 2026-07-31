@@ -80,6 +80,44 @@ class Turn:
         return self.next == "hangup"
 
 
+def _format_phone(digits: str) -> str:
+    """Format a run of digits as a stored phone number (E.164-ish)."""
+    if len(digits) == 10:  # US local number, no country code
+        return f"+1{digits}"
+    return f"+{digits}"
+
+
+def _spoken_phone(number: str) -> str:
+    """Say a number digit-by-digit so TTS reads it clearly: '5 5 5, 1 2 3, 4 5 6 7'."""
+    digits = re.sub(r"\D", "", number)
+    core = digits[-10:] if len(digits) >= 10 else digits
+    if len(core) == 10:
+        return f"{' '.join(core[0:3])}, {' '.join(core[3:6])}, {' '.join(core[6:10])}"
+    return " ".join(core)
+
+
+def _spell_out(value: str) -> str:
+    """Say a name/email letter-by-letter so a TTS mispronunciation can't hide an error:
+    'David' -> 'D A V I D'; 'jo@x.com' -> 'J O at X dot C O M'."""
+    out = []
+    for ch in value:
+        if ch == "@":
+            out.append("at")
+        elif ch == ".":
+            out.append("dot")
+        elif ch == "_":
+            out.append("underscore")
+        elif ch == "-":
+            out.append("dash")
+        elif ch == "+":
+            out.append("plus")
+        elif ch.isspace():
+            out.append(",")  # a pause between words
+        else:
+            out.append(ch.upper())
+    return " ".join(out)
+
+
 class CallSession:
     def __init__(
         self,
@@ -107,18 +145,27 @@ class CallSession:
         self._is_callback = callback
         self._gemini = GeminiTools(cfg)
         self._hermes = HermesTools(cfg)   # generative brain (gpt-5.6), Gemini fallback
+        self._opening = opening or OPENINGS.get(direction, OPENINGS["inbound"])
         self._agent = IntakeAgent(
             cfg,
             fields,
             use_hermes_closing=use_hermes_closing,
             emit_closing=False,
-            greeting_prefix=opening or OPENINGS.get(direction, OPENINGS["inbound"]),
+            greeting_prefix=self._opening,
         )
         # Scheduling runs only when the backend is configured.
         self._scheduling_enabled = bool(cfg.backend_url)
         self._scheduler: Scheduler | None = None
         self._offer = None
         self._slot_attempts = 0
+        # Inbound contact-number confirmation: whether we've asked for a number, and how
+        # many times we've tried to read one back.
+        self._awaiting_number = False
+        self._phone_attempts = 0
+        # Inbound spelled-capture: the field being captured (full_name/email) and the
+        # parsed value awaiting the caller's spelled-back confirmation.
+        self._cap_field = ""
+        self._pending_value = ""
         self._booked_at = ""
         self._chosen = ""       # slot the caller picked, booked during finalize()
         self._requested = ""    # a specific time the caller asked us to check
@@ -143,7 +190,11 @@ class CallSession:
             self._state = "identity" if self._first_name() else "confirm"
         else:
             self._record = {}
-            self._state = "intake"      # intake -> scheduling -> done
+            # Inbound: the caller books themselves. Capture name + email by spelling +
+            # confirmation, confirm the contact number, then the day/time.
+            #   full_name -> email -> phone_check -> ask_time -> scheduling -> done
+            self._cap_field = "full_name"
+            self._state = "capturing"
         # Language: explicit wins; else read the form answer; else detect live as
         # the caller answers the language question (first field).
         if language is not None:
@@ -214,6 +265,8 @@ class CallSession:
             greeting = self._identity_ask()      # State 1, beat 1
         elif self._state == "confirm":
             greeting = self._intro()             # State 1, beat 2 (no name to verify)
+        elif self._state == "capturing":
+            greeting = f"{self._opening} {self._ask_field(self._cap_field)}"  # inbound
         else:
             greeting = self._agent.greeting()
         return self.localize(greeting)
@@ -288,6 +341,14 @@ class CallSession:
             return self._handle_callback(caller_text)
         if self._state == "intake":
             return self._handle_intake(caller_text)
+        if self._state == "capturing":
+            return self._handle_capture(caller_text)
+        if self._state == "confirming":
+            return self._handle_confirm_capture(caller_text)
+        if self._state == "phone_check":
+            return self._handle_phone_check(caller_text)
+        if self._state == "ask_time":
+            return self._handle_ask_time(caller_text)
         if self._state == "scheduling":
             return self._handle_pick(caller_text)
         if self._state == "confirm_slot":
@@ -518,8 +579,219 @@ class CallSession:
         if not result.done:
             return Turn(result.agent_message, "listen")
         if self._scheduling_enabled:
-            return self._begin_scheduling()
+            return self._begin_phone_check()
         return self._finish()
+
+    # -- spelled capture: name + email (inbound) -------------------------
+    # Phone speech-to-text mangles names/emails, so we let the caller SPELL them (incl.
+    # "D as in dog" phonetics), reconstruct the value with the LLM, and read it back
+    # LETTER BY LETTER for confirmation — so a TTS mispronunciation can never hide an error.
+
+    def _ask_field(self, field: str) -> str:
+        if field == "email":
+            return (
+                "What's the best email to send your confirmation to? Feel free to spell it "
+                "out — you can say \"at\" and \"dot\", like \"j-o-h-n at gmail dot com\"."
+            )
+        return (
+            "Who am I speaking with? You can spell your name out if it helps — "
+            "for example, \"D as in dog, A as in apple\"."
+        )
+
+    def _handle_capture(self, caller_text: str) -> Turn:
+        value = self._parse_field(self._cap_field, caller_text)
+        if not value:
+            return Turn(self.localize(
+                "Sorry, I didn't quite catch that. Could you say it again, spelling it out "
+                "letter by letter?"
+            ), "listen")
+        self._pending_value = value
+        self._state = "confirming"
+        return Turn(self.localize(self._readback(self._cap_field, value)), "listen")
+
+    def _handle_confirm_capture(self, caller_text: str) -> Turn:
+        label = self._yes_no(caller_text)
+        if label == "yes":
+            self._record[self._cap_field] = self._pending_value
+            return self._advance_capture()
+        if label == "no":
+            # They often give the correction in the same breath ("no, it's D-A-V-E").
+            retry = self._parse_field(self._cap_field, caller_text)
+            if retry and retry != self._pending_value:
+                self._pending_value = retry
+                return Turn(self.localize(self._readback(self._cap_field, retry)), "listen")
+            self._state = "capturing"
+            return Turn(self.localize(
+                f"No problem — let's try that again. {self._ask_field(self._cap_field)}"
+            ), "listen")
+        # off-script (a question / small talk) — answer, then re-ask the confirmation
+        return self._converse(caller_text, self._readback(self._cap_field, self._pending_value))
+
+    def _advance_capture(self) -> Turn:
+        if self._cap_field == "full_name":
+            self._cap_field = "email"
+            self._state = "capturing"
+            return Turn(self.localize(self._ask_field("email")), "listen")
+        # name + email done -> confirm the contact number next
+        return self._begin_phone_check()
+
+    def _parse_field(self, field: str, caller_text: str) -> str:
+        """Reconstruct a spelled/phonetic name or email into its exact value ('' if none)."""
+        if field == "email":
+            system = (
+                "The caller is giving their email address over the phone. They may spell it "
+                "out, use phonetics ('m as in mary'), and say 'at' and 'dot'. Reconstruct "
+                "the exact email address. Output ONLY the email in lowercase, or the single "
+                "word none if there is no email."
+            )
+        else:
+            system = (
+                "The caller is giving their name over the phone. They may spell it out or "
+                "use phonetics ('D as in dog, A as in apple'). Reconstruct the exact name "
+                "they intend, properly capitalized. Output ONLY the name, or the single "
+                "word none if there is no name."
+            )
+        try:
+            raw = self._gemini.generate(system, caller_text, temperature=0).strip().strip('"').strip()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("field parse failed (%s): %s", field, exc)
+            return ""
+        if not raw or raw.lower() == "none":
+            return ""
+        if field == "email" and "@" not in raw:
+            return ""
+        return raw
+
+    def _readback(self, field: str, value: str) -> str:
+        label = "email" if field == "email" else "name"
+        return (
+            f"Let me make sure I have your {label} right — {_spell_out(value)}. "
+            "Did I get that right?"
+        )
+
+    def _yes_no(self, caller_text: str) -> str:
+        """yes | no | other — did the caller confirm the read-back value?"""
+        prompt = (
+            "The agent read a value back to the caller (spelled out) and asked if it's correct.\n"
+            f'The caller replied: "{caller_text}".\n\n'
+            "Pick the label:\n"
+            "- yes: they confirmed it's correct (yes, that's right, correct, yep, perfect).\n"
+            "- no: it's wrong or they're correcting it (no, that's not right, it's actually ...).\n"
+            "- other: a question, small talk, or something you cannot interpret."
+        )
+        try:
+            return self._gemini.classify(prompt, ["yes", "no", "other"])["label"]
+        except Exception as exc:  # noqa: BLE001 — re-confirm rather than save a wrong value
+            log.warning("confirmation check failed: %s", exc)
+            return "other"
+
+    # -- contact-number confirmation (inbound) ---------------------------
+
+    def _begin_phone_check(self) -> Turn:
+        """Confirm the number we captured from caller ID is a good contact number — or ask
+        for one if caller ID didn't give us a number. Inbound only; outbound leads already
+        carry a number from the form, so they never reach this step."""
+        self._state = "phone_check"
+        self._awaiting_number = False
+        self._phone_attempts = 0
+        if self._caller_phone:
+            return Turn(self.localize(
+                f"And I have the number you're calling from as {_spoken_phone(self._caller_phone)}. "
+                "Is that a good number to reach you at, or would you like to give a different one?"
+            ), "listen")
+        self._awaiting_number = True
+        return Turn(self.localize("And what's the best phone number to reach you at?"), "listen")
+
+    def _handle_phone_check(self, caller_text: str) -> Turn:
+        # We've explicitly asked for a number — read one out of the reply.
+        if self._awaiting_number:
+            number = self._extract_phone(caller_text)
+            if number:
+                self._record["phone"] = number
+                return self._begin_ask_time()
+            self._phone_attempts += 1
+            if self._phone_attempts >= 2:
+                return self._begin_ask_time()  # stop asking; use whatever we have
+            return Turn(self.localize(
+                "Sorry, I didn't catch that. Could you say the phone number again, "
+                "including the area code?"
+            ), "listen")
+        # Confirming the caller-ID number: keep it, or switch to a different one?
+        label = self._phone_choice(caller_text)
+        if label == "keep":
+            self._record["phone"] = self._caller_phone
+            return self._begin_ask_time()
+        if label == "change":
+            number = self._extract_phone(caller_text)  # maybe they gave the number already
+            if number:
+                self._record["phone"] = number
+                return self._begin_ask_time()
+            self._awaiting_number = True
+            return Turn(self.localize("Sure — what's the best number to reach you at?"), "listen")
+        # off-script (a question / small talk) — answer, then re-ask
+        return self._converse(
+            caller_text,
+            "Is the number you're calling from okay to reach you at, "
+            "or would you like to give a different one?",
+        )
+
+    # -- ask for the appointment day/time (inbound) ----------------------
+
+    def _begin_ask_time(self) -> Turn:
+        self._state = "ask_time"
+        return Turn(self.localize(
+            "Now, what day and time would you like for your appointment?"
+        ), "listen")
+
+    def _handle_ask_time(self, caller_text: str) -> Turn:
+        when = parse_time(self._gemini, caller_text, DEFAULT_TIMEZONE)
+        if not when:
+            return self._converse(
+                caller_text,
+                "What day and time works best for you? For example, next Tuesday at 2 PM.",
+            )
+        # Stash it as the desired time; _begin_scheduling reads it back + confirms the slot.
+        self._record["desired_time"] = when
+        return self._begin_scheduling()
+
+    def _phone_choice(self, caller_text: str) -> str:
+        """keep | change | other — does the caller want to keep the caller-ID number?"""
+        prompt = (
+            "The agent asked whether the number the caller is calling from is a good number "
+            "to reach them at, or if they'd like to give a different one.\n"
+            f'The caller replied: "{caller_text}".\n\n'
+            "Pick the label:\n"
+            "- keep: the current number is fine (yes, that's fine, that works, use that one).\n"
+            "- change: they want a DIFFERENT number (no, use another, call me on ..., "
+            "my cell is ..., a different one).\n"
+            "- other: a question, small talk, or something you cannot interpret."
+        )
+        try:
+            return self._gemini.classify(prompt, ["keep", "change", "other"])["label"]
+        except Exception as exc:  # noqa: BLE001 — default to keeping the number we have
+            log.warning("phone choice check failed: %s", exc)
+            return "keep"
+
+    def _extract_phone(self, caller_text: str) -> str:
+        """Pull a phone number out of the caller's words, formatted, or '' if none."""
+        # Digits spoken plainly ("use 555 123 4567").
+        match = re.search(r"\+?\d[\d\s\-().]{6,}\d", caller_text)
+        if match:
+            digits = re.sub(r"\D", "", match.group(0))
+            if len(digits) >= 7:
+                return _format_phone(digits)
+        # Spoken as words ("five five five ...") — let Gemini pull the digits.
+        try:
+            raw = self._gemini.generate(
+                "The caller said a phone number. Output ONLY its digits (with country or "
+                "area code if given), or the word none if there is no phone number.",
+                caller_text, temperature=0,
+            ).strip()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("phone extraction failed: %s", exc)
+            return ""
+        digits = re.sub(r"\D", "", raw)
+        return _format_phone(digits) if len(digits) >= 7 else ""
 
     # -- scheduling phase ------------------------------------------------
 
