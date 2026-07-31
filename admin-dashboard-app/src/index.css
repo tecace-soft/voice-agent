@@ -270,6 +270,13 @@ td.notes {
   background: #f0f7ff;
   border-color: #bfdbfe;
 }
+/* Current day: an amber edge ring, distinct from the blue "booked" tint and still
+   visible when the cell is colored. Inset box-shadow keeps it on the edges without
+   nudging layout. Placed after .has so its border color wins on a booked today. */
+.cal-cell.today {
+  border-color: #f59e0b;
+  box-shadow: inset 0 0 0 2px #f59e0b;
+}
 .cal-day {
   font-weight: 600;
   color: #374151;

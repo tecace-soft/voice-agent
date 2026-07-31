@@ -36,6 +36,8 @@ export function CalendarPage() {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth()); // 0–11
   const navigate = useNavigate();
+  // Today's date in the business timezone (matches how bookings are placed on days).
+  const todayStr = pacificDate(today.toISOString());
 
   useEffect(() => {
     let active = true;
@@ -112,11 +114,13 @@ export function CalendarPage() {
             {cells.map((cell, i) => {
               if (!cell) return <div key={`e${i}`} className="cal-cell empty" />;
               const count = countByDay[cell.date] ?? 0;
+              const isToday = cell.date === todayStr;
               return (
                 <button
                   key={cell.date}
                   type="button"
-                  className={`cal-cell${count ? " has" : ""}`}
+                  className={`cal-cell${count ? " has" : ""}${isToday ? " today" : ""}`}
+                  aria-current={isToday ? "date" : undefined}
                   onClick={() => navigate(`/calendar/${cell.date}`)}
                 >
                   <span className="cal-day">{cell.day}</span>
