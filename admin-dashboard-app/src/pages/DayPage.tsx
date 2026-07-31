@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { cancelBooking, listIntakes } from "../api/backend";
 import type { IntakeRecord } from "../api/types";
-import { formatDateLong, formatTime, pacificDate } from "../lib";
+import { formatDateLong, formatTime, isPast, pacificDate } from "../lib";
 import { AsyncState } from "../ui";
 
 export function DayPage() {
@@ -37,7 +37,7 @@ export function DayPage() {
       .then((d) => {
         if (!active) return;
         const forDay = d.intakes
-          .filter((i) => pacificDate(i.scheduledAt) === date)
+          .filter((i) => pacificDate(i.scheduledAt) === date && !isPast(i.scheduledAt))
           .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
         setAppts(forDay);
       })

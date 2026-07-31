@@ -3,6 +3,12 @@ import type { IntakeStatus } from "./api/types";
 // The business timezone — all times are shown to the admin in Pacific.
 const TZ = "America/Los_Angeles";
 
+// Whether an ISO instant is in the past (its time has already passed). Instant
+// comparison is timezone-agnostic, so no tz handling is needed here.
+export function isPast(iso: string): boolean {
+  return new Date(iso).getTime() < Date.now();
+}
+
 // "YYYY-MM-DD" calendar date (in Pacific) of an ISO instant.
 export function pacificDate(iso: string): string {
   return new Intl.DateTimeFormat("en-CA", {

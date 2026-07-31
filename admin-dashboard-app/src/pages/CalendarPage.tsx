@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listIntakes } from "../api/backend";
 import type { IntakeRecord } from "../api/types";
-import { pacificDate } from "../lib";
+import { isPast, pacificDate } from "../lib";
 import { AsyncState } from "../ui";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -59,6 +59,7 @@ export function CalendarPage() {
   const countByDay = useMemo(() => {
     const map: Record<string, number> = {};
     for (const b of booked) {
+      if (isPast(b.scheduledAt)) continue; // don't count appointments whose time has passed
       const day = pacificDate(b.scheduledAt);
       map[day] = (map[day] ?? 0) + 1;
     }
