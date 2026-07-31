@@ -183,19 +183,48 @@ class Scheduler:
         picked = _spread(starts, self._max_options)
         return Offer(f"That day I also have {_join(picked)}. Which of those works?", picked)
 
-    def book(self, iso_start: str, record: dict[str, str]) -> dict:
+    def book(self, iso_start: str, record: dict[str, str], *, language: str = "English") -> dict:
         """Book the caller's lead at the chosen slot on the backend (the authoritative
         booking + conflict check). The backend also creates the Cal.com meeting (calendar
         invite + join link) as part of confirming the booking, so nothing Cal.com-related
         happens here.
 
+        An OUTBOUND lead already has a backend intake id; an INBOUND caller does not, so
+        we create their intake first (from the details captured on the call).
+
         Raises BackendError on conflict / past / not found (caught by the call flow),
-        or RuntimeError if the record has no backend intake id.
+        or RuntimeError if a backend intake id can't be obtained.
+        """
+        intake_id = self.ensure_intake(record, iso_start, language=language)
+        if not intake_id:
+            raise RuntimeError("cannot book: could not obtain a backend intake id")
+        return self._backend.book(intake_id, iso_start)
+
+    def ensure_intake(
+        self, record: dict[str, str], iso_start: str, *, language: str = "English"
+    ) -> str:
+        """Return the record's backend intake id, creating a new intake if it has none.
+
+        Outbound leads arrive with `_intake_id` already set (from the poller); inbound
+        callers don't, so we create the lead from the details gathered on the call, at the
+        slot they chose. The new id is stored back on the record so the rest of the call
+        flow (status/notes tracking) can find it.
         """
         intake_id = intake_id_from(record)
-        if not intake_id:
-            raise RuntimeError("cannot book: no backend intake id in the record")
-        return self._backend.book(intake_id, iso_start)
+        if intake_id:
+            return intake_id
+        created = self._backend.create_intake(
+            language=language or "English",
+            name=attendee_name(record),
+            email=record.get("email", ""),
+            phone_number=phone_from(record),
+            purpose=purpose_from(record) or record.get("reason", "") or "Inbound call",
+            date_time=iso_start,
+        )
+        intake_id = str(created.get("id", ""))
+        if intake_id:
+            record["_intake_id"] = intake_id
+        return intake_id
 
     @staticmethod
     def friendly(iso_start: str) -> str:

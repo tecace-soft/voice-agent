@@ -77,6 +77,30 @@ class BackendClient:
         intakes.sort(key=lambda i: i.get("createdAt", ""))
         return intakes
 
+    def create_intake(
+        self,
+        *,
+        language: str,
+        name: str,
+        email: str,
+        phone_number: str,
+        purpose: str,
+        date_time: str,
+    ) -> dict[str, Any]:
+        """Create a new lead (POST /intake) and return it (incl. its id). Used for
+        INBOUND callers, who aren't a pre-existing form lead — we capture their details
+        on the call and create the record so they can be booked like anyone else."""
+        body = {
+            "language": language or "English",
+            "name": name,
+            "email": email,
+            "phoneNumber": phone_number,
+            "purpose": purpose,
+            "dateTime": date_time,
+        }
+        data = self._call("/intake", method="POST", body=body)
+        return data.get("intake", {})
+
     # -- scheduling ------------------------------------------------------
 
     def schedule_grid(self, from_date: str, to_date: str) -> dict[str, Any]:

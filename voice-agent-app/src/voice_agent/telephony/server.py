@@ -515,3 +515,60 @@ def _update_call(cfg: Config, call_sid: str, twiml: str) -> None:
         api, data=data, headers={"Authorization": f"Basic {auth}"}, method="POST"
     )
     urllib.request.urlopen(req, timeout=cfg.request_timeout).close()
+
+
+def configure_inbound_webhook(cfg: Config) -> dict:
+    """Point the Twilio number's Voice webhook at our /voice/incoming so INBOUND calls
+    reach the agent (outbound calls set their own URL; inbound relies on the number's
+    config). Also sets the call status-callback so sessions clean up on any call end.
+
+    Idempotent — safe to re-run whenever PUBLIC_BASE_URL changes. Returns the updated
+    number's {sid, phoneNumber, voiceUrl, statusCallback}.
+    """
+    import json
+
+    if not (cfg.twilio_account_sid and cfg.twilio_auth_token and cfg.twilio_phone_number):
+        raise RuntimeError("Twilio credentials + PHONE_NUMBER must be set in .env")
+    if not cfg.public_base_url:
+        raise RuntimeError("PUBLIC_BASE_URL must be set so Twilio can reach the server")
+
+    number = _e164(cfg.twilio_phone_number)
+    auth = base64.b64encode(
+        f"{cfg.twilio_account_sid}:{cfg.twilio_auth_token}".encode()
+    ).decode()
+    headers = {"Authorization": f"Basic {auth}"}
+    base = f"https://api.twilio.com/2010-04-01/Accounts/{cfg.twilio_account_sid}"
+
+    # 1) Look up the phone number's resource SID (PN...).
+    query = urllib.parse.urlencode({"PhoneNumber": number, "PageSize": 1})
+    req = urllib.request.Request(f"{base}/IncomingPhoneNumbers.json?{query}", headers=headers)
+    with urllib.request.urlopen(req, timeout=cfg.request_timeout) as resp:
+        matches = json.load(resp).get("incoming_phone_numbers", [])
+    if not matches:
+        raise RuntimeError(
+            f"{number} is not an active number on this Twilio account — check PHONE_NUMBER "
+            "and that ACCOUNT_SID / AUTH_TOKEN belong to the account that owns it."
+        )
+    pn_sid = matches[0].get("sid", "")
+
+    # 2) Point its Voice webhook (and status callback) at our server.
+    voice_url = f"{cfg.public_base_url}/voice/incoming"
+    status_cb = f"{cfg.public_base_url}/voice/status"
+    fields = {
+        "VoiceUrl": voice_url,
+        "VoiceMethod": "POST",
+        "StatusCallback": status_cb,
+        "StatusCallbackMethod": "POST",
+    }
+    data = urllib.parse.urlencode(fields).encode()
+    req = urllib.request.Request(
+        f"{base}/IncomingPhoneNumbers/{pn_sid}.json", data=data, headers=headers, method="POST"
+    )
+    with urllib.request.urlopen(req, timeout=cfg.request_timeout) as resp:
+        result = json.load(resp)
+    return {
+        "sid": result.get("sid", pn_sid),
+        "phoneNumber": result.get("phone_number", number),
+        "voiceUrl": result.get("voice_url", voice_url),
+        "statusCallback": result.get("status_callback", status_cb),
+    }

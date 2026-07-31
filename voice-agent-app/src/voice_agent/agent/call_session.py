@@ -65,7 +65,7 @@ _LOCALIZE_CACHE_MAX = 2000
 
 # How the agent opens, depending on who placed the call.
 OPENINGS = {
-    "inbound": "Hi, thanks for calling.",
+    "inbound": "Hi, thanks for calling TecAce! I can help you set up a consultation with one of our consultants.",
     "outbound": "Hi, this is the scheduling assistant reaching out to get you booked in.",
 }
 
@@ -259,7 +259,9 @@ class CallSession:
         if self._chosen:
             if self._create_bookings:
                 try:
-                    self._scheduler.book(self._chosen, self._record)
+                    # Passing the language lets the scheduler create a lead for an inbound
+                    # caller (who has no pre-existing intake) with the right language.
+                    self._scheduler.book(self._chosen, self._record, language=self._language)
                     self._booked_at = self._chosen
                 except (BackendError, RuntimeError) as exc:
                     log.warning("booking failed: %s", exc)
