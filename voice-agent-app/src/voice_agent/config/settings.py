@@ -48,6 +48,9 @@ class Config:
     elevenlabs_voice_id: str
     elevenlabs_model_id: str
     backend_url: str
+    retell_api_key: str
+    retell_agent_id: str
+    retell_from_number: str
     twilio_account_sid: str
     twilio_auth_token: str
     twilio_phone_number: str
@@ -104,6 +107,14 @@ class Config:
             # The shared backend API (leads, scheduling, status) — the voice agent's
             # single source instead of Cal.com + Google Sheets. No trailing slash.
             backend_url=_optional("BACKEND_URL").rstrip("/"),
+            # Retell — the voice agent that now places outbound calls (replacing the old
+            # Twilio + CallSession + Hermes stack). from_number is the Twilio number imported
+            # into Retell; defaults to PHONE_NUMBER since it's the same line.
+            retell_api_key=_optional("RETELL_API_KEY"),
+            retell_agent_id=_optional("RETELL_AGENT_ID"),
+            retell_from_number=_optional("RETELL_FROM_NUMBER")
+            or _optional("PHONE_NUMBER")
+            or _optional("TWILIO_PHONE_NUMBER"),
             # Telephony (Twilio phone line). Accept the short .env names first,
             # falling back to the TWILIO_-prefixed ones.
             twilio_account_sid=_optional("ACCOUNT_SID") or _optional("TWILIO_ACCOUNT_SID"),

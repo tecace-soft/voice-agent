@@ -1,6 +1,7 @@
 import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
 import { env } from "./config/env.js";
+import { agentTools } from "./routes/agentTools.js";
 import { health } from "./routes/health.js";
 import { intake } from "./routes/intake.js";
 import { prompt } from "./routes/prompt.js";
@@ -17,7 +18,8 @@ export const app = new Elysia()
   .use(health)
   .use(intake)
   .use(schedule)
-  .use(prompt);
+  .use(prompt)
+  .use(agentTools);
 
 export type App = typeof app;
 

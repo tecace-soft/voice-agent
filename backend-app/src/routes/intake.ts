@@ -1,8 +1,6 @@
 import { Elysia, t } from "elysia";
-import { cancelMeeting, createMeeting } from "../cal/client.js";
-import { env } from "../config/env.js";
+import { cancelMeeting } from "../cal/client.js";
 import {
-  bookIntake,
   cancelBooking,
   countIntakes,
   deleteIntake,
@@ -14,6 +12,7 @@ import {
   setIntakeNotes,
   updateIntakeStatus,
 } from "../db/intakes.js";
+import { bookExisting } from "../services/booking.js";
 
 // Statuses the agent may set directly via PATCH. `canceled` is intentionally NOT here —
 // canceling goes through DELETE /intake/:id/booking, which enforces "must be booked".
@@ -107,7 +106,8 @@ export const intake = new Elysia()
     "/intake/:id/status",
     async ({ params, body, status }) => {
       if (body.status === "booked") {
-        const result = await bookIntake(params.id, env.schedule.slotMinutes, body.dateTime);
+        // bookExisting books the slot (conflict-checked) AND creates the Cal.com meeting.
+        const result = await bookExisting(params.id, body.dateTime);
         if (!result.ok) {
           if (result.reason === "not_found") return status(404, { status: "not_found" });
           if (result.reason === "in_past") {
@@ -121,12 +121,7 @@ export const intake = new Elysia()
             message: "That time overlaps an existing booking.",
           });
         }
-        // Best-effort: create the Cal.com meeting (invite + link) and remember its uid so
-        // we can cancel that exact meeting later. A Cal.com hiccup must not undo the booking.
-        let intake = result.intake;
-        const uid = await createMeeting(intake);
-        if (uid) intake = (await setCalUid(intake.id, uid)) ?? intake;
-        return { status: "updated", intake };
+        return { status: "updated", intake: result.intake };
       }
 
       const record = await updateIntakeStatus(params.id, body.status);

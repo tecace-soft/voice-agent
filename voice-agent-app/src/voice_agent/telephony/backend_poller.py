@@ -3,7 +3,8 @@
 The backend replaces Google Forms as the lead source: the form-app writes a lead
 (POST /intake, status "new"), and we ASK the backend for new leads every few
 seconds (GET /intake?status=new) — an ordinary outbound call, no webhook needed.
-For each new lead with a phone number, we call them to finish scheduling.
+For each new lead with a phone number, we call them to finish scheduling — after a short
+pre-call delay (CALL_DELAY_SECONDS) measured from when the request came in.
 
 Each triggered lead's id is remembered in-memory so a lead isn't re-queued before
 its call completes; the call flow then writes the lead's real outcome back to the
@@ -19,6 +20,7 @@ leads leave "new" on their own, so only genuinely-unreachable leads hit the cap.
 
 from __future__ import annotations
 
+import datetime
 import logging
 import time
 from typing import Callable
@@ -31,6 +33,10 @@ log = logging.getLogger(__name__)
 # How many times to call a lead before giving up and marking it `unreachable`.
 # Hardcoded for now; revisit if we want this configurable later.
 MAX_CALL_ATTEMPTS = 3
+
+# How long to wait after a booking request before placing the call. Short for the demo —
+# a brief, deliberate pause so the call reads as a follow-up rather than an instant dial.
+CALL_DELAY_SECONDS = 60
 
 
 def record_from_intake(intake: dict) -> tuple[dict[str, str], str]:
@@ -66,6 +72,18 @@ class BackendIntakePoller:
         self._client = BackendClient(cfg)
         self._seen: set[str] = set()
 
+    def _call_due(self, intake: dict) -> bool:
+        """True once a lead has waited CALL_DELAY_SECONDS since the request came in."""
+        created = str(intake.get("createdAt", ""))
+        if not created:
+            return True  # no timestamp — don't hold it back
+        try:
+            ts = datetime.datetime.fromisoformat(created.replace("Z", "+00:00"))
+        except ValueError:
+            return True
+        age = datetime.datetime.now(datetime.timezone.utc) - ts
+        return age.total_seconds() >= CALL_DELAY_SECONDS
+
     def poll_once(self) -> int:
         """Check for new leads; call each new one back. Returns count placed.
 
@@ -79,6 +97,10 @@ class BackendIntakePoller:
         for intake in intakes:
             intake_id = str(intake.get("id", ""))
             if not intake_id or intake_id in self._seen:
+                continue
+            # Hold a fresh lead for the pre-call delay. Skip WITHOUT marking it seen so it's
+            # re-checked on the next poll and called once the delay has elapsed.
+            if not self._call_due(intake):
                 continue
             self._seen.add(intake_id)  # processed this run either way (call, skip, or retire)
 

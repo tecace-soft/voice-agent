@@ -71,6 +71,12 @@ const corsOrigins = (process.env.CORS_ORIGIN ?? "")
 // meeting (calendar invite + join link) when a booking is confirmed, and to cancel it
 // when the booking is deleted — so a freed slot can be cleanly re-booked. Both optional:
 // with no CAL_API_KEY the Cal.com step is skipped and bookings still work (just no link).
+// --- Agent tools (Retell custom functions) ---------------------------------------
+// The voice agent (Retell) calls the /agent/* tool endpoints as custom functions during
+// a call. If this secret is set, those endpoints require a matching `x-agent-secret`
+// header (configured on the Retell function). Unset = open (dev only) — set it in prod.
+const agentToolsSecret = process.env.AGENT_TOOLS_SECRET?.trim() ?? "";
+
 const calApiKey = process.env.CAL_API_KEY?.trim() ?? "";
 // The event type carrying the video/Teams config. CAL_EVENT_ID preferred; the older
 // CAL_EVENT_TYPE_ID name is accepted as a fallback.
@@ -97,6 +103,7 @@ export const env = {
     eventId: calEventId,
     enabled: Boolean(calApiKey && calEventId),
   },
+  agentToolsSecret,
 } as const;
 
 export type Env = typeof env;
