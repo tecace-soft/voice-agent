@@ -48,6 +48,10 @@ export async function initDb(): Promise<void> {
   // active meeting). We store it on booking so we can cancel that exact Cal.com booking
   // when the booking is canceled/deleted — freeing the slot so it can be cleanly re-booked.
   await sql`ALTER TABLE intakes ADD COLUMN IF NOT EXISTS cal_uid TEXT`;
+  // `callback_after` = the earliest time to (re)call this lead, set when a call reaches
+  // someone who asks to be called back later. The poller holds the lead until this instant
+  // instead of using its default pre-call delay; null means "no deferred callback".
+  await sql`ALTER TABLE intakes ADD COLUMN IF NOT EXISTS callback_after TIMESTAMPTZ`;
   // Reconcile the allowed-status constraint (drop + re-add keeps it correct as the
   // lifecycle grows — existing values are always a subset of the new list, so it's safe).
   await sql`ALTER TABLE intakes DROP CONSTRAINT IF EXISTS intakes_status_check`;

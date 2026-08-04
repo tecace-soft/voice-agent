@@ -38,6 +38,7 @@ export interface IntakeRecord {
   notes: string | null; // agent's post-call summary (null until written)
   attempts: number; // how many times the agent has tried to call this lead
   calUid: string | null; // Cal.com booking uid for the active meeting (null if none)
+  callbackAfter: string | null; // earliest time to (re)call this lead (null if none)
   createdAt: string;
   updatedAt: string;
 }
@@ -55,9 +56,10 @@ const RETURN_COLUMNS = sql`
   status,
   notes,
   attempts,
-  cal_uid      AS "calUid",
-  created_at   AS "createdAt",
-  updated_at   AS "updatedAt"
+  cal_uid        AS "calUid",
+  callback_after AS "callbackAfter",
+  created_at     AS "createdAt",
+  updated_at     AS "updatedAt"
 `;
 
 // Persist one intake and return the stored row.
@@ -172,6 +174,28 @@ export async function setCalUid(
   const [row] = await sql`
     UPDATE intakes
     SET cal_uid = ${calUid}, updated_at = now()
+    WHERE id = ${id}::uuid
+    RETURNING ${RETURN_COLUMNS}
+  `;
+  return (row as IntakeRecord | undefined) ?? null;
+}
+
+// Schedule a deferred callback: store the earliest time to (re)call this lead, and RESET
+// `attempts` to 0. A lead who answered and asked to be called back is engaged — they aren't
+// unreachable — so they earn a fresh retry budget, and resetting also keeps the attempt cap
+// from retiring them before the callback time arrives. Status stays `new` so the poller
+// re-picks the lead (it holds the call until `callback_after`). Returns the updated row, or
+// null if no intake has that id.
+export async function setCallbackAfter(
+  id: string,
+  callbackAfter: string,
+): Promise<IntakeRecord | null> {
+  const [row] = await sql`
+    UPDATE intakes
+    SET callback_after = ${callbackAfter}::timestamptz,
+        attempts = 0,
+        status = 'new',
+        updated_at = now()
     WHERE id = ${id}::uuid
     RETURNING ${RETURN_COLUMNS}
   `;

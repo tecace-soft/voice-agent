@@ -343,12 +343,33 @@ meeting link. Our consultant will review your inquiry before the call."
 "Thanks {{lead_name}}, we look forward to speaking with you. Have a great day!"
 ```
 
-**Callback** (Conversation) — [State 1 bad-timing] · extract `callback_time`
+**Callback** (Conversation) — [State 1 bad-timing]
 ```
-"No problem — when would be a good time for us to call you back to set this up?" Acknowledge
-the time, say we'll call back then, and say goodbye.
+"No problem at all — when would be a good time for us to try again?" If someone else answered
+and asks who's calling, say you're with Olympus Spa, reaching out to help {{lead_name}} book a
+spa appointment.
 ```
-- Edges: → End Call  (actually scheduling the ring-back is handled post-call / Phase 3)
+- Edge: (automatic) → **Extract Callback Time**
+
+**Extract Callback Time** (Extract Variable)
+- Variable `callback_after` (ISO 8601). Prompt: *"The date and time the caller wants us to
+  ring back, as ISO 8601. Interpret relative dates against {{current_date}} in
+  {{current_time_zone}} (Pacific). If they gave only a day, use a sensible business hour."*
+- Edge: (automatic) → **Schedule Callback**
+
+**Schedule Callback** (Function `schedule_callback` → `POST /agent/callback`)
+- Params: `callbackAfter` = `{{callback_after}}`, `intakeId` = `{{intake_id}}`. Standard payload
+  mode (so `intake_id` also rides on the call's dynamic variables). Speak-during-execution: off
+  or a brief "Okay—".
+- Edges: **scheduled** (`{{scheduled}}` is true) → **Callback Close** · **Else** → **Callback Close**
+  (either way we close gracefully; the backend already has their number).
+
+**Callback Close** (Conversation) → End Call  *(unconditional, end after speaking — don't wait)*
+```
+"Perfect — we'll reach back out then. Take care, {{lead_name}}!"
+```
+The poller holds this lead until `callback_after` and then re-dials the same number
+(attempts reset, so they get a fresh retry budget).
 
 **Decline Close** (Conversation) — [State 6b] → End Call
 ```

@@ -96,6 +96,28 @@ Books a slot. For an **inbound** caller (no `intakeId`) it creates the lead firs
 { "booked": false, "reason": "taken|in_past|not_found|missing_details", "message": "…" }
 ```
 
+## `POST /agent/callback`
+
+Schedules a **deferred callback**: the person answered but wants to be reached later. We
+already have their number (we dialed it), so this just persists **when** to try again. It
+stores `callback_after` on the lead and **resets `attempts` to 0** (they engaged — fresh
+retry budget), keeping status `new` so the poller re-picks it and holds the call until that
+time instead of using its default pre-call delay.
+
+**Args**
+| field | type | notes |
+|---|---|---|
+| `callbackAfter` | string (ISO 8601, local) | when to call back; agent resolves the spoken time to ISO |
+| `intakeId` | string (uuid) | the lead (pass via a dynamic variable; falls back to `call.retell_llm_dynamic_variables`) |
+
+**Response**
+```jsonc
+// scheduled
+{ "scheduled": true, "when": "Wednesday, August 6 at 5:00 PM", "message": "Got it — we'll reach back out around …" }
+// failed (no id / unreadable time)
+{ "scheduled": false, "message": "When would be a good time for us to call you back?" }
+```
+
 ---
 
 ## Configuring the functions in Retell (Phase 2)

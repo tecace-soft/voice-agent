@@ -70,10 +70,30 @@ class BackendIntakePoller:
         self._trigger = trigger
         self._interval = interval
         self._client = BackendClient(cfg)
-        self._seen: set[str] = set()
+        # intake_id -> the "signature" of the state we last placed a call for. A lead whose
+        # signature is unchanged is skipped; a lead that has since been given a NEW requested
+        # callback time gets a fresh signature, so its scheduled callback can re-fire.
+        self._seen: dict[str, str] = {}
+
+    @staticmethod
+    def _signature(intake: dict) -> str:
+        """What makes this lead re-callable. Empty for a first contact; the requested
+        callback time once one is set, so scheduling a callback re-arms the lead."""
+        return str(intake.get("callbackAfter", "") or "")
 
     def _call_due(self, intake: dict) -> bool:
-        """True once a lead has waited CALL_DELAY_SECONDS since the request came in."""
+        """True once it's time to (re)call this lead.
+
+        If a callback time was requested on a prior call, hold until that instant. Otherwise
+        hold a fresh lead for CALL_DELAY_SECONDS after the request came in.
+        """
+        callback_after = str(intake.get("callbackAfter", "") or "")
+        if callback_after:
+            try:
+                ts = datetime.datetime.fromisoformat(callback_after.replace("Z", "+00:00"))
+            except ValueError:
+                return True  # unparseable — don't hold it back
+            return datetime.datetime.now(datetime.timezone.utc) >= ts
         created = str(intake.get("createdAt", ""))
         if not created:
             return True  # no timestamp — don't hold it back
@@ -96,13 +116,19 @@ class BackendIntakePoller:
         placed = 0
         for intake in intakes:
             intake_id = str(intake.get("id", ""))
-            if not intake_id or intake_id in self._seen:
+            if not intake_id:
                 continue
-            # Hold a fresh lead for the pre-call delay. Skip WITHOUT marking it seen so it's
-            # re-checked on the next poll and called once the delay has elapsed.
+            signature = self._signature(intake)
+            # Skip a lead we've already handled in this exact state. A scheduled callback
+            # changes the signature, so it isn't treated as already-handled.
+            if self._seen.get(intake_id) == signature:
+                continue
+            # Hold until the lead is due (pre-call delay, or a requested callback time). Skip
+            # WITHOUT recording it so it's re-checked on the next poll and called once due.
             if not self._call_due(intake):
                 continue
-            self._seen.add(intake_id)  # processed this run either way (call, skip, or retire)
+            # Handled this run either way (call, skip, or retire) — record the state we acted on.
+            self._seen[intake_id] = signature
 
             record, phone = record_from_intake(intake)
             if not phone:

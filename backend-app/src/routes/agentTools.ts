@@ -1,6 +1,6 @@
 import { Elysia } from "elysia";
 import { env } from "../config/env.js";
-import { listBookedTimes } from "../db/intakes.js";
+import { listBookedTimes, setCallbackAfter } from "../db/intakes.js";
 import { formatSpoken, joinSpoken } from "../lib/spoken.js";
 import {
   checkAvailability,
@@ -158,6 +158,38 @@ export const agentTools = new Elysia({ prefix: "/agent" })
       when,
       intakeId: result.intake.id,
       message: `You're all set for ${when}. A confirmation with the meeting link will be sent to ${email}.`,
+    };
+  })
+
+  // Schedule a callback: the person answered but wants to be reached later. We already have
+  // their number (we dialed it), so we just persist WHEN to try again — the poller holds the
+  // lead until then instead of using its default delay. args: callbackAfter (ISO local time)
+  // + intakeId (which lead). Like the others, intakeId falls back to the call's dynamic vars.
+  .post("/callback", async ({ body }) => {
+    const args = readArgs(body);
+    const call = readCall(body);
+    const dyn = (call.retell_llm_dynamic_variables ?? {}) as Record<string, unknown>;
+    const intakeId =
+      str(args.intakeId) || str(args.intake_id) || str(dyn.intake_id) || str(dyn.intakeId);
+    if (!intakeId) {
+      return { scheduled: false, message: "I couldn't find your record to schedule a callback." };
+    }
+    const raw =
+      str(args.callbackAfter) || str(args.callback_after) || str(args.dateTime);
+    if (!raw || Number.isNaN(new Date(raw).getTime())) {
+      return { scheduled: false, message: "When would be a good time for us to call you back?" };
+    }
+    // The agent sends a zone-less local time (Pacific); read it as Pacific, not UTC.
+    const callbackAfter = normalizeDateTime(raw, TZ);
+    const when = formatSpoken(callbackAfter, TZ);
+    const record = await setCallbackAfter(intakeId, callbackAfter);
+    if (!record) {
+      return { scheduled: false, message: "I couldn't find your record to schedule a callback." };
+    }
+    return {
+      scheduled: true,
+      when,
+      message: `Got it — we'll reach back out around ${when}.`,
     };
   });
 
