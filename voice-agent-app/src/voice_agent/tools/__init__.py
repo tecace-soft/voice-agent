@@ -1,19 +1,6 @@
-"""External capabilities the intake agent calls: Gemini, Hermes, the backend, and the voice."""
+"""External capabilities: the shared backend API and the post-call email notifier."""
 
 from .backend import BackendClient, BackendError
-from .gemini import GeminiTools
-from .hermes import HermesAuthError, HermesChat, HermesSession, HermesTools, status
-from .voice import ElevenLabsVoice, VoiceError
+from .notify import EmailNotifier
 
-__all__ = [
-    "GeminiTools",
-    "HermesAuthError",
-    "HermesChat",
-    "HermesSession",
-    "HermesTools",
-    "status",
-    "BackendClient",
-    "BackendError",
-    "ElevenLabsVoice",
-    "VoiceError",
-]
+__all__ = ["BackendClient", "BackendError", "EmailNotifier"]

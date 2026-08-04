@@ -1,5 +1,11 @@
-"""Telephony: connect Twilio phone calls to the CallSession conversation engine."""
+"""Telephony: poll the backend for new leads and place calls via Retell."""
 
-from .server import configure_inbound_webhook, create_app, place_call
+from .backend_poller import BackendIntakePoller
+from .retell import RetellClient, RetellError, make_retell_trigger
 
-__all__ = ["configure_inbound_webhook", "create_app", "place_call"]
+__all__ = [
+    "BackendIntakePoller",
+    "RetellClient",
+    "RetellError",
+    "make_retell_trigger",
+]

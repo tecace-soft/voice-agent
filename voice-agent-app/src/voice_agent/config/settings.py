@@ -1,4 +1,10 @@
-"""Environment-backed configuration, validated once at startup."""
+"""Environment-backed configuration, validated once at startup.
+
+The voice layer is Retell now (it owns telephony, STT, TTS, turn-taking, and the LLM), so
+this app only needs the backend it reads leads from, the Retell credentials to place calls,
+and optional SMTP for the post-call email. All settings are optional — nothing is required
+at load time, so the process starts even on a machine with a minimal .env.
+"""
 
 from __future__ import annotations
 
@@ -18,13 +24,6 @@ class ConfigError(RuntimeError):
     """A required setting is missing or malformed."""
 
 
-def _required(name: str) -> str:
-    value = os.getenv(name, "").strip()
-    if not value:
-        raise ConfigError(f"{name} is not set. Copy .env.example to .env and fill it in.")
-    return value
-
-
 def _optional(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip() or default
 
@@ -32,31 +31,15 @@ def _optional(name: str, default: str = "") -> str:
 @dataclass(frozen=True)
 class Config:
     port: int
-    hermes_server_url: str
-    hermes_api_path: str
-    hermes_api_key: str
-    hermes_username: str
-    hermes_password: str
-    hermes_auth_provider: str
-    hermes_model: str
-    gemini_api_key: str
-    gemini_model: str
-    use_hermes_brain: bool
     agent_name: str
     agent_org: str
-    elevenlabs_api_key: str
-    elevenlabs_voice_id: str
-    elevenlabs_model_id: str
+    # The shared backend API (leads, scheduling, status) the poller reads from.
     backend_url: str
+    # Retell — the voice agent that places the outbound calls.
     retell_api_key: str
     retell_agent_id: str
     retell_from_number: str
-    twilio_account_sid: str
-    twilio_auth_token: str
-    twilio_phone_number: str
-    deepgram_api_key: str
-    public_base_url: str
-    detect_voicemail: bool
+    # SMTP for the optional post-call team email (off if unset).
     smtp_host: str
     smtp_port: int
     smtp_username: str
@@ -65,70 +48,20 @@ class Config:
     notify_email: str
     request_timeout: float
 
-    @property
-    def hermes_api_base(self) -> str:
-        """Full base the OpenAI-compatible client posts to."""
-        return f"{self.hermes_server_url}{self.hermes_api_path}"
-
     @classmethod
     def load(cls) -> Config:
-        # HERMES_BASE_URL is the pre-rename name, still accepted.
-        server_url = _optional("HERMES_SERVER_URL") or _optional("HERMES_BASE_URL")
-        if not server_url:
-            raise ConfigError("HERMES_SERVER_URL is not set. See .env.example.")
-
         return cls(
-            # The port this application listens on, not the Hermes port
-            # (that one travels inside HERMES_SERVER_URL).
             port=int(_optional("PORT", "3000")),
-            hermes_server_url=server_url.rstrip("/"),
-            hermes_api_path="/" + _optional("HERMES_API_PATH", "api").strip("/"),
-            # A self-hosted Hermes may have no auth, but the OpenAI client
-            # refuses to construct without some api_key string.
-            hermes_api_key=_optional("HERMES_API_KEY") or "no-auth",
-            # Cookie-session login for the Hermes Agent web API.
-            hermes_username=_optional("HERMES_USERNAME"),
-            hermes_password=_optional("HERMES_PASSWORD"),
-            hermes_auth_provider=_optional("HERMES_AUTH_PROVIDER", "basic"),
-            hermes_model=_optional("HERMES_MODEL", "hermes-4"),
-            gemini_api_key=_required("GEMINI_API_KEY"),
-            gemini_model=_optional("GEMINI_MODEL", "gemini-2.5-flash-lite"),
-            # Route the agent's generative replies through Hermes (its model, e.g.
-            # gpt-5.6-sol), falling back to Gemini. Off -> Gemini only.
-            use_hermes_brain=_optional("USE_HERMES_BRAIN", "true").lower()
-            in ("1", "true", "yes", "on"),
-            # The agent's spoken identity, used when it fields small talk / FAQs.
             agent_name=_optional("AGENT_NAME", "Tess"),
             agent_org=_optional("AGENT_ORG", "TecAce"),
-            # ElevenLabs gives the agent its spoken voice (text-to-speech).
-            elevenlabs_api_key=_required("ELEVENLABS_API_KEY"),
-            elevenlabs_voice_id=_required("ELEVENLABS_VOICE_ID"),
-            elevenlabs_model_id=_optional("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5"),
-            # The shared backend API (leads, scheduling, status) — the voice agent's
-            # single source instead of Cal.com + Google Sheets. No trailing slash.
             backend_url=_optional("BACKEND_URL").rstrip("/"),
-            # Retell — the voice agent that now places outbound calls (replacing the old
-            # Twilio + CallSession + Hermes stack). from_number is the Twilio number imported
-            # into Retell; defaults to PHONE_NUMBER since it's the same line.
+            # from_number is the number imported into / bought from Retell; defaults to
+            # PHONE_NUMBER since it may be the same line.
             retell_api_key=_optional("RETELL_API_KEY"),
             retell_agent_id=_optional("RETELL_AGENT_ID"),
             retell_from_number=_optional("RETELL_FROM_NUMBER")
             or _optional("PHONE_NUMBER")
             or _optional("TWILIO_PHONE_NUMBER"),
-            # Telephony (Twilio phone line). Accept the short .env names first,
-            # falling back to the TWILIO_-prefixed ones.
-            twilio_account_sid=_optional("ACCOUNT_SID") or _optional("TWILIO_ACCOUNT_SID"),
-            twilio_auth_token=_optional("TWILIO_AUTH_TOKEN"),
-            twilio_phone_number=_optional("PHONE_NUMBER") or _optional("TWILIO_PHONE_NUMBER"),
-            # Optional: streaming speech-to-text, only for the Pipecat upgrade path.
-            deepgram_api_key=_optional("DEEPGRAM_API_KEY"),
-            # Public https base (e.g. an ngrok URL) that Twilio can reach for
-            # webhooks and audio; required for outbound calls.
-            public_base_url=_optional("PUBLIC_BASE_URL").rstrip("/"),
-            # Ask Twilio to detect voicemail on outbound calls (leaves a message).
-            detect_voicemail=_optional("DETECT_VOICEMAIL", "true").lower()
-            in ("1", "true", "yes", "on"),
-            # SMTP for the post-call team email (CRM push). Optional — off if unset.
             smtp_host=_optional("SMTP_HOST"),
             smtp_port=int(_optional("SMTP_PORT", "587")),
             smtp_username=_optional("SMTP_USERNAME"),

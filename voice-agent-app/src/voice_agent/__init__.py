@@ -1,12 +1,5 @@
-"""Voice intake agent: we drive the conversation, Gemini extracts, Hermes assists."""
+"""Voice intake agent: the poller finds leads; Retell places the calls."""
 
-from .agent import IntakeAgent, IntakeField, IntakeResult
 from .config import Config, ConfigError
 
-__all__ = [
-    "Config",
-    "ConfigError",
-    "IntakeAgent",
-    "IntakeField",
-    "IntakeResult",
-]
+__all__ = ["Config", "ConfigError"]
