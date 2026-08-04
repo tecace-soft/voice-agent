@@ -4,6 +4,7 @@ import { listBookedTimes } from "../db/intakes.js";
 import { formatSpoken, joinSpoken } from "../lib/spoken.js";
 import {
   checkAvailability,
+  normalizeDateTime,
   slotsForDate,
   suggestSlots,
 } from "../schedule/slots.js";
@@ -55,10 +56,12 @@ export const agentTools = new Elysia({ prefix: "/agent" })
   // Is a specific time open? If not, offer the nearest alternatives. arg: dateTime (ISO).
   .post("/check-availability", async ({ body }) => {
     const args = readArgs(body);
-    const dateTime = str(args.dateTime);
-    if (!dateTime || Number.isNaN(new Date(dateTime).getTime())) {
+    const raw = str(args.dateTime);
+    if (!raw || Number.isNaN(new Date(raw).getTime())) {
       return { available: false, message: "I couldn't read that date and time." };
     }
+    // The agent sends a zone-less local time (Pacific); read it as Pacific, not UTC.
+    const dateTime = normalizeDateTime(raw, TZ);
     const now = Date.now();
     const booked = await listBookedTimes();
     const { available, reason } = checkAvailability(env.schedule, dateTime, booked, now);
@@ -113,10 +116,12 @@ export const agentTools = new Elysia({ prefix: "/agent" })
   .post("/book", async ({ body }) => {
     const args = readArgs(body);
     const call = readCall(body);
-    const dateTime = str(args.dateTime);
-    if (!dateTime || Number.isNaN(new Date(dateTime).getTime())) {
+    const raw = str(args.dateTime);
+    if (!raw || Number.isNaN(new Date(raw).getTime())) {
       return { booked: false, message: "I couldn't read that date and time." };
     }
+    // The agent sends a zone-less local time (Pacific); read it as Pacific, not UTC.
+    const dateTime = normalizeDateTime(raw, TZ);
     const when = formatSpoken(dateTime, TZ);
     const intakeId = str(args.intakeId);
 

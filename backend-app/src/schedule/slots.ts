@@ -62,6 +62,32 @@ function zonedWallClockToUtc(
   return new Date(instant);
 }
 
+// Does an ISO datetime string carry a timezone (a trailing "Z" or "±HH:MM" offset)?
+function hasTimeZone(s: string): boolean {
+  return /(?:Z|[+-]\d{2}:?\d{2})$/.test(s.trim());
+}
+
+// Normalize a datetime string to a UTC-instant ISO string. A string WITH a zone (Z / offset)
+// is respected as-is. A zone-LESS string like "2026-08-05T12:00:00" is interpreted as a
+// wall-clock time in `timeZone` (so the voice agent's naive local times land on the right
+// instant) instead of JavaScript's default of treating it as UTC. Unparseable input is
+// returned unchanged so the caller's own validation can reject it.
+export function normalizeDateTime(raw: string, timeZone: string): string {
+  const s = raw.trim();
+  if (hasTimeZone(s)) return new Date(s).toISOString();
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(s);
+  if (!m) return s;
+  const [, y, mo, d, h, mi] = m;
+  const minutesOfDay = Number(h) * 60 + Number(mi);
+  return zonedWallClockToUtc(
+    Number(y),
+    Number(mo),
+    Number(d),
+    minutesOfDay,
+    timeZone,
+  ).toISOString();
+}
+
 // ISO weekday (1=Mon … 7=Sun) of a calendar date. A date's weekday is timezone-independent.
 function isoWeekday(year: number, month: number, day: number): number {
   const dow = new Date(Date.UTC(year, month - 1, day)).getUTCDay(); // 0=Sun … 6=Sat
