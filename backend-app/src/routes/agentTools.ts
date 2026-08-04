@@ -116,18 +116,25 @@ export const agentTools = new Elysia({ prefix: "/agent" })
   .post("/book", async ({ body }) => {
     const args = readArgs(body);
     const call = readCall(body);
-    const raw = str(args.dateTime);
+    // Values the LLM extracts arrive in `args`; values passed to the call as dynamic
+    // variables (intake_id, lead_name, email…) live on `call.retell_llm_dynamic_variables`.
+    // Prefer args, but fall back to the dynamic variables — the LLM often does NOT re-emit a
+    // hidden variable like intake_id as a function parameter, so reading it from the call is
+    // the reliable path. (Requires standard payload mode so the `call` object is sent.)
+    const dyn = (call.retell_llm_dynamic_variables ?? {}) as Record<string, unknown>;
+    const raw = str(args.dateTime) || str(dyn.dateTime);
     if (!raw || Number.isNaN(new Date(raw).getTime())) {
       return { booked: false, message: "I couldn't read that date and time." };
     }
     // The agent sends a zone-less local time (Pacific); read it as Pacific, not UTC.
     const dateTime = normalizeDateTime(raw, TZ);
     const when = formatSpoken(dateTime, TZ);
-    const intakeId = str(args.intakeId);
+    const intakeId =
+      str(args.intakeId) || str(args.intake_id) || str(dyn.intake_id) || str(dyn.intakeId);
 
     const result = intakeId
       ? await bookExisting(intakeId, dateTime)
-      : await bookNewLead(args, call, dateTime);
+      : await bookNewLead(args, dyn, call, dateTime);
 
     if (!result.ok) {
       if (result.reason === "not_found") {
@@ -154,22 +161,24 @@ export const agentTools = new Elysia({ prefix: "/agent" })
     };
   });
 
-// Create a new inbound lead from the call details, then book it.
+// Create a new inbound lead from the call details, then book it. Reads from the LLM args
+// first, then the call's dynamic variables (same reliability reasoning as intake_id above).
 async function bookNewLead(
   args: Record<string, unknown>,
+  dyn: Record<string, unknown>,
   call: RetellCall,
   dateTime: string,
 ) {
-  const name = str(args.name);
-  const email = str(args.email);
-  const phone = str(args.phone) || str(call.from_number);
+  const name = str(args.name) || str(dyn.lead_name) || str(dyn.name);
+  const email = str(args.email) || str(dyn.email);
+  const phone = str(args.phone) || str(dyn.phone) || str(call.from_number);
   if (!name || !email) return { ok: false as const, reason: "missing_details" };
   return createAndBook({
-    language: str(args.language) || "English",
+    language: str(args.language) || str(dyn.language) || "English",
     name,
     email,
     phoneNumber: phone,
-    purpose: str(args.purpose) || "Consultation (inbound call)",
+    purpose: str(args.purpose) || str(dyn.purpose) || "Consultation (inbound call)",
     dateTime,
   });
 }
