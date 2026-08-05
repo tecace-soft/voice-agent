@@ -46,8 +46,8 @@ class RetellClient:
     ) -> str:
         """Place an outbound call via Retell. Returns the Retell call id."""
         body: dict[str, Any] = {
-            "from_number": self._cfg.retell_from_number,
-            "to_number": to_number,
+            "from_number": _to_e164(self._cfg.retell_from_number),
+            "to_number": _to_e164(to_number),
         }
         if self._cfg.retell_agent_id:
             body["override_agent_id"] = self._cfg.retell_agent_id
@@ -109,6 +109,26 @@ def make_retell_trigger(cfg: Config) -> Callable[[dict[str, str], str], str]:
         )
 
     return trigger
+
+
+def _to_e164(number: str, default_country_code: str = "1") -> str:
+    """Best-effort E.164 normalization. Retell rejects anything not in +<countrycode><number>
+    form, but leads often arrive as bare 10-digit US numbers ("4254787534") from the form.
+    An already-`+`-prefixed number is kept (formatting stripped); a bare 10-digit number gets
+    the default country code; "1XXXXXXXXXX" gets a leading `+`. Blank passes through unchanged
+    so the caller's own validation still applies."""
+    s = number.strip()
+    if not s:
+        return s
+    if s.startswith("+"):
+        return "+" + "".join(ch for ch in s[1:] if ch.isdigit())
+    digits = "".join(ch for ch in s if ch.isdigit())
+    if len(digits) == 10:
+        return f"+{default_country_code}{digits}"
+    if len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits}"
+    # Already has some country code (or is unusual) — prefix `+` and let Retell validate.
+    return f"+{digits}" if digits else s
 
 
 def _today_pacific() -> str:
