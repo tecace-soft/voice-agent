@@ -111,7 +111,7 @@ export function App() {
         </div>
 
         <div className="field">
-          <label htmlFor="dateTime">Preferred callback time</label>
+          <label htmlFor="dateTime">Preferred Schedule Time</label>
           <input
             id="dateTime"
             type="datetime-local"
