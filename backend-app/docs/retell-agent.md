@@ -366,7 +366,9 @@ spa appointment.
 
 **Callback Close** (Conversation) → End Call  *(unconditional, end after speaking — don't wait)*
 ```
-"Perfect — we'll reach back out then. Take care, {{lead_name}}!"
+Say goodbye warmly and end the call. Do NOT ask if there's anything else or offer more help.
+- If speaking with {{lead_name}} directly: "Perfect — we'll reach back out then. Take care, {{lead_name}}!"
+- If someone else answered: "Perfect — we'll reach back out then. Thanks so much for your help, have a great day!"
 ```
 The poller holds this lead until `callback_after` and then re-dials the same number
 (attempts reset, so they get a fresh retry budget).

@@ -62,3 +62,19 @@ export async function initDb(): Promise<void> {
   // The agent polls by status, so index it.
   await sql`CREATE INDEX IF NOT EXISTS idx_intakes_status ON intakes (status)`;
 }
+
+// Run the idempotent schema setup at most once per process, caching the promise. On Vercel
+// the app is served as a fetch handler with no startup hook, so nothing runs initDb on
+// deploy — we gate requests on this instead, which makes a cold start apply any pending
+// migrations (e.g. a newly added column) on the first request, with no manual migrate step.
+// A failed attempt clears the cache so the next request retries rather than caching a reject.
+let dbReady: Promise<void> | null = null;
+export function ensureDbReady(): Promise<void> {
+  if (!dbReady) {
+    dbReady = initDb().catch((err) => {
+      dbReady = null;
+      throw err;
+    });
+  }
+  return dbReady;
+}

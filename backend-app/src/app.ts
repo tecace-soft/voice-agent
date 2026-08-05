@@ -1,6 +1,7 @@
 import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
 import { env } from "./config/env.js";
+import { ensureDbReady } from "./db/client.js";
 import { agentTools } from "./routes/agentTools.js";
 import { health } from "./routes/health.js";
 import { intake } from "./routes/intake.js";
@@ -14,6 +15,12 @@ import { schedule } from "./routes/schedule.js";
 // origins it reflects any origin (dev), otherwise it restricts to the configured list.
 export const app = new Elysia()
   .use(cors(env.corsOrigins.length ? { origin: env.corsOrigins } : {}))
+  // Self-migrate on cold start: ensure the schema is ready before any handler runs a query.
+  // Global scope so it also covers the mounted controllers (intake, schedule, agentTools).
+  // Cached, so after the first request it's an already-resolved promise (negligible cost).
+  .onBeforeHandle({ as: "global" }, async () => {
+    await ensureDbReady();
+  })
   .get("/", () => ({ name: "backend-app", message: "Elysia is running" }))
   .use(health)
   .use(intake)
