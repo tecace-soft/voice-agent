@@ -84,7 +84,7 @@ export function App() {
 
   return (
     <main className="card">
-      <h1>Request a Callback</h1>
+      <h1>Schedule Your Appointment</h1>
       <p className="subtitle">Tell us a bit about you and when to call.</p>
 
       {error && <div className="error">{error}</div>}
