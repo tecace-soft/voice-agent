@@ -199,6 +199,24 @@ export async function setCallbackAfter(
   return (row as IntakeRecord | undefined) ?? null;
 }
 
+// Schedule an automatic retry: set the earliest time to call this lead again WITHOUT
+// resetting `attempts` (unlike a human-requested callback via setCallbackAfter). Used by the
+// post-call webhook when a call didn't connect — attempts must keep climbing toward the cap.
+// Only applies to a still-`new` lead (a booked/contacted/retired lead is never re-called).
+// Returns the updated row, or null if no matching intake exists.
+export async function scheduleRetry(
+  id: string,
+  retryAfter: string,
+): Promise<IntakeRecord | null> {
+  const [row] = await sql`
+    UPDATE intakes
+    SET callback_after = ${retryAfter}::timestamptz, updated_at = now()
+    WHERE id = ${id}::uuid AND status = 'new'
+    RETURNING ${RETURN_COLUMNS}
+  `;
+  return (row as IntakeRecord | undefined) ?? null;
+}
+
 // Record one more call attempt against a client (atomic increment) and bump updated_at.
 // The agent calls this each time it places a call; it reads the returned `attempts` to
 // decide when to give up. A single UPDATE keeps concurrent increments from racing.

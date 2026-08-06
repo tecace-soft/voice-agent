@@ -120,6 +120,34 @@ time instead of using its default pre-call delay.
 
 ---
 
+## `POST /retell/webhook` — post-call outcome + retries
+
+Not a tool the agent calls — this is the **agent-level webhook** Retell POSTs to when a call
+starts/ends/is analyzed (`{ event, call }`). It closes the loop on **outbound** calls so the
+poller knows what happened, using `call.metadata.intake_id` (also read from the call's dynamic
+variables) to find the lead:
+
+- **Didn't connect** (`dial_no_answer` / `dial_busy` / `dial_failed` / `voicemail_reached` /
+  `machine_detected` / `error*`, or a "connected" call under ~15s) → **schedule a retry** by
+  setting `callback_after` (which the poller honors), up to `RETELL_MAX_ATTEMPTS`, then mark
+  the lead `unreachable`.
+- **Reached, no booking** (a real conversation, they declined/hung up) → mark `contacted` so
+  the poller stops calling.
+- **Booked** (the `book` tool already set `booked`) or a **human callback** scheduled mid-call
+  (future `callback_after`) → left as-is.
+- `call_analyzed` → the AI's `call_summary` is stored on the lead's `notes` (shown in the dashboard).
+
+Because `callback_after` only advances *after* a call ends, the poller can never double-dial a
+call that's still active.
+
+**Configure in Retell:** set the agent's **Webhook URL** to
+`<base>/retell/webhook?secret=<AGENT_TOOLS_SECRET>` (the agent webhook can't send custom
+headers, so the secret rides in the URL). Tune `RETELL_RETRY_DELAY_SECONDS` /
+`RETELL_MAX_ATTEMPTS` on the backend (keep the latter in sync with the poller's
+`MAX_CALL_ATTEMPTS`).
+
+---
+
 ## Configuring the functions in Retell (Phase 2)
 
 For each tool, add a Retell custom function with:

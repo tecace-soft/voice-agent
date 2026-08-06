@@ -77,6 +77,20 @@ const corsOrigins = (process.env.CORS_ORIGIN ?? "")
 // header (configured on the Retell function). Unset = open (dev only) — set it in prod.
 const agentToolsSecret = process.env.AGENT_TOOLS_SECRET?.trim() ?? "";
 
+// --- Retell post-call webhook (retry / outcome handling) -------------------------
+// Retell POSTs call_ended/call_analyzed to /retell/webhook. When a call didn't connect we
+// schedule a retry (setting callback_after, which the poller honors) up to a cap, then mark
+// the lead unreachable. These bound the automatic retries; keep maxAttempts in sync with the
+// poller's MAX_CALL_ATTEMPTS.
+const retellRetryDelaySeconds = Number(process.env.RETELL_RETRY_DELAY_SECONDS ?? 60);
+if (!Number.isFinite(retellRetryDelaySeconds) || retellRetryDelaySeconds < 0) {
+  throw new Error("RETELL_RETRY_DELAY_SECONDS must be a non-negative number.");
+}
+const retellMaxAttempts = Number(process.env.RETELL_MAX_ATTEMPTS ?? 3);
+if (!Number.isInteger(retellMaxAttempts) || retellMaxAttempts <= 0) {
+  throw new Error("RETELL_MAX_ATTEMPTS must be a positive integer.");
+}
+
 const calApiKey = process.env.CAL_API_KEY?.trim() ?? "";
 // The event type carrying the video/Teams config. CAL_EVENT_ID preferred; the older
 // CAL_EVENT_TYPE_ID name is accepted as a fallback.
@@ -104,6 +118,10 @@ export const env = {
     enabled: Boolean(calApiKey && calEventId),
   },
   agentToolsSecret,
+  retell: {
+    retryDelaySeconds: retellRetryDelaySeconds,
+    maxAttempts: retellMaxAttempts,
+  },
 } as const;
 
 export type Env = typeof env;

@@ -6,6 +6,7 @@ import { agentTools } from "./routes/agentTools.js";
 import { health } from "./routes/health.js";
 import { intake } from "./routes/intake.js";
 import { prompt } from "./routes/prompt.js";
+import { retellWebhook } from "./routes/retellWebhook.js";
 import { schedule } from "./routes/schedule.js";
 
 // Compose the application from controllers. Exported WITHOUT `.listen()` so tests can
@@ -26,7 +27,8 @@ export const app = new Elysia()
   .use(intake)
   .use(schedule)
   .use(prompt)
-  .use(agentTools);
+  .use(agentTools)
+  .use(retellWebhook);
 
 export type App = typeof app;
 
