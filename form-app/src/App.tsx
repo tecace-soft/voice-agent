@@ -5,16 +5,31 @@ import type { IntakeInput } from "./api/types";
 
 const LANGUAGES = ["English", "Korean"];
 
-// The form's local state. `dateTime` holds the raw value from <input type="datetime-local">
-// (a local wall-clock string with no timezone); it is converted to ISO 8601 on submit.
-type FormState = Omit<IntakeInput, "dateTime"> & { dateTime: string };
+// Bookable start times (spa hours), as { value: "HH:MM", label: "9:00 AM" }. A dropdown of
+// explicit slots — NOT <input type="datetime-local"> — because that widget silently defaults
+// the time to 12:00 AM, so anyone who picks only a date submits a midnight appointment. This
+// forces a real time to be chosen. Covers 9:00 AM–4:30 PM in 30-minute steps.
+const TIME_SLOTS: { value: string; label: string }[] = [];
+for (let m = 9 * 60; m <= 16 * 60 + 30; m += 30) {
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  const value = `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  const label = `${h % 12 || 12}:${String(mm).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+  TIME_SLOTS.push({ value, label });
+}
+
+// The form's local state. `date` (YYYY-MM-DD) and `time` (HH:MM) are chosen separately and
+// combined into a naive wall-clock `dateTime` on submit, which the backend reads in the spa's
+// timezone.
+type FormState = Omit<IntakeInput, "dateTime"> & { date: string; time: string };
 
 const EMPTY: FormState = {
   language: "English",
   name: "",
   email: "",
   phoneNumber: "",
-  dateTime: "",
+  date: "",
+  time: "",
 };
 
 export function App() {
@@ -33,13 +48,13 @@ export function App() {
     setError(null);
     setSubmitting(true);
     try {
+      const { date, time, ...rest } = form;
       const input: IntakeInput = {
-        ...form,
-        // datetime-local is a naive wall-clock time. Send it AS-IS (no browser-timezone
-        // conversion) so the backend can interpret it in the spa's timezone — "2 PM" always
-        // means 2 PM at the spa, regardless of the visitor's browser timezone. (Append
-        // seconds so it's a well-formed datetime.)
-        dateTime: form.dateTime.length === 16 ? `${form.dateTime}:00` : form.dateTime,
+        ...rest,
+        // Combine the chosen date + time into a naive wall-clock string. Sent AS-IS (no
+        // browser-timezone conversion) so the backend interprets it in the spa's timezone —
+        // "2 PM" always means 2 PM at the spa, regardless of the visitor's browser timezone.
+        dateTime: `${date}T${time}:00`,
       };
       await submitIntake(input);
       setSubmitted(true);
@@ -108,14 +123,28 @@ export function App() {
         </div>
 
         <div className="field">
-          <label htmlFor="dateTime">Preferred Schedule Time</label>
+          <label htmlFor="date">Preferred Date</label>
           <input
-            id="dateTime"
-            type="datetime-local"
+            id="date"
+            type="date"
             required
-            value={form.dateTime}
-            onChange={update("dateTime")}
+            value={form.date}
+            onChange={update("date")}
           />
+        </div>
+
+        <div className="field">
+          <label htmlFor="time">Preferred Time</label>
+          <select id="time" required value={form.time} onChange={update("time")}>
+            <option value="" disabled>
+              Select a time…
+            </option>
+            {TIME_SLOTS.map((slot) => (
+              <option key={slot.value} value={slot.value}>
+                {slot.label}
+              </option>
+            ))}
+          </select>
         </div>
 
         <button type="submit" disabled={submitting}>
