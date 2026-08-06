@@ -80,14 +80,19 @@ export const agentTools = new Elysia({ prefix: "/agent" })
       now,
     });
     const alternatives = suggestions.map((s) => formatSpoken(s.start, TZ));
+    // A ready-to-speak, joined version of the alternatives ("A, B, or C") — a single string
+    // the Retell flow can extract into a {{alternatives}} variable and read aloud. The raw
+    // `alternatives` array is kept too (for any structured use).
+    const alternativesText = joinSpoken(alternatives);
     const lead = reason === "in_past" ? `${when} is in the past.` : `${when} isn't available.`;
     return {
       available: false,
       when,
       reason,
       alternatives,
+      alternativesText,
       message: alternatives.length
-        ? `${lead} The closest openings I have are ${joinSpoken(alternatives)}.`
+        ? `${lead} The closest openings I have are ${alternativesText}.`
         : `${lead} I don't have anything open nearby — would another day work?`,
     };
   })
