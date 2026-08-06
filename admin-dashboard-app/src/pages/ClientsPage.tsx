@@ -101,6 +101,7 @@ export function ClientsPage() {
                   <th>Language</th>
                   <th>Requested time</th>
                   <th>Status</th>
+                  <th>Callback at</th>
                   <th>Notes</th>
                   <th>Actions</th>
                 </tr>
@@ -117,6 +118,13 @@ export function ClientsPage() {
                     <td>{formatDateTime(r.scheduledAt)}</td>
                     <td>
                       <StatusBadge status={r.status} />
+                    </td>
+                    <td>
+                      {r.callbackAfter ? (
+                        formatDateTime(r.callbackAfter)
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
                     </td>
                     <td className="notes">{r.notes ?? <span className="muted">—</span>}</td>
                     <td className="actions">

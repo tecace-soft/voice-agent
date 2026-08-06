@@ -4,6 +4,7 @@ import { listBookedTimes, setCallbackAfter } from "../db/intakes.js";
 import { formatSpoken, joinSpoken } from "../lib/spoken.js";
 import {
   checkAvailability,
+  localDateOf,
   normalizeDateTime,
   slotsForDate,
   suggestSlots,
@@ -100,7 +101,16 @@ export const agentTools = new Elysia({ prefix: "/agent" })
   // A few open slots on a given day. arg: date (YYYY-MM-DD).
   .post("/openings", async ({ body }) => {
     const args = readArgs(body);
-    const date = str(args.date);
+    const call = readCall(body);
+    const dyn = (call.retell_llm_dynamic_variables ?? {}) as Record<string, unknown>;
+    let date = str(args.date);
+    // Fall back to the day of the requested time if the agent didn't pass a date — a caller
+    // asking "what else do you have?" usually means the same day they requested.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const dtRaw = str(dyn.dateTime);
+      const dt = dtRaw ? new Date(normalizeDateTime(dtRaw, TZ)) : null;
+      if (dt && !Number.isNaN(dt.getTime())) date = localDateOf(TZ, dt.getTime());
+    }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return { openings: [], message: "Which day would you like me to check?" };
     }
@@ -111,11 +121,14 @@ export const agentTools = new Elysia({ prefix: "/agent" })
       .filter((s) => s.available && new Date(s.start).getTime() > now)
       .slice(0, 5)
       .map((s) => formatSpoken(s.start, TZ));
+    // Joined, ready-to-speak string for the flow to extract into {{openings}} and read aloud.
+    const openingsText = joinSpoken(open);
     return {
       date,
       openings: open,
+      openingsText,
       message: open.length
-        ? `I have ${joinSpoken(open)}.`
+        ? `I have ${openingsText}.`
         : "I don't have any openings that day. Would another day work?",
     };
   })

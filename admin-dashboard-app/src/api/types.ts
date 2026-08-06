@@ -17,6 +17,7 @@ export interface IntakeRecord {
   scheduledAt: string;
   status: IntakeStatus;
   notes: string | null;
+  callbackAfter: string | null; // earliest time the agent will (re)call this lead, if scheduled
   createdAt: string;
   updatedAt: string;
 }
