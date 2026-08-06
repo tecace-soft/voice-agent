@@ -56,7 +56,12 @@ export const agentTools = new Elysia({ prefix: "/agent" })
   // Is a specific time open? If not, offer the nearest alternatives. arg: dateTime (ISO).
   .post("/check-availability", async ({ body }) => {
     const args = readArgs(body);
-    const raw = str(args.dateTime);
+    const call = readCall(body);
+    // Prefer the LLM-provided arg, but fall back to the dateTime dynamic variable passed to
+    // the call — the same reliability fix as /agent/book. (The real fix is binding the Retell
+    // function's dateTime parameter to {{dateTime}} so the model doesn't guess a value.)
+    const dyn = (call.retell_llm_dynamic_variables ?? {}) as Record<string, unknown>;
+    const raw = str(args.dateTime) || str(dyn.dateTime);
     if (!raw || Number.isNaN(new Date(raw).getTime())) {
       return { available: false, message: "I couldn't read that date and time." };
     }
