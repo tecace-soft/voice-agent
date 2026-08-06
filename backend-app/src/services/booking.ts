@@ -5,6 +5,7 @@
 
 import { createMeeting } from "../cal/client.js";
 import { env } from "../config/env.js";
+import { sendBookingConfirmation } from "./notify.js";
 import {
   bookIntake,
   insertIntake,
@@ -23,6 +24,8 @@ export async function bookExisting(id: string, dateTime?: string): Promise<BookR
   let intake = result.intake;
   const uid = await createMeeting(intake);
   if (uid) intake = (await setCalUid(intake.id, uid)) ?? intake;
+  // Send our own confirmation email (SMTP) so it doesn't depend on Cal.com. Best-effort.
+  await sendBookingConfirmation(intake);
   return { ok: true, intake };
 }
 

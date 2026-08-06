@@ -6,6 +6,25 @@ import type { IntakeRecord } from "../db/intakes.js";
 import { sendEmail } from "../email/client.js";
 import { formatSpoken } from "../lib/spoken.js";
 
+// Sent when a booking succeeds (agent or dashboard): a warm confirmation with the time. Uses
+// our own SMTP so it doesn't depend on Cal.com being configured. Best-effort.
+export async function sendBookingConfirmation(intake: IntakeRecord): Promise<boolean> {
+  const name = intake.name || "there";
+  const when = formatSpoken(intake.scheduledAt, env.schedule.timezone);
+  const subject = "Your Olympus Spa appointment is confirmed";
+  const text = [
+    `Hi ${name},`,
+    ``,
+    `Your spa appointment at Olympus Spa is confirmed for ${when}.`,
+    ``,
+    `We can't wait to see you! If you need to change or cancel, just reply to this email ` +
+      `or give us a call.`,
+    ``,
+    `— Olympus Spa`,
+  ].join("\n");
+  return sendEmail({ to: intake.email, subject, text });
+}
+
 // Sent to a lead we could only reach by voicemail: a warm nudge to book, since we've stopped
 // calling. Triggered by the post-call webhook on a voicemail outcome.
 export async function sendVoicemailFollowUp(intake: IntakeRecord): Promise<boolean> {
