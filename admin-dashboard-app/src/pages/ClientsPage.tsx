@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { deleteClient, listIntakes } from "../api/backend";
 import type { IntakeRecord, IntakeStatus } from "../api/types";
-import { formatDateTime } from "../lib";
+import { STATUS_LABEL, formatDateTime } from "../lib";
 import { AsyncState, StatusBadge } from "../ui";
 
 const STATUSES: IntakeStatus[] = ["new", "contacted", "booked", "unreachable", "canceled"];
@@ -56,7 +56,7 @@ export function ClientsPage() {
     const needle = q.trim().toLowerCase();
     if (!needle) return rows;
     return rows.filter((r) =>
-      [r.name, r.email].some((f) => f.toLowerCase().includes(needle)),
+      [r.name, r.email, r.phoneNumber].some((f) => f.toLowerCase().includes(needle)),
     );
   }, [rows, q]);
 
@@ -66,7 +66,7 @@ export function ClientsPage() {
         <h1>Clients</h1>
         <div className="filters">
           <input
-            placeholder="Search name, email…"
+            placeholder="Search name, email, phone…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -77,7 +77,7 @@ export function ClientsPage() {
             <option value="">All statuses</option>
             {STATUSES.map((s) => (
               <option key={s} value={s}>
-                {s}
+                {STATUS_LABEL[s]}
               </option>
             ))}
           </select>
@@ -96,12 +96,9 @@ export function ClientsPage() {
             <table>
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Contact</th>
-                  <th>Language</th>
+                  <th>Client</th>
                   <th>Requested time</th>
                   <th>Status</th>
-                  <th>Callback at</th>
                   <th>Notes</th>
                   <th>Actions</th>
                 </tr>
@@ -109,22 +106,26 @@ export function ClientsPage() {
               <tbody>
                 {filtered.map((r) => (
                   <tr key={r.id}>
-                    <td>{r.name}</td>
                     <td>
-                      <div>{r.email}</div>
-                      <div className="muted">{r.phoneNumber}</div>
+                      <div className="cell-name">
+                        {r.name}
+                        {r.language && r.language !== "English" && (
+                          <span className="lang-tag">{r.language}</span>
+                        )}
+                      </div>
+                      <div className="muted cell-sub">{r.email}</div>
+                      <div className="muted cell-sub">{r.phoneNumber}</div>
                     </td>
-                    <td>{r.language}</td>
-                    <td>{formatDateTime(r.scheduledAt)}</td>
+                    <td>
+                      <div>{formatDateTime(r.scheduledAt)}</div>
+                      {r.callbackAfter && (
+                        <div className="callback-line">
+                          Callback {formatDateTime(r.callbackAfter)}
+                        </div>
+                      )}
+                    </td>
                     <td>
                       <StatusBadge status={r.status} />
-                    </td>
-                    <td>
-                      {r.callbackAfter ? (
-                        formatDateTime(r.callbackAfter)
-                      ) : (
-                        <span className="muted">—</span>
-                      )}
                     </td>
                     <td className="notes">{r.notes ?? <span className="muted">—</span>}</td>
                     <td className="actions">
@@ -140,7 +141,7 @@ export function ClientsPage() {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="muted center">
+                    <td colSpan={5} className="muted center">
                       No clients{q || status ? " match the filters" : " yet"}.
                     </td>
                   </tr>

@@ -249,6 +249,35 @@ td.notes {
   color: var(--body);
 }
 
+/* Client identity cell: bold name (+ optional language tag), muted contact lines. */
+.cell-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.cell-sub {
+  font-size: 0.85rem;
+}
+.lang-tag {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--brand-purple);
+  background: #f3ecfb;
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+}
+/* Scheduled callback, shown beneath the requested time — a small accent so it's easy to spot. */
+.callback-line {
+  margin-top: 0.25rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
 /* ---- status badges ---- */
 .badge {
   display: inline-block;
