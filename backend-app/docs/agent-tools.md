@@ -107,7 +107,8 @@ time instead of using its default pre-call delay.
 **Args**
 | field | type | notes |
 |---|---|---|
-| `callbackAfter` | string (ISO 8601, local) | when to call back; agent resolves the spoken time to ISO |
+| `callbackInMinutes` | integer | **relative** callbacks ("in 10 minutes", "in an hour") — minutes from now; the backend computes `now + minutes` (accurate, since the agent can't know the current clock time). Preferred when present. |
+| `callbackAfter` | string (ISO 8601, local) | **absolute** callbacks ("tomorrow at 2") — resolved to Pacific wall-clock. Used only if `callbackInMinutes` is absent. |
 | `intakeId` | string (uuid) | the lead (pass via a dynamic variable; falls back to `call.retell_llm_dynamic_variables`) |
 
 **Response**

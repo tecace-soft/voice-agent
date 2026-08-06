@@ -43,6 +43,13 @@ function readCall(body: unknown): RetellCall {
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
+// Parse a finite number from an unknown value (Retell may send it as a number or a string).
+const num = (v: unknown): number | null => {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) return Number(v);
+  return null;
+};
+
 const TZ = env.schedule.timezone;
 
 export const agentTools = new Elysia({ prefix: "/agent" })
@@ -197,13 +204,23 @@ export const agentTools = new Elysia({ prefix: "/agent" })
     if (!intakeId) {
       return { scheduled: false, message: "I couldn't find your record to schedule a callback." };
     }
-    const raw =
-      str(args.callbackAfter) || str(args.callback_after) || str(args.dateTime);
-    if (!raw || Number.isNaN(new Date(raw).getTime())) {
-      return { scheduled: false, message: "When would be a good time for us to call you back?" };
+    // Relative callback ("in 10 minutes", "in an hour"): the agent extracts just the number of
+    // minutes and we compute from server-now — accurate at the moment of the call, since the
+    // agent can't reliably know the current clock time. Absolute times ("tomorrow at 2") still
+    // come in as `callbackAfter`, read as Pacific wall-clock.
+    const minutes =
+      num(args.callbackInMinutes) ?? num(args.callback_in_minutes) ?? num(dyn.callbackInMinutes);
+    let callbackAfter: string;
+    if (minutes !== null && minutes > 0) {
+      callbackAfter = new Date(Date.now() + minutes * 60_000).toISOString();
+    } else {
+      const raw =
+        str(args.callbackAfter) || str(args.callback_after) || str(args.dateTime) || str(dyn.callbackAfter);
+      if (!raw || Number.isNaN(new Date(raw).getTime())) {
+        return { scheduled: false, message: "When would be a good time for us to call you back?" };
+      }
+      callbackAfter = normalizeDateTime(raw, TZ);
     }
-    // The agent sends a zone-less local time (Pacific); read it as Pacific, not UTC.
-    const callbackAfter = normalizeDateTime(raw, TZ);
     const when = formatSpoken(callbackAfter, TZ);
     const record = await setCallbackAfter(intakeId, callbackAfter);
     if (!record) {
