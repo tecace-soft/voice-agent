@@ -91,6 +91,20 @@ if (!Number.isInteger(retellMaxAttempts) || retellMaxAttempts <= 0) {
   throw new Error("RETELL_MAX_ATTEMPTS must be a positive integer.");
 }
 
+// --- Transactional email (SMTP) --------------------------------------------------
+// Follow-up emails (e.g. to a lead we only reached by voicemail) go out over SMTP — reuse the
+// same Gmail SMTP_* credentials the voice-agent app uses (App Password, not the login pw).
+// Optional: with no SMTP_HOST/USERNAME/PASSWORD the email step is skipped and the rest of the
+// flow still works. SMTP_FROM defaults to the username (Gmail requires From = authed account).
+const smtpHost = process.env.SMTP_HOST?.trim() ?? "";
+const smtpPort = Number(process.env.SMTP_PORT ?? 587);
+if (!Number.isInteger(smtpPort) || smtpPort <= 0) {
+  throw new Error("SMTP_PORT must be a positive integer.");
+}
+const smtpUser = process.env.SMTP_USERNAME?.trim() ?? "";
+const smtpPass = process.env.SMTP_PASSWORD?.trim() ?? "";
+const smtpFrom = (process.env.SMTP_FROM ?? process.env.SMTP_USERNAME ?? "").trim();
+
 const calApiKey = process.env.CAL_API_KEY?.trim() ?? "";
 // The event type carrying the video/Teams config. CAL_EVENT_ID preferred; the older
 // CAL_EVENT_TYPE_ID name is accepted as a fallback.
@@ -116,6 +130,14 @@ export const env = {
     apiKey: calApiKey,
     eventId: calEventId,
     enabled: Boolean(calApiKey && calEventId),
+  },
+  email: {
+    host: smtpHost,
+    port: smtpPort,
+    user: smtpUser,
+    pass: smtpPass,
+    from: smtpFrom,
+    enabled: Boolean(smtpHost && smtpUser && smtpPass),
   },
   agentToolsSecret,
   retell: {

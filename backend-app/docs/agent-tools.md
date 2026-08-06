@@ -127,10 +127,12 @@ starts/ends/is analyzed (`{ event, call }`). It closes the loop on **outbound** 
 poller knows what happened, using `call.metadata.intake_id` (also read from the call's dynamic
 variables) to find the lead:
 
-- **Didn't connect** (`dial_no_answer` / `dial_busy` / `dial_failed` / `voicemail_reached` /
-  `machine_detected` / `error*`, or a "connected" call under ~15s) → **schedule a retry** by
-  setting `callback_after` (which the poller honors), up to `RETELL_MAX_ATTEMPTS`, then mark
-  the lead `unreachable`.
+- **Voicemail** (`voicemail_reached` / `machine_detected`) → send the lead a **follow-up email**
+  (over SMTP, `services/notify.ts` → `email/client.ts`) and mark `contacted` — we don't keep
+  re-dialing a voicemail box.
+- **Didn't connect** (`dial_no_answer` / `dial_busy` / `dial_failed` / `error*`, or a "connected"
+  call under ~15s) → **schedule a retry** by setting `callback_after` (which the poller honors),
+  up to `RETELL_MAX_ATTEMPTS`, then mark the lead `unreachable`.
 - **Reached, no booking** (a real conversation, they declined/hung up) → mark `contacted` so
   the poller stops calling.
 - **Booked** (the `book` tool already set `booked`) or a **human callback** scheduled mid-call

@@ -6,6 +6,7 @@ import {
   setIntakeNotes,
   updateIntakeStatus,
 } from "../db/intakes.js";
+import { sendVoicemailFollowUp } from "../services/notify.js";
 
 // Retell post-call webhook. Retell POSTs `{ event, call }` for call_started / call_ended /
 // call_analyzed. This closes the loop on OUTBOUND calls so the poller knows what happened:
@@ -94,6 +95,16 @@ export const retellWebhook = new Elysia({ prefix: "/retell" })
     }
 
     const reason = str(call.disconnection_reason);
+
+    // Voicemail: Retell already left the spoken message. Send the lead a follow-up email and
+    // stop calling (don't keep retrying a voicemail box). Best-effort email — mark contacted
+    // either way so the poller stops.
+    if (reason === "voicemail_reached" || reason === "machine_detected") {
+      await sendVoicemailFollowUp(intake);
+      await updateIntakeStatus(intakeId, "contacted");
+      return { ok: true, outcome: "voicemail" };
+    }
+
     const durationMs =
       call.start_timestamp && call.end_timestamp
         ? call.end_timestamp - call.start_timestamp
