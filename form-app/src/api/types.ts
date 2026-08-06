@@ -6,7 +6,7 @@ export interface IntakeInput {
   name: string;
   email: string;
   phoneNumber: string;
-  dateTime: string; // ISO 8601, e.g. "2026-08-01T15:30:00.000Z"
+  dateTime: string; // naive wall-clock, e.g. "2026-08-01T15:30:00" (read in the spa's timezone)
 }
 
 export type IntakeStatus =

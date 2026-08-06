@@ -35,8 +35,11 @@ export function App() {
     try {
       const input: IntakeInput = {
         ...form,
-        // datetime-local is local wall-clock; convert to an ISO 8601 UTC instant.
-        dateTime: new Date(form.dateTime).toISOString(),
+        // datetime-local is a naive wall-clock time. Send it AS-IS (no browser-timezone
+        // conversion) so the backend can interpret it in the spa's timezone — "2 PM" always
+        // means 2 PM at the spa, regardless of the visitor's browser timezone. (Append
+        // seconds so it's a well-formed datetime.)
+        dateTime: form.dateTime.length === 16 ? `${form.dateTime}:00` : form.dateTime,
       };
       await submitIntake(input);
       setSubmitted(true);

@@ -1,5 +1,6 @@
 import { Elysia, t } from "elysia";
 import { cancelMeeting } from "../cal/client.js";
+import { env } from "../config/env.js";
 import {
   cancelBooking,
   countIntakes,
@@ -12,6 +13,7 @@ import {
   setIntakeNotes,
   updateIntakeStatus,
 } from "../db/intakes.js";
+import { normalizeDateTime } from "../schedule/slots.js";
 import { bookExisting } from "../services/booking.js";
 
 // Statuses the agent may set directly via PATCH. `canceled` is intentionally NOT here —
@@ -41,7 +43,11 @@ export const intake = new Elysia()
   .post(
     "/intake",
     async ({ body, status }) => {
-      const record = await insertIntake(body);
+      // A zone-less time (the form's wall-clock pick) is read in the business timezone; a
+      // zone-aware time (with Z/offset) is respected as-is. Same convention as the agent tools,
+      // so the time the person picks reads back identically on the call.
+      const dateTime = normalizeDateTime(body.dateTime, env.schedule.timezone);
+      const record = await insertIntake({ ...body, dateTime });
       return status(201, { status: "created", intake: record });
     },
     {
@@ -50,8 +56,9 @@ export const intake = new Elysia()
         name: t.String({ minLength: 1 }),
         email: t.String({ format: "email" }),
         phoneNumber: t.String({ minLength: 1 }),
-        // ISO 8601 date-time string, e.g. "2026-08-01T15:30:00Z".
-        dateTime: t.String({ format: "date-time" }),
+        // A datetime string — either zone-less local wall-clock (from the form, interpreted in
+        // the business timezone) or zone-aware ISO 8601 (respected as-is).
+        dateTime: t.String({ minLength: 1 }),
       }),
     },
   )
