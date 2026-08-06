@@ -6,7 +6,6 @@ export interface IntakeInput {
   name: string;
   email: string;
   phoneNumber: string;
-  purpose: string;
   dateTime: string; // ISO 8601, e.g. "2026-08-01T15:30:00.000Z"
 }
 

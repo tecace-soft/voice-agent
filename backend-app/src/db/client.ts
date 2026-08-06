@@ -26,7 +26,6 @@ export async function initDb(): Promise<void> {
       name         TEXT NOT NULL,
       email        TEXT NOT NULL,
       phone_number TEXT NOT NULL,
-      purpose      TEXT NOT NULL,
       scheduled_at TIMESTAMPTZ NOT NULL,
       status       TEXT NOT NULL DEFAULT 'new',
       notes        TEXT,
@@ -52,6 +51,9 @@ export async function initDb(): Promise<void> {
   // someone who asks to be called back later. The poller holds the lead until this instant
   // instead of using its default pre-call delay; null means "no deferred callback".
   await sql`ALTER TABLE intakes ADD COLUMN IF NOT EXISTS callback_after TIMESTAMPTZ`;
+  // `purpose` was removed — this is a spa-booking demo, so the reason for the visit is
+  // implicit and no longer collected. Drop it if an older schema still has it.
+  await sql`ALTER TABLE intakes DROP COLUMN IF EXISTS purpose`;
   // Reconcile the allowed-status constraint (drop + re-add keeps it correct as the
   // lifecycle grows — existing values are always a subset of the new list, so it's safe).
   await sql`ALTER TABLE intakes DROP CONSTRAINT IF EXISTS intakes_status_check`;

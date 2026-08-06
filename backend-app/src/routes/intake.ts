@@ -50,7 +50,6 @@ export const intake = new Elysia()
         name: t.String({ minLength: 1 }),
         email: t.String({ format: "email" }),
         phoneNumber: t.String({ minLength: 1 }),
-        purpose: t.String({ minLength: 1 }),
         // ISO 8601 date-time string, e.g. "2026-08-01T15:30:00Z".
         dateTime: t.String({ format: "date-time" }),
       }),

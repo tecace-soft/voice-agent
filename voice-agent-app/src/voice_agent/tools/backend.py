@@ -84,7 +84,6 @@ class BackendClient:
         name: str,
         email: str,
         phone_number: str,
-        purpose: str,
         date_time: str,
     ) -> dict[str, Any]:
         """Create a new lead (POST /intake) and return it (incl. its id). Used for
@@ -95,7 +94,6 @@ class BackendClient:
             "name": name,
             "email": email,
             "phoneNumber": phone_number,
-            "purpose": purpose,
             "dateTime": date_time,
         }
         data = self._call("/intake", method="POST", body=body)

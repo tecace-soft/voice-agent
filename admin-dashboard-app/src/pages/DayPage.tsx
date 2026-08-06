@@ -79,7 +79,6 @@ export function DayPage() {
                   <div className="muted">
                     {a.email} · {a.phoneNumber} · {a.language}
                   </div>
-                  <div>{a.purpose}</div>
                   {a.notes && <div className="appt-notes">{a.notes}</div>}
                 </div>
                 <button

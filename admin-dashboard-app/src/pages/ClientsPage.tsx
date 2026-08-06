@@ -56,7 +56,7 @@ export function ClientsPage() {
     const needle = q.trim().toLowerCase();
     if (!needle) return rows;
     return rows.filter((r) =>
-      [r.name, r.email, r.purpose].some((f) => f.toLowerCase().includes(needle)),
+      [r.name, r.email].some((f) => f.toLowerCase().includes(needle)),
     );
   }, [rows, q]);
 
@@ -66,7 +66,7 @@ export function ClientsPage() {
         <h1>Clients</h1>
         <div className="filters">
           <input
-            placeholder="Search name, email, purpose…"
+            placeholder="Search name, email…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -99,7 +99,6 @@ export function ClientsPage() {
                   <th>Name</th>
                   <th>Contact</th>
                   <th>Language</th>
-                  <th>Purpose</th>
                   <th>Requested time</th>
                   <th>Status</th>
                   <th>Notes</th>
@@ -115,7 +114,6 @@ export function ClientsPage() {
                       <div className="muted">{r.phoneNumber}</div>
                     </td>
                     <td>{r.language}</td>
-                    <td>{r.purpose}</td>
                     <td>{formatDateTime(r.scheduledAt)}</td>
                     <td>
                       <StatusBadge status={r.status} />

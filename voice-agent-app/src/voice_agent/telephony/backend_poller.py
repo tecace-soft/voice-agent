@@ -34,24 +34,24 @@ log = logging.getLogger(__name__)
 # Hardcoded for now; revisit if we want this configurable later.
 MAX_CALL_ATTEMPTS = 3
 
-# How long to wait after a booking request before placing the call. Short for the demo —
-# a brief, deliberate pause so the call reads as a follow-up rather than an instant dial.
-CALL_DELAY_SECONDS = 60
+# How long to wait after a booking request before placing the call. Kept very short while
+# testing the demo so we're not waiting around — with the 15s poll interval a fresh lead is
+# called on the next poll or two (~20-30s), rather than a full minute.
+CALL_DELAY_SECONDS = 25
 
 
 def record_from_intake(intake: dict) -> tuple[dict[str, str], str]:
     """Build the conversation `record` (and phone) from a backend intake.
 
     Keys are chosen so the scheduler's record helpers find them: `name`, `email`,
-    `phone`, `purpose`, `language`, and `desired_time` (the ISO time the lead picked
-    on the form). `_intake_id` lets the agent book / update this exact lead.
+    `phone`, `language`, and `desired_time` (the ISO time the lead picked on the form).
+    `_intake_id` lets the agent book / update this exact lead.
     """
     record = {
         "_intake_id": str(intake.get("id", "")),
         "name": str(intake.get("name", "")),
         "email": str(intake.get("email", "")),
         "phone": str(intake.get("phoneNumber", "")),
-        "purpose": str(intake.get("purpose", "")),
         "language": str(intake.get("language", "")),
         "desired_time": str(intake.get("scheduledAt", "")),
     }
