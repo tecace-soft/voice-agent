@@ -65,18 +65,33 @@ export async function initDb(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_intakes_status ON intakes (status)`;
 }
 
-// Run the idempotent schema setup at most once per process, caching the promise. On Vercel
-// the app is served as a fetch handler with no startup hook, so nothing runs initDb on
-// deploy — we gate requests on this instead, which makes a cold start apply any pending
-// migrations (e.g. a newly added column) on the first request, with no manual migrate step.
-// A failed attempt clears the cache so the next request retries rather than caching a reject.
+// Ensure the schema is ready before serving requests, at most once per process (cached promise).
+// On Vercel the app is a fetch handler with no startup hook, so we gate requests on this. BUT we
+// must NOT run the heavy DDL (ALTER/DROP/CREATE — each takes an exclusive table lock) on every
+// cold start: under steady polling Vercel spins fresh instances constantly, and concurrent
+// cold-start migrations contend on those locks and hang, timing out the caller. So we run a cheap
+// probe first and only fall back to the full idempotent initDb when the schema is actually behind
+// (e.g. the first cold start after a deploy that added a column). A failed attempt clears the
+// cache so the next request retries rather than caching a reject.
 let dbReady: Promise<void> | null = null;
 export function ensureDbReady(): Promise<void> {
   if (!dbReady) {
-    dbReady = initDb().catch((err) => {
+    dbReady = migrateIfNeeded().catch((err) => {
       dbReady = null;
       throw err;
     });
   }
   return dbReady;
+}
+
+async function migrateIfNeeded(): Promise<void> {
+  try {
+    // Cheap, lock-free probe of the newest expected column. If it selects, the schema is current
+    // and we skip all DDL. NOTE: when adding a new column to initDb, update this probe column too.
+    await sql`SELECT callback_after FROM intakes LIMIT 1`;
+    return;
+  } catch {
+    // Table or a column is missing → run the full idempotent setup (adds/updates as needed).
+    await initDb();
+  }
 }
