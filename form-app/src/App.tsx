@@ -18,6 +18,35 @@ for (let m = 9 * 60; m <= 16 * 60 + 30; m += 30) {
   TIME_SLOTS.push({ value, label });
 }
 
+// We constrain the pickers to the future against the BUSINESS timezone (matches the backend's
+// SCHEDULE_TIMEZONE): the submitted wall-clock time is read in that zone, so "today" and "now"
+// here line up with how the slot is actually interpreted — a user in another timezone can't
+// pick a slot that's really already past in Pacific.
+const TIME_ZONE = "America/Los_Angeles";
+
+function nowInBusinessZone(): { today: string; minutes: number } {
+  const now = new Date();
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now); // en-CA => "YYYY-MM-DD"
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const at = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? "0");
+  return { today, minutes: at("hour") * 60 + at("minute") };
+}
+
+const slotToMinutes = (hhmm: string): number => {
+  const [h = 0, m = 0] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+};
+
 // The form's local state. `date` (YYYY-MM-DD) and `time` (HH:MM) are chosen separately and
 // combined into a naive wall-clock `dateTime` on submit, which the backend reads in the spa's
 // timezone.
@@ -50,6 +79,13 @@ export function App() {
     setSubmitting(true);
     try {
       const { date, time, ...rest } = form;
+      // Guard against a past day/time even if the date `min` / slot filter was bypassed (e.g.
+      // typed in). The backend won't book a past slot anyway; catch it here with a clear message.
+      const nowBiz = nowInBusinessZone();
+      if (date < nowBiz.today || (date === nowBiz.today && slotToMinutes(time) <= nowBiz.minutes)) {
+        setError("Please choose a time in the future.");
+        return;
+      }
       const input: IntakeInput = {
         ...rest,
         // Combine the chosen date + time into a naive wall-clock string. Sent AS-IS (no
@@ -70,6 +106,25 @@ export function App() {
       setSubmitting(false);
     }
   }
+
+  // Constrain the pickers to the future. Dates before today are blocked by the input's `min`;
+  // when today is selected, only slots later than "now" (business timezone) are offered.
+  const now = nowInBusinessZone();
+  const isToday = form.date === now.today;
+  const availableSlots = isToday
+    ? TIME_SLOTS.filter((s) => slotToMinutes(s.value) > now.minutes)
+    : TIME_SLOTS;
+  const noSlotsToday = isToday && availableSlots.length === 0;
+
+  const onDateChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const date = e.target.value;
+    setForm((prev) => {
+      // Clear a now-past time if they switch to today and their chosen slot is already behind us.
+      const keepTime =
+        date !== now.today || (prev.time !== "" && slotToMinutes(prev.time) > now.minutes);
+      return { ...prev, date, time: keepTime ? prev.time : "" };
+    });
+  };
 
   if (submitted) {
     return (
@@ -141,8 +196,9 @@ export function App() {
             id="date"
             type="date"
             required
+            min={now.today}
             value={form.date}
-            onChange={update("date")}
+            onChange={onDateChange}
           />
         </div>
 
@@ -150,9 +206,9 @@ export function App() {
           <label htmlFor="time">Preferred Time</label>
           <select id="time" required value={form.time} onChange={update("time")}>
             <option value="" disabled>
-              Select a time…
+              {noSlotsToday ? "No times left today — pick another day" : "Select a time…"}
             </option>
-            {TIME_SLOTS.map((slot) => (
+            {availableSlots.map((slot) => (
               <option key={slot.value} value={slot.value}>
                 {slot.label}
               </option>
