@@ -14,6 +14,7 @@ export interface IntakeRecord {
   name: string;
   email: string;
   phoneNumber: string;
+  purpose: string; // what the lead reached out about
   scheduledAt: string;
   status: IntakeStatus;
   notes: string | null;

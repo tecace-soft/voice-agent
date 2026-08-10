@@ -26,6 +26,7 @@ export async function initDb(): Promise<void> {
       name         TEXT NOT NULL,
       email        TEXT NOT NULL,
       phone_number TEXT NOT NULL,
+      purpose      TEXT NOT NULL DEFAULT '',
       scheduled_at TIMESTAMPTZ NOT NULL,
       status       TEXT NOT NULL DEFAULT 'new',
       notes        TEXT,
@@ -51,9 +52,9 @@ export async function initDb(): Promise<void> {
   // someone who asks to be called back later. The poller holds the lead until this instant
   // instead of using its default pre-call delay; null means "no deferred callback".
   await sql`ALTER TABLE intakes ADD COLUMN IF NOT EXISTS callback_after TIMESTAMPTZ`;
-  // `purpose` was removed — this is a spa-booking demo, so the reason for the visit is
-  // implicit and no longer collected. Drop it if an older schema still has it.
-  await sql`ALTER TABLE intakes DROP COLUMN IF EXISTS purpose`;
+  // `purpose` = what the lead reached out about (the TecAce consulting scenario; the agent
+  // confirms it on the call). Backfilled to '' on any rows created while it was absent.
+  await sql`ALTER TABLE intakes ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT ''`;
   // Reconcile the allowed-status constraint (drop + re-add keeps it correct as the
   // lifecycle grows — existing values are always a subset of the new list, so it's safe).
   await sql`ALTER TABLE intakes DROP CONSTRAINT IF EXISTS intakes_status_check`;
@@ -88,7 +89,7 @@ async function migrateIfNeeded(): Promise<void> {
   try {
     // Cheap, lock-free probe of the newest expected column. If it selects, the schema is current
     // and we skip all DDL. NOTE: when adding a new column to initDb, update this probe column too.
-    await sql`SELECT callback_after FROM intakes LIMIT 1`;
+    await sql`SELECT purpose FROM intakes LIMIT 1`;
     return;
   } catch {
     // Table or a column is missing → run the full idempotent setup (adds/updates as needed).

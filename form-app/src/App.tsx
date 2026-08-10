@@ -28,6 +28,7 @@ const EMPTY: FormState = {
   name: "",
   email: "",
   phoneNumber: "",
+  purpose: "",
   date: "",
   time: "",
 };
@@ -119,6 +120,18 @@ export function App() {
             required
             value={form.phoneNumber}
             onChange={update("phoneNumber")}
+          />
+        </div>
+
+        <div className="field">
+          <label htmlFor="purpose">What can we help you with?</label>
+          <textarea
+            id="purpose"
+            required
+            rows={3}
+            value={form.purpose}
+            onChange={update("purpose")}
+            placeholder="Briefly, what you're interested in — e.g. AI adoption for our logistics operations."
           />
         </div>
 

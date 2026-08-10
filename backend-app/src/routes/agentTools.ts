@@ -261,6 +261,7 @@ async function bookNewLead(
     name,
     email,
     phoneNumber: phone,
+    purpose: str(args.purpose) || str(dyn.purpose) || "Consultation (inbound call)",
     dateTime,
   });
 }

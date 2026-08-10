@@ -47,7 +47,8 @@ export const intake = new Elysia()
       // zone-aware time (with Z/offset) is respected as-is. Same convention as the agent tools,
       // so the time the person picks reads back identically on the call.
       const dateTime = normalizeDateTime(body.dateTime, env.schedule.timezone);
-      const record = await insertIntake({ ...body, dateTime });
+      // purpose is optional on the wire but non-null in storage — default a missing one to "".
+      const record = await insertIntake({ ...body, purpose: body.purpose ?? "", dateTime });
       return status(201, { status: "created", intake: record });
     },
     {
@@ -56,6 +57,9 @@ export const intake = new Elysia()
         name: t.String({ minLength: 1 }),
         email: t.String({ format: "email" }),
         phoneNumber: t.String({ minLength: 1 }),
+        // What the lead is reaching out about (the agent confirms it on the call). Optional on
+        // the wire so inbound/legacy callers still work; stored as "" when omitted.
+        purpose: t.Optional(t.String()),
         // A datetime string — either zone-less local wall-clock (from the form, interpreted in
         // the business timezone) or zone-aware ISO 8601 (respected as-is).
         dateTime: t.String({ minLength: 1 }),

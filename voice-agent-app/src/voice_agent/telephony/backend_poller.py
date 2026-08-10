@@ -53,6 +53,7 @@ def record_from_intake(intake: dict) -> tuple[dict[str, str], str]:
         "email": str(intake.get("email", "")),
         "phone": str(intake.get("phoneNumber", "")),
         "language": str(intake.get("language", "")),
+        "purpose": str(intake.get("purpose", "")),
         "desired_time": str(intake.get("scheduledAt", "")),
     }
     return record, record["phone"]

@@ -6,7 +6,8 @@ export interface IntakeInput {
   name: string;
   email: string;
   phoneNumber: string;
-  dateTime: string; // naive wall-clock, e.g. "2026-08-01T15:30:00" (read in the spa's timezone)
+  purpose: string; // what the client is reaching out about (confirmed by the agent on the call)
+  dateTime: string; // naive wall-clock, e.g. "2026-08-01T15:30:00" (read in the business timezone)
 }
 
 export type IntakeStatus =

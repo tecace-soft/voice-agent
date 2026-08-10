@@ -85,6 +85,7 @@ class BackendClient:
         email: str,
         phone_number: str,
         date_time: str,
+        purpose: str = "",
     ) -> dict[str, Any]:
         """Create a new lead (POST /intake) and return it (incl. its id). Used for
         INBOUND callers, who aren't a pre-existing form lead — we capture their details
@@ -94,6 +95,7 @@ class BackendClient:
             "name": name,
             "email": email,
             "phoneNumber": phone_number,
+            "purpose": purpose,
             "dateTime": date_time,
         }
         data = self._call("/intake", method="POST", body=body)

@@ -249,6 +249,11 @@ td.notes {
   color: var(--body);
 }
 
+td.purpose {
+  max-width: 240px;
+  color: var(--body);
+}
+
 /* Client identity cell: bold name (+ optional language tag), muted contact lines. */
 .cell-name {
   display: flex;

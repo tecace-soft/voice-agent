@@ -21,6 +21,7 @@ export interface IntakeInput {
   name: string;
   email: string;
   phoneNumber: string;
+  purpose: string; // what the lead reached out about (the agent confirms it on the call)
   dateTime: string; // ISO 8601 date-time
 }
 
@@ -31,6 +32,7 @@ export interface IntakeRecord {
   name: string;
   email: string;
   phoneNumber: string;
+  purpose: string; // what the lead reached out about
   scheduledAt: string;
   status: IntakeStatus;
   notes: string | null; // agent's post-call summary (null until written)
@@ -49,6 +51,7 @@ const RETURN_COLUMNS = sql`
   name,
   email,
   phone_number AS "phoneNumber",
+  purpose,
   scheduled_at AS "scheduledAt",
   status,
   notes,
@@ -62,9 +65,9 @@ const RETURN_COLUMNS = sql`
 // Persist one intake and return the stored row.
 export async function insertIntake(input: IntakeInput): Promise<IntakeRecord> {
   const [row] = await sql`
-    INSERT INTO intakes (language, name, email, phone_number, scheduled_at)
+    INSERT INTO intakes (language, name, email, phone_number, purpose, scheduled_at)
     VALUES (${input.language}, ${input.name}, ${input.email},
-            ${input.phoneNumber}, ${input.dateTime})
+            ${input.phoneNumber}, ${input.purpose}, ${input.dateTime})
     RETURNING ${RETURN_COLUMNS}
   `;
   return row as IntakeRecord;
@@ -97,7 +100,7 @@ function whereClause(filters: IntakeFilters): SqlFragment {
   if (filters.q) {
     const like = `%${filters.q}%`;
     conditions.push(
-      sql`(name ILIKE ${like} OR email ILIKE ${like})`,
+      sql`(name ILIKE ${like} OR email ILIKE ${like} OR purpose ILIKE ${like})`,
     );
   }
   if (filters.scheduledFrom) {

@@ -56,7 +56,9 @@ export function ClientsPage() {
     const needle = q.trim().toLowerCase();
     if (!needle) return rows;
     return rows.filter((r) =>
-      [r.name, r.email, r.phoneNumber].some((f) => f.toLowerCase().includes(needle)),
+      [r.name, r.email, r.phoneNumber, r.purpose].some((f) =>
+        f.toLowerCase().includes(needle),
+      ),
     );
   }, [rows, q]);
 
@@ -98,6 +100,7 @@ export function ClientsPage() {
                 <tr>
                   <th>Client</th>
                   <th>Requested time</th>
+                  <th>Purpose</th>
                   <th>Status</th>
                   <th>Notes</th>
                   <th>Actions</th>
@@ -124,6 +127,9 @@ export function ClientsPage() {
                         </div>
                       )}
                     </td>
+                    <td className="purpose">
+                      {r.purpose || <span className="muted">—</span>}
+                    </td>
                     <td>
                       <StatusBadge status={r.status} />
                     </td>
@@ -141,7 +147,7 @@ export function ClientsPage() {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="muted center">
+                    <td colSpan={6} className="muted center">
                       No clients{q || status ? " match the filters" : " yet"}.
                     </td>
                   </tr>
