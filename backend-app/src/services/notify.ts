@@ -11,16 +11,25 @@ import { formatSpoken } from "../lib/spoken.js";
 export async function sendBookingConfirmation(intake: IntakeRecord): Promise<boolean> {
   const name = intake.name || "there";
   const when = formatSpoken(intake.scheduledAt, env.schedule.timezone);
-  const subject = "Your Olympus Spa appointment is confirmed";
+  const subject = "Your TecAce consultation is confirmed";
+  // Personalize with what they reached out about, when we have it, so the note feels tailored
+  // and it's clear the consultant will prep against their inquiry.
+  const prep = intake.purpose
+    ? `You reached out to us about ${intake.purpose}, and our consultant will review that ahead of the call.`
+    : `Our consultant will review your inquiry ahead of the call.`;
   const text = [
     `Hi ${name},`,
     ``,
-    `Your spa appointment at Olympus Spa is confirmed for ${when}.`,
+    `Your 30-minute consultation with TecAce is confirmed for ${when}.`,
     ``,
-    `We can't wait to see you! If you need to change or cancel, just reply to this email ` +
-      `or give us a call.`,
+    prep,
     ``,
-    `— Olympus Spa`,
+    `A calendar invite with the meeting link will follow. If you need to change or reschedule, ` +
+      `just reply to this email.`,
+    ``,
+    `Looking forward to speaking with you!`,
+    ``,
+    `— The TecAce Team`,
   ].join("\n");
   return sendEmail({ to: intake.email, subject, text });
 }
