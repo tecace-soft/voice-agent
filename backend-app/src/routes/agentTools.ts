@@ -110,24 +110,35 @@ export const agentTools = new Elysia({ prefix: "/agent" })
     const args = readArgs(body);
     const call = readCall(body);
     const dyn = (call.retell_llm_dynamic_variables ?? {}) as Record<string, unknown>;
-    let date = str(args.date);
-    // Fall back to the day of the requested time if the agent didn't pass a date — a caller
-    // asking "what else do you have?" usually means the same day they requested.
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      const dtRaw = str(dyn.dateTime);
-      const dt = dtRaw ? new Date(normalizeDateTime(dtRaw, TZ)) : null;
-      if (dt && !Number.isNaN(dt.getTime())) date = localDateOf(TZ, dt.getTime());
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    // Anchor = the day (and, if given, the time) the caller cares about. One arg handles both
+    // "Monday" and "Monday around 3 PM": we list that day's openings ordered by closeness to the
+    // anchor, so a bare day surfaces the earliest slots while "around 3 PM" surfaces mid-afternoon
+    // ones. Accept dateTime (preferred — carries a time) or a bare date; fall back to the
+    // originally requested time.
+    const anchorRaw = str(args.dateTime) || str(args.date) || str(dyn.dateTime);
+    const anchorIso = anchorRaw ? normalizeDateTime(anchorRaw, TZ) : "";
+    const anchor = anchorIso ? new Date(anchorIso) : null;
+    if (!anchor || Number.isNaN(anchor.getTime())) {
       return { openings: [], message: "Which day would you like me to check?" };
     }
+    const date = localDateOf(TZ, anchor.getTime());
+    const anchorMs = anchor.getTime();
+
     const now = Date.now();
-    const booked = await listBookedTimes(`${date}T00:00:00Z`, `${date}T23:59:59Z`);
+    const booked = await listBookedTimes();
     const day = slotsForDate(env.schedule, date, booked);
-    const open = day.slots
+    const nearest = day.slots
       .filter((s) => s.available && new Date(s.start).getTime() > now)
+      // Pick the 5 slots closest to the anchor time…
+      .sort(
+        (a, b) =>
+          Math.abs(new Date(a.start).getTime() - anchorMs) -
+          Math.abs(new Date(b.start).getTime() - anchorMs),
+      )
       .slice(0, 5)
-      .map((s) => formatSpoken(s.start, TZ));
+      // …then read them back in chronological order.
+      .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+    const open = nearest.map((s) => formatSpoken(s.start, TZ));
     // Joined, ready-to-speak string for the flow to extract into {{openings}} and read aloud.
     const openingsText = joinSpoken(open);
     return {

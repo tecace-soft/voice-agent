@@ -16,6 +16,7 @@ one git history.
 | **Admin Dashboard** | [`admin-dashboard-app/`](admin-dashboard-app/) | In progress | The web dashboard the Admin uses to monitor the system — clients + booking status, a booking calendar, and the agent's prompt. Reads from the shared backend. **React + Vite** (TypeScript). See its [README](admin-dashboard-app/README.md). |
 | **Form** | [`form-app/`](form-app/) | In progress | The client-facing web form a lead fills in to request a callback (language, name, email, phone, purpose, date/time). Submits to the shared backend; intended to replace the Google Form. **React + Vite** (TypeScript). See its [README](form-app/README.md). |
 | **Backend** | [`backend-app/`](backend-app/) | In progress | The shared API service owning the system's data and logic — used by the Admin Dashboard, and eventually by the voice agent. **Elysia + Bun** (TypeScript). See its [README](backend-app/README.md). |
+| **Transcribe** | [`transcribe-app/`](transcribe-app/) | In progress | A batch pipeline that reads voicemail `.wav` attachments from email, transcribes them (Whisper), extracts the caller's details (Claude), and appends a row per voicemail to a Google Sheet. **Python**. See its [README](transcribe-app/README.md). |
 
 ---
 
@@ -38,6 +39,11 @@ voice-agent/                  ← repo root (this README, the shared git history
 ├── backend-app/              ← shared API service — Elysia + Bun (in progress)
 │   ├── src/  (index.ts, app.ts, routes/, config/)
 │   ├── package.json  tsconfig.json
+│   └── README.md  .env.example
+├── transcribe-app/           ← voicemail → text → Google Sheet pipeline — Python (in progress)
+│   ├── src/transcribe_app/  (config/, tools/, pipeline.py)
+│   ├── scripts/  (run_transcribe.py, checks/)
+│   ├── pyproject.toml  requirements.txt
 │   └── README.md  .env.example
 ├── .gitignore                ← shared; patterns are non-anchored so they apply in every app
 └── .claude/                  ← workspace-level tooling settings

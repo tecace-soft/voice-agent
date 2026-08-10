@@ -1,0 +1,19 @@
+[project]
+name = "transcribe-app"
+version = "0.1.0"
+description = "Voicemail transcription pipeline: read .wav attachments from email, transcribe, extract, upload to Google Sheets"
+requires-python = ">=3.11"
+dependencies = [
+    "python-dotenv>=1.0.1",
+    "openai>=1.40",
+    "anthropic>=0.40",
+    "google-api-python-client>=2.100",
+    "google-auth>=2.30",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
