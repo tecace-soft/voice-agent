@@ -1,6 +1,11 @@
 import { Elysia } from "elysia";
 import { env } from "../config/env.js";
-import { listBookedTimes, setCallbackAfter } from "../db/intakes.js";
+import {
+  listBookedTimes,
+  setCallbackAfter,
+  setIntakeNotes,
+  updateIntakeStatus,
+} from "../db/intakes.js";
 import { formatSpoken, joinSpoken } from "../lib/spoken.js";
 import {
   checkAvailability,
@@ -242,6 +247,38 @@ export const agentTools = new Elysia({ prefix: "/agent" })
       when,
       message: `Got it — we'll reach back out around ${when}.`,
     };
+  })
+
+  // Stop calling a lead when a call hits a dead end a retry won't fix — a WRONG NUMBER (the
+  // number doesn't reach the lead → unreachable) or a DECLINE (we reached them and they said no
+  // → contacted). Moving the lead out of "new" is what makes the poller stop re-dialing. The
+  // agent passes `outcome` as a fixed const per flow path, so it's deterministic. Keyed to the
+  // lead by intakeId (args or dynamic vars, same as the other tools).
+  .post("/mark-outcome", async ({ body }) => {
+    const args = readArgs(body);
+    const call = readCall(body);
+    const dyn = (call.retell_llm_dynamic_variables ?? {}) as Record<string, unknown>;
+    const intakeId =
+      str(args.intakeId) || str(args.intake_id) || str(dyn.intake_id) || str(dyn.intakeId);
+    if (!intakeId) {
+      return { ok: false, message: "I don't have a record to update." };
+    }
+    const outcome = (str(args.outcome) || "unreachable").toLowerCase();
+    const OUTCOMES: Record<string, { status: "unreachable" | "contacted"; note: string }> = {
+      wrong_number: { status: "unreachable", note: "Wrong number — does not reach the lead." },
+      unreachable: { status: "unreachable", note: "Marked unreachable." },
+      declined: { status: "contacted", note: "Declined the consultation." },
+    };
+    const chosen = OUTCOMES[outcome] ?? {
+      status: "unreachable" as const,
+      note: "Marked unreachable.",
+    };
+    const record = await updateIntakeStatus(intakeId, chosen.status);
+    if (!record) {
+      return { ok: false, message: "I couldn't find that record." };
+    }
+    await setIntakeNotes(intakeId, chosen.note);
+    return { ok: true, message: "Noted — we won't keep calling this lead." };
   });
 
 // Create a new inbound lead from the call details, then book it. Reads from the LLM args
