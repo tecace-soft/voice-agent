@@ -1,0 +1,39 @@
+# Runs the two processes as containers on this Docker + Traefik box.
+#
+#   server  — the media-stream WebSocket. Joined to Traefik's network and labeled so Traefik
+#             routes https://31-97-214-59.sslip.io (:443) to it and auto-issues the TLS cert.
+#   poller  — outbound only (finds leads, places calls); no ingress, no labels.
+#
+# Both read the same .env. Bring up with:  docker compose up -d --build
+#
+# IMPORTANT: set the external network name below to Traefik's network (find it with:
+#   docker inspect root-traefik-1 -f '{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}'
+# ). The server MUST share a network with Traefik or Traefik can't reach it.
+
+services:
+  server:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.openai-agent.rule=Host(`31-97-214-59.sslip.io`)"
+      - "traefik.http.routers.openai-agent.entrypoints=websecure"
+      - "traefik.http.routers.openai-agent.tls.certresolver=mytlschallenge"
+      # Which container port Traefik forwards to (our uvicorn server). WebSockets pass through
+      # automatically — Traefik forwards the Upgrade handshake with no extra config.
+      - "traefik.http.services.openai-agent.loadbalancer.server.port=5050"
+
+  poller:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    command: ["python", "scripts/run_poller.py"]
+
+networks:
+  # Traefik's existing network, attached as external so we don't recreate it.
+  traefik:
+    external: true
+    name: REPLACE_WITH_TRAEFIK_NETWORK
