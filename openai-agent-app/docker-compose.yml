@@ -36,4 +36,4 @@ networks:
   # Traefik's existing network, attached as external so we don't recreate it.
   traefik:
     external: true
-    name: REPLACE_WITH_TRAEFIK_NETWORK
+    name: root_default
