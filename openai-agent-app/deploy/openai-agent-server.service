@@ -1,0 +1,23 @@
+# systemd unit — the media-stream server (handles each call's audio).
+# Install: copy to /etc/systemd/system/, adjust the paths/User, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now openai-agent-server
+# Logs: journalctl -u openai-agent-server -f
+
+[Unit]
+Description=OpenAI realtime agent - media-stream server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/voice-agent/openai-agent-app
+# Uses the app's own virtualenv (created below). openai_agent must be importable there
+# (pip install -e . into this venv — see deploy/README.md).
+ExecStart=/root/voice-agent/openai-agent-app/.venv/bin/python scripts/run_server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

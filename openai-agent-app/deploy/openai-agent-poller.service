@@ -1,0 +1,21 @@
+# systemd unit — the lead poller (finds due leads, places calls).
+# Install: copy to /etc/systemd/system/, adjust the paths/User, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now openai-agent-poller
+# Logs: journalctl -u openai-agent-poller -f
+
+[Unit]
+Description=OpenAI realtime agent - lead poller
+After=network-online.target openai-agent-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/voice-agent/openai-agent-app
+ExecStart=/root/voice-agent/openai-agent-app/.venv/bin/python scripts/run_poller.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+# Caddy reverse proxy — gives the media-stream server a public HTTPS/WSS endpoint.
+#
+# Twilio Media Streams require a SECURE WebSocket (wss://), so the server must sit behind TLS.
+# Caddy provisions and renews a Let's Encrypt certificate automatically, and proxies WebSocket
+# upgrades transparently, so the whole call audio path just works over wss.
+#
+# The host below is this VPS's IP (31.97.214.59) in sslip.io form: 31-97-214-59.sslip.io
+# resolves straight to 31.97.214.59 with no domain to register. Caddy gets a real Let's Encrypt
+# cert for it automatically. Just make sure ports 80 + 443 are open (80 is needed for the cert).
+# Set PUBLIC_HOST=31-97-214-59.sslip.io (no scheme) in the app's .env — the app builds
+# wss://<PUBLIC_HOST>/media-stream from it.
+#
+# Install: put this at /etc/caddy/Caddyfile, then:
+#   sudo systemctl reload caddy
+
+31-97-214-59.sslip.io {
+    # Proxy everything (the /media-stream WebSocket and /health) to the local uvicorn server.
+    reverse_proxy localhost:5050
+}

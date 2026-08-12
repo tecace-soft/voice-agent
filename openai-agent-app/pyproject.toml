@@ -1,0 +1,20 @@
+[project]
+name = "openai-agent-app"
+version = "0.1.0"
+description = "TecAce lead-callback voice agent on the OpenAI Realtime API + Twilio (experimental alternative to Retell)"
+requires-python = ">=3.11"
+dependencies = [
+    "python-dotenv>=1.0.1",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "websockets>=13.0",
+    "twilio>=9.0",
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
