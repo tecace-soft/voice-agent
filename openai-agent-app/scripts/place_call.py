@@ -25,6 +25,7 @@ def main() -> int:
     parser.add_argument("--name", default="", help="Lead name (spoken as {{lead_name}}).")
     parser.add_argument("--purpose", default="", help="What they reached out about.")
     parser.add_argument("--email", default="", help="Lead email on file.")
+    parser.add_argument("--language", default="", help="Preferred language (e.g. English, Korean).")
     parser.add_argument("--desired-time", default="", help="Requested time, spoken form.")
     parser.add_argument("--datetime", default="", help="Requested time, ISO 8601 (for tools).")
     parser.add_argument("--intake-id", default="", help="Backend intake id (enables write-back).")
@@ -47,6 +48,7 @@ def main() -> int:
         "lead_name": args.name,
         "purpose": args.purpose,
         "email": args.email,
+        "language": args.language,
         "desired_time": args.desired_time,
         "dateTime": args.datetime,
     }

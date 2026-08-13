@@ -49,6 +49,7 @@ def lead_from_intake(intake: dict, tz: str) -> tuple[dict, str]:
         "lead_name": str(intake.get("name", "")),
         "email": str(intake.get("email", "")),
         "purpose": str(intake.get("purpose", "")),
+        "language": str(intake.get("language", "")),
         "desired_time": _spoken_time(iso, tz) if iso else "",
         "dateTime": iso,
     }
