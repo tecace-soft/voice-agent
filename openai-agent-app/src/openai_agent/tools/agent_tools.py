@@ -41,20 +41,21 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "name": "get_openings",
-        "description": "List a few available times on a day. Use when the lead wants other "
-        "options but hasn't named a specific time.",
+        "description": "List a few open times on a day, ordered around the time the lead cares "
+        "about. Use when they want to see options or gave an approximate time.",
         "parameters": {
             "type": "object",
             "properties": {
-                "date": {
+                "dateTime": {
                     "type": "string",
-                    "description": "The specific calendar day to list, YYYY-MM-DD. Resolve "
-                    "relative days ('tomorrow', 'next Monday') to their actual future date using "
-                    "today's date (Pacific) — do NOT default to today when the lead named a "
-                    "different day.",
+                    "description": "The day to list, ISO 8601, INCLUDING the approximate time the "
+                    "lead mentioned so the openings come back around it — e.g. 'around 3 PM "
+                    "tomorrow' -> that day at 15:00. If they named only a day with no time, use "
+                    "12:00 (noon) of that day. Resolve relative days ('tomorrow', 'next Monday') "
+                    "to their actual future date (Pacific), not today.",
                 }
             },
-            "required": ["date"],
+            "required": ["dateTime"],
         },
     },
     {
@@ -129,7 +130,7 @@ class ToolExecutor:
             if name == "check_availability":
                 return await self._post("/agent/check-availability", {"dateTime": args.get("dateTime", "")})
             if name == "get_openings":
-                return await self._post("/agent/openings", {"date": args.get("date", "")})
+                return await self._post("/agent/openings", {"dateTime": args.get("dateTime", "")})
             if name == "book_appointment":
                 return await self._post(
                     "/agent/book", {"dateTime": args.get("dateTime", ""), "intakeId": self._intake_id}

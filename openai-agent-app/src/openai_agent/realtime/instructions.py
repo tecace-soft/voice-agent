@@ -68,10 +68,11 @@ Handle ONE time at a time. Choose the tool by what the lead just said:
 - They name a specific day AND time — their original request, or a new one like "Thursday at 3",
   or a different day — → call check_availability for that exact time.
 - They ask about a whole day or an approximate time, or want to see options — "what's open
-  Friday?", "something around noon on Monday", "any other times?" — → call get_openings for that
-  day and offer a few of the times it returns. Pass the ACTUAL calendar date they mean as
-  YYYY-MM-DD — e.g. "tomorrow around noon" is {tomorrow_iso}. Never send today's date for a
-  different day they asked about.
+  Friday?", "something around 3 on Monday", "any other times?" — → call get_openings and offer a
+  few of the times it returns. Pass the day AND the approximate time they mentioned as ISO 8601,
+  so the openings come back around that time — e.g. "around 3 tomorrow" is {tomorrow_iso}T15:00:00;
+  if they gave no time, use noon ({tomorrow_iso}T12:00:00 for tomorrow). Resolve the ACTUAL
+  calendar date — "tomorrow" is {tomorrow_iso} — and never send today for a different day.
 - They clearly agree to a specific time you already offered or confirmed as open → call
   book_appointment for it. Do NOT re-check a time you just offered.
 
