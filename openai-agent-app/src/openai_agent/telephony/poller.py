@@ -52,6 +52,10 @@ def lead_from_intake(intake: dict, tz: str) -> tuple[dict, str]:
         "desired_time": _spoken_time(iso, tz) if iso else "",
         "dateTime": iso,
     }
+    # A callbackAfter means we already reached this lead and they asked us to call back — so the
+    # agent should skip the cold intro and get to the point. First attempts have no callbackAfter.
+    if str(intake.get("callbackAfter", "") or ""):
+        lead["is_callback"] = "yes"
     return lead, str(intake.get("phoneNumber", ""))
 
 

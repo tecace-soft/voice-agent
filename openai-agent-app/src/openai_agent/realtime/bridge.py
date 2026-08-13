@@ -49,6 +49,7 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         desired_time_iso=params.get("dateTime", ""),
         email=params.get("email", ""),
         timezone=cfg.timezone,
+        is_callback=str(params.get("is_callback", "")).lower() in ("yes", "true", "1"),
     )
     executor = ToolExecutor(cfg, intake_id=params.get("intake_id", ""))
 

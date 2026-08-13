@@ -28,6 +28,11 @@ def main() -> int:
     parser.add_argument("--desired-time", default="", help="Requested time, spoken form.")
     parser.add_argument("--datetime", default="", help="Requested time, ISO 8601 (for tools).")
     parser.add_argument("--intake-id", default="", help="Backend intake id (enables write-back).")
+    parser.add_argument(
+        "--callback",
+        action="store_true",
+        help="Treat as a promised callback (agent skips the cold intro and gets to the point).",
+    )
     args = parser.parse_args()
 
     cfg = Config.load()
@@ -45,6 +50,8 @@ def main() -> int:
         "desired_time": args.desired_time,
         "dateTime": args.datetime,
     }
+    if args.callback:
+        lead["is_callback"] = "yes"
     sid = place_call(cfg, to_number=args.to_number, lead=lead)
     print(f"Call placed: {sid}")
     return 0
