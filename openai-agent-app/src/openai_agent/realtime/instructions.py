@@ -8,7 +8,7 @@ injected via `build_instructions`.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 # The flow + rules. Placeholders in {curly_braces} are filled by build_instructions().
@@ -23,7 +23,10 @@ consultant.
 - The time they requested (spoken): {desired_time}
 - That requested time in ISO 8601, for tools: {desired_time_iso}
 - Email on file: {email}
-- Today is {current_date}, {current_time_zone} (Pacific).
+- Today is {current_date} ({current_date_iso}), {current_time_zone} (Pacific).
+- Tomorrow is {tomorrow_spoken} ({tomorrow_iso}). For any other relative day the lead names
+  ("next Monday", "this Friday"), work out that actual calendar date from today's date — never
+  reuse today's date for a day they didn't mean.
 
 # How you speak
 - One or two short, natural spoken sentences — no lists, no symbols. Speak times naturally, like
@@ -66,7 +69,9 @@ Handle ONE time at a time. Choose the tool by what the lead just said:
   or a different day — → call check_availability for that exact time.
 - They ask about a whole day or an approximate time, or want to see options — "what's open
   Friday?", "something around noon on Monday", "any other times?" — → call get_openings for that
-  day and offer a few of the times it returns.
+  day and offer a few of the times it returns. Pass the ACTUAL calendar date they mean as
+  YYYY-MM-DD — e.g. "tomorrow around noon" is {tomorrow_iso}. Never send today's date for a
+  different day they asked about.
 - They clearly agree to a specific time you already offered or confirmed as open → call
   book_appointment for it. Do NOT re-check a time you just offered.
 
@@ -131,6 +136,7 @@ def build_instructions(
 ) -> str:
     """Render the instructions for one call, filling in the lead's details."""
     now = datetime.now(ZoneInfo(timezone))
+    tomorrow = now + timedelta(days=1)
     return _TEMPLATE.format(
         lead_name=lead_name or "the lead",
         purpose=purpose or "AI transformation consulting",
@@ -138,5 +144,8 @@ def build_instructions(
         desired_time_iso=desired_time_iso or "(none given)",
         email=email or "(none on file)",
         current_date=now.strftime("%A, %B %d, %Y"),
+        current_date_iso=now.strftime("%Y-%m-%d"),
+        tomorrow_spoken=tomorrow.strftime("%A, %B %d, %Y"),
+        tomorrow_iso=tomorrow.strftime("%Y-%m-%d"),
         current_time_zone=timezone,
     )

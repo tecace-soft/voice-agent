@@ -30,8 +30,9 @@ TOOL_SCHEMAS: list[dict] = [
             "properties": {
                 "dateTime": {
                     "type": "string",
-                    "description": "The time to check, ISO 8601 (resolve the spoken time using "
-                    "today's date and Pacific timezone).",
+                    "description": "The time to check, ISO 8601. Resolve the spoken time against "
+                    "today's date (Pacific); for a relative day like 'tomorrow' or 'next Monday', "
+                    "use that day's actual future date, NOT today's.",
                 }
             },
             "required": ["dateTime"],
@@ -45,7 +46,13 @@ TOOL_SCHEMAS: list[dict] = [
         "parameters": {
             "type": "object",
             "properties": {
-                "date": {"type": "string", "description": "The day to list, YYYY-MM-DD."}
+                "date": {
+                    "type": "string",
+                    "description": "The specific calendar day to list, YYYY-MM-DD. Resolve "
+                    "relative days ('tomorrow', 'next Monday') to their actual future date using "
+                    "today's date (Pacific) — do NOT default to today when the lead named a "
+                    "different day.",
+                }
             },
             "required": ["date"],
         },
