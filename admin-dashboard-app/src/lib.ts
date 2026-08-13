@@ -52,6 +52,18 @@ export function formatDateLong(dateStr: string): string {
   });
 }
 
+// The client's preferred language, shown consistently. Stored values aren't normalized, so we
+// fix casing/whitespace variants ("english", "English " -> "English") to a canonical label; a
+// blank value shows a dash.
+export function formatLanguage(lang: string | null | undefined): string {
+  const v = (lang ?? "").trim();
+  if (!v) return "—";
+  const lower = v.toLowerCase();
+  if (lower === "english") return "English";
+  if (lower === "korean") return "Korean";
+  return v.charAt(0).toUpperCase() + v.slice(1);
+}
+
 export const STATUS_LABEL: Record<IntakeStatus, string> = {
   new: "New",
   contacted: "Contacted",

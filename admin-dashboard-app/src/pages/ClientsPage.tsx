@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { deleteClient, listIntakes } from "../api/backend";
 import type { IntakeRecord, IntakeStatus } from "../api/types";
-import { STATUS_LABEL, formatDateTime } from "../lib";
+import { STATUS_LABEL, formatDateTime, formatLanguage } from "../lib";
 import { AsyncState, StatusBadge } from "../ui";
 
 const STATUSES: IntakeStatus[] = ["new", "contacted", "booked", "unreachable", "canceled"];
@@ -99,6 +99,7 @@ export function ClientsPage() {
               <thead>
                 <tr>
                   <th>Client</th>
+                  <th>Language</th>
                   <th>Requested time</th>
                   <th>Purpose</th>
                   <th>Status</th>
@@ -110,14 +111,12 @@ export function ClientsPage() {
                 {filtered.map((r) => (
                   <tr key={r.id}>
                     <td>
-                      <div className="cell-name">
-                        {r.name}
-                        {r.language && r.language !== "English" && (
-                          <span className="lang-tag">{r.language}</span>
-                        )}
-                      </div>
+                      <div className="cell-name">{r.name}</div>
                       <div className="muted cell-sub">{r.email}</div>
                       <div className="muted cell-sub">{r.phoneNumber}</div>
+                    </td>
+                    <td>
+                      <span className="lang-tag">{formatLanguage(r.language)}</span>
                     </td>
                     <td>
                       <div>{formatDateTime(r.scheduledAt)}</div>
@@ -147,7 +146,7 @@ export function ClientsPage() {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="muted center">
+                    <td colSpan={7} className="muted center">
                       No clients{q || status ? " match the filters" : " yet"}.
                     </td>
                   </tr>
