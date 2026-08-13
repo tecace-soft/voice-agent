@@ -129,14 +129,7 @@ class ToolExecutor:
             if name == "check_availability":
                 return await self._post("/agent/check-availability", {"dateTime": args.get("dateTime", "")})
             if name == "get_openings":
-                # Send a MIDDAY dateTime, not a bare "YYYY-MM-DD". The backend reads a zone-less
-                # time as Pacific wall-clock, but a bare date is parsed as UTC midnight, which is
-                # the previous evening in Pacific — so localDateOf slips it back a day and
-                # "tomorrow" ends up listing today's slots. Anchoring at noon keeps the date put
-                # and orders the openings around midday.
-                day = args.get("date", "").strip()
-                anchor = f"{day}T12:00:00" if len(day) == 10 else day
-                return await self._post("/agent/openings", {"dateTime": anchor})
+                return await self._post("/agent/openings", {"date": args.get("date", "")})
             if name == "book_appointment":
                 return await self._post(
                     "/agent/book", {"dateTime": args.get("dateTime", ""), "intakeId": self._intake_id}

@@ -70,22 +70,26 @@ function hasTimeZone(s: string): boolean {
 // Normalize a datetime string to a UTC-instant ISO string. A string WITH a zone (Z / offset)
 // is respected as-is. A zone-LESS string like "2026-08-05T12:00:00" is interpreted as a
 // wall-clock time in `timeZone` (so the voice agent's naive local times land on the right
-// instant) instead of JavaScript's default of treating it as UTC. Unparseable input is
-// returned unchanged so the caller's own validation can reject it.
+// instant) instead of JavaScript's default of treating it as UTC. A date-ONLY string like
+// "2026-08-05" is interpreted as midnight (start of day) in `timeZone` — a bare `new Date()`
+// would parse it as UTC midnight, which is the previous evening in western zones and slips the
+// calendar day backward (e.g. a "tomorrow" openings lookup ends up listing today). Unparseable
+// input is returned unchanged so the caller's own validation can reject it.
 export function normalizeDateTime(raw: string, timeZone: string): string {
   const s = raw.trim();
   if (hasTimeZone(s)) return new Date(s).toISOString();
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(s);
-  if (!m) return s;
-  const [, y, mo, d, h, mi] = m;
-  const minutesOfDay = Number(h) * 60 + Number(mi);
-  return zonedWallClockToUtc(
-    Number(y),
-    Number(mo),
-    Number(d),
-    minutesOfDay,
-    timeZone,
-  ).toISOString();
+  const withTime = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(s);
+  if (withTime) {
+    const [, y, mo, d, h, mi] = withTime;
+    const minutesOfDay = Number(h) * 60 + Number(mi);
+    return zonedWallClockToUtc(Number(y), Number(mo), Number(d), minutesOfDay, timeZone).toISOString();
+  }
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (dateOnly) {
+    const [, y, mo, d] = dateOnly;
+    return zonedWallClockToUtc(Number(y), Number(mo), Number(d), 0, timeZone).toISOString();
+  }
+  return s;
 }
 
 // ISO weekday (1=Mon … 7=Sun) of a calendar date. A date's weekday is timezone-independent.
