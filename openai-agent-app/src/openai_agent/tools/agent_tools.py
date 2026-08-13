@@ -98,6 +98,14 @@ TOOL_SCHEMAS: list[dict] = [
             "required": ["outcome"],
         },
     },
+    {
+        "type": "function",
+        "name": "end_call",
+        "description": "Hang up the phone. Call this ONLY after you've said your final words — a "
+        "farewell once the lead is done, or your brief sign-off for a wrong number, voicemail, or "
+        "decline. Saying goodbye does not hang up by itself; this is what actually ends the call.",
+        "parameters": {"type": "object", "properties": {}},
+    },
 ]
 
 
@@ -131,6 +139,10 @@ class ToolExecutor:
                     "/agent/mark-outcome",
                     {"intakeId": self._intake_id, "outcome": args.get("outcome", "unreachable")},
                 )
+            if name == "end_call":
+                # Hang-up is handled by the bridge (it drains audio then closes the stream); this
+                # is only a safety net so the tool never looks "unknown".
+                return json.dumps({"ok": True})
             return json.dumps({"error": f"unknown tool {name}"})
         except Exception as exc:  # noqa: BLE001 — a tool failure must not drop the call
             log.warning("tool %s failed: %s", name, exc)

@@ -27,6 +27,10 @@ log = logging.getLogger(__name__)
 
 _OPENAI_WS = "wss://api.openai.com/v1/realtime?model={model}"
 
+# If Twilio never echoes our hang-up mark (it normally does within a second or two), close anyway
+# after this long so a finished call can't hold the line — and the meter — open.
+_HANGUP_FALLBACK_SECONDS = 12
+
 
 async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     await twilio_ws.accept()
@@ -88,6 +92,13 @@ async def _caller_to_model(twilio_ws: WebSocket, openai_ws) -> None:
                 await openai_ws.send(
                     json.dumps({"type": "input_audio_buffer.append", "audio": evt["media"]["payload"]})
                 )
+            elif e == "mark":
+                # The agent asked to hang up; Twilio echoes our "endcall" mark once it has played
+                # all the audio queued before it (i.e. the goodbye finished). Now close the stream,
+                # which ends the <Connect><Stream> and hangs up the call.
+                if (evt.get("mark") or {}).get("name") == "endcall":
+                    await twilio_ws.close()
+                    break
             elif e == "stop":
                 break
     except WebSocketDisconnect:
@@ -118,13 +129,49 @@ async def _model_to_caller(twilio_ws: WebSocket, openai_ws, state: dict, executo
                 if state["response_active"]:
                     await openai_ws.send(json.dumps({"type": "response.cancel"}))
             elif t == "response.function_call_arguments.done":
-                await _handle_tool_call(openai_ws, evt, executor)
+                if evt.get("name") == "end_call":
+                    await _begin_hangup(twilio_ws, openai_ws, evt, state)
+                else:
+                    await _handle_tool_call(openai_ws, evt, executor)
             elif t == "error":
                 log.warning("openai error: %s", evt.get("error"))
     except WebSocketDisconnect:
         pass
     except websockets.ConnectionClosed:
         pass
+
+
+async def _begin_hangup(twilio_ws: WebSocket, openai_ws, evt: dict, state: dict) -> None:
+    """End the call once the goodbye has played out.
+
+    Acknowledge the end_call tool (so the model doesn't error), then send Twilio a "mark". Twilio
+    finishes playing the buffered goodbye audio and echoes the mark back — handled in
+    _caller_to_model, which then closes the stream and hangs up. A fallback timer guarantees the
+    hang-up even if the echo never arrives. We deliberately do NOT ask for another response, so
+    the agent stops talking here.
+    """
+    call_id = evt.get("call_id", "")
+    await openai_ws.send(
+        json.dumps(
+            {
+                "type": "conversation.item.create",
+                "item": {"type": "function_call_output", "call_id": call_id, "output": '{"ok": true}'},
+            }
+        )
+    )
+    await twilio_ws.send_json(
+        {"event": "mark", "streamSid": state["stream_sid"], "mark": {"name": "endcall"}}
+    )
+
+    async def _fallback() -> None:
+        await asyncio.sleep(_HANGUP_FALLBACK_SECONDS)
+        try:
+            await twilio_ws.close()
+        except Exception:  # noqa: BLE001 — best-effort backstop
+            pass
+
+    # Keep a reference on state so the task isn't garbage-collected before it fires.
+    state["hangup_fallback"] = asyncio.create_task(_fallback())
 
 
 async def _handle_tool_call(openai_ws, evt: dict, executor: ToolExecutor) -> None:
