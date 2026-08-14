@@ -257,17 +257,24 @@ def _farewell_instruction(state: dict) -> str:
     out of the model's own composition on purpose: left to itself it narrates ("let me wrap this
     up…") or skips the farewell. Tailored to the outcome so a booked call looks forward to the
     consultation while a wrong number / decline just signs off warmly."""
-    line = (
-        "Thank them for their time, say you look forward to speaking with them at their "
-        "consultation, and say goodbye."
-        if state.get("outcome") == "booked"
-        else "Thank them for their time and say goodbye."
-    )
+    if state.get("outcome") == "booked":
+        core = (
+            'On behalf of the team (use "we", not "I"), tell them we are looking forward to '
+            "speaking with them at their consultation, then wish them a wonderful day and say "
+            'goodbye — for example: "We are looking forward to speaking with you at your '
+            'consultation. Have a wonderful day — goodbye!"'
+        )
+    else:
+        core = (
+            "Warmly wish them a wonderful day and say goodbye — for example: "
+            '"Thanks so much. Have a wonderful day — goodbye!"'
+        )
     return (
-        "The call is ending now. Speak a short, warm farewell to the person, in the same language "
-        f"you have been speaking. {line} Output ONLY the spoken farewell words themselves — do NOT "
-        "announce or describe it, and do NOT say things like 'let me wrap this up', 'let me close "
-        "things out', or 'let me send you off'. Just say the farewell."
+        "The call is ending now. Speak a short, warm farewell to the person, in the SAME language "
+        "you have been speaking (translate the example if that language is not English). "
+        + core
+        + " Output ONLY the spoken farewell words — do NOT announce or describe it, and do NOT say "
+        "things like 'let me wrap this up' or 'let me close things out'. Just say the farewell."
     )
 
 
