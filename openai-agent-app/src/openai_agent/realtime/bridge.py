@@ -71,6 +71,9 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "hangup_pending": False,
         # Set once we've begun closing, so the hang-up can't fire twice.
         "closing": False,
+        # True while leaving a voicemail: barge-in is suppressed (no live person to yield to, and
+        # the machine's own audio must not cut the message or cancel the hang-up).
+        "leaving_voicemail": False,
         # In-flight tool tasks, kept referenced so they aren't garbage-collected.
         "_tool_tasks": set(),
         # Running transcript of the call: list of (speaker, text) as each turn completes.
@@ -215,6 +218,7 @@ async def _watch_amd(queue: asyncio.Queue, openai_ws, twilio_ws: WebSocket, stat
         return
     log.info("AMD says voicemail (%s) — leaving a message, then hanging up", answered_by)
     state["outcome"] = "voicemail"
+    state["leaving_voicemail"] = True  # suppress barge-in for the rest of the call
     state["hangup_pending"] = True
     state["spoke_since_user"] = False
     # Cut any half-spoken greeting to the machine, cancel whatever's in flight (best-effort — if
@@ -279,6 +283,10 @@ async def _model_to_caller(twilio_ws: WebSocket, openai_ws, state: dict, executo
                 if state.get("hangup_pending") and state.get("spoke_since_user"):
                     await _drain_and_close(twilio_ws, state)
             elif t == "input_audio_buffer.speech_started":
+                # While leaving a voicemail there's no live person to yield to — the machine's own
+                # audio must NOT cut our message or cancel the hang-up. Ignore it.
+                if state.get("leaving_voicemail"):
+                    continue
                 # The lead started talking. Reset the "agent has spoken" flag so a goodbye is
                 # required again before we'll hang up, and cancel any pending hang-up — they have
                 # more to say. Also barge-in: flush what we're playing and stop the current
