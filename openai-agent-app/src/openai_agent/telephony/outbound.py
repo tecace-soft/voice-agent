@@ -59,8 +59,10 @@ def place_call(cfg: Config, *, to_number: str, lead: dict) -> str:
         twiml=twiml,
         # Answering-machine detection in the BACKGROUND (async): the call connects immediately so
         # a real person isn't kept waiting, and Twilio reports human/machine once it decides. The
-        # result posts to /amd and is also readable off the call (see fetch_call_result).
-        machine_detection="Enable",
+        # result posts to /amd (which tells the live call to leave a voicemail) and is also
+        # readable off the call (see fetch_call_result). "DetectMessageEnd" waits for the greeting
+        # to finish / beep, so the agent's message lands after the beep rather than over it.
+        machine_detection="DetectMessageEnd",
         async_amd="true",
         async_amd_status_callback=f"https://{cfg.public_host}/amd",
         async_amd_status_callback_method="POST",

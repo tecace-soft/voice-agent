@@ -12,6 +12,7 @@ import logging
 from fastapi import FastAPI, Request, WebSocket
 
 from ..config import Config
+from ..realtime import amd
 from ..realtime.bridge import run_bridge
 
 log = logging.getLogger(__name__)
@@ -32,7 +33,11 @@ async def amd_callback(request: Request) -> dict:
     know when a call reached voicemail. Twilio only needs a 200 back."""
     try:
         form = await request.form()
-        log.info("AMD: call=%s answered_by=%s", form.get("CallSid"), form.get("AnsweredBy"))
+        call_sid = str(form.get("CallSid") or "")
+        answered_by = str(form.get("AnsweredBy") or "")
+        log.info("AMD: call=%s answered_by=%s", call_sid, answered_by)
+        # Hand the result to the live call so it can leave a voicemail if this is a machine.
+        amd.deliver(call_sid, answered_by)
     except Exception as exc:  # noqa: BLE001 — never fail Twilio's callback
         log.warning("AMD callback parse error: %s", exc)
     return {"ok": True}

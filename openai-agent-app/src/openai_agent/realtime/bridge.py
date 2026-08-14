@@ -20,7 +20,9 @@ import websockets
 from fastapi import WebSocket, WebSocketDisconnect
 
 from ..config import Config
+from ..telephony.outbound import is_machine
 from ..tools.agent_tools import ToolExecutor
+from . import amd
 from .instructions import build_instructions
 from .session import build_session_update
 
@@ -36,8 +38,9 @@ _HANGUP_FALLBACK_SECONDS = 12
 async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     await twilio_ws.accept()
 
-    # 1. Wait for Twilio's "start" event — it carries the streamSid and the lead's context.
-    stream_sid, params = await _await_start(twilio_ws)
+    # 1. Wait for Twilio's "start" event — it carries the streamSid, the call's SID (for AMD), and
+    #    the lead's context.
+    stream_sid, call_sid, params = await _await_start(twilio_ws)
     if not stream_sid:
         return
     log.info("call started for lead_name=%r intake_id=%r", params.get("lead_name"), params.get("intake_id"))
@@ -78,17 +81,26 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         # Monotonic start time, for the call duration in the summary.
         "started": time.monotonic(),
     }
+    # Register for this call's answering-machine-detection result (delivered by the /amd webhook).
+    amd_queue = amd.register(call_sid)
     try:
         async with websockets.connect(url, additional_headers=headers) as openai_ws:
             await openai_ws.send(json.dumps(build_session_update(cfg, instructions)))
-            # 4. Relay both directions until either side ends.
-            await asyncio.gather(
-                _caller_to_model(twilio_ws, openai_ws),
-                _model_to_caller(twilio_ws, openai_ws, state, executor),
-            )
+            # Watch for the AMD result in the background: if it's a machine, have the agent leave a
+            # voicemail and end the call. Does nothing for a live person.
+            watcher = asyncio.create_task(_watch_amd(amd_queue, openai_ws, twilio_ws, state))
+            try:
+                # 4. Relay both directions until either side ends.
+                await asyncio.gather(
+                    _caller_to_model(twilio_ws, openai_ws),
+                    _model_to_caller(twilio_ws, openai_ws, state, executor),
+                )
+            finally:
+                watcher.cancel()
     except Exception as exc:  # noqa: BLE001 — surface, don't crash the server
         log.warning("bridge ended: %s", exc)
     finally:
+        amd.unregister(call_sid)
         await _finalize_call(state, params, executor)
 
 
@@ -158,18 +170,58 @@ async def _finalize_call(state: dict, params: dict, executor: ToolExecutor) -> N
     await executor.record_call_log(transcript_text, _summary(state))
 
 
-async def _await_start(twilio_ws: WebSocket) -> tuple[str, dict]:
-    """Read Twilio events until the 'start' arrives; return (streamSid, customParameters)."""
+async def _await_start(twilio_ws: WebSocket) -> tuple[str, str, dict]:
+    """Read Twilio events until the 'start' arrives; return (streamSid, callSid, customParameters)."""
     try:
         while True:
             evt = json.loads(await twilio_ws.receive_text())
             if evt.get("event") == "start":
                 start = evt.get("start", {})
-                return start.get("streamSid", ""), (start.get("customParameters") or {})
+                return (
+                    start.get("streamSid", ""),
+                    start.get("callSid", ""),
+                    (start.get("customParameters") or {}),
+                )
             if evt.get("event") == "stop":
-                return "", {}
+                return "", "", {}
     except WebSocketDisconnect:
-        return "", {}
+        return "", "", {}
+
+
+_VOICEMAIL_INSTRUCTION = (
+    "You've reached the person's voicemail, not a live person. Leave a brief spoken message in the "
+    "SAME language you have been using: say you're Tess from TecAce, following up on the "
+    "consultation they requested, and that you'll try again soon. Do NOT ask questions or wait for "
+    "a reply, and do NOT mention email. Keep it under 15 seconds and speak only the message."
+)
+
+
+async def _watch_amd(queue: asyncio.Queue, openai_ws, twilio_ws: WebSocket, state: dict) -> None:
+    """Wait for Twilio's answering-machine-detection result. If a machine answered, cut whatever
+    the agent was saying, have it leave a voicemail, and end the call. Does nothing for a human."""
+    try:
+        answered_by = await queue.get()
+    except asyncio.CancelledError:
+        return
+    if not is_machine(answered_by) or state.get("closing") or state.get("hangup_pending"):
+        return
+    log.info("AMD says voicemail (%s) — leaving a message, then hanging up", answered_by)
+    state["hangup_pending"] = True
+    state["spoke_since_user"] = False
+    # Cut any half-spoken greeting to the machine, then drive a clean voicemail message.
+    await twilio_ws.send_json({"event": "clear", "streamSid": state["stream_sid"]})
+    if state.get("response_active"):
+        await openai_ws.send(json.dumps({"type": "response.cancel"}))
+    await openai_ws.send(
+        json.dumps({"type": "response.create", "response": {"instructions": _VOICEMAIL_INSTRUCTION}})
+    )
+
+    async def _backstop() -> None:
+        await asyncio.sleep(_HANGUP_FALLBACK_SECONDS)
+        if state.get("hangup_pending"):  # message never finished — end anyway
+            await _drain_and_close(twilio_ws, state)
+
+    state["hangup_backstop"] = asyncio.create_task(_backstop())
 
 
 async def _caller_to_model(twilio_ws: WebSocket, openai_ws) -> None:
