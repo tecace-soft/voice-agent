@@ -20,8 +20,9 @@ from .outbound import call_has_ended, fetch_call_result, is_machine, place_call
 
 log = logging.getLogger(__name__)
 
-# How many times to call a lead before giving up and marking it `unreachable`.
-MAX_CALL_ATTEMPTS = 3
+# How many times to call a lead before giving up and marking it `unreachable`. One call only:
+# if the person doesn't pick up (it goes to voicemail), the agent leaves a message and we stop.
+MAX_CALL_ATTEMPTS = 1
 # How long to hold a fresh lead after it came in, before placing the first call. Short for demo.
 CALL_DELAY_SECONDS = 25
 # A placed call is assumed finished after this long if the lead's status never changed (e.g. no
