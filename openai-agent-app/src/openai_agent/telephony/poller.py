@@ -24,6 +24,9 @@ log = logging.getLogger(__name__)
 MAX_CALL_ATTEMPTS = 3
 # How long to hold a fresh lead after it came in, before placing the first call. Short for demo.
 CALL_DELAY_SECONDS = 25
+# A placed call is assumed finished after this long if the lead's status never changed (e.g. no
+# answer or a voicemail) — a safety net so the single-call queue can't get stuck behind one call.
+MAX_CALL_SECONDS = 300
 
 
 def _spoken_time(iso: str, tz: str) -> str:
@@ -61,17 +64,23 @@ def lead_from_intake(intake: dict, tz: str) -> tuple[dict, str]:
 
 
 class LeadPoller:
-    def __init__(self, cfg: Config, *, interval: float = 15.0) -> None:
+    """Calls leads ONE AT A TIME, oldest to newest, so no `new` lead gets skipped.
+
+    Each cycle: if a call is still in flight (the lead is still `new` and under the time cap), we
+    wait. Otherwise we place ONE call to the oldest due lead we haven't tried yet this pass. Once
+    every due lead has been tried, a fresh pass starts so unresolved leads are retried — up to
+    MAX_CALL_ATTEMPTS, after which a lead is marked `unreachable` and leaves the queue.
+    """
+
+    def __init__(self, cfg: Config, *, interval: float = 10.0) -> None:
         self._cfg = cfg
         self._interval = interval
         self._client = BackendClient(cfg)
-        # intake_id -> the state signature we last called for; a lead re-armed with a new
-        # callback time gets a fresh signature so its scheduled callback can re-fire.
-        self._seen: dict[str, str] = {}
-
-    @staticmethod
-    def _signature(intake: dict) -> str:
-        return str(intake.get("callbackAfter", "") or "")
+        # The call currently in flight: {"id": intake_id, "started": monotonic_ts}, or None.
+        self._active: dict | None = None
+        # Leads already dialed in the current pass (so we advance through the list instead of
+        # re-dialing the oldest); cleared when a new pass begins.
+        self._tried: set[str] = set()
 
     def _call_due(self, intake: dict) -> bool:
         """True once it's time to (re)call this lead — a requested callback time if set, else
@@ -94,25 +103,48 @@ class LeadPoller:
         return age.total_seconds() >= CALL_DELAY_SECONDS
 
     def poll_once(self) -> int:
-        """Check for due leads and place a call for each. Returns the number placed."""
-        intakes = self._client.new_intakes()
-        placed = 0
-        for intake in intakes:
+        """Advance the queue by at most one call. Returns the number placed (0 or 1)."""
+        intakes = self._client.new_intakes()  # status=new, oldest first
+        new_ids = {str(i.get("id", "")) for i in intakes if i.get("id")}
+        now = time.monotonic()
+
+        # Drop any resolved leads (no longer `new`) from the current pass.
+        self._tried &= new_ids
+
+        # 1. A call is in flight — hold the queue until the lead leaves `new` (booked/declined/
+        #    marked) or the time cap passes (no answer / voicemail that changed nothing).
+        if self._active:
+            aid = self._active["id"]
+            if aid not in new_ids:
+                log.info("call for intake %s resolved; advancing queue", aid)
+                self._active = None
+            elif now - self._active["started"] >= MAX_CALL_SECONDS:
+                log.info("call for intake %s assumed ended after %ds; advancing", aid, MAX_CALL_SECONDS)
+                self._active = None
+            else:
+                return 0  # still on this call — one at a time
+
+        # 2. Which leads are due right now, and which haven't been tried this pass?
+        due = [i for i in intakes if self._call_due(i)]
+        pending = [i for i in due if str(i.get("id", "")) not in self._tried]
+        if not pending:
+            if due:
+                # Everyone due has had a turn — start a new pass so unresolved leads retry.
+                self._tried.clear()
+                pending = due
+            else:
+                return 0  # nothing due
+
+        # 3. Place ONE call: the oldest pending lead we can actually dial.
+        for intake in pending:  # already oldest-first
             intake_id = str(intake.get("id", ""))
             if not intake_id:
                 continue
-            signature = self._signature(intake)
-            if self._seen.get(intake_id) == signature:
-                continue
-            if not self._call_due(intake):
-                continue  # not yet due — re-check next poll (don't record)
-            self._seen[intake_id] = signature
-
+            self._tried.add(intake_id)  # counts as tried this pass, whatever happens next
             lead, phone = lead_from_intake(intake, self._cfg.timezone)
             if not phone:
                 log.warning("intake %s has no phone number; skipped", intake_id)
                 continue
-
             attempts = int(intake.get("attempts", 0) or 0)
             if attempts >= MAX_CALL_ATTEMPTS:
                 try:
@@ -121,22 +153,22 @@ class LeadPoller:
                 except BackendError as exc:
                     log.warning("could not mark %s unreachable: %s", intake_id, exc)
                 continue
-
             try:
                 place_call(self._cfg, to_number=phone, lead=lead)
-            except Exception as exc:  # noqa: BLE001 — one failed dial shouldn't stop the loop
+            except Exception as exc:  # noqa: BLE001 — one bad dial shouldn't stall the queue
                 log.warning("could not place call for %s: %s", phone, exc)
                 continue
-            placed += 1
+            self._active = {"id": intake_id, "started": now}
             log.info("called %s (intake %s, attempt %d/%d)", phone, intake_id, attempts + 1, MAX_CALL_ATTEMPTS)
             try:
                 self._client.record_attempt(intake_id)
             except BackendError as exc:
                 log.warning("could not record attempt for %s: %s", intake_id, exc)
-        return placed
+            return 1  # placed one; wait for it to resolve before the next
+        return 0
 
     def run(self) -> None:
-        log.info("lead poller started (every %.0fs)", self._interval)
+        log.info("lead poller started (one call at a time, oldest first; every %.0fs)", self._interval)
         while True:
             try:
                 self.poll_once()

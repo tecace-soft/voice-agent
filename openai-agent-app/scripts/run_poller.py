@@ -28,9 +28,10 @@ def main() -> int:
         print("Fill these in .env (see .env.example) and re-run.")
         return 1
 
-    # Poll a little faster than the pre-call delay so a fresh lead is called within ~20-30s.
-    poller = LeadPoller(cfg, interval=15.0)
-    print("Lead poller running — due leads are called via the OpenAI realtime agent. Ctrl+C to stop.")
+    # One call at a time, oldest to newest. Poll every 10s so the queue advances promptly once a
+    # call resolves (and a fresh lead is picked up within ~10s of becoming due).
+    poller = LeadPoller(cfg, interval=10.0)
+    print("Lead poller running — leads are called one at a time, oldest first. Ctrl+C to stop.")
     try:
         poller.run()
     except KeyboardInterrupt:
