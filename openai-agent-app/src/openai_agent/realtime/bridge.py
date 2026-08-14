@@ -252,56 +252,59 @@ async def _model_to_caller(twilio_ws: WebSocket, openai_ws, state: dict, executo
         pass
 
 
-async def _handle_end_call(twilio_ws: WebSocket, openai_ws, evt: dict, state: dict) -> None:
-    """End the call, guaranteeing a spoken goodbye first — and never depending on a second end_call.
+def _farewell_instruction(state: dict) -> str:
+    """The per-response instruction that makes the model speak the farewell — and ONLY that. Kept
+    out of the model's own composition on purpose: left to itself it narrates ("let me wrap this
+    up…") or skips the farewell. Tailored to the outcome so a booked call looks forward to the
+    consultation while a wrong number / decline just signs off warmly."""
+    line = (
+        "Thank them for their time, say you look forward to speaking with them at their "
+        "consultation, and say goodbye."
+        if state.get("outcome") == "booked"
+        else "Thank them for their time and say goodbye."
+    )
+    return (
+        "The call is ending now. Speak a short, warm farewell to the person, in the same language "
+        f"you have been speaking. {line} Output ONLY the spoken farewell words themselves — do NOT "
+        "announce or describe it, and do NOT say things like 'let me wrap this up', 'let me close "
+        "things out', or 'let me send you off'. Just say the farewell."
+    )
 
-    If the agent has already spoken since the lead's last turn (its goodbye), we close right after
-    it plays out. If not (a "silent" end_call fired the instant the lead said they're done), we
-    prompt the model to say a warm goodbye and mark the hang-up as PENDING; the call then closes
-    automatically once that goodbye finishes (in the response.done handler), so we don't rely on the
-    model choosing to call end_call again. A backstop timer closes the line even if the goodbye
-    never comes, so a finished call can't stay open.
+
+async def _handle_end_call(twilio_ws: WebSocket, openai_ws, evt: dict, state: dict) -> None:
+    """End the call. We ALWAYS deliver the farewell ourselves via a tight per-response instruction,
+    then hang up once it plays — so the model can't narrate the goodbye, water it down, or skip it.
+    The agent's only job is to CALL end_call when the conversation is genuinely over; the farewell
+    wording and the hang-up are handled here.
+
+    We ack the tool, then drive a farewell-only response. Its response.done triggers the drain (see
+    _model_to_caller), and a backstop timer closes the line even if that farewell never comes.
     """
     call_id = evt.get("call_id", "")
-
-    if state.get("spoke_since_user"):
-        await openai_ws.send(
-            json.dumps(
-                {
-                    "type": "conversation.item.create",
-                    "item": {"type": "function_call_output", "call_id": call_id, "output": '{"ok": true}'},
-                }
-            )
-        )
-        await _drain_and_close(twilio_ws, state)
-        return
-
-    # Silent end_call — get the goodbye spoken, then hang up on our own.
-    log.info("end_call with no goodbye yet — prompting a farewell, then hanging up automatically")
-    state["hangup_pending"] = True
-    note = (
-        "Now say the goodbye OUT LOUD — the actual farewell words only, e.g. "
-        '"Thank you for your time — goodbye!". Do NOT announce or describe it first '
-        "(no \"let me close things out\", no \"I'll send you off\", no \"let me wrap up\"); "
-        "just say the goodbye itself. The call ends on its own once you do."
-    )
     await openai_ws.send(
         json.dumps(
             {
                 "type": "conversation.item.create",
-                "item": {
-                    "type": "function_call_output",
-                    "call_id": call_id,
-                    "output": json.dumps({"note": note}),
-                },
+                "item": {"type": "function_call_output", "call_id": call_id, "output": '{"ok": true}'},
             }
         )
     )
-    await openai_ws.send(json.dumps({"type": "response.create"}))
+    # Already ending (a second end_call, or one fired during the farewell) — don't double up.
+    if state.get("hangup_pending") or state.get("closing"):
+        return
+
+    log.info("end_call — delivering the farewell, then hanging up")
+    state["hangup_pending"] = True
+    # Anything the model may have said in THIS turn shouldn't count as the farewell: reset the flag
+    # so the drain waits for the farewell response's audio (below), not this turn's response.done.
+    state["spoke_since_user"] = False
+    await openai_ws.send(
+        json.dumps({"type": "response.create", "response": {"instructions": _farewell_instruction(state)}})
+    )
 
     async def _backstop() -> None:
         await asyncio.sleep(_HANGUP_FALLBACK_SECONDS)
-        if state.get("hangup_pending"):  # goodbye never completed — end anyway
+        if state.get("hangup_pending"):  # farewell never completed — end anyway
             await _drain_and_close(twilio_ws, state)
 
     state["hangup_backstop"] = asyncio.create_task(_backstop())
