@@ -36,6 +36,7 @@ export interface IntakeRecord {
   scheduledAt: string;
   status: IntakeStatus;
   notes: string | null; // agent's post-call summary (null until written)
+  transcript: string | null; // full text of the agent's call with this lead (null until a call)
   attempts: number; // how many times the agent has tried to call this lead
   calUid: string | null; // Cal.com booking uid for the active meeting (null if none)
   callbackAfter: string | null; // earliest time to (re)call this lead (null if none)
@@ -55,6 +56,7 @@ const RETURN_COLUMNS = sql`
   scheduled_at AS "scheduledAt",
   status,
   notes,
+  transcript,
   attempts,
   cal_uid        AS "calUid",
   callback_after AS "callbackAfter",
@@ -309,6 +311,26 @@ export async function setIntakeNotes(
   const [row] = await sql`
     UPDATE intakes
     SET notes = ${notes}, updated_at = now()
+    WHERE id = ${id}::uuid
+    RETURNING ${RETURN_COLUMNS}
+  `;
+  return (row as IntakeRecord | undefined) ?? null;
+}
+
+// Save a completed call's transcript, and fill in the summary note only when there isn't one
+// already (so an outcome note written mid-call by mark-outcome — "Declined", "Wrong number" —
+// isn't clobbered by the end-of-call summary). Returns the updated row, or null if no intake
+// has that id.
+export async function setCallLog(
+  id: string,
+  transcript: string,
+  summary: string | null,
+): Promise<IntakeRecord | null> {
+  const [row] = await sql`
+    UPDATE intakes
+    SET transcript = ${transcript},
+        notes = COALESCE(NULLIF(notes, ''), ${summary}),
+        updated_at = now()
     WHERE id = ${id}::uuid
     RETURNING ${RETURN_COLUMNS}
   `;

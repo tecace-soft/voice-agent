@@ -30,6 +30,7 @@ export async function initDb(): Promise<void> {
       scheduled_at TIMESTAMPTZ NOT NULL,
       status       TEXT NOT NULL DEFAULT 'new',
       notes        TEXT,
+      transcript   TEXT,
       attempts     INTEGER NOT NULL DEFAULT 0,
       cal_uid      TEXT,
       created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -55,6 +56,9 @@ export async function initDb(): Promise<void> {
   // `purpose` = what the lead reached out about (the TecAce consulting scenario; the agent
   // confirms it on the call). Backfilled to '' on any rows created while it was absent.
   await sql`ALTER TABLE intakes ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT ''`;
+  // `transcript` = the full text of the agent's call with this lead (both sides), written at
+  // call end so the call is reviewable in the dashboard. Null until a call has happened.
+  await sql`ALTER TABLE intakes ADD COLUMN IF NOT EXISTS transcript TEXT`;
   // Reconcile the allowed-status constraint (drop + re-add keeps it correct as the
   // lifecycle grows — existing values are always a subset of the new list, so it's safe).
   await sql`ALTER TABLE intakes DROP CONSTRAINT IF EXISTS intakes_status_check`;
@@ -89,7 +93,7 @@ async function migrateIfNeeded(): Promise<void> {
   try {
     // Cheap, lock-free probe of the newest expected column. If it selects, the schema is current
     // and we skip all DDL. NOTE: when adding a new column to initDb, update this probe column too.
-    await sql`SELECT purpose FROM intakes LIMIT 1`;
+    await sql`SELECT transcript FROM intakes LIMIT 1`;
     return;
   } catch {
     // Table or a column is missing → run the full idempotent setup (adds/updates as needed).

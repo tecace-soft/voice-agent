@@ -2,6 +2,7 @@ import { Elysia } from "elysia";
 import { env } from "../config/env.js";
 import {
   listBookedTimes,
+  setCallLog,
   setCallbackAfter,
   setIntakeNotes,
   updateIntakeStatus,
@@ -279,6 +280,24 @@ export const agentTools = new Elysia({ prefix: "/agent" })
     }
     await setIntakeNotes(intakeId, chosen.note);
     return { ok: true, message: "Noted — we won't keep calling this lead." };
+  })
+
+  // Save a finished call's transcript (+ optional one-line summary) so it's reviewable per lead
+  // in the dashboard. Called once by the realtime agent when the call ends. Keyed by intakeId.
+  .post("/call-log", async ({ body }) => {
+    const args = readArgs(body);
+    const call = readCall(body);
+    const dyn = (call.retell_llm_dynamic_variables ?? {}) as Record<string, unknown>;
+    const intakeId =
+      str(args.intakeId) || str(args.intake_id) || str(dyn.intake_id) || str(dyn.intakeId);
+    if (!intakeId) {
+      return { ok: false, message: "No record to attach the transcript to." };
+    }
+    const record = await setCallLog(intakeId, str(args.transcript), str(args.summary) || null);
+    if (!record) {
+      return { ok: false, message: "I couldn't find that record." };
+    }
+    return { ok: true };
   });
 
 // Create a new inbound lead from the call details, then book it. Reads from the LLM args

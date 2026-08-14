@@ -23,6 +23,9 @@ def build_session_update(cfg: Config, instructions: str) -> dict:
                 "input": {
                     "format": {"type": "audio/pcmu"},
                     "turn_detection": {"type": "server_vad"},
+                    # Transcribe the lead's speech too, so the bridge can log/track both sides of
+                    # the conversation (the agent's side is transcribed automatically).
+                    "transcription": {"model": "whisper-1"},
                 },
                 "output": {
                     "format": {"type": "audio/pcmu"},

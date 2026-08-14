@@ -18,6 +18,7 @@ export interface IntakeRecord {
   scheduledAt: string;
   status: IntakeStatus;
   notes: string | null;
+  transcript: string | null; // full text of the agent's last call with this lead (null until a call)
   callbackAfter: string | null; // earliest time the agent will (re)call this lead, if scheduled
   createdAt: string;
   updatedAt: string;

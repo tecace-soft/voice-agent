@@ -53,6 +53,48 @@ def place_call(cfg: Config, *, to_number: str, lead: dict) -> str:
     twiml = build_twiml(cfg.public_host, lead)
     client = Client(cfg.twilio_account_sid, cfg.twilio_auth_token)
     dest = to_e164(to_number)
-    call = client.calls.create(from_=to_e164(cfg.twilio_from_number), to=dest, twiml=twiml)
+    call = client.calls.create(
+        from_=to_e164(cfg.twilio_from_number),
+        to=dest,
+        twiml=twiml,
+        # Answering-machine detection in the BACKGROUND (async): the call connects immediately so
+        # a real person isn't kept waiting, and Twilio reports human/machine once it decides. The
+        # result posts to /amd and is also readable off the call (see fetch_call_result).
+        machine_detection="Enable",
+        async_amd="true",
+        async_amd_status_callback=f"https://{cfg.public_host}/amd",
+        async_amd_status_callback_method="POST",
+    )
     log.info("placed call %s to %s (lead %r)", call.sid, dest, lead.get("lead_name"))
     return call.sid
+
+
+# Twilio call statuses that mean the call is over (vs. queued / ringing / in-progress).
+_TERMINAL_STATUSES = frozenset({"completed", "busy", "no-answer", "failed", "canceled"})
+
+
+def fetch_call_result(cfg: Config, call_sid: str) -> dict | None:
+    """Fetch a call's current Twilio status and answering-machine-detection result. Returns
+    {"status": ..., "answered_by": ...} (answered_by is None until AMD completes), or None if it
+    can't be fetched. Lets the poller detect a finished call — and whether it hit voicemail —
+    immediately, instead of waiting the safety cap."""
+    if not call_sid:
+        return None
+    try:
+        client = Client(cfg.twilio_account_sid, cfg.twilio_auth_token)
+        call = client.calls(call_sid).fetch()
+        return {"status": call.status, "answered_by": call.answered_by}
+    except Exception as exc:  # noqa: BLE001 — a status hiccup shouldn't disturb the poll loop
+        log.warning("could not fetch call %s: %s", call_sid, exc)
+        return None
+
+
+def call_has_ended(status: str | None) -> bool:
+    """True when a Twilio call status is terminal (the call is over)."""
+    return status in _TERMINAL_STATUSES
+
+
+def is_machine(answered_by: str | None) -> bool:
+    """True if AMD decided a machine/voicemail answered (answered_by like 'machine_start',
+    'machine_end_beep', 'fax')."""
+    return bool(answered_by) and (answered_by.startswith("machine") or answered_by == "fax")

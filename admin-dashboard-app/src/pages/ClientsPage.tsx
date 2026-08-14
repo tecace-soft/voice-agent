@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { deleteClient, listIntakes } from "../api/backend";
 import type { IntakeRecord, IntakeStatus } from "../api/types";
 import { STATUS_LABEL, formatDateTime, formatLanguage } from "../lib";
@@ -16,6 +16,8 @@ export function ClientsPage() {
   // last action error to surface.
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // The row whose call transcript is expanded (null = none).
+  const [openTranscriptId, setOpenTranscriptId] = useState<string | null>(null);
 
   async function onDelete(r: IntakeRecord) {
     if (!window.confirm(`Permanently delete ${r.name}? This can't be undone.`)) return;
@@ -109,40 +111,59 @@ export function ClientsPage() {
               </thead>
               <tbody>
                 {filtered.map((r) => (
-                  <tr key={r.id}>
-                    <td>
-                      <div className="cell-name">{r.name}</div>
-                      <div className="muted cell-sub">{r.email}</div>
-                      <div className="muted cell-sub">{r.phoneNumber}</div>
-                    </td>
-                    <td>
-                      <span className="lang-tag">{formatLanguage(r.language)}</span>
-                    </td>
-                    <td>
-                      <div>{formatDateTime(r.scheduledAt)}</div>
-                      {r.callbackAfter && (
-                        <div className="callback-line">
-                          Callback {formatDateTime(r.callbackAfter)}
-                        </div>
-                      )}
-                    </td>
-                    <td className="purpose">
-                      {r.purpose || <span className="muted">—</span>}
-                    </td>
-                    <td>
-                      <StatusBadge status={r.status} />
-                    </td>
-                    <td className="notes">{r.notes ?? <span className="muted">—</span>}</td>
-                    <td className="actions">
-                      <button
-                        className="btn btn-sm btn-danger"
-                        disabled={busyId === r.id}
-                        onClick={() => onDelete(r)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
+                  <Fragment key={r.id}>
+                    <tr>
+                      <td>
+                        <div className="cell-name">{r.name}</div>
+                        <div className="muted cell-sub">{r.email}</div>
+                        <div className="muted cell-sub">{r.phoneNumber}</div>
+                      </td>
+                      <td>
+                        <span className="lang-tag">{formatLanguage(r.language)}</span>
+                      </td>
+                      <td>
+                        <div>{formatDateTime(r.scheduledAt)}</div>
+                        {r.callbackAfter && (
+                          <div className="callback-line">
+                            Callback {formatDateTime(r.callbackAfter)}
+                          </div>
+                        )}
+                      </td>
+                      <td className="purpose">
+                        {r.purpose || <span className="muted">—</span>}
+                      </td>
+                      <td>
+                        <StatusBadge status={r.status} />
+                      </td>
+                      <td className="notes">{r.notes ?? <span className="muted">—</span>}</td>
+                      <td className="actions">
+                        {r.transcript && (
+                          <button
+                            className="btn btn-sm"
+                            onClick={() =>
+                              setOpenTranscriptId(openTranscriptId === r.id ? null : r.id)
+                            }
+                          >
+                            {openTranscriptId === r.id ? "Hide" : "Transcript"}
+                          </button>
+                        )}
+                        <button
+                          className="btn btn-sm btn-danger"
+                          disabled={busyId === r.id}
+                          onClick={() => onDelete(r)}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                    {openTranscriptId === r.id && r.transcript && (
+                      <tr className="transcript-row">
+                        <td colSpan={7}>
+                          <pre className="transcript">{r.transcript}</pre>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
                 {filtered.length === 0 && (
                   <tr>

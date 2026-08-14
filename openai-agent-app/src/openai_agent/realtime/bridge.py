@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 
 import websockets
 from fastapi import WebSocket, WebSocketDisconnect
@@ -57,22 +58,29 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     # 3. Open the Realtime session and configure it.
     url = _OPENAI_WS.format(model=cfg.openai_model)
     headers = {"Authorization": f"Bearer {cfg.openai_api_key}"}
+    state = {
+        "stream_sid": stream_sid,
+        "response_active": False,
+        # Has the agent spoken any audio since the lead last talked? Used to refuse a
+        # "silent" end_call (hanging up with no goodbye) and force a farewell first.
+        "spoke_since_user": False,
+        # A hang-up the model asked for that's waiting on a goodbye being spoken first.
+        "hangup_pending": False,
+        # Set once we've begun closing, so the hang-up can't fire twice.
+        "closing": False,
+        # In-flight tool tasks, kept referenced so they aren't garbage-collected.
+        "_tool_tasks": set(),
+        # Running transcript of the call: list of (speaker, text) as each turn completes.
+        "transcript": [],
+        # What the call resulted in, inferred from the tools the agent used (booked / callback /
+        # declined / wrong_number …); None if nothing conclusive happened.
+        "outcome": None,
+        # Monotonic start time, for the call duration in the summary.
+        "started": time.monotonic(),
+    }
     try:
         async with websockets.connect(url, additional_headers=headers) as openai_ws:
             await openai_ws.send(json.dumps(build_session_update(cfg, instructions)))
-            state = {
-                "stream_sid": stream_sid,
-                "response_active": False,
-                # Has the agent spoken any audio since the lead last talked? Used to refuse a
-                # "silent" end_call (hanging up with no goodbye) and force a farewell first.
-                "spoke_since_user": False,
-                # A hang-up the model asked for that's waiting on a goodbye being spoken first.
-                "hangup_pending": False,
-                # Set once we've begun closing, so the hang-up can't fire twice.
-                "closing": False,
-                # In-flight tool tasks, kept referenced so they aren't garbage-collected.
-                "_tool_tasks": set(),
-            }
             # 4. Relay both directions until either side ends.
             await asyncio.gather(
                 _caller_to_model(twilio_ws, openai_ws),
@@ -80,6 +88,74 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             )
     except Exception as exc:  # noqa: BLE001 — surface, don't crash the server
         log.warning("bridge ended: %s", exc)
+    finally:
+        await _finalize_call(state, params, executor)
+
+
+def _record(state: dict, speaker: str, text: str | None) -> None:
+    """Append a completed turn to the running transcript and log it as it happens."""
+    line = (text or "").strip()
+    if not line:
+        return
+    state["transcript"].append((speaker, line))
+    log.info("%s: %s", speaker.upper(), line)
+
+
+def _note_outcome(state: dict, name: str, args: dict, result: str) -> None:
+    """Infer the call's outcome from the tool the agent just used successfully."""
+    try:
+        data = json.loads(result)
+    except (json.JSONDecodeError, TypeError):
+        data = {}
+    if name == "book_appointment" and data.get("booked"):
+        state["outcome"] = "booked"
+    elif name == "schedule_callback" and data.get("scheduled"):
+        state["outcome"] = "callback"
+    elif name == "mark_outcome":
+        outcome = (args.get("outcome") or "").strip()
+        if outcome:
+            state["outcome"] = outcome  # wrong_number / declined / unreachable
+
+
+_OUTCOME_SUMMARY = {
+    "booked": "Booked a consultation.",
+    "callback": "Asked to be called back later.",
+    "declined": "Not interested — declined.",
+    "wrong_number": "Wrong number.",
+    "unreachable": "Could not reach the lead.",
+}
+
+
+def _fmt_duration(seconds: float) -> str:
+    total = int(seconds)
+    return f"{total // 60}m {total % 60}s"
+
+
+def _summary(state: dict) -> str:
+    """A one-line summary: what happened + how long the call took."""
+    base = _OUTCOME_SUMMARY.get(state.get("outcome") or "", "Call ended with no clear outcome.")
+    return f"{base} ({_fmt_duration(time.monotonic() - state.get('started', time.monotonic()))})"
+
+
+def _log_call_end(state: dict, params: dict) -> None:
+    """When the call ends, log the whole transcript in one block for easy review."""
+    turns = state.get("transcript", [])
+    lead = params.get("lead_name") or "?"
+    if not turns:
+        log.info("call ended (lead %s) — no transcript captured", lead)
+        return
+    block = "\n".join(f"  {who.upper()}: {text}" for who, text in turns)
+    log.info("call ended (lead %s) — %s — %d turns:\n%s", lead, _summary(state), len(turns), block)
+
+
+async def _finalize_call(state: dict, params: dict, executor: ToolExecutor) -> None:
+    """At call end: log the transcript, then persist it (+ summary) to the backend per lead."""
+    _log_call_end(state, params)
+    turns = state.get("transcript", [])
+    if not turns:
+        return
+    transcript_text = "\n".join(f"{who.upper()}: {text}" for who, text in turns)
+    await executor.record_call_log(transcript_text, _summary(state))
 
 
 async def _await_start(twilio_ws: WebSocket) -> tuple[str, dict]:
@@ -151,6 +227,12 @@ async def _model_to_caller(twilio_ws: WebSocket, openai_ws, state: dict, executo
                 await twilio_ws.send_json({"event": "clear", "streamSid": state["stream_sid"]})
                 if state["response_active"]:
                     await openai_ws.send(json.dumps({"type": "response.cancel"}))
+            elif t == "response.output_audio_transcript.done":
+                # What the AGENT just said (transcribed from its own audio).
+                _record(state, "agent", evt.get("transcript"))
+            elif t == "conversation.item.input_audio_transcription.completed":
+                # What the LEAD just said (transcribed from their audio).
+                _record(state, "lead", evt.get("transcript"))
             elif t == "response.function_call_arguments.done":
                 if evt.get("name") == "end_call":
                     await _handle_end_call(twilio_ws, openai_ws, evt, state)
@@ -159,7 +241,7 @@ async def _model_to_caller(twilio_ws: WebSocket, openai_ws, state: dict, executo
                     # in flight, events that arrive (the response finishing, or the lead saying
                     # "okay") get handled in order rather than piling up and cancelling the tool's
                     # own reply once it's created. Keep a reference so the task isn't GC'd.
-                    task = asyncio.create_task(_handle_tool_call(openai_ws, evt, executor))
+                    task = asyncio.create_task(_handle_tool_call(openai_ws, evt, executor, state))
                     state["_tool_tasks"].add(task)
                     task.add_done_callback(state["_tool_tasks"].discard)
             elif t == "error":
@@ -246,7 +328,7 @@ async def _drain_and_close(twilio_ws: WebSocket, state: dict) -> None:
     state["hangup_fallback"] = asyncio.create_task(_fallback())
 
 
-async def _handle_tool_call(openai_ws, evt: dict, executor: ToolExecutor) -> None:
+async def _handle_tool_call(openai_ws, evt: dict, executor: ToolExecutor, state: dict) -> None:
     name = evt.get("name", "")
     call_id = evt.get("call_id", "")
     try:
@@ -255,6 +337,7 @@ async def _handle_tool_call(openai_ws, evt: dict, executor: ToolExecutor) -> Non
         args = {}
     log.info("tool call: %s %s", name, args)
     result = await executor.run(name, args)
+    _note_outcome(state, name, args, result)
     # Feed the result back and let the model continue speaking.
     await openai_ws.send(
         json.dumps(

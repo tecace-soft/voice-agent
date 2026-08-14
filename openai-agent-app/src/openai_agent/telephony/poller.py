@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 
 from ..config import Config
 from ..tools.backend import BackendClient, BackendError
-from .outbound import place_call
+from .outbound import call_has_ended, fetch_call_result, is_machine, place_call
 
 log = logging.getLogger(__name__)
 
@@ -111,18 +111,28 @@ class LeadPoller:
         # Drop any resolved leads (no longer `new`) from the current pass.
         self._tried &= new_ids
 
-        # 1. A call is in flight — hold the queue until the lead leaves `new` (booked/declined/
-        #    marked) or the time cap passes (no answer / voicemail that changed nothing).
+        # 1. A call is in flight — hold the queue until it's over. It ends when the lead leaves
+        #    `new` (booked/declined/marked), when Twilio reports the call finished (no-answer, busy,
+        #    completed…), or — as a last-resort backstop — when the time cap passes.
         if self._active:
             aid = self._active["id"]
             if aid not in new_ids:
                 log.info("call for intake %s resolved; advancing queue", aid)
                 self._active = None
-            elif now - self._active["started"] >= MAX_CALL_SECONDS:
-                log.info("call for intake %s assumed ended after %ds; advancing", aid, MAX_CALL_SECONDS)
-                self._active = None
             else:
-                return 0  # still on this call — one at a time
+                result = fetch_call_result(self._cfg, self._active.get("sid", ""))
+                if result and call_has_ended(result["status"]):
+                    if is_machine(result.get("answered_by")):
+                        log.info("call for intake %s reached voicemail (%s); advancing queue",
+                                 aid, result["answered_by"])
+                    else:
+                        log.info("call for intake %s ended (%s); advancing queue", aid, result["status"])
+                    self._active = None
+                elif now - self._active["started"] >= MAX_CALL_SECONDS:
+                    log.info("call for intake %s assumed ended after %ds; advancing", aid, MAX_CALL_SECONDS)
+                    self._active = None
+                else:
+                    return 0  # still on this call — one at a time
 
         # 2. Which leads are due right now, and which haven't been tried this pass?
         due = [i for i in intakes if self._call_due(i)]
@@ -154,11 +164,11 @@ class LeadPoller:
                     log.warning("could not mark %s unreachable: %s", intake_id, exc)
                 continue
             try:
-                place_call(self._cfg, to_number=phone, lead=lead)
+                call_sid = place_call(self._cfg, to_number=phone, lead=lead)
             except Exception as exc:  # noqa: BLE001 — one bad dial shouldn't stall the queue
                 log.warning("could not place call for %s: %s", phone, exc)
                 continue
-            self._active = {"id": intake_id, "started": now}
+            self._active = {"id": intake_id, "started": now, "sid": call_sid}
             log.info("called %s (intake %s, attempt %d/%d)", phone, intake_id, attempts + 1, MAX_CALL_ATTEMPTS)
             try:
                 self._client.record_attempt(intake_id)

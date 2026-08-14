@@ -468,3 +468,24 @@ td.purpose {
   color: var(--ink);
   overflow-x: auto;
 }
+
+/* Expandable per-client call transcript (Clients table). */
+.transcript-row td {
+  padding: 0 1rem 0.85rem;
+  background: var(--bg);
+}
+.transcript {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--body);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 340px;
+  overflow-y: auto;
+}

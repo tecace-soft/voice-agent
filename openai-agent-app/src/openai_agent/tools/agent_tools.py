@@ -156,6 +156,19 @@ class ToolExecutor:
             log.warning("tool %s failed: %s", name, exc)
             return json.dumps({"error": "That didn't go through — let's try again."})
 
+    async def record_call_log(self, transcript: str, summary: str) -> None:
+        """Persist the finished call's transcript (+ one-line summary) to the backend. Best-effort
+        — a logging failure must never affect the call, which is already over by the time we post."""
+        if not self._intake_id:
+            return  # a test call with no lead id — nothing to attach it to
+        try:
+            await self._post(
+                "/agent/call-log",
+                {"intakeId": self._intake_id, "transcript": transcript, "summary": summary},
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("could not save call log: %s", exc)
+
     async def _post(self, path: str, body: dict) -> str:
         headers = {"Content-Type": "application/json"}
         if self._cfg.agent_tools_secret:
