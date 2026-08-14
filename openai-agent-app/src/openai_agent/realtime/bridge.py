@@ -66,7 +66,10 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 # Has the agent spoken any audio since the lead last talked? Used to refuse a
                 # "silent" end_call (hanging up with no goodbye) and force a farewell first.
                 "spoke_since_user": False,
-                "hangup_deferred": False,
+                # A hang-up the model asked for that's waiting on a goodbye being spoken first.
+                "hangup_pending": False,
+                # Set once we've begun closing, so the hang-up can't fire twice.
+                "closing": False,
                 # In-flight tool tasks, kept referenced so they aren't garbage-collected.
                 "_tool_tasks": set(),
             }
@@ -134,11 +137,17 @@ async def _model_to_caller(twilio_ws: WebSocket, openai_ws, state: dict, executo
                 state["response_active"] = True
             elif t == "response.done":
                 state["response_active"] = False
+                # If a hang-up is pending and the agent just spoke (its goodbye), close now — we
+                # don't wait for the model to call end_call a second time.
+                if state.get("hangup_pending") and state.get("spoke_since_user"):
+                    await _drain_and_close(twilio_ws, state)
             elif t == "input_audio_buffer.speech_started":
                 # The lead started talking. Reset the "agent has spoken" flag so a goodbye is
-                # required again before we'll hang up. Also barge-in: flush what we're playing and
-                # stop the model's current response so it doesn't talk over them.
+                # required again before we'll hang up, and cancel any pending hang-up — they have
+                # more to say. Also barge-in: flush what we're playing and stop the current
+                # response so it doesn't talk over them.
                 state["spoke_since_user"] = False
+                state["hangup_pending"] = False
                 await twilio_ws.send_json({"event": "clear", "streamSid": state["stream_sid"]})
                 if state["response_active"]:
                     await openai_ws.send(json.dumps({"type": "response.cancel"}))
@@ -162,48 +171,66 @@ async def _model_to_caller(twilio_ws: WebSocket, openai_ws, state: dict, executo
 
 
 async def _handle_end_call(twilio_ws: WebSocket, openai_ws, evt: dict, state: dict) -> None:
-    """Hang up — but only after the agent has actually said goodbye.
+    """End the call, guaranteeing a spoken goodbye first — and never depending on a second end_call.
 
-    The model often tries to end the call the instant the lead says they're done, emitting a
-    "silent" end_call (a tool call with no spoken farewell) so the line just drops. If nothing has
-    been spoken since the lead's last turn, we REFUSE this end_call: we answer the tool with an
-    instruction to say a warm goodbye first and prompt a new response, so the farewell is spoken.
-    We only refuse once (hangup_deferred), so a stubborn model can't hold the line open.
-
-    When a goodbye HAS been spoken, we ack the tool and send Twilio a "mark"; Twilio plays out the
-    buffered goodbye audio and echoes the mark back (handled in _caller_to_model), which closes the
-    stream and hangs up. A fallback timer guarantees the hang-up even if the echo never arrives.
+    If the agent has already spoken since the lead's last turn (its goodbye), we close right after
+    it plays out. If not (a "silent" end_call fired the instant the lead said they're done), we
+    prompt the model to say a warm goodbye and mark the hang-up as PENDING; the call then closes
+    automatically once that goodbye finishes (in the response.done handler), so we don't rely on the
+    model choosing to call end_call again. A backstop timer closes the line even if the goodbye
+    never comes, so a finished call can't stay open.
     """
     call_id = evt.get("call_id", "")
 
-    if not state.get("spoke_since_user") and not state.get("hangup_deferred"):
-        state["hangup_deferred"] = True
-        log.info("refused silent end_call — forcing a spoken goodbye first")
+    if state.get("spoke_since_user"):
         await openai_ws.send(
             json.dumps(
                 {
                     "type": "conversation.item.create",
-                    "item": {
-                        "type": "function_call_output",
-                        "call_id": call_id,
-                        "output": '{"error": "Do not hang up yet — you have not said goodbye. '
-                        "First SAY a warm spoken goodbye out loud that thanks the lead by name and "
-                        'says goodbye, THEN call end_call again."}',
-                    },
+                    "item": {"type": "function_call_output", "call_id": call_id, "output": '{"ok": true}'},
                 }
             )
         )
-        await openai_ws.send(json.dumps({"type": "response.create"}))
+        await _drain_and_close(twilio_ws, state)
         return
 
+    # Silent end_call — get the goodbye spoken, then hang up on our own.
+    log.info("end_call with no goodbye yet — prompting a farewell, then hanging up automatically")
+    state["hangup_pending"] = True
     await openai_ws.send(
         json.dumps(
             {
                 "type": "conversation.item.create",
-                "item": {"type": "function_call_output", "call_id": call_id, "output": '{"ok": true}'},
+                "item": {
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": '{"note": "Say a warm spoken goodbye now — thank the lead by name and '
+                    'say goodbye. The call will end on its own once you have said it."}',
+                },
             }
         )
     )
+    await openai_ws.send(json.dumps({"type": "response.create"}))
+
+    async def _backstop() -> None:
+        await asyncio.sleep(_HANGUP_FALLBACK_SECONDS)
+        if state.get("hangup_pending"):  # goodbye never completed — end anyway
+            await _drain_and_close(twilio_ws, state)
+
+    state["hangup_backstop"] = asyncio.create_task(_backstop())
+
+
+async def _drain_and_close(twilio_ws: WebSocket, state: dict) -> None:
+    """Play out the buffered goodbye, then hang up. Idempotent (guarded by 'closing').
+
+    Sends Twilio a "mark"; Twilio finishes playing everything queued and echoes it back (handled in
+    _caller_to_model), which closes the stream and ends the <Connect><Stream> — i.e. hangs up. A
+    fallback timer guarantees the hang-up even if the echo never arrives.
+    """
+    if state.get("closing"):
+        return
+    state["closing"] = True
+    state["hangup_pending"] = False
     await twilio_ws.send_json(
         {"event": "mark", "streamSid": state["stream_sid"], "mark": {"name": "endcall"}}
     )
