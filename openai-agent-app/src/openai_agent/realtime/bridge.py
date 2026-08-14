@@ -71,8 +71,6 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "hangup_pending": False,
         # Set once we've begun closing, so the hang-up can't fire twice.
         "closing": False,
-        # A voicemail message waiting to be spoken once the cancelled greeting response closes.
-        "pending_voicemail": False,
         # In-flight tool tasks, kept referenced so they aren't garbage-collected.
         "_tool_tasks": set(),
         # Running transcript of the call: list of (speaker, text) as each turn completes.
@@ -219,15 +217,13 @@ async def _watch_amd(queue: asyncio.Queue, openai_ws, twilio_ws: WebSocket, stat
     state["outcome"] = "voicemail"
     state["hangup_pending"] = True
     state["spoke_since_user"] = False
-    # Cut any half-spoken greeting to the machine.
+    # Cut any half-spoken greeting to the machine, cancel whatever's in flight (best-effort — if
+    # nothing is active OpenAI just logs an error), give it a beat to settle, then leave the
+    # voicemail. We don't rely on response-state tracking here since it can drift.
     await twilio_ws.send_json({"event": "clear", "streamSid": state["stream_sid"]})
-    if state.get("response_active"):
-        # A response is mid-flight (the agent greeting the machine). Cancel it and leave the
-        # voicemail once it has actually closed (response.done), so the two responses don't collide.
-        state["pending_voicemail"] = True
-        await openai_ws.send(json.dumps({"type": "response.cancel"}))
-    else:
-        await _send_voicemail_response(openai_ws)
+    await openai_ws.send(json.dumps({"type": "response.cancel"}))
+    await asyncio.sleep(0.4)
+    await _send_voicemail_response(openai_ws)
 
     async def _backstop() -> None:
         await asyncio.sleep(_HANGUP_FALLBACK_SECONDS)
@@ -278,13 +274,9 @@ async def _model_to_caller(twilio_ws: WebSocket, openai_ws, state: dict, executo
                 state["response_active"] = True
             elif t == "response.done":
                 state["response_active"] = False
-                if state.get("pending_voicemail"):
-                    # The greeting-to-the-machine response has now closed; leave the voicemail.
-                    state["pending_voicemail"] = False
-                    await _send_voicemail_response(openai_ws)
                 # If a hang-up is pending and the agent just spoke (its farewell / voicemail),
                 # close now — we don't wait for the model to call end_call a second time.
-                elif state.get("hangup_pending") and state.get("spoke_since_user"):
+                if state.get("hangup_pending") and state.get("spoke_since_user"):
                     await _drain_and_close(twilio_ws, state)
             elif t == "input_audio_buffer.speech_started":
                 # The lead started talking. Reset the "agent has spoken" flag so a goodbye is
