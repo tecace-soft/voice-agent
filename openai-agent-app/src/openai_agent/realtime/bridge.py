@@ -67,6 +67,8 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 # "silent" end_call (hanging up with no goodbye) and force a farewell first.
                 "spoke_since_user": False,
                 "hangup_deferred": False,
+                # In-flight tool tasks, kept referenced so they aren't garbage-collected.
+                "_tool_tasks": set(),
             }
             # 4. Relay both directions until either side ends.
             await asyncio.gather(
@@ -144,7 +146,13 @@ async def _model_to_caller(twilio_ws: WebSocket, openai_ws, state: dict, executo
                 if evt.get("name") == "end_call":
                     await _handle_end_call(twilio_ws, openai_ws, evt, state)
                 else:
-                    await _handle_tool_call(openai_ws, evt, executor)
+                    # Run the tool WITHOUT blocking this receive loop: while the backend request is
+                    # in flight, events that arrive (the response finishing, or the lead saying
+                    # "okay") get handled in order rather than piling up and cancelling the tool's
+                    # own reply once it's created. Keep a reference so the task isn't GC'd.
+                    task = asyncio.create_task(_handle_tool_call(openai_ws, evt, executor))
+                    state["_tool_tasks"].add(task)
+                    task.add_done_callback(state["_tool_tasks"].discard)
             elif t == "error":
                 log.warning("openai error: %s", evt.get("error"))
     except WebSocketDisconnect:
