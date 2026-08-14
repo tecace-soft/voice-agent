@@ -279,6 +279,12 @@ async def _handle_end_call(twilio_ws: WebSocket, openai_ws, evt: dict, state: di
     # Silent end_call — get the goodbye spoken, then hang up on our own.
     log.info("end_call with no goodbye yet — prompting a farewell, then hanging up automatically")
     state["hangup_pending"] = True
+    note = (
+        "Now say the goodbye OUT LOUD — the actual farewell words only, e.g. "
+        '"Thank you for your time — goodbye!". Do NOT announce or describe it first '
+        "(no \"let me close things out\", no \"I'll send you off\", no \"let me wrap up\"); "
+        "just say the goodbye itself. The call ends on its own once you do."
+    )
     await openai_ws.send(
         json.dumps(
             {
@@ -286,8 +292,7 @@ async def _handle_end_call(twilio_ws: WebSocket, openai_ws, evt: dict, state: di
                 "item": {
                     "type": "function_call_output",
                     "call_id": call_id,
-                    "output": '{"note": "Say a warm spoken goodbye now — thank the lead by name and '
-                    'say goodbye. The call will end on its own once you have said it."}',
+                    "output": json.dumps({"note": note}),
                 },
             }
         )
