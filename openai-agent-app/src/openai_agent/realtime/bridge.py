@@ -34,6 +34,10 @@ _OPENAI_WS = "wss://api.openai.com/v1/realtime?model={model}"
 # after this long so a finished call can't hold the line — and the meter — open.
 _HANGUP_FALLBACK_SECONDS = 12
 
+# A voicemail message can legitimately run 10–15s; give it plenty of room to finish before the
+# safety timer would force a hang-up (which would cut the message off mid-sentence).
+_VOICEMAIL_BACKSTOP_SECONDS = 30
+
 
 async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     await twilio_ws.accept()
@@ -230,8 +234,9 @@ async def _watch_amd(queue: asyncio.Queue, openai_ws, twilio_ws: WebSocket, stat
     await _send_voicemail_response(openai_ws)
 
     async def _backstop() -> None:
-        await asyncio.sleep(_HANGUP_FALLBACK_SECONDS)
-        if state.get("hangup_pending"):  # message never finished — end anyway
+        # Long enough that a full voicemail message finishes first; only fires if it truly stalls.
+        await asyncio.sleep(_VOICEMAIL_BACKSTOP_SECONDS)
+        if state.get("hangup_pending"):  # message never completed — end anyway
             await _drain_and_close(twilio_ws, state)
 
     state["hangup_backstop"] = asyncio.create_task(_backstop())
