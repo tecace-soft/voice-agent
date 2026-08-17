@@ -33,7 +33,9 @@ FLOW (in order; don't wait between steps unless it says "wait"):
    you requested." Then immediately do step 3.
 3. Call check_availability for {desired_time_iso}, then say the result:
    - Open: "Good news, {desired_time} is open - shall I book it?" (wait)
-   - Taken: offer the tool's alternatives, ask which works. (wait)
+   - Taken: "Unfortunately {desired_time} is taken, but here are some other options: [the tool's
+     times]." Then ask which one works. (wait). Do NOT say "good news" when it's taken — only be
+     upbeat when a time is actually open.
 4. One time at a time: yes to an open time -> book_appointment. New day+time -> check_availability.
    Wants options -> get_openings (pass day+time ISO; tomorrow noon = {tomorrow_iso}T12:00:00), (wait).
    A question or hesitation is NOT a yes.
