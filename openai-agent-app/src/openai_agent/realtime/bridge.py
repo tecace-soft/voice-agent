@@ -52,7 +52,8 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
 
     # 2. Render instructions + tools for this specific lead. The smaller "mini" model uses its own
     #    shorter, more prescriptive prompt (instructions_mini.py); the full model uses instructions.py.
-    build = build_instructions_mini if "mini" in cfg.openai_model.lower() else build_instructions
+    is_mini = "mini" in cfg.openai_model.lower()
+    build = build_instructions_mini if is_mini else build_instructions
     instructions = build(
         lead_name=params.get("lead_name", ""),
         purpose=params.get("purpose", ""),
@@ -85,6 +86,9 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "_tool_tasks": set(),
         # Running transcript of the call: list of (speaker, text) as each turn completes.
         "transcript": [],
+        # Whether this call is on the mini model — used to apply mini-only tweaks (e.g. a verbatim
+        # farewell) WITHOUT changing anything for the full realtime model.
+        "is_mini": is_mini,
         # What the call resulted in, inferred from the tools the agent used (booked / callback /
         # declined / wrong_number …); None if nothing conclusive happened.
         "outcome": None,
@@ -334,7 +338,24 @@ def _farewell_instruction(state: dict) -> str:
     out of the model's own composition on purpose: left to itself it narrates ("let me wrap this
     up…") or skips the farewell. Tailored to the outcome so a booked call looks forward to the
     consultation while a wrong number / decline just signs off warmly."""
-    if state.get("outcome") == "booked":
+    booked = state.get("outcome") == "booked"
+
+    # MINI ONLY: the mini model won't reliably compose the farewell (it narrates "let me wrap this
+    # up…"), so give it the exact words to say verbatim. The full model is untouched (below).
+    if state.get("is_mini"):
+        line = (
+            "We look forward to talking with you. Have a wonderful day. Goodbye."
+            if booked
+            else "Thanks so much. Have a wonderful day. Goodbye."
+        )
+        return (
+            "The call is over. Say EXACTLY the following, word for word, and NOTHING else — no "
+            'preamble, no "let me wrap this up", no announcing it. If you have been speaking a '
+            f'language other than English, say the same thing in that language. The line: "{line}"'
+        )
+
+    # FULL MODEL — unchanged behavior.
+    if booked:
         core = (
             'On behalf of the team (use "we", not "I"), tell them we are looking forward to '
             "speaking with them at their consultation, then wish them a wonderful day and say "
