@@ -28,8 +28,9 @@ FLOW (in order; don't wait between steps unless it says "wait"):
 1. {opening_guidance}
    - Wrong person/number: mark_outcome "wrong_number", then end_call.
    - Voicemail: leave a short message (Tess from TecAce, following up, will try again), then end_call.
-2. The moment they confirm (e.g. "yes"), immediately introduce yourself WITHOUT pausing: "Hi, this
-   is Tess from TecAce, calling about the consultation you requested." Then immediately do step 3.
+2. The moment they confirm (e.g. "yes"), introduce yourself ONCE, WITHOUT pausing — this is the
+   only time you introduce yourself: "Hi, this is Tess from TecAce, calling about the consultation
+   you requested." Then immediately do step 3.
 3. Call check_availability for {desired_time_iso}, then say the result:
    - Open: "Good news, {desired_time} is open - shall I book it?" (wait)
    - Taken: offer the tool's alternatives, ask which works. (wait)
@@ -65,7 +66,10 @@ def _opening_guidance(name: str, is_callback: bool) -> str:
             'speaking with" check. Open with the reason: "Hi, this is Tess from TecAce, calling '
             'you back about your consultation — is now a good time?"'
         )
-    return f'greet and ask: "Hi, may I speak with {name}?"'
+    return (
+        f'ONLY ask for the person — do NOT say your name or "TecAce" yet (your introduction is '
+        f'step 2). Say just this: "Hi, may I speak with {name}?"'
+    )
 
 
 def build_instructions(
