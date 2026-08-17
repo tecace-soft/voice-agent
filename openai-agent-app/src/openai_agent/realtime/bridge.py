@@ -24,6 +24,7 @@ from ..telephony.outbound import is_machine
 from ..tools.agent_tools import ToolExecutor
 from . import amd
 from .instructions import build_instructions
+from .instructions_mini import build_instructions as build_instructions_mini
 from .session import build_session_update
 
 log = logging.getLogger(__name__)
@@ -49,8 +50,10 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         return
     log.info("call started for lead_name=%r intake_id=%r", params.get("lead_name"), params.get("intake_id"))
 
-    # 2. Render instructions + tools for this specific lead.
-    instructions = build_instructions(
+    # 2. Render instructions + tools for this specific lead. The smaller "mini" model uses its own
+    #    shorter, more prescriptive prompt (instructions_mini.py); the full model uses instructions.py.
+    build = build_instructions_mini if "mini" in cfg.openai_model.lower() else build_instructions
+    instructions = build(
         lead_name=params.get("lead_name", ""),
         purpose=params.get("purpose", ""),
         desired_time=params.get("desired_time", ""),
