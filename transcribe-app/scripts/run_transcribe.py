@@ -2,8 +2,8 @@
 
     python scripts/run_transcribe.py
 
-Reads voicemail emails over IMAP, transcribes each .wav with Whisper, extracts the details
-with Claude, and appends a row per voicemail to the Google Sheet. Idempotent — already-handled
+Reads voicemail emails over IMAP, transcribes and extracts each .wav with Gemini (one call),
+and appends a row per voicemail to the Google Sheet. Idempotent — already-handled
 voicemails are skipped — so it's safe to run repeatedly or on a schedule (cron / Task
 Scheduler). Requires the settings listed in .env.example (see Config.missing()).
 """

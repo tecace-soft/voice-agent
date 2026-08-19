@@ -1,5 +1,5 @@
-"""Tie the steps together: read voicemail emails -> transcribe each .wav -> extract fields ->
-append a row to the sheet. One .wav is one transcription, one extraction, one row.
+"""Tie the steps together: read voicemail emails -> transcribe + extract each .wav (one Gemini
+call) -> append a row to the sheet. One .wav is one Gemini call and one row.
 
 Idempotency is a local JSON state file of processed keys (Message-ID + attachment name). We
 never touch the mailbox, so re-running only ever processes voicemails we haven't seen before —
@@ -19,7 +19,6 @@ from .tools import (
     EmailSource,
     Extractor,
     SheetWriter,
-    Transcriber,
     VoicemailEmail,
     VoicemailInfo,
     WavAttachment,
@@ -61,7 +60,7 @@ def _key(vm: VoicemailEmail, att: WavAttachment) -> str:
     return f"{vm.message_id}::{att.filename}"
 
 
-def build_row(vm: VoicemailEmail, att: WavAttachment, info: VoicemailInfo, transcript: str) -> list[str]:
+def build_row(vm: VoicemailEmail, att: WavAttachment, info: VoicemailInfo) -> list[str]:
     """One spreadsheet row — column order must match sheets.HEADER."""
     return [
         datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -72,7 +71,7 @@ def build_row(vm: VoicemailEmail, att: WavAttachment, info: VoicemailInfo, trans
         info.requested_time or "",
         "yes" if info.callback_requested else "no",
         info.summary,
-        transcript,
+        info.transcript,
         att.filename,
     ]
 
@@ -81,7 +80,6 @@ class Pipeline:
     def __init__(self, cfg: Config) -> None:
         self._cfg = cfg
         self._source = EmailSource(cfg)
-        self._transcriber = Transcriber(cfg)
         self._extractor = Extractor(cfg)
         self._sheet = SheetWriter(cfg)
         self._store = ProcessedStore(cfg.state_file)
@@ -107,7 +105,6 @@ class Pipeline:
         return summary
 
     def _handle(self, vm: VoicemailEmail, att: WavAttachment) -> None:
-        transcript = self._transcriber.transcribe(att)
-        info = self._extractor.extract(transcript)
-        self._sheet.append_row(build_row(vm, att, info, transcript))
+        info = self._extractor.extract(att)  # transcribe + extract in one Gemini call
+        self._sheet.append_row(build_row(vm, att, info))
         log.info("uploaded voicemail from %s (%s)", info.caller_name or vm.from_addr, att.filename)

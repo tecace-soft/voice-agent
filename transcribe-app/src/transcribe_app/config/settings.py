@@ -2,7 +2,7 @@
 
 The pipeline reads voicemail emails over generic IMAP (so it works with any provider —
 Outlook.com for our testing, Gmail, Yahoo, a corporate mail server — by pointing it at the
-right host), transcribes each .wav with OpenAI Whisper, extracts fields with Claude, and
+right host), then transcribes and extracts each .wav with Google Gemini in a single call, and
 appends a row to a Google Sheet.
 
 Nothing is required at import time, so the process starts even on a machine with a minimal
@@ -70,11 +70,10 @@ class Config:
     # that carries a .wav attachment.
     voicemail_from: str
     voicemail_subject: str
-    # ---- Transcription (OpenAI Whisper) ----
-    openai_api_key: str
-    whisper_model: str
-    # ---- Extraction (Claude) ----
-    anthropic_api_key: str
+    # ---- Transcription + extraction (Google Gemini, one multimodal call) ----
+    # A Gemini Developer API key (AI Studio) — distinct from the Google Sheets service account
+    # below, which uses its own private-key credentials.
+    gemini_api_key: str
     extract_model: str
     # ---- Destination (Google Sheets) ----
     # The service-account key can be supplied three ways (checked in this order):
@@ -113,10 +112,8 @@ class Config:
             imap_since_days=int(_optional("IMAP_SINCE_DAYS", "7")),
             voicemail_from=_optional("VOICEMAIL_FROM"),
             voicemail_subject=_optional("VOICEMAIL_SUBJECT"),
-            openai_api_key=_optional("OPENAI_API_KEY"),
-            whisper_model=_optional("WHISPER_MODEL", "whisper-1"),
-            anthropic_api_key=_optional("ANTHROPIC_API_KEY"),
-            extract_model=_optional("EXTRACT_MODEL", "claude-opus-5"),
+            gemini_api_key=_optional("GEMINI_API_KEY"),
+            extract_model=_optional("EXTRACT_MODEL", "gemini-2.5-flash-lite"),
             google_credentials_file=_optional("GOOGLE_CREDENTIALS_FILE")
             or str(PROJECT_ROOT / "service-account.json"),
             google_credentials_json=_optional("GOOGLE_CREDENTIALS_JSON"),
@@ -140,10 +137,8 @@ class Config:
             gaps.append("IMAP_USERNAME")
         if not self.imap_password:
             gaps.append("IMAP_PASSWORD")
-        if not self.openai_api_key:
-            gaps.append("OPENAI_API_KEY")
-        if not self.anthropic_api_key:
-            gaps.append("ANTHROPIC_API_KEY")
+        if not self.gemini_api_key:
+            gaps.append("GEMINI_API_KEY")
         if not self.google_sheet_id:
             gaps.append("GOOGLE_SHEET_ID")
         # A service-account key must be provided one of the three ways.

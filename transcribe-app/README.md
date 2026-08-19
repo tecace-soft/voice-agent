@@ -9,18 +9,17 @@ handled are skipped — and it never modifies the mailbox.
 ## Pipeline
 
 ```
-IMAP inbox ──▶ .wav attachments ──▶ Whisper transcript ──▶ Claude fields ──▶ Google Sheet row
- (any provider)   (one per voicemail)   (one call each)      (structured)      (one row each)
+IMAP inbox ──▶ .wav attachments ──▶ Gemini: transcript + fields ──▶ Google Sheet row
+ (any provider)   (one per voicemail)      (one multimodal call)        (one row each)
 ```
 
-Each `.wav` is transcribed and extracted **independently**, so one voicemail's audio never
-bleeds into another's transcript or row.
+Each `.wav` is transcribed and extracted **independently** in a single Gemini call, so one
+voicemail's audio never bleeds into another's transcript or row.
 
 | Step | Module | Service |
 | --- | --- | --- |
 | Find voicemail mail, pull `.wav`s | `tools/email_source.py` | generic IMAP (Outlook.com, Gmail, Yahoo, …) |
-| Transcribe each `.wav` | `tools/transcriber.py` | OpenAI Whisper |
-| Extract caller name / phone / requested time / summary | `tools/extractor.py` | Claude (structured outputs) |
+| Transcribe `.wav` + extract caller name / phone / requested time / summary | `tools/extractor.py` | Google Gemini (audio in, structured output) |
 | Append a row | `tools/sheets.py` | Google Sheets (service account) |
 | Orchestrate + idempotency | `pipeline.py` | local `.processed.json` |
 
@@ -35,8 +34,7 @@ transcribe-app/
     config/settings.py     # Config.load(), all env-backed settings + IMAP provider presets
     tools/                 # one module per external service
       email_source.py      #   IMAP: find voicemail mail, pull .wav attachments
-      transcriber.py       #   OpenAI Whisper: audio -> text
-      extractor.py         #   Claude: text -> structured fields
+      extractor.py         #   Google Gemini: audio -> transcript + structured fields (one call)
       sheets.py            #   Google Sheets: append a row
     pipeline.py            # orchestrates the four tools; per-file isolation + idempotency
   scripts/
@@ -61,8 +59,7 @@ Fill in `.env` (see the comments there):
 - **Email** — `IMAP_PROVIDER=outlook` for testing (or set `IMAP_HOST` for any other provider),
   plus `IMAP_USERNAME` / `IMAP_PASSWORD`. Use an **app password** if the account has 2FA
   (Outlook.com, Gmail, and Yahoo require one for IMAP).
-- **OpenAI** — `OPENAI_API_KEY` (Whisper).
-- **Anthropic** — `ANTHROPIC_API_KEY` (Claude).
+- **Google Gemini** — `GEMINI_API_KEY` (transcription + extraction, one call; get one from [AI Studio](https://aistudio.google.com/apikey)).
 - **Google Sheets** — a service account: create one in Google Cloud, download its JSON key to
   `service-account.json`, set `GOOGLE_SHEET_ID`, and **share the sheet with the service
   account's email as an Editor**.

@@ -1,5 +1,4 @@
 python-dotenv>=1.0.1
-openai>=1.40                   # Whisper transcription (one call per .wav)
-anthropic>=0.40               # Claude structured extraction from the transcript
+google-genai>=1.0             # Gemini: transcribe + structured-extract each .wav (one call)
 google-api-python-client>=2.100  # Google Sheets append (service account)
 google-auth>=2.30             # service-account credentials for the Sheets API
