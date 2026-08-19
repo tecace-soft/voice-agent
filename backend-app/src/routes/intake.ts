@@ -1,6 +1,5 @@
 import { Elysia, t } from "elysia";
 import { cancelMeeting } from "../cal/client.js";
-import { env } from "../config/env.js";
 import {
   cancelBooking,
   countIntakes,
@@ -13,7 +12,6 @@ import {
   setIntakeNotes,
   updateIntakeStatus,
 } from "../db/intakes.js";
-import { normalizeDateTime } from "../schedule/slots.js";
 import { bookExisting } from "../services/booking.js";
 
 // Statuses the agent may set directly via PATCH. `canceled` is intentionally NOT here —
@@ -43,12 +41,9 @@ export const intake = new Elysia()
   .post(
     "/intake",
     async ({ body, status }) => {
-      // A zone-less time (the form's wall-clock pick) is read in the business timezone; a
-      // zone-aware time (with Z/offset) is respected as-is. Same convention as the agent tools,
-      // so the time the person picks reads back identically on the call.
-      const dateTime = normalizeDateTime(body.dateTime, env.schedule.timezone);
-      // purpose is optional on the wire but non-null in storage — default a missing one to "".
-      const record = await insertIntake({ ...body, purpose: body.purpose ?? "", dateTime });
+      // The form now submits only a date (the day the lead wants); the specific time is captured
+      // by the agent on the call. purpose is optional on the wire but non-null in storage.
+      const record = await insertIntake({ ...body, purpose: body.purpose ?? "" });
       return status(201, { status: "created", intake: record });
     },
     {
@@ -60,9 +55,8 @@ export const intake = new Elysia()
         // What the lead is reaching out about (the agent confirms it on the call). Optional on
         // the wire so inbound/legacy callers still work; stored as "" when omitted.
         purpose: t.Optional(t.String()),
-        // A datetime string — either zone-less local wall-clock (from the form, interpreted in
-        // the business timezone) or zone-aware ISO 8601 (respected as-is).
-        dateTime: t.String({ minLength: 1 }),
+        // The day the lead wants (YYYY-MM-DD). The agent asks for the specific time on the call.
+        requestedDate: t.String({ format: "date" }),
       }),
     },
   )

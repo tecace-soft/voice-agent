@@ -312,12 +312,16 @@ async function bookNewLead(
   const email = str(args.email) || str(dyn.email);
   const phone = str(args.phone) || str(dyn.phone) || str(call.from_number);
   if (!name || !email) return { ok: false as const, reason: "missing_details" };
-  return createAndBook({
-    language: str(args.language) || str(dyn.language) || "English",
-    name,
-    email,
-    phoneNumber: phone,
-    purpose: str(args.purpose) || str(dyn.purpose) || "Consultation (inbound call)",
+  return createAndBook(
+    {
+      language: str(args.language) || str(dyn.language) || "English",
+      name,
+      email,
+      phoneNumber: phone,
+      purpose: str(args.purpose) || str(dyn.purpose) || "Consultation (inbound call)",
+      // The requested day is the date of the slot they're booking (in the business timezone).
+      requestedDate: localDateOf(TZ, new Date(dateTime).getTime()),
+    },
     dateTime,
-  });
+  );
 }

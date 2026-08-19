@@ -7,7 +7,7 @@ export interface IntakeInput {
   email: string;
   phoneNumber: string;
   purpose: string; // what the client is reaching out about (confirmed by the agent on the call)
-  dateTime: string; // naive wall-clock, e.g. "2026-08-01T15:30:00" (read in the business timezone)
+  requestedDate: string; // the day the lead wants, "YYYY-MM-DD"; the agent asks for the time on the call
 }
 
 export type IntakeStatus =
@@ -20,7 +20,7 @@ export type IntakeStatus =
 // A stored intake as returned by the backend.
 export interface IntakeRecord extends IntakeInput {
   id: string;
-  scheduledAt: string;
+  scheduledAt: string | null; // confirmed booked time; null until the agent books
   status: IntakeStatus;
   createdAt: string;
   updatedAt: string;

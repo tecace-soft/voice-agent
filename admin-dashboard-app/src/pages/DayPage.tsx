@@ -37,8 +37,8 @@ export function DayPage() {
       .then((d) => {
         if (!active) return;
         const forDay = d.intakes
-          .filter((i) => pacificDate(i.scheduledAt) === date)
-          .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
+          .filter((i) => i.scheduledAt != null && pacificDate(i.scheduledAt) === date)
+          .sort((a, b) => (a.scheduledAt ?? "").localeCompare(b.scheduledAt ?? ""));
         setAppts(forDay);
       })
       .catch((e) => {
@@ -72,8 +72,8 @@ export function DayPage() {
         ) : (
           <ul className="appts">
             {appts.map((a) => (
-              <li key={a.id} className={`appt${isPast(a.scheduledAt) ? " past" : ""}`}>
-                <div className="appt-time">{formatTime(a.scheduledAt)}</div>
+              <li key={a.id} className={`appt${isPast(a.scheduledAt ?? "") ? " past" : ""}`}>
+                <div className="appt-time">{formatTime(a.scheduledAt ?? "")}</div>
                 <div className="appt-body">
                   <div className="appt-name">{a.name}</div>
                   <div className="muted">

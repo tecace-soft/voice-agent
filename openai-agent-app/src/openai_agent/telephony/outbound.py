@@ -39,7 +39,11 @@ def build_twiml(public_host: str, lead: dict) -> str:
     response = VoiceResponse()
     connect = Connect()
     stream = Stream(url=f"wss://{public_host}/media-stream")
-    for key in ("intake_id", "lead_name", "purpose", "email", "language", "desired_time", "dateTime", "is_callback"):
+    for key in (
+        "intake_id", "lead_name", "purpose", "email", "language",
+        "requested_date", "requested_date_iso",
+        "desired_time", "dateTime", "is_callback",
+    ):
         value = lead.get(key)
         if value:
             stream.parameter(name=key, value=str(value))

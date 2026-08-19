@@ -15,7 +15,8 @@ export interface IntakeRecord {
   email: string;
   phoneNumber: string;
   purpose: string; // what the lead reached out about
-  scheduledAt: string;
+  requestedDate: string | null; // the day the lead picked on the form (YYYY-MM-DD); time set on the call
+  scheduledAt: string | null; // the confirmed booked time; null until the agent books
   status: IntakeStatus;
   notes: string | null;
   transcript: string | null; // full text of the agent's last call with this lead (null until a call)

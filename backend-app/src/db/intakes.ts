@@ -22,7 +22,7 @@ export interface IntakeInput {
   email: string;
   phoneNumber: string;
   purpose: string; // what the lead reached out about (the agent confirms it on the call)
-  dateTime: string; // ISO 8601 date-time
+  requestedDate: string; // "YYYY-MM-DD" — the day the lead picked; the time is set when booked
 }
 
 // A stored intake row, plus the DB-managed status/timestamps.
@@ -33,7 +33,8 @@ export interface IntakeRecord {
   email: string;
   phoneNumber: string;
   purpose: string; // what the lead reached out about
-  scheduledAt: string;
+  requestedDate: string | null; // the day the lead asked for (from the form); null on legacy/inbound
+  scheduledAt: string | null; // the CONFIRMED booked time; null until the agent books
   status: IntakeStatus;
   notes: string | null; // agent's post-call summary (null until written)
   transcript: string | null; // full text of the agent's call with this lead (null until a call)
@@ -53,7 +54,8 @@ const RETURN_COLUMNS = sql`
   email,
   phone_number AS "phoneNumber",
   purpose,
-  scheduled_at AS "scheduledAt",
+  requested_date AS "requestedDate",
+  scheduled_at   AS "scheduledAt",
   status,
   notes,
   transcript,
@@ -66,10 +68,11 @@ const RETURN_COLUMNS = sql`
 
 // Persist one intake and return the stored row.
 export async function insertIntake(input: IntakeInput): Promise<IntakeRecord> {
+  // scheduled_at is left NULL — the time is set only when the agent books the confirmed slot.
   const [row] = await sql`
-    INSERT INTO intakes (language, name, email, phone_number, purpose, scheduled_at)
+    INSERT INTO intakes (language, name, email, phone_number, purpose, requested_date)
     VALUES (${input.language}, ${input.name}, ${input.email},
-            ${input.phoneNumber}, ${input.purpose}, ${input.dateTime})
+            ${input.phoneNumber}, ${input.purpose}, ${input.requestedDate})
     RETURNING ${RETURN_COLUMNS}
   `;
   return row as IntakeRecord;
@@ -244,7 +247,7 @@ export async function listBookedTimes(
   from?: string,
   to?: string,
 ): Promise<number[]> {
-  const conditions: SqlFragment[] = [sql`status = 'booked'`];
+  const conditions: SqlFragment[] = [sql`status = 'booked'`, sql`scheduled_at IS NOT NULL`];
   if (from) conditions.push(sql`scheduled_at >= ${from}`);
   if (to) conditions.push(sql`scheduled_at < ${to}`);
   const where = conditions.reduce(
@@ -295,8 +298,10 @@ export async function bookIntake(
   // Zero rows updated: distinguish missing id vs. past slot vs. conflict.
   const existing = await getIntake(id);
   if (!existing) return { ok: false, reason: "not_found" };
+  // `at` is the caller-chosen slot; scheduled_at is null until booked, so a booking must supply a
+  // time. With no time to book at, treat it as unbookable rather than crashing on new Date(null).
   const effective = at ?? existing.scheduledAt;
-  if (new Date(effective).getTime() < Date.now()) {
+  if (!effective || new Date(effective).getTime() < Date.now()) {
     return { ok: false, reason: "in_past" };
   }
   return { ok: false, reason: "conflict" };

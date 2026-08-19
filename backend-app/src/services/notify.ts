@@ -9,6 +9,8 @@ import { formatSpoken } from "../lib/spoken.js";
 // Sent when a booking succeeds (agent or dashboard): a warm confirmation with the time. Uses
 // our own SMTP so it doesn't depend on Cal.com being configured. Best-effort.
 export async function sendBookingConfirmation(intake: IntakeRecord): Promise<boolean> {
+  // Only meaningful once a time is confirmed — scheduled_at is null until the agent books.
+  if (!intake.scheduledAt) return false;
   const name = intake.name || "there";
   const when = formatSpoken(intake.scheduledAt, env.schedule.timezone);
   const subject = "Your TecAce consultation is confirmed";

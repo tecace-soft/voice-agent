@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { deleteClient, listIntakes } from "../api/backend";
 import type { IntakeRecord, IntakeStatus } from "../api/types";
-import { STATUS_LABEL, formatDateTime, formatLanguage } from "../lib";
+import { STATUS_LABEL, formatDateShort, formatDateTime, formatLanguage } from "../lib";
 import { AsyncState, StatusBadge } from "../ui";
 
 const STATUSES: IntakeStatus[] = ["new", "contacted", "booked", "unreachable", "canceled"];
@@ -102,7 +102,7 @@ export function ClientsPage() {
                 <tr>
                   <th>Client</th>
                   <th>Language</th>
-                  <th>Requested time</th>
+                  <th>Requested / Booked</th>
                   <th>Purpose</th>
                   <th>Status</th>
                   <th>Notes</th>
@@ -122,7 +122,16 @@ export function ClientsPage() {
                         <span className="lang-tag">{formatLanguage(r.language)}</span>
                       </td>
                       <td>
-                        <div>{formatDateTime(r.scheduledAt)}</div>
+                        {r.scheduledAt ? (
+                          <div>{formatDateTime(r.scheduledAt)}</div>
+                        ) : r.requestedDate ? (
+                          <div>
+                            {formatDateShort(r.requestedDate)}
+                            <span className="muted"> · time TBD</span>
+                          </div>
+                        ) : (
+                          <div className="muted">—</div>
+                        )}
                         {r.callbackAfter && (
                           <div className="callback-line">
                             Callback {formatDateTime(r.callbackAfter)}

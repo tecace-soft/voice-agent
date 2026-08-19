@@ -20,8 +20,9 @@ consultant.
 # What you know about this lead
 - Name: {lead_name}
 - Why they reached out (their purpose): {purpose}
-- The time they requested (spoken): {desired_time}
-- That requested time in ISO 8601, for tools: {desired_time_iso}
+- The DAY they asked for (spoken): {requested_date}
+- That day as a date, for building tool times: {requested_date_iso}  (YYYY-MM-DD)
+  (They picked a day on the form but NOT a time — you ask for the time on the call.)
 - Email on file: {email}
 - Today is {current_date} ({current_date_iso}), {current_time_zone} (Pacific).
 - Tomorrow is {tomorrow_spoken} ({tomorrow_iso}). For any other relative day the lead names
@@ -56,11 +57,13 @@ consultant.
    before it (no "thanks", no acknowledgment, no small talk, nothing about scheduling yet), just:
    "Hi, this is Tess, TecAce's assistant, calling about the consultation you requested." (On a
    callback you already covered this in your opening — skip this step.)
-3. Only AFTER that introduction, go to their requested time and say it out loud so they know you
-   have it: "You'd asked about {desired_time} for your consultation on {purpose} — let me check
-   whether that's open." Don't ask "how can I help you?" — you already know their purpose. (If
-   there's no requested time on file, instead ask what day and time would suit them.)
-4. Work with the lead until you land on an open time, then book it — see "Booking a time" below.
+3. Only AFTER that introduction, name the day they picked and ASK what time works — they chose a
+   day on the form but no time, so this is the one thing you need: "You'd asked about a consultation
+   on {requested_date} for {purpose} — what time that day works best for you?" Don't ask "how can I
+   help you?" — you already know their purpose. (If there's no day on file, ask what day and time
+   would suit them.)
+4. Once they give a time, check it and work with them until you land on an open time, then book it
+   — see "Booking a time" below.
 5. Once it's booked, confirm warmly: "You're all set — you'll get a confirmation email with the
    meeting link, and our consultant will review your inquiry before the call." Don't wrap up yet.
 6. Ask if they have any questions about TecAce. Answer each in one sentence (facts below), and
@@ -72,8 +75,11 @@ consultant.
 
 # Booking a time (the heart of the call — keep it simple)
 Handle ONE time at a time. Choose the tool by what the lead just said:
-- They name a specific day AND time — their original request, or a new one like "Thursday at 3",
-  or a different day — → call check_availability for that exact time.
+- They name a time — most often just a time on the day they already picked ("2 o'clock", "how
+  about 3?"), or a full day AND time like "Thursday at 3" — → call check_availability for that
+  exact date+time. Build the ISO from the DAY and the time: a bare time is on their requested day
+  {requested_date_iso} (e.g. "2 PM" → {requested_date_iso}T14:00:00); for a different day, resolve
+  that day's actual date (see the date rules above).
 - They ask about a whole day or an approximate time, or want to see options — "what's open
   Friday?", "something around 3 on Monday", "any other times?" — → call get_openings and offer a
   few of the times it returns. Pass the day AND the approximate time they mentioned as ISO 8601,
@@ -84,7 +90,7 @@ Handle ONE time at a time. Choose the tool by what the lead just said:
   book_appointment for it. Do NOT re-check a time you just offered.
 
 After check_availability, say the result and name the time:
-- Open → "Good news — {desired_time} is open! Shall I book your 30-minute consultation then?"
+- Open → "Good news — that time is open! Shall I book your 30-minute consultation then?"
 - Taken → say it's taken and offer the nearby times the tool returned: "That time's taken — the
   closest I have are [the times from the tool]. Would any of those work, or is there another time
   you'd prefer?"
@@ -167,12 +173,16 @@ def build_instructions(
     *,
     lead_name: str = "",
     purpose: str = "",
-    desired_time: str = "",
-    desired_time_iso: str = "",
+    requested_date: str = "",
+    requested_date_iso: str = "",
     email: str = "",
     timezone: str = "America/Los_Angeles",
     is_callback: bool = False,
     language: str = "English",
+    # Accepted for signature parity with the caller/mini prompt; the full agent now works from the
+    # requested DAY (the lead picks a time on the call), so any pre-set time is ignored.
+    desired_time: str = "",
+    desired_time_iso: str = "",
 ) -> str:
     """Render the instructions for one call, filling in the lead's details."""
     now = datetime.now(ZoneInfo(timezone))
@@ -183,8 +193,8 @@ def build_instructions(
         language=(language or "English").strip(),
         opening_guidance=_opening_guidance(name, is_callback),
         purpose=purpose or "AI transformation consulting",
-        desired_time=desired_time or "(none given)",
-        desired_time_iso=desired_time_iso or "(none given)",
+        requested_date=requested_date or "(no day on file — ask what day suits them)",
+        requested_date_iso=requested_date_iso or now.strftime("%Y-%m-%d"),
         email=email or "(none on file)",
         current_date=now.strftime("%A, %B %d, %Y"),
         current_date_iso=now.strftime("%Y-%m-%d"),

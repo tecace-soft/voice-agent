@@ -61,6 +61,7 @@ export function CalendarPage() {
   const countByDay = useMemo(() => {
     const map: Record<string, number> = {};
     for (const b of booked) {
+      if (!b.scheduledAt) continue; // no confirmed time yet (booked once the agent sets one)
       if (isPast(b.scheduledAt)) continue; // count only bookings that haven't happened yet
       const day = pacificDate(b.scheduledAt);
       map[day] = (map[day] ?? 0) + 1;

@@ -45,17 +45,33 @@ def _spoken_time(iso: str, tz: str) -> str:
     return f"{dt.strftime('%A, %B')} {dt.day} at {clock}"
 
 
+def _spoken_date(ymd: str) -> str:
+    """A 'YYYY-MM-DD' date as a spoken-friendly day, e.g. 'Friday, August 15'."""
+    try:
+        d = datetime.date.fromisoformat(ymd)
+    except ValueError:
+        return ymd
+    return f"{d.strftime('%A, %B')} {d.day}"
+
+
 def lead_from_intake(intake: dict, tz: str) -> tuple[dict, str]:
     """Build the call's lead dict (Stream parameters) and the phone number from a backend intake."""
-    iso = str(intake.get("scheduledAt", ""))
+    # The form now collects only a DAY; the specific time is captured by the agent on the call.
+    # scheduled_at is null until the agent books, so `requestedDate` is what the lead asked for.
+    req_iso = str(intake.get("requestedDate", "") or "")
+    booked_iso = str(intake.get("scheduledAt", "") or "")
     lead = {
         "intake_id": str(intake.get("id", "")),
         "lead_name": str(intake.get("name", "")),
         "email": str(intake.get("email", "")),
         "purpose": str(intake.get("purpose", "")),
         "language": str(intake.get("language", "")),
-        "desired_time": _spoken_time(iso, tz) if iso else "",
-        "dateTime": iso,
+        # The day the lead wants (the agent asks what time that day).
+        "requested_date": _spoken_date(req_iso) if req_iso else "",
+        "requested_date_iso": req_iso,
+        # Kept for backward compat; empty for a new lead (no time chosen on the form).
+        "desired_time": _spoken_time(booked_iso, tz) if booked_iso else "",
+        "dateTime": booked_iso,
     }
     # A callbackAfter means we already reached this lead and they asked us to call back — so the
     # agent should skip the cold intro and get to the point. First attempts have no callbackAfter.

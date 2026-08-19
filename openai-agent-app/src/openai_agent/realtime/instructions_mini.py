@@ -90,6 +90,10 @@ def build_instructions(
     timezone: str = "America/Los_Angeles",
     is_callback: bool = False,
     language: str = "English",
+    # Accepted for signature parity with instructions.py (the full agent's date-first flow); the
+    # mini prompt still uses desired_time and is not part of this update, so these are ignored.
+    requested_date: str = "",
+    requested_date_iso: str = "",
 ) -> str:
     """Render the mini-tuned instructions for one call. Same signature as instructions.py."""
     now = datetime.now(ZoneInfo(timezone))

@@ -57,6 +57,8 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     instructions = build(
         lead_name=params.get("lead_name", ""),
         purpose=params.get("purpose", ""),
+        requested_date=params.get("requested_date", ""),
+        requested_date_iso=params.get("requested_date_iso", ""),
         desired_time=params.get("desired_time", ""),
         desired_time_iso=params.get("dateTime", ""),
         email=params.get("email", ""),

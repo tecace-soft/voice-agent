@@ -27,7 +27,8 @@ export async function initDb(): Promise<void> {
       email        TEXT NOT NULL,
       phone_number TEXT NOT NULL,
       purpose      TEXT NOT NULL DEFAULT '',
-      scheduled_at TIMESTAMPTZ NOT NULL,
+      requested_date DATE,
+      scheduled_at TIMESTAMPTZ,
       status       TEXT NOT NULL DEFAULT 'new',
       notes        TEXT,
       transcript   TEXT,
@@ -59,6 +60,14 @@ export async function initDb(): Promise<void> {
   // `transcript` = the full text of the agent's call with this lead (both sides), written at
   // call end so the call is reviewable in the dashboard. Null until a call has happened.
   await sql`ALTER TABLE intakes ADD COLUMN IF NOT EXISTS transcript TEXT`;
+  // `requested_date` = the day the lead picked on the form. The form no longer collects a specific
+  // time — the agent asks for it on the call — so `scheduled_at` now means the CONFIRMED booked
+  // time and is NULL until the agent books. Drop the old NOT NULL and backfill the date from any
+  // legacy rows (which stored the requested time in scheduled_at).
+  await sql`ALTER TABLE intakes ADD COLUMN IF NOT EXISTS requested_date DATE`;
+  await sql`ALTER TABLE intakes ALTER COLUMN scheduled_at DROP NOT NULL`;
+  await sql`UPDATE intakes SET requested_date = scheduled_at::date
+              WHERE requested_date IS NULL AND scheduled_at IS NOT NULL`;
   // Reconcile the allowed-status constraint (drop + re-add keeps it correct as the
   // lifecycle grows — existing values are always a subset of the new list, so it's safe).
   await sql`ALTER TABLE intakes DROP CONSTRAINT IF EXISTS intakes_status_check`;
@@ -93,7 +102,7 @@ async function migrateIfNeeded(): Promise<void> {
   try {
     // Cheap, lock-free probe of the newest expected column. If it selects, the schema is current
     // and we skip all DDL. NOTE: when adding a new column to initDb, update this probe column too.
-    await sql`SELECT transcript FROM intakes LIMIT 1`;
+    await sql`SELECT requested_date FROM intakes LIMIT 1`;
     return;
   } catch {
     // Table or a column is missing → run the full idempotent setup (adds/updates as needed).

@@ -2,8 +2,12 @@
 
     python scripts/place_call.py +15551234567 --name "David Kim" \
         --purpose "AI adoption for our logistics operations" \
-        --datetime 2026-08-15T14:00:00 --desired-time "Friday, August 15 at 2 PM" \
+        --requested-date-iso 2026-08-15 --requested-date "Friday, August 15" \
         --intake-id <uuid>
+
+The lead now picks only a DAY on the form; the agent asks for the time on the call, so pass
+--requested-date / --requested-date-iso. (--datetime / --desired-time still work for exercising an
+already-timed lead, but the full agent ignores them.)
 
 The server (run_server.py) must already be running and reachable at PUBLIC_HOST. --intake-id
 should be a real lead id if you want booking/callback/mark-outcome to write back to the backend;
@@ -26,8 +30,10 @@ def main() -> int:
     parser.add_argument("--purpose", default="", help="What they reached out about.")
     parser.add_argument("--email", default="", help="Lead email on file.")
     parser.add_argument("--language", default="", help="Preferred language (e.g. English, Korean).")
-    parser.add_argument("--desired-time", default="", help="Requested time, spoken form.")
-    parser.add_argument("--datetime", default="", help="Requested time, ISO 8601 (for tools).")
+    parser.add_argument("--requested-date", default="", help="Requested day, spoken form (e.g. 'Friday, August 15').")
+    parser.add_argument("--requested-date-iso", default="", help="Requested day, YYYY-MM-DD (for building tool times).")
+    parser.add_argument("--desired-time", default="", help="Pre-set time, spoken form (legacy; full agent ignores).")
+    parser.add_argument("--datetime", default="", help="Pre-set time, ISO 8601 (legacy; full agent ignores).")
     parser.add_argument("--intake-id", default="", help="Backend intake id (enables write-back).")
     parser.add_argument(
         "--callback",
@@ -49,6 +55,8 @@ def main() -> int:
         "purpose": args.purpose,
         "email": args.email,
         "language": args.language,
+        "requested_date": args.requested_date,
+        "requested_date_iso": args.requested_date_iso,
         "desired_time": args.desired_time,
         "dateTime": args.datetime,
     }

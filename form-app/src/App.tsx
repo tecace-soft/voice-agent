@@ -5,52 +5,25 @@ import type { IntakeInput } from "./api/types";
 
 const LANGUAGES = ["English", "Korean"];
 
-// Bookable start times (spa hours), as { value: "HH:MM", label: "9:00 AM" }. A dropdown of
-// explicit slots — NOT <input type="datetime-local"> — because that widget silently defaults
-// the time to 12:00 AM, so anyone who picks only a date submits a midnight appointment. This
-// forces a real time to be chosen. Covers 9:00 AM–4:30 PM in 30-minute steps.
-const TIME_SLOTS: { value: string; label: string }[] = [];
-for (let m = 9 * 60; m <= 16 * 60 + 30; m += 30) {
-  const h = Math.floor(m / 60);
-  const mm = m % 60;
-  const value = `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-  const label = `${h % 12 || 12}:${String(mm).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
-  TIME_SLOTS.push({ value, label });
-}
-
-// We constrain the pickers to the future against the BUSINESS timezone (matches the backend's
-// SCHEDULE_TIMEZONE): the submitted wall-clock time is read in that zone, so "today" and "now"
-// here line up with how the slot is actually interpreted — a user in another timezone can't
-// pick a slot that's really already past in Pacific.
+// We constrain the date picker to the future against the BUSINESS timezone (matches the backend's
+// SCHEDULE_TIMEZONE), so a visitor in another timezone can't pick a day that's already past in
+// Pacific. The specific appointment TIME is not chosen here anymore — the agent asks for it on the
+// call — so the form only collects a date.
 const TIME_ZONE = "America/Los_Angeles";
 
-function nowInBusinessZone(): { today: string; minutes: number } {
-  const now = new Date();
-  const today = new Intl.DateTimeFormat("en-CA", {
+// Today's date ("YYYY-MM-DD") in the business timezone.
+function todayInBusinessZone(): string {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone: TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(now); // en-CA => "YYYY-MM-DD"
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: TIME_ZONE,
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(now);
-  const at = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? "0");
-  return { today, minutes: at("hour") * 60 + at("minute") };
+  }).format(new Date());
 }
 
-const slotToMinutes = (hhmm: string): number => {
-  const [h = 0, m = 0] = hhmm.split(":").map(Number);
-  return h * 60 + m;
-};
-
-// The form's local state. `date` (YYYY-MM-DD) and `time` (HH:MM) are chosen separately and
-// combined into a naive wall-clock `dateTime` on submit, which the backend reads in the spa's
-// timezone.
-type FormState = Omit<IntakeInput, "dateTime"> & { date: string; time: string };
+// The form's local state. Only a `date` (YYYY-MM-DD) is collected; it's sent as `requestedDate`
+// on submit, and the agent captures the specific time on the call.
+type FormState = Omit<IntakeInput, "requestedDate"> & { date: string };
 
 const EMPTY: FormState = {
   language: "English",
@@ -59,7 +32,6 @@ const EMPTY: FormState = {
   phoneNumber: "",
   purpose: "",
   date: "",
-  time: "",
 };
 
 export function App() {
@@ -78,21 +50,14 @@ export function App() {
     setError(null);
     setSubmitting(true);
     try {
-      const { date, time, ...rest } = form;
-      // Guard against a past day/time even if the date `min` / slot filter was bypassed (e.g.
-      // typed in). The backend won't book a past slot anyway; catch it here with a clear message.
-      const nowBiz = nowInBusinessZone();
-      if (date < nowBiz.today || (date === nowBiz.today && slotToMinutes(time) <= nowBiz.minutes)) {
-        setError("Please choose a time in the future.");
+      const { date, ...rest } = form;
+      // Guard against a past day even if the input's `min` was bypassed (e.g. typed in). The agent
+      // won't book a past time anyway; catch it here with a clear message.
+      if (date < todayInBusinessZone()) {
+        setError("Please choose a date that isn't in the past.");
         return;
       }
-      const input: IntakeInput = {
-        ...rest,
-        // Combine the chosen date + time into a naive wall-clock string. Sent AS-IS (no
-        // browser-timezone conversion) so the backend interprets it in the spa's timezone —
-        // "2 PM" always means 2 PM at the spa, regardless of the visitor's browser timezone.
-        dateTime: `${date}T${time}:00`,
-      };
+      const input: IntakeInput = { ...rest, requestedDate: date };
       await submitIntake(input);
       setSubmitted(true);
       setForm(EMPTY);
@@ -107,30 +72,14 @@ export function App() {
     }
   }
 
-  // Constrain the pickers to the future. Dates before today are blocked by the input's `min`;
-  // when today is selected, only slots later than "now" (business timezone) are offered.
-  const now = nowInBusinessZone();
-  const isToday = form.date === now.today;
-  const availableSlots = isToday
-    ? TIME_SLOTS.filter((s) => slotToMinutes(s.value) > now.minutes)
-    : TIME_SLOTS;
-  const noSlotsToday = isToday && availableSlots.length === 0;
-
-  const onDateChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const date = e.target.value;
-    setForm((prev) => {
-      // Clear a now-past time if they switch to today and their chosen slot is already behind us.
-      const keepTime =
-        date !== now.today || (prev.time !== "" && slotToMinutes(prev.time) > now.minutes);
-      return { ...prev, date, time: keepTime ? prev.time : "" };
-    });
-  };
+  // The date picker is constrained to today or later (business timezone).
+  const today = todayInBusinessZone();
 
   if (submitted) {
     return (
       <main className="card success">
         <h1>Thank you!</h1>
-        <p>We've received your request and will call you back at your chosen time.</p>
+        <p>We've received your request and will call you back to set up a time on your chosen day.</p>
         <button type="button" onClick={() => setSubmitted(false)}>
           Submit another request
         </button>
@@ -141,7 +90,7 @@ export function App() {
   return (
     <main className="card">
       <h1>Schedule Your Appointment</h1>
-      <p className="subtitle">Tell us a bit about you and when to call.</p>
+      <p className="subtitle">Tell us a bit about you and the day you'd like — we'll call to set a time.</p>
 
       {error && <div className="error">{error}</div>}
 
@@ -196,24 +145,10 @@ export function App() {
             id="date"
             type="date"
             required
-            min={now.today}
+            min={today}
             value={form.date}
-            onChange={onDateChange}
+            onChange={update("date")}
           />
-        </div>
-
-        <div className="field">
-          <label htmlFor="time">Preferred Time</label>
-          <select id="time" required value={form.time} onChange={update("time")}>
-            <option value="" disabled>
-              {noSlotsToday ? "No times left today — pick another day" : "Select a time…"}
-            </option>
-            {availableSlots.map((slot) => (
-              <option key={slot.value} value={slot.value}>
-                {slot.label}
-              </option>
-            ))}
-          </select>
         </div>
 
         <button type="submit" disabled={submitting}>

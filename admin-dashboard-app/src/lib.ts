@@ -40,6 +40,17 @@ export function formatDateTime(iso: string): string {
   }).format(new Date(iso));
 }
 
+// "Fri, Aug 15" from a "YYYY-MM-DD" date string (no time — the day the lead requested).
+export function formatDateShort(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1)).toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 // "Thursday, August 1, 2026" from a "YYYY-MM-DD" date string.
 export function formatDateLong(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number);

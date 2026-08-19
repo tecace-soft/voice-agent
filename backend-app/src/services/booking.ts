@@ -30,12 +30,14 @@ export async function bookExisting(id: string, dateTime?: string): Promise<BookR
 }
 
 // Create a brand-new lead (an inbound caller with no pre-existing intake) and book it at
-// `input.dateTime` in one step. Returns the created+booked record, or a book failure.
+// `dateTime` in one step. `input.requestedDate` records the day; `dateTime` is the confirmed
+// time to book at. Returns the created+booked record, or a book failure.
 export async function createAndBook(
   input: IntakeInput,
+  dateTime: string,
 ): Promise<{ ok: true; intake: IntakeRecord } | { ok: false; reason: string }> {
   const created = await insertIntake(input);
-  const result = await bookExisting(created.id, input.dateTime);
+  const result = await bookExisting(created.id, dateTime);
   if (!result.ok) return { ok: false, reason: result.reason };
   return { ok: true, intake: result.intake };
 }
