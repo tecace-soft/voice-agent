@@ -27,10 +27,11 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001 — surface the login/connection error plainly
         print(f"imap: FAIL — {exc}")
         return 1
-    total_wavs = sum(len(v.attachments) for v in voicemails)
-    print(f"imap: ok — {len(voicemails)} voicemail email(s), {total_wavs} .wav attachment(s).")
+    total_audio = sum(len(v.attachments) for v in voicemails)
+    print(f"imap: ok — {len(voicemails)} voicemail email(s), {total_audio} audio attachment(s).")
     for v in voicemails[:5]:
-        print(f"  - {v.from_addr}: {v.subject or '(no subject)'} [{len(v.attachments)} wav]")
+        kinds = ", ".join(a.content_type for a in v.attachments) or "no audio"
+        print(f"  - {v.from_addr}: {v.subject or '(no subject)'} [{kinds}]")
     return 0
 
 

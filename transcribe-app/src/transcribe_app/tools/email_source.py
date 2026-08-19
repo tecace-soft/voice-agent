@@ -1,6 +1,6 @@
-"""Read voicemail emails and pull their .wav attachments — over plain IMAP so it works with
-any provider (Outlook.com for our testing, Gmail, Yahoo, a corporate server): the connection
-details are just config.
+"""Read voicemail emails and pull their audio attachments (.wav, .mp3, and other formats) —
+over plain IMAP so it works with any provider (Gmail for our testing, Outlook, Yahoo, a
+corporate server): the connection details are just config.
 
 We deliberately do NOT mutate the mailbox (no moving, deleting, or marking read). Idempotency
 lives in a local state file keyed by Message-ID + attachment name (see pipeline.py), so a
@@ -12,6 +12,7 @@ from __future__ import annotations
 import email
 import imaplib
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from email.header import decode_header, make_header
@@ -22,16 +23,47 @@ from ..config import Config
 
 log = logging.getLogger(__name__)
 
-# What counts as a voicemail recording. Providers label .wav inconsistently, so match on the
-# MIME type OR the filename extension.
-_WAV_CONTENT_TYPES = {"audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave"}
-_WAV_EXTENSIONS = (".wav",)
+# What counts as a voicemail recording. Voicemail-to-email varies a lot by provider, so we accept
+# ANY audio attachment — matched by a known audio extension OR an `audio/*` content-type (some
+# providers send the file with a generic content-type like application/octet-stream, so the
+# extension is the more reliable signal). The mapped value is the MIME type we hand to Gemini.
+# Gemini natively supports wav/mp3/aiff/aac/ogg/flac; m4a/mp4/amr are passed as a best guess and
+# may need conversion if Gemini rejects them.
+_EXT_MIME = {
+    ".wav": "audio/wav",
+    ".mp3": "audio/mp3",
+    ".mp": "audio/mp3",   # non-standard extension seen from some voicemail systems; assume mp3
+    ".m4a": "audio/mp4",
+    ".mp4": "audio/mp4",
+    ".aac": "audio/aac",
+    ".ogg": "audio/ogg",
+    ".oga": "audio/ogg",
+    ".flac": "audio/flac",
+    ".aiff": "audio/aiff",
+    ".aif": "audio/aiff",
+    ".amr": "audio/amr",
+}
 
 
 @dataclass(frozen=True)
-class WavAttachment:
+class AudioAttachment:
     filename: str
     data: bytes
+    # The MIME type to hand to Gemini (derived from the extension, or the part's content-type).
+    content_type: str
+
+
+def audio_mime_for(filename: str, declared_type: str | None = None) -> str | None:
+    """The Gemini MIME type for an audio file, or None if it doesn't look like audio. Prefers a
+    known extension (maps to exactly what Gemini expects); falls back to a declared `audio/*`
+    content-type."""
+    ext = os.path.splitext(filename.lower())[1]
+    if ext in _EXT_MIME:
+        return _EXT_MIME[ext]
+    ctype = (declared_type or "").lower()
+    if ctype.startswith("audio/"):
+        return ctype
+    return None
 
 
 @dataclass
@@ -40,7 +72,7 @@ class VoicemailEmail:
     from_addr: str
     subject: str
     date: str
-    attachments: list[WavAttachment] = field(default_factory=list)
+    attachments: list[AudioAttachment] = field(default_factory=list)
 
 
 def _decode(value: str | None) -> str:
@@ -53,35 +85,33 @@ def _decode(value: str | None) -> str:
         return value.strip()
 
 
-def _is_wav(part: Message, filename: str) -> bool:
-    ctype = (part.get_content_type() or "").lower()
-    if ctype in _WAV_CONTENT_TYPES:
-        return True
-    return filename.lower().endswith(_WAV_EXTENSIONS)
-
-
-def _wav_attachments(msg: Message) -> list[WavAttachment]:
-    out: list[WavAttachment] = []
+def _audio_attachments(msg: Message) -> list[AudioAttachment]:
+    out: list[AudioAttachment] = []
     for part in msg.walk():
         if part.is_multipart():
             continue
         filename = _decode(part.get_filename())
         # An attachment is either an explicit attachment disposition or just a named part;
-        # accept both as long as it looks like a .wav.
+        # accept both as long as it looks like audio.
         if not filename and (part.get_content_disposition() or "") != "attachment":
             continue
-        if not _is_wav(part, filename):
+        declared = part.get_content_type() or ""
+        mime = audio_mime_for(filename, declared)
+        if not mime:
             continue
         payload = part.get_payload(decode=True)
         if not payload:
             continue
-        out.append(WavAttachment(filename=filename or "voicemail.wav", data=payload))
+        name = filename or "voicemail"
+        # Log the declared content-type too, so an unexpected format (e.g. a bare .mp) is visible.
+        log.info("audio attachment %s — declared %r, sending as %s", name, declared, mime)
+        out.append(AudioAttachment(filename=name, data=payload, content_type=mime))
     return out
 
 
 class EmailSource:
     """A minimal IMAP reader: connect, search for candidate messages, return the ones that
-    carry .wav attachments. Provider-agnostic — driven entirely by Config."""
+    carry an audio attachment. Provider-agnostic — driven entirely by Config."""
 
     def __init__(self, cfg: Config) -> None:
         self._cfg = cfg
@@ -98,7 +128,7 @@ class EmailSource:
                 vm = self._load(conn, num)
                 if vm and vm.attachments:
                     voicemails.append(vm)
-            log.info("%d message(s) carry a .wav attachment", len(voicemails))
+            log.info("%d message(s) carry an audio attachment", len(voicemails))
             return voicemails
         finally:
             try:
@@ -148,5 +178,5 @@ class EmailSource:
             from_addr=parseaddr(_decode(msg.get("From")))[1],
             subject=_decode(msg.get("Subject")),
             date=_decode(msg.get("Date")),
-            attachments=_wav_attachments(msg),
+            attachments=_audio_attachments(msg),
         )

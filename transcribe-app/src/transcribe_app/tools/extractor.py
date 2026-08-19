@@ -1,9 +1,10 @@
 """Transcribe a voicemail and pull its important fields — one Google Gemini call, audio in.
 
-Gemini is multimodal, so the `.wav` goes straight in and both the verbatim transcript and the
-structured fields come back together. We use Gemini's structured output (a response schema the
-model must satisfy) so every row has the same, parseable shape, and put `transcript` first in
-the schema so the model writes the transcript before reading fields off it.
+Gemini is multimodal, so the recording (any supported audio format) goes straight in and both
+the verbatim transcript and the structured fields come back together. We use Gemini's structured
+output (a response schema the model must satisfy) so every row has the same, parseable shape,
+and put `transcript` first in the schema so the model writes the transcript before reading
+fields off it.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from google import genai
 from google.genai import types
 
 from ..config import Config
-from .email_source import WavAttachment
+from .email_source import AudioAttachment
 
 log = logging.getLogger(__name__)
 
@@ -105,13 +106,13 @@ class Extractor:
             self._client = genai.Client(api_key=self._cfg.gemini_api_key)
         return self._client
 
-    def extract(self, attachment: WavAttachment) -> VoicemailInfo:
+    def extract(self, attachment: AudioAttachment) -> VoicemailInfo:
         """Transcribe and extract one voicemail in a single Gemini call: the audio goes in, a
         transcript plus the structured fields come back. Empty audio short-circuits to an empty
         record so we don't spend a model call on nothing."""
         if not attachment.data:
             return VoicemailInfo(None, None, None, None, False, "")
-        audio = types.Part.from_bytes(data=attachment.data, mime_type="audio/wav")
+        audio = types.Part.from_bytes(data=attachment.data, mime_type=attachment.content_type)
         response = self._gemini().models.generate_content(
             model=self._cfg.extract_model,
             contents=[audio],

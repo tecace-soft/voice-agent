@@ -1,7 +1,8 @@
 # transcribe-app
 
-Reads **voicemail `.wav` attachments from email**, transcribes each one, extracts the
-important details, and appends a row per voicemail to a **Google Sheet**.
+Reads **voicemail audio attachments from email** (`.wav`, `.mp3`, `.m4a`, and other formats),
+transcribes each one, extracts the important details, and appends a row per voicemail to a
+**Google Sheet**.
 
 It's a batch job: run it by hand or on a schedule. It's idempotent — voicemails it has already
 handled are skipped — and it never modifies the mailbox.
@@ -9,16 +10,16 @@ handled are skipped — and it never modifies the mailbox.
 ## Pipeline
 
 ```
-IMAP inbox ──▶ .wav attachments ──▶ Gemini: transcript + fields ──▶ Google Sheet row
+IMAP inbox ──▶ audio attachments ──▶ Gemini: transcript + fields ──▶ Google Sheet row
  (any provider)   (one per voicemail)      (one multimodal call)        (one row each)
 ```
 
-Each `.wav` is transcribed and extracted **independently** in a single Gemini call, so one
+Each recording is transcribed and extracted **independently** in a single Gemini call, so one
 voicemail's audio never bleeds into another's transcript or row.
 
 | Step | Module | Service |
 | --- | --- | --- |
-| Find voicemail mail, pull `.wav`s | `tools/email_source.py` | generic IMAP (Outlook.com, Gmail, Yahoo, …) |
+| Find voicemail mail, pull audio (`.wav`/`.mp3`/…) | `tools/email_source.py` | generic IMAP (Gmail, Outlook, Yahoo, …) |
 | Transcribe `.wav` + extract caller name / phone / requested time / summary | `tools/extractor.py` | Google Gemini (audio in, structured output) |
 | Append a row | `tools/sheets.py` | Google Sheets (service account) |
 | Orchestrate + idempotency | `pipeline.py` | local `.processed.json` |
@@ -33,7 +34,7 @@ transcribe-app/
   src/transcribe_app/
     config/settings.py     # Config.load(), all env-backed settings + IMAP provider presets
     tools/                 # one module per external service
-      email_source.py      #   IMAP: find voicemail mail, pull .wav attachments
+      email_source.py      #   IMAP: find voicemail mail, pull audio attachments (.wav/.mp3/…)
       extractor.py         #   Google Gemini: audio -> transcript + structured fields (one call)
       sheets.py            #   Google Sheets: append a row
     pipeline.py            # orchestrates the four tools; per-file isolation + idempotency

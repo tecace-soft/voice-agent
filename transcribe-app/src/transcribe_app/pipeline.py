@@ -21,7 +21,7 @@ from .tools import (
     SheetWriter,
     VoicemailEmail,
     VoicemailInfo,
-    WavAttachment,
+    AudioAttachment,
 )
 
 log = logging.getLogger(__name__)
@@ -56,11 +56,11 @@ class ProcessedStore:
         self._path.write_text(json.dumps(sorted(self._keys), indent=0), encoding="utf-8")
 
 
-def _key(vm: VoicemailEmail, att: WavAttachment) -> str:
+def _key(vm: VoicemailEmail, att: AudioAttachment) -> str:
     return f"{vm.message_id}::{att.filename}"
 
 
-def build_row(vm: VoicemailEmail, att: WavAttachment, info: VoicemailInfo) -> list[str]:
+def build_row(vm: VoicemailEmail, att: AudioAttachment, info: VoicemailInfo) -> list[str]:
     """One spreadsheet row — column order must match sheets.HEADER."""
     return [
         datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -104,7 +104,7 @@ class Pipeline:
                 summary.processed += 1
         return summary
 
-    def _handle(self, vm: VoicemailEmail, att: WavAttachment) -> None:
+    def _handle(self, vm: VoicemailEmail, att: AudioAttachment) -> None:
         info = self._extractor.extract(att)  # transcribe + extract in one Gemini call
         self._sheet.append_row(build_row(vm, att, info))
         log.info("uploaded voicemail from %s (%s)", info.caller_name or vm.from_addr, att.filename)
