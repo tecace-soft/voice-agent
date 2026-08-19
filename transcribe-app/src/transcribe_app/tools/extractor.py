@@ -47,9 +47,10 @@ _SCHEMA = {
 }
 
 _SYSTEM = (
-    "You extract structured details from a voicemail left for Olympus Spa, whose agent Tess "
-    "calls leads back to book spa appointments. Read the transcript and fill in only what the "
-    "caller actually said — use null for anything not mentioned. Do not invent details."
+    "You extract structured details from a voicemail a caller left for a business — they may be "
+    "asking to book an appointment, requesting a callback, or leaving a question. Read the "
+    "transcript and fill in only what the caller actually said — use null for anything not "
+    "mentioned. Do not invent details."
 )
 
 
