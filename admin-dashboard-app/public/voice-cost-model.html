@@ -1,0 +1,899 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Interactive per-minute cost calculator comparing self-hosted OpenAI Realtime (full & mini), a cascaded GPT pipeline, and managed Retell.">
+<title>Voice Stack Cost Model</title>
+<style>
+  :root {
+    --ground: #f6f8fb;
+    --surface: #ffffff;
+    --surface-2: #eef2f7;
+    --ink: #16202e;
+    --muted: #5b6b7f;
+    --hair: #e1e7ef;
+    --accent: #0e7c86;
+    --accent-ink: #0b5e66;
+    --accent-soft: rgba(14, 124, 134, 0.10);
+    --good: #1f8a5b;
+    --good-soft: rgba(31, 138, 91, 0.12);
+    --warn: #b07a1c;
+    --warn-soft: rgba(176, 122, 28, 0.14);
+    --crit: #c24a3b;
+    --crit-soft: rgba(194, 74, 59, 0.12);
+    --shadow: 0 1px 2px rgba(16, 32, 46, 0.04), 0 8px 24px rgba(16, 32, 46, 0.06);
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0d131b;
+      --surface: #151e29;
+      --surface-2: #1e2937;
+      --ink: #e7edf4;
+      --muted: #90a0b4;
+      --hair: #263341;
+      --accent: #35b7c2;
+      --accent-ink: #6fd3db;
+      --accent-soft: rgba(53, 183, 194, 0.13);
+      --good: #46b584;
+      --good-soft: rgba(70, 181, 132, 0.15);
+      --warn: #d19a3e;
+      --warn-soft: rgba(209, 154, 62, 0.16);
+      --crit: #e0705e;
+      --crit-soft: rgba(224, 112, 94, 0.16);
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0d131b;
+    --surface: #151e29;
+    --surface-2: #1e2937;
+    --ink: #e7edf4;
+    --muted: #90a0b4;
+    --hair: #263341;
+    --accent: #35b7c2;
+    --accent-ink: #6fd3db;
+    --accent-soft: rgba(53, 183, 194, 0.13);
+    --good: #46b584;
+    --good-soft: rgba(70, 181, 132, 0.15);
+    --warn: #d19a3e;
+    --warn-soft: rgba(209, 154, 62, 0.16);
+    --crit: #e0705e;
+    --crit-soft: rgba(224, 112, 94, 0.16);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.4);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 40px 24px 72px;
+  }
+
+  /* ---- header ---- */
+  header { margin-bottom: 28px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-size: clamp(28px, 4vw, 40px);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    margin: 0 0 12px;
+    text-wrap: balance;
+    font-weight: 680;
+  }
+  /* NOTE: this file is a STANDALONE copy for Vercel hosting (admin-dashboard-app/public/).
+     The Claude-artifact version omits the html/head/body wrapper because the host adds it.
+     Keep the two in sync if you edit the cost model. */
+  .lede {
+    color: var(--muted);
+    max-width: 62ch;
+    margin: 0;
+    font-size: 15.5px;
+  }
+
+  /* ---- layout ---- */
+  .grid {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 28px;
+    align-items: start;
+    margin-top: 32px;
+  }
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; gap: 24px; }
+    .panel { position: static !important; }
+  }
+
+  /* ---- controls panel ---- */
+  .panel {
+    position: sticky;
+    top: 20px;
+    background: var(--surface);
+    border: 1px solid var(--hair);
+    border-radius: 14px;
+    padding: 20px 20px 22px;
+    box-shadow: var(--shadow);
+  }
+  .panel h2 {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 4px;
+    font-weight: 600;
+  }
+  .fieldset { border: 0; padding: 0; margin: 0 0 18px; }
+  .fieldset:last-of-type { margin-bottom: 0; }
+  .fieldset > legend {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    padding: 0;
+    margin: 14px 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+  .fieldset > legend::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--hair);
+  }
+  .field { margin-bottom: 12px; }
+  .field label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 13px;
+    color: var(--ink);
+    margin-bottom: 5px;
+    gap: 10px;
+  }
+  .field label .val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--accent-ink);
+    font-variant-numeric: tabular-nums;
+  }
+  input[type="number"], select {
+    width: 100%;
+    padding: 7px 9px;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    background: var(--surface-2);
+    border: 1px solid var(--hair);
+    border-radius: 8px;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  select {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' fill='none' stroke='%235b6b7f' stroke-width='1.5'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    padding-right: 26px;
+  }
+  input[type="number"]:focus, select:focus, input[type="range"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-color: var(--accent);
+  }
+  input[type="range"] {
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: var(--hair);
+    border-radius: 4px;
+    margin: 8px 0 2px;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--surface);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--surface);
+  }
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 13px;
+    cursor: pointer;
+    margin-bottom: 10px;
+  }
+  .toggle-row input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+  .hint { font-size: 11.5px; color: var(--muted); margin: 3px 0 0; }
+
+  /* ---- results ---- */
+  .results { min-width: 0; }
+  .summary {
+    background: var(--surface);
+    border: 1px solid var(--hair);
+    border-radius: 14px;
+    padding: 20px 22px;
+    box-shadow: var(--shadow);
+    margin-bottom: 24px;
+  }
+  .summary .row1 {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    align-items: baseline;
+    margin-bottom: 18px;
+  }
+  .summary .k {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .summary .v {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+
+  /* ranked bars */
+  .bars { display: flex; flex-direction: column; gap: 9px; }
+  .bar {
+    display: grid;
+    grid-template-columns: 148px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+  }
+  .bar .name { color: var(--ink); font-weight: 550; }
+  .bar .name small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; }
+  .track {
+    height: 24px;
+    background: var(--surface-2);
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+  }
+  .fill {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    min-width: 3px;
+  }
+  .bar .amt {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 13.5px;
+    text-align: right;
+    min-width: 92px;
+  }
+  @media (max-width: 560px) {
+    .bar { grid-template-columns: 1fr auto; }
+    .bar .track { grid-column: 1 / -1; order: 3; }
+  }
+
+  /* option cards */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+  }
+  @media (max-width: 680px) { .cards { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--hair);
+    border-radius: 14px;
+    padding: 18px 18px 16px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+  }
+  .card.rank-cheapest { border-color: color-mix(in srgb, var(--good) 45%, var(--hair)); }
+  .card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .card-head h3 {
+    font-size: 15.5px;
+    margin: 0;
+    font-weight: 620;
+    letter-spacing: -0.01em;
+  }
+  .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 3px 7px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .tag.self { background: var(--accent-soft); color: var(--accent-ink); }
+  .tag.managed { background: var(--warn-soft); color: var(--warn); }
+  .rankpill {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    margin-top: 6px;
+    display: inline-block;
+  }
+  .rankpill.cheapest { background: var(--good-soft); color: var(--good); }
+  .rankpill.mid { background: var(--warn-soft); color: var(--warn); }
+  .rankpill.dearest { background: var(--crit-soft); color: var(--crit); }
+
+  .headline {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin: 14px 0 4px;
+    flex-wrap: wrap;
+  }
+  .headline .big {
+    font-family: var(--mono);
+    font-size: 30px;
+    font-weight: 680;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .headline .permo { font-size: 12px; color: var(--muted); }
+  .subline {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 12px;
+  }
+  .subline b { color: var(--ink); font-weight: 600; }
+
+  .items {
+    border-top: 1px solid var(--hair);
+    padding-top: 11px;
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .item {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 10px;
+    align-items: center;
+    font-size: 12.5px;
+  }
+  .item .lbl { color: var(--muted); }
+  .item .share {
+    width: 46px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--surface-2);
+    overflow: hidden;
+  }
+  .item .share i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+  .item .cost {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    text-align: right;
+    min-width: 74px;
+    font-size: 12px;
+  }
+  .item.total .lbl { color: var(--ink); font-weight: 600; }
+  .item.total .cost { font-weight: 700; }
+  .item.total { border-top: 1px dashed var(--hair); padding-top: 7px; margin-top: 2px; }
+
+  .effrow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin: 12px 0 2px;
+  }
+  .chip {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: var(--surface-2);
+    color: var(--muted);
+    font-family: var(--mono);
+    letter-spacing: 0.01em;
+  }
+  .chip b { color: var(--ink); font-weight: 600; }
+
+  /* break-even */
+  .breakeven {
+    margin-top: 24px;
+    background: linear-gradient(180deg, var(--accent-soft), transparent), var(--surface);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--hair));
+    border-radius: 14px;
+    padding: 20px 22px;
+    box-shadow: var(--shadow);
+  }
+  .breakeven h3 {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    margin: 0 0 10px;
+  }
+  .verdict { font-size: 15px; margin: 0 0 8px; line-height: 1.45; }
+  .verdict b { color: var(--accent-ink); }
+  .verdict .save-good { color: var(--good); font-weight: 700; }
+  .verdict .save-bad { color: var(--crit); font-weight: 700; }
+  .be-detail { font-size: 13px; color: var(--muted); margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* rate sheet */
+  details.rates {
+    margin-top: 24px;
+    background: var(--surface);
+    border: 1px solid var(--hair);
+    border-radius: 14px;
+    padding: 4px 22px;
+    box-shadow: var(--shadow);
+  }
+  details.rates summary {
+    cursor: pointer;
+    padding: 16px 0;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  details.rates summary::-webkit-details-marker { display: none; }
+  details.rates summary::before { content: "▸"; color: var(--accent); font-size: 10px; }
+  details.rates[open] summary::before { content: "▾"; }
+  .ratetable { width: 100%; border-collapse: collapse; margin: 4px 0 18px; font-size: 12.5px; }
+  .ratetable th, .ratetable td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--hair); }
+  .ratetable th {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .ratetable td:last-child, .ratetable th:last-child {
+    font-family: var(--mono);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .ratetable td:first-child { color: var(--ink); }
+  .rate-scroll { overflow-x: auto; }
+  .foot {
+    margin-top: 22px;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .foot a { color: var(--accent-ink); }
+  .method {
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.6;
+    margin: 0 0 8px;
+  }
+  code {
+    font-family: var(--mono);
+    font-size: 0.92em;
+    background: var(--surface-2);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Cost &amp; Effectiveness · Outbound Voice Agent</p>
+    <h1>Voice Stack Cost Model</h1>
+    <p class="lede">Itemized, per-minute cost rundowns for four ways to run the TecAce outbound agent — self-hosted OpenAI Realtime (full &amp; mini), a cascaded GPT pipeline, and managed Retell. Plug in your real call volume; everything recomputes live.</p>
+  </header>
+
+  <div class="grid">
+    <!-- ============ CONTROLS ============ -->
+    <form class="panel" id="panel" aria-label="Cost assumptions">
+      <h2>Assumptions</h2>
+
+      <fieldset class="fieldset">
+        <legend>Volume</legend>
+        <div class="field">
+          <label for="callsPerDay">Calls per day <span class="val" id="callsPerDay_v"></span></label>
+          <input type="number" id="callsPerDay" min="0" step="1" value="120">
+        </div>
+        <div class="field">
+          <label for="avgCallMin">Avg call length (min) <span class="val" id="avgCallMin_v"></span></label>
+          <input type="range" id="avgCallMin" min="1" max="15" step="0.5" value="3">
+        </div>
+        <div class="field">
+          <label for="workDays">Working days / month <span class="val" id="workDays_v"></span></label>
+          <input type="number" id="workDays" min="1" max="31" step="1" value="22">
+        </div>
+      </fieldset>
+
+      <fieldset class="fieldset">
+        <legend>Realtime</legend>
+        <div class="field">
+          <label for="cacheEff">Prompt-cache efficiency <span class="val" id="cacheEff_v"></span></label>
+          <input type="range" id="cacheEff" min="0" max="100" step="5" value="70">
+          <p class="hint">Higher caching blunts the context re-billing that makes long realtime calls expensive.</p>
+        </div>
+      </fieldset>
+
+      <fieldset class="fieldset">
+        <legend>Cascade pipeline</legend>
+        <div class="field">
+          <label for="cascadeLLM">LLM</label>
+          <select id="cascadeLLM">
+            <option value="mini" selected>gpt-4o-mini — $0.15/$0.60</option>
+            <option value="gpt4o">gpt-4o — $2.50/$10</option>
+            <option value="gpt5">gpt-5 — $1.25/$10</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="sttModel">Speech-to-text</label>
+          <select id="sttModel">
+            <option value="mini" selected>gpt-4o-mini-transcribe — $0.003/min</option>
+            <option value="full">gpt-4o-transcribe — $0.006/min</option>
+          </select>
+        </div>
+      </fieldset>
+
+      <fieldset class="fieldset">
+        <legend>Platform &amp; infra</legend>
+        <label class="toggle-row" for="teleOn">
+          <input type="checkbox" id="teleOn" checked>
+          Include telephony (Twilio)
+        </label>
+        <div class="field">
+          <label for="telePerMin">Telephony $/min <span class="val" id="telePerMin_v"></span></label>
+          <input type="number" id="telePerMin" min="0" step="0.001" value="0.018">
+        </div>
+        <div class="field">
+          <label for="vpsFixed">Self-host infra $/mo <span class="val" id="vpsFixed_v"></span></label>
+          <input type="number" id="vpsFixed" min="0" step="1" value="20">
+          <p class="hint">Your Hostinger VPS — fixed regardless of volume.</p>
+        </div>
+        <div class="field">
+          <label for="retellPerMin">Retell all-in $/min <span class="val" id="retellPerMin_v"></span></label>
+          <input type="number" id="retellPerMin" min="0" step="0.01" value="0.13">
+          <p class="hint">Base $0.07 voice infra + bundled LLM/TTS/telephony. Typical working agent $0.13–0.31.</p>
+        </div>
+        <label class="toggle-row" for="retellTele" style="margin-top:4px">
+          <input type="checkbox" id="retellTele" checked>
+          Retell rate already includes telephony
+        </label>
+        <div class="field">
+          <label for="retellNums">Retell phone numbers <span class="val" id="retellNums_v"></span></label>
+          <input type="number" id="retellNums" min="0" step="1" value="1">
+        </div>
+        <div class="field">
+          <label for="concurrency">Peak concurrent calls <span class="val" id="concurrency_v"></span></label>
+          <input type="number" id="concurrency" min="1" step="1" value="20">
+          <p class="hint">Retell: 20 free, then $8/mo each.</p>
+        </div>
+      </fieldset>
+    </form>
+
+    <!-- ============ RESULTS ============ -->
+    <div class="results">
+      <div class="summary">
+        <div class="row1">
+          <span class="k">Monthly volume</span>
+          <span class="v" id="sum_minutes"></span>
+          <span class="k">Calls / mo</span>
+          <span class="v" id="sum_calls"></span>
+          <span class="k">Avg call</span>
+          <span class="v" id="sum_avg"></span>
+        </div>
+        <div class="bars" id="bars"></div>
+      </div>
+
+      <div class="cards" id="cards"></div>
+
+      <div class="breakeven">
+        <h3>Break-even · Self-hosted realtime-mini vs Retell</h3>
+        <p class="verdict" id="verdict"></p>
+        <p class="be-detail" id="beDetail"></p>
+      </div>
+
+      <details class="rates">
+        <summary>Rate sheet &amp; method</summary>
+        <p class="method">Every option is normalized to <b>USD per minute of live conversation</b>, assuming a minute splits ~<code>30s caller</code> + <code>30s agent</code> speech. Realtime audio is billed at OpenAI's stated <code>600 tok/min</code> (caller) and <code>1,200 tok/min</code> (agent). Realtime <b>context re-billing</b> grows with call length — each agent turn re-ingests the conversation so far — which is why cost rises super-linearly and caching matters. Cascade &amp; Retell scale roughly linearly.</p>
+        <div class="rate-scroll">
+          <table class="ratetable">
+            <thead><tr><th>Component</th><th>Model</th><th>Rate</th></tr></thead>
+            <tbody>
+              <tr><td>Realtime audio (full)</td><td>gpt-realtime-2.1</td><td>$32 / $64 per 1M</td></tr>
+              <tr><td>Realtime audio (mini)</td><td>gpt-realtime-2.1-mini</td><td>$10 / $20 per 1M</td></tr>
+              <tr><td>Transcription</td><td>gpt-4o-mini-transcribe</td><td>$0.003 / min</td></tr>
+              <tr><td>Transcription</td><td>gpt-4o-transcribe</td><td>$0.006 / min</td></tr>
+              <tr><td>Text-to-speech</td><td>gpt-4o-mini-tts</td><td>~$0.015 / min</td></tr>
+              <tr><td>Cascade LLM</td><td>gpt-4o-mini</td><td>$0.15 / $0.60 per 1M</td></tr>
+              <tr><td>Cascade LLM</td><td>gpt-4o</td><td>$2.50 / $10 per 1M</td></tr>
+              <tr><td>Cascade LLM</td><td>gpt-5</td><td>$1.25 / $10 per 1M</td></tr>
+              <tr><td>Managed platform</td><td>Retell (base)</td><td>$0.07 / min + add-ons</td></tr>
+              <tr><td>Telephony</td><td>Twilio PSTN + Media Streams</td><td>~$0.018 / min</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="foot">Figures are mid-2026 published/derived estimates — confirm against the
+          <a href="https://developers.openai.com/api/docs/pricing" target="_blank" rel="noopener">OpenAI pricing page</a> and
+          <a href="https://www.retellai.com/blog/ai-voice-agent-pricing-full-cost-breakdown-platform-comparison-roi-analysis" target="_blank" rel="noopener">Retell pricing</a>
+          before committing budget. The context-re-billing curve is a first-order model tuned to reproduce the cited $/min bands; your real numbers depend on turn cadence and actual cache hit rates.</p>
+      </details>
+    </div>
+  </div>
+</div>
+
+<script>
+  "use strict";
+
+  // ---- rate constants (USD) ----
+  const R = {
+    userTokMin: 600, agentTokMin: 1200,          // realtime audio tokens per spoken minute
+    full: { in: 32, out: 64 },                     // per 1M audio tokens
+    mini: { in: 10, out: 20 },
+    stt: { mini: 0.003, full: 0.006 },             // per audio-minute
+    tts: 0.015,                                     // per audio-minute (gpt-4o-mini-tts)
+    llm: { mini: { in: 0.15, out: 0.60 }, gpt4o: { in: 2.50, out: 10 }, gpt5: { in: 1.25, out: 10 } },
+    retellBase: 0.07,
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const usd = (n, d = 2) => "$" + n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+  const usdPerMin = (n) => "$" + n.toFixed(n < 0.1 ? 3 : 2);
+
+  function readInputs() {
+    return {
+      callsPerDay: +$("callsPerDay").value || 0,
+      avgCallMin: +$("avgCallMin").value || 0,
+      workDays: +$("workDays").value || 0,
+      cacheEff: (+$("cacheEff").value || 0) / 100,
+      cascadeLLM: $("cascadeLLM").value,
+      sttModel: $("sttModel").value,
+      teleOn: $("teleOn").checked,
+      telePerMin: +$("telePerMin").value || 0,
+      vpsFixed: +$("vpsFixed").value || 0,
+      retellPerMin: +$("retellPerMin").value || 0,
+      retellTele: $("retellTele").checked,
+      retellNums: +$("retellNums").value || 0,
+      concurrency: +$("concurrency").value || 0,
+    };
+  }
+
+  // Realtime per-minute breakdown. Per conversation-minute: agent speaks 0.5min, caller 0.5min.
+  // Context re-billing: at minute t the accumulated audio (~900 tok/min) is re-sent each turn;
+  // averaged over an M-min call the per-minute context tokens ≈ 0.5*(userTok+agentTok)*M/2.
+  function realtime(rate, M, cacheEff, tele) {
+    const agentTok = R.agentTokMin * 0.5;   // 600
+    const userTok = R.userTokMin * 0.5;     // 300
+    const outCost = (agentTok / 1e6) * rate.out;
+    const inCost = (userTok / 1e6) * rate.in;
+    // context tokens re-billed per minute (grows with call length); caching discounts the rate up to 90%
+    const ctxTokPerMin = 0.5 * (R.userTokMin + R.agentTokMin) * (M / 2); // = 450*M
+    const ctxRate = rate.in * (1 - cacheEff * 0.9);
+    const ctxCost = (ctxTokPerMin / 1e6) * ctxRate;
+    const items = [
+      { lbl: "Agent audio (out)", cost: outCost },
+      { lbl: "Caller audio (in)", cost: inCost },
+      { lbl: "Context re-billing", cost: ctxCost },
+    ];
+    if (tele > 0) items.push({ lbl: "Telephony", cost: tele });
+    return items;
+  }
+
+  function cascade(inp, tele) {
+    const stt = R.stt[inp.sttModel] * 0.5;      // caller speaks half the minute
+    const ttsc = R.tts * 0.5;                    // agent speaks half the minute
+    const llm = R.llm[inp.cascadeLLM];
+    // text tokens/min: prompt grows with transcript (~150 tok/min context) + ~200 base; output ~120
+    const llmInTok = 200 + 150 * inp.avgCallMin;
+    const llmCost = (llmInTok * llm.in + 120 * llm.out) / 1e6;
+    const items = [
+      { lbl: "Transcription (STT)", cost: stt },
+      { lbl: "LLM (text)", cost: llmCost },
+      { lbl: "Text-to-speech", cost: ttsc },
+    ];
+    if (tele > 0) items.push({ lbl: "Telephony", cost: tele });
+    return items;
+  }
+
+  function compute() {
+    const inp = readInputs();
+    const minutesPerMonth = inp.callsPerDay * inp.avgCallMin * inp.workDays;
+    const callsPerMonth = inp.callsPerDay * inp.workDays;
+    const tele = inp.teleOn ? inp.telePerMin : 0;
+
+    // Retell fixed monthly add-ons
+    const retellExtraConc = Math.max(0, inp.concurrency - 20) * 8;
+    const retellFixed = inp.retellNums * 2 + retellExtraConc;
+    const retellTelePerMin = inp.retellTele ? 0 : tele;
+
+    const options = [
+      {
+        id: "full", name: "Realtime — full", sub: "gpt-realtime-2.1, self-hosted",
+        kind: "self", fixed: inp.vpsFixed,
+        items: realtime(R.full, inp.avgCallMin, inp.cacheEff, tele),
+        eff: ["Quality <b>Best</b>", "Latency <b>Lowest</b>", "Reasoning <b>Best</b>", "Ops <b>Med</b>"],
+      },
+      {
+        id: "mini", name: "Realtime — mini", sub: "gpt-realtime-2.1-mini, self-hosted",
+        kind: "self", fixed: inp.vpsFixed,
+        items: realtime(R.mini, inp.avgCallMin, inp.cacheEff, tele),
+        eff: ["Quality <b>V.good</b>", "Latency <b>Lowest</b>", "Reasoning <b>Fair</b>", "Ops <b>Med</b>"],
+      },
+      {
+        id: "cascade", name: "Cascaded GPT", sub: "STT → LLM → TTS, self-hosted",
+        kind: "self", fixed: inp.vpsFixed,
+        items: cascade(inp, tele),
+        eff: ["Quality <b>Good</b>", "Latency <b>Highest</b>", "Reasoning <b>Tunable</b>", "Ops <b>High</b>"],
+      },
+      {
+        id: "retell", name: "Retell", sub: "managed platform",
+        kind: "managed", fixed: retellFixed,
+        items: (() => {
+          const it = [{ lbl: "Platform + LLM + TTS", cost: inp.retellPerMin }];
+          if (retellTelePerMin > 0) it.push({ lbl: "Telephony", cost: retellTelePerMin });
+          return it;
+        })(),
+        eff: ["Quality <b>Good</b>", "Latency <b>Low–Med</b>", "Reasoning <b>Varies</b>", "Ops <b>Lowest</b>"],
+      },
+    ];
+
+    options.forEach((o) => {
+      o.perMin = o.items.reduce((s, i) => s + i.cost, 0);
+      o.perCall = o.perMin * inp.avgCallMin;
+      o.monthly = o.perMin * minutesPerMonth + o.fixed;
+    });
+
+    return { inp, minutesPerMonth, callsPerMonth, options, retellFixed };
+  }
+
+  function render() {
+    const { inp, minutesPerMonth, callsPerMonth, options } = compute();
+
+    // slider value readouts
+    $("callsPerDay_v").textContent = inp.callsPerDay;
+    $("avgCallMin_v").textContent = inp.avgCallMin.toFixed(1) + " min";
+    $("workDays_v").textContent = inp.workDays;
+    $("cacheEff_v").textContent = Math.round(inp.cacheEff * 100) + "%";
+    $("telePerMin_v").textContent = usdPerMin(inp.telePerMin);
+    $("vpsFixed_v").textContent = usd(inp.vpsFixed, 0);
+    $("retellPerMin_v").textContent = usdPerMin(inp.retellPerMin);
+    $("retellNums_v").textContent = inp.retellNums;
+    $("concurrency_v").textContent = inp.concurrency;
+
+    // summary
+    $("sum_minutes").textContent = Math.round(minutesPerMonth).toLocaleString("en-US") + " min/mo";
+    $("sum_calls").textContent = Math.round(callsPerMonth).toLocaleString("en-US");
+    $("sum_avg").textContent = inp.avgCallMin.toFixed(1) + " min";
+
+    // ranking
+    const sorted = [...options].sort((a, b) => a.monthly - b.monthly);
+    const cheapest = sorted[0], dearest = sorted[sorted.length - 1];
+    const maxMonthly = Math.max(...options.map((o) => o.monthly), 1);
+    const rankColor = (o) => o === cheapest ? "var(--good)" : o === dearest ? "var(--crit)" : "var(--warn)";
+
+    // bars (ranked cheapest → dearest)
+    $("bars").innerHTML = sorted.map((o) => `
+      <div class="bar">
+        <div class="name">${o.name}<small>${o.sub}</small></div>
+        <div class="track"><div class="fill" style="width:${(o.monthly / maxMonthly * 100).toFixed(1)}%;background:${rankColor(o)}"></div></div>
+        <div class="amt">${usd(o.monthly, 0)}<span style="color:var(--muted);font-weight:400">/mo</span></div>
+      </div>`).join("");
+
+    // cards (fixed display order: full, mini, cascade, retell)
+    $("cards").innerHTML = options.map((o) => {
+      const rank = o === cheapest ? "cheapest" : o === dearest ? "dearest" : "mid";
+      const rankLabel = o === cheapest ? "Cheapest" : o === dearest ? "Priciest" : "Mid";
+      const maxItem = Math.max(...o.items.map((i) => i.cost), 1e-9);
+      const itemsHtml = o.items.map((i) => `
+        <div class="item">
+          <span class="lbl">${i.lbl}</span>
+          <span class="share"><i style="width:${(i.cost / maxItem * 100).toFixed(0)}%"></i></span>
+          <span class="cost">${usdPerMin(i.cost)}</span>
+        </div>`).join("");
+      const fixedHtml = o.fixed > 0 ? `
+        <div class="item"><span class="lbl">Fixed / mo</span><span class="share"></span><span class="cost">${usd(o.fixed, 0)}</span></div>` : "";
+      return `
+      <div class="card ${o === cheapest ? "rank-cheapest" : ""}">
+        <div class="card-head">
+          <div>
+            <h3>${o.name}</h3>
+            <span class="rankpill ${rank}">${rankLabel}</span>
+          </div>
+          <span class="tag ${o.kind === "self" ? "self" : "managed"}">${o.kind === "self" ? "Self-host" : "Managed"}</span>
+        </div>
+        <div class="headline">
+          <span class="big">${usdPerMin(o.perMin)}</span>
+          <span class="permo">per minute</span>
+        </div>
+        <div class="subline"><b>${usd(o.perCall)}</b>/call · <b>${usd(o.monthly, 0)}</b>/mo</div>
+        <div class="effrow">${o.eff.map((e) => `<span class="chip">${e}</span>`).join("")}</div>
+        <div class="items">
+          ${itemsHtml}
+          ${fixedHtml}
+          <div class="item total"><span class="lbl">Per-minute total</span><span class="share"></span><span class="cost">${usdPerMin(o.perMin)}</span></div>
+        </div>
+      </div>`;
+    }).join("");
+
+    // break-even: self-hosted mini vs retell
+    const mini = options.find((o) => o.id === "mini");
+    const retell = options.find((o) => o.id === "retell");
+    const dPerMin = retell.perMin - mini.perMin;           // + means retell dearer per min
+    const dFixed = mini.fixed - retell.fixed;              // + means mini has higher fixed
+    const beMinutes = dPerMin > 0 ? dFixed / dPerMin : Infinity;
+    const diff = retell.monthly - mini.monthly;            // + means mini cheaper now
+
+    let verdict, detail;
+    if (diff >= 0) {
+      verdict = `At your volume, self-hosted <b>realtime-mini</b> costs <span class="save-good">${usd(diff, 0)}/mo less</span> than Retell — ${usd(mini.monthly, 0)} vs ${usd(retell.monthly, 0)}.`;
+    } else {
+      verdict = `At your volume, <b>Retell</b> is <span class="save-good">${usd(-diff, 0)}/mo cheaper</span> than self-hosting mini — ${usd(retell.monthly, 0)} vs ${usd(mini.monthly, 0)} — because fixed infra isn't yet spread over enough minutes.`;
+    }
+    if (isFinite(beMinutes) && beMinutes > 0) {
+      const beCalls = beMinutes / (inp.avgCallMin || 1);
+      const crossed = minutesPerMonth >= beMinutes;
+      detail = `Break-even ≈ ${Math.round(beMinutes).toLocaleString("en-US")} min/mo (~${Math.round(beCalls).toLocaleString("en-US")} calls). ` +
+        `You're at ${Math.round(minutesPerMonth).toLocaleString("en-US")} — ${crossed ? "past the crossover, so self-hosting wins." : "below it, so Retell's zero-ops model wins for now."}`;
+    } else if (dPerMin <= 0) {
+      detail = `Retell's per-minute rate is at or below self-hosted mini here — no volume makes self-hosting cheaper. Lower the Retell $/min or raise cache efficiency to compare.`;
+    } else {
+      detail = `Self-hosting mini is cheaper at every volume (its fixed infra is ≤ Retell's fixed fees).`;
+    }
+    $("verdict").innerHTML = verdict;
+    $("beDetail").textContent = detail;
+  }
+
+  $("panel").addEventListener("input", render);
+  render();
+</script>
+</body>
+</html>
