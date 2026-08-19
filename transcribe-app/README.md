@@ -50,7 +50,7 @@ transcribe-app/
 ```bash
 cd transcribe-app
 python -m venv .venv && . .venv/Scripts/activate   # Windows; use .venv/bin/activate on macOS/Linux
-pip install -r requirements.txt
+pip install -e .        # installs deps AND puts transcribe_app on the path (so the scripts import)
 cp .env.example .env    # then fill it in
 ```
 
@@ -77,8 +77,9 @@ If something's off, run the connectivity checks first — they isolate the two u
 (mailbox login and the sheet share) without touching any data:
 
 ```bash
-python scripts/checks/verify_imap.py     # mailbox login + how many voicemails are visible
-python scripts/checks/verify_sheets.py   # service account can open the sheet (read-only)
+python scripts/checks/verify_imap.py             # mailbox login + how many voicemails are visible
+python scripts/checks/verify_sheets.py           # service account can open the sheet (read-only)
+python scripts/checks/verify_extract.py foo.wav  # Gemini transcript + fields on a local .wav (no email/sheet)
 ```
 
 ## Notes
