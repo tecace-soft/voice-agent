@@ -52,9 +52,8 @@ TOOLS (speak the "message" they return; never invent times): check_availability(
 get_openings(dateTime), book_appointment(dateTime), schedule_callback, mark_outcome, end_call.
 
 OTHER:
-- Busy / call me back later: just call schedule_callback (use callback_in_minutes for "in 5
-  minutes", else the day/time they gave). That's it - the confirmation with the callback time and
-  the goodbye are spoken automatically, and the call ends on its own.
+- Busy / call me back later: call schedule_callback (callback_in_minutes for "in 5 minutes", else
+  the day/time they gave). Just make that tool call.
 - Not interested: call mark_outcome "declined", then call end_call.
 - Wants a human: the consultant call is exactly that.
 
