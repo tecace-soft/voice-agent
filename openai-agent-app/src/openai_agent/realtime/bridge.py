@@ -322,7 +322,9 @@ async def _model_to_caller(twilio_ws: WebSocket, openai_ws, state: dict, executo
                     # in flight, events that arrive (the response finishing, or the lead saying
                     # "okay") get handled in order rather than piling up and cancelling the tool's
                     # own reply once it's created. Keep a reference so the task isn't GC'd.
-                    task = asyncio.create_task(_handle_tool_call(openai_ws, evt, executor, state))
+                    task = asyncio.create_task(
+                        _handle_tool_call(twilio_ws, openai_ws, evt, executor, state)
+                    )
                     state["_tool_tasks"].add(task)
                     task.add_done_callback(state["_tool_tasks"].discard)
             elif t == "error":
@@ -441,7 +443,29 @@ async def _drain_and_close(twilio_ws: WebSocket, state: dict) -> None:
     state["hangup_fallback"] = asyncio.create_task(_fallback())
 
 
-async def _handle_tool_call(openai_ws, evt: dict, executor: ToolExecutor, state: dict) -> None:
+# MINI ONLY: mini won't reliably confirm a scheduled callback and then call end_call on its own,
+# so once the callback is booked we drive this single "confirm the time + goodbye" response and
+# hang up ourselves. The full model handles its own callback ending (see instructions.py) and never
+# reaches this path.
+_CALLBACK_CONFIRM_INSTRUCTION = (
+    "A callback was just scheduled. In ONE short sentence, tell the lead you'll call them back at "
+    'the clock time from the tool result (say the actual time, e.g. "9:30 AM", not a relative '
+    'amount like "in 5 minutes"), then say goodbye — for example: "Okay, I\'ll call you back at '
+    '9:30 AM. Goodbye!" Say only that.'
+)
+
+
+def _scheduled_ok(result: str) -> bool:
+    """True if a schedule_callback result confirms the callback was set."""
+    try:
+        return bool(json.loads(result).get("scheduled"))
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        return False
+
+
+async def _handle_tool_call(
+    twilio_ws: WebSocket, openai_ws, evt: dict, executor: ToolExecutor, state: dict
+) -> None:
     name = evt.get("name", "")
     call_id = evt.get("call_id", "")
     try:
@@ -451,7 +475,7 @@ async def _handle_tool_call(openai_ws, evt: dict, executor: ToolExecutor, state:
     log.info("tool call: %s %s", name, args)
     result = await executor.run(name, args)
     _note_outcome(state, name, args, result)
-    # Feed the result back and let the model continue speaking.
+    # Feed the result back.
     await openai_ws.send(
         json.dumps(
             {
@@ -460,4 +484,24 @@ async def _handle_tool_call(openai_ws, evt: dict, executor: ToolExecutor, state:
             }
         )
     )
+
+    # Mini-only: after a callback is scheduled, drive one confirm-and-goodbye response and hang up
+    # (its response.done triggers the drain), since mini won't call end_call itself here.
+    if state.get("is_mini") and name == "schedule_callback" and _scheduled_ok(result):
+        state["hangup_pending"] = True
+        state["spoke_since_user"] = False
+        await openai_ws.send(
+            json.dumps(
+                {"type": "response.create", "response": {"instructions": _CALLBACK_CONFIRM_INSTRUCTION}}
+            )
+        )
+
+        async def _backstop() -> None:
+            await asyncio.sleep(_HANGUP_FALLBACK_SECONDS)
+            if state.get("hangup_pending"):
+                await _drain_and_close(twilio_ws, state)
+
+        state["hangup_backstop"] = asyncio.create_task(_backstop())
+        return
+
     await openai_ws.send(json.dumps({"type": "response.create"}))
