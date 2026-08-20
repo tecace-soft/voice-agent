@@ -32,7 +32,6 @@ HEADER = [
     "Summary",
     "Transcript",
     "Audio file",
-    "Download",
     "Open email",
 ]
 

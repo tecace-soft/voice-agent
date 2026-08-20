@@ -95,29 +95,13 @@ class Config:
     google_sheet_id: str
     # A1 range whose sheet/tab we append under, e.g. "Voicemails!A1".
     sheet_range: str
-    # ---- Voicemail audio storage (so the sheet can link to a playable recording) ----
-    # Which backend stores the audio: "local" (write on this host and serve it — zero extra cost,
-    # the default), "drive" (Google Drive — needs a Shared Drive or OAuth), or "none" (store
-    # nothing — use with EMAIL_LINK_TEMPLATE so people open the source email and download from it).
-    audio_backend: str
-    # Optional webmail deep-link template for an "Open email" column, so the sheet points at the
-    # source email instead of (or as well as) a hosted copy. Placeholders {message_id}/{uid}/
-    # {mailbox}. Empty = no link. Examples:
-    #   Gmail:     https://mail.google.com/mail/u/0/#search/rfc822msgid:{message_id}
-    #   Roundcube: https://mail.<host>/?_task=mail&_action=show&_mbox={mailbox}&_uid={uid}
+    # ---- Access to the recording (we store NOTHING — the sheet links back to the source email) ----
+    # A webmail deep-link template for the "Open email" column, so the person opens the source
+    # message in webmail and downloads the recording straight from the email. Placeholders
+    # {message_id}/{uid}/{mailbox}/{gm_msgid}. Empty = no link. Examples:
+    #   Gmail (opens directly):  https://mail.google.com/mail/u/0/#all/{gm_msgid}
+    #   Roundcube:               https://mail.<host>/?_task=mail&_action=show&_mbox={mailbox}&_uid={uid}
     email_link_template: str
-    # For AUDIO_BACKEND=local: the directory to write audio into, and the public URL prefix that
-    # same directory is served at (e.g. https://voicemails.example.com). A web server (Traefik/
-    # nginx/caddy on the VPS) serves the directory; the sheet links to <AUDIO_BASE_URL>/<file>.
-    audio_storage_dir: str
-    audio_base_url: str
-    # Delete stored audio older than this many days, pruned on each run so recordings aren't kept
-    # indefinitely (the person downloads what they need within the window). 0 = keep forever.
-    audio_retention_days: int
-    # For AUDIO_BACKEND=drive: optional Drive folder id (empty = the account's Drive root)...
-    google_drive_folder_id: str
-    # ...and whether to set an "anyone with the link can view" permission on each upload.
-    google_drive_public: bool
     # ---- Runtime ----
     # Where we remember which (message, attachment) pairs are already done, so re-runs are
     # idempotent without mutating the mailbox.
@@ -152,13 +136,7 @@ class Config:
             google_private_key=_optional("GOOGLE_PRIVATE_KEY").replace("\\n", "\n"),
             google_sheet_id=_optional("GOOGLE_SHEET_ID"),
             sheet_range=_optional("SHEET_RANGE", "Voicemails!A1"),
-            audio_backend=_optional("AUDIO_BACKEND", "local").lower(),
             email_link_template=_optional("EMAIL_LINK_TEMPLATE"),
-            audio_storage_dir=_optional("AUDIO_STORAGE_DIR") or str(PROJECT_ROOT / "voicemail-audio"),
-            audio_base_url=_optional("AUDIO_BASE_URL"),
-            audio_retention_days=int(_optional("AUDIO_RETENTION_DAYS", "30")),
-            google_drive_folder_id=_optional("GOOGLE_DRIVE_FOLDER_ID"),
-            google_drive_public=_bool("GOOGLE_DRIVE_PUBLIC", True),
             state_file=_optional("STATE_FILE") or str(PROJECT_ROOT / ".processed.json"),
             request_timeout=float(_optional("REQUEST_TIMEOUT_SECONDS", "60")),
         )

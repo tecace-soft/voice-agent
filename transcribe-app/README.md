@@ -21,20 +21,13 @@ voicemail's audio never bleeds into another's transcript or row.
 | --- | --- | --- |
 | Find voicemail mail, pull audio (`.wav`/`.mp3`/…) | `tools/email_source.py` | generic IMAP (Gmail, Outlook, Yahoo, …) |
 | Transcribe audio + extract caller name / phone / requested time / summary | `tools/extractor.py` | Google Gemini (audio in, structured output) |
-| Store the audio → a "Listen" link | `tools/local_store.py` (or `drive.py`) | this host, served over HTTPS (default) / Google Drive |
-| Append a row (incl. the Listen link) | `tools/sheets.py` | Google Sheets (service account) |
+| Append a row (incl. an "Open email" link) | `tools/sheets.py` | Google Sheets (service account) |
 
-Each sheet row can carry two ways to reach the recording:
-
-- **Open email** (`EMAIL_LINK_TEMPLATE`) — a webmail deep-link to the **source message**, so the
-  person downloads the recording straight from the email. Nothing is stored or served by us (best
-  for privacy); it only works for people logged into that mailbox. Templates use `{message_id}` /
-  `{uid}` / `{mailbox}` (Gmail via `rfc822msgid:`, Roundcube via `_uid`).
-- **Download** (`AUDIO_BACKEND`) — a copy is stored and served so the file downloads on click.
-  `local` (this host, default), `drive` (Google Drive — needs a Shared Drive/OAuth), or `none`.
-
-For the **no-copies** setup, use `AUDIO_BACKEND=none` + `EMAIL_LINK_TEMPLATE` — the sheet only
-links back to the email.
+**The recording is never stored or served by us.** Each sheet row gets an **Open email**
+(`EMAIL_LINK_TEMPLATE`) webmail deep-link to the **source message**, so the person opens that email
+and downloads the recording from it — for privacy and security, no copy is kept anywhere. It works
+for people logged into that mailbox. Placeholders: `{message_id}` / `{uid}` / `{mailbox}` /
+`{gm_msgid}` (Gmail opens directly via `{gm_msgid}`; Roundcube via `{uid}`).
 | Orchestrate + idempotency | `pipeline.py` | local `.processed.json` |
 
 ## Layout
@@ -49,10 +42,8 @@ transcribe-app/
     tools/                 # one module per external service
       email_source.py      #   IMAP: find voicemail mail, pull audio attachments (.wav/.mp3/…)
       extractor.py         #   Google Gemini: audio -> transcript + structured fields (one call)
-      local_store.py       #   store audio on this host + serve it -> a "Listen" link (default)
-      drive.py             #   alternative: upload the audio to Google Drive
-      google_auth.py       #   shared service-account credentials (Sheets + Drive)
-      sheets.py            #   Google Sheets: append a row
+      google_auth.py       #   service-account credentials for Google Sheets
+      sheets.py            #   Google Sheets: append a row (incl. the "Open email" link)
     pipeline.py            # orchestrates the tools; per-file isolation + idempotency
   scripts/
     run_transcribe.py      # primary entry point — one full pass over the mailbox
@@ -82,29 +73,13 @@ Fill in `.env` (see the comments there):
 - **Google Sheets** — a service account: create one in Google Cloud, download its JSON key to
   `service-account.json`, set `GOOGLE_SHEET_ID`, and **share the sheet with the service
   account's email as an Editor**.
-- **Audio storage** (for the Listen links) — default `AUDIO_BACKEND=local`: set `AUDIO_STORAGE_DIR`
-  (a directory on this host) and `AUDIO_BASE_URL` (the public URL that directory is served at), then
-  point your web server at that directory. With Caddy, add a `handle_path` block (see below). Files
-  get random, unguessable names. Set `AUDIO_BACKEND=drive` only if you have a Google **Shared Drive**
-  or OAuth — a plain service account has no Drive storage.
+- **Open-email link** (`EMAIL_LINK_TEMPLATE`) — the webmail deep-link the sheet uses so people
+  open the source email and download the recording from it (no copy is ever stored). Set the
+  template to match your webmail:
+  - **Gmail** (opens the message directly): `https://mail.google.com/mail/u/0/#all/{gm_msgid}`
+  - **Roundcube** (cPanel): `https://mail.<host>/?_task=mail&_action=show&_mbox={mailbox}&_uid={uid}`
 
-  Example Caddy route (append inside the existing site block for your host) — the
-  `Content-Disposition` header makes the browser **download** the voicemail rather than play it:
-
-  ```
-  handle_path /voicemails/* {
-      root * /srv/voicemail-audio
-      header Content-Disposition attachment
-      file_server
-  }
-  ```
-  with `AUDIO_STORAGE_DIR=/srv/voicemail-audio` and `AUDIO_BASE_URL=https://<your-host>/voicemails`.
-  Stored audio is auto-deleted after `AUDIO_RETENTION_DAYS` (default 30), pruned on each run — so
-  recordings aren't kept around; the person downloads what they need within the window.
-
-  **On the VPS (Traefik):** a ready-made static server is in `deploy/docker-compose.yml` — it
-  serves `/srv/voicemail-audio` at `https://<host>/voicemails` (download + prefix strip already
-  wired). Bring it up with `docker compose -f deploy/docker-compose.yml up -d`.
+  Leave it blank to omit the link (transcript-only rows).
 
 ## Run
 
@@ -117,16 +92,17 @@ settings are reported up front rather than failing deep in an API call.
 
 ### Manually ingest audio files (no email needed)
 
-When IMAP access isn't set up yet, download the voicemail(s) from webmail and run them straight
-through the same Gemini → Drive → Sheet path:
+When IMAP access isn't set up yet, download the voicemail(s) from webmail and transcribe them
+straight into the sheet:
 
 ```bash
 python scripts/ingest_file.py ~/Downloads/voicemail1.mp3 ~/Downloads/voicemail2.mp3
 ```
 
-Each file is transcribed, its audio uploaded to Drive, and a row (with a Listen link) appended to
-the sheet — exactly like the full pipeline, but sourced from local files. Needs `GEMINI_API_KEY`
-and the Sheets/Drive service account; the IMAP settings are not required.
+Each file is transcribed and a row appended to the sheet. Since these are local files (no source
+email), the row has the transcript + caller details but no "Open email" link — for a one-off
+transcript. Needs `GEMINI_API_KEY` and the Sheets service account; the IMAP settings are not
+required.
 
 If something's off, run the connectivity checks first — they isolate the two usual blockers
 (mailbox login and the sheet share) without touching any data:

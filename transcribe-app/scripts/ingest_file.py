@@ -1,12 +1,11 @@
-"""Manually ingest local voicemail audio files — no email/IMAP needed.
+"""Manually transcribe local voicemail audio files into the sheet — no email/IMAP needed.
 
     python scripts/ingest_file.py path/to/voicemail.mp3 [more.mp3 ...]
 
-For each file: transcribe + extract with Gemini, upload the audio to Google Drive, and append a
-row (with a clickable "Listen" link) to the Google Sheet — the same output the full pipeline
-produces. Use this to process voicemails you downloaded from webmail while IMAP access is being
-sorted out. Needs GEMINI_API_KEY + the Google Sheets/Drive service account; does NOT need the
-IMAP settings.
+For each file: transcribe + extract with Gemini and append a row to the Google Sheet. Since these
+are local files (no source email), the row has the transcript + caller details but no "Open email"
+link — for a one-off transcript. Needs GEMINI_API_KEY + the Google Sheets service account; does
+NOT need the IMAP settings.
 """
 
 from __future__ import annotations
@@ -23,7 +22,6 @@ from transcribe_app.tools import (
     SheetWriter,
     VoicemailEmail,
     audio_mime_for,
-    make_audio_store,
 )
 
 
@@ -44,7 +42,6 @@ def main() -> int:
         return 1
 
     extractor = Extractor(cfg)
-    audio = make_audio_store(cfg)  # local (VPS) or drive, per AUDIO_BACKEND
     sheet = SheetWriter(cfg)
 
     done = 0
@@ -60,16 +57,14 @@ def main() -> int:
         try:
             att = AudioAttachment(filename=path.name, data=path.read_bytes(), content_type=mime)
             info = extractor.extract(att)
-            link = audio.upload(att.filename, att.data, att.content_type)
             # No email envelope for a manual upload — label the source so the row is still traceable.
             vm = VoicemailEmail(message_id=f"manual:{path.name}", from_addr="(manual upload)",
                                 subject="", date="")
-            sheet.append_row(build_row(vm, att, info, link))
+            sheet.append_row(build_row(vm, att, info))
         except Exception as exc:  # noqa: BLE001 — one bad file shouldn't stop the batch
             print(f"FAILED {path.name}: {exc}")
             continue
-        print(f"added {path.name}: {info.caller_name or '(no name)'} — "
-              f"{'Listen: ' + link if link else 'no Drive link'}")
+        print(f"added {path.name}: {info.caller_name or '(no name)'}")
         done += 1
 
     print(f"done: {done}/{len(paths)} ingested")

@@ -23,7 +23,6 @@ from .tools import (
     VoicemailEmail,
     VoicemailInfo,
     build_email_link,
-    make_audio_store,
 )
 
 log = logging.getLogger(__name__)
@@ -63,17 +62,12 @@ def _key(vm: VoicemailEmail, att: AudioAttachment) -> str:
 
 
 def build_row(
-    vm: VoicemailEmail,
-    att: AudioAttachment,
-    info: VoicemailInfo,
-    audio_link: str = "",
-    email_link: str = "",
+    vm: VoicemailEmail, att: AudioAttachment, info: VoicemailInfo, email_link: str = ""
 ) -> list[str]:
     """One spreadsheet row — column order must match sheets.HEADER."""
-    # HYPERLINK formulas render as clickable cells (valueInputOption is USER_ENTERED). "Download"
-    # pulls the hosted copy (sent as an attachment); "Open email" opens the source message in
-    # webmail so the person downloads the recording straight from the email.
-    download = f'=HYPERLINK("{audio_link}","Download")' if audio_link else ""
+    # A HYPERLINK formula renders as a clickable cell (valueInputOption is USER_ENTERED). "Open
+    # email" opens the source message in webmail so the person downloads the recording straight
+    # from the email — we never store or serve a copy.
     open_email = f'=HYPERLINK("{email_link}","Open email")' if email_link else ""
     return [
         datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -86,7 +80,6 @@ def build_row(
         info.summary,
         info.transcript,
         att.filename,
-        download,
         open_email,
     ]
 
@@ -100,13 +93,11 @@ class Pipeline:
         self._reprocess = reprocess
         self._source = EmailSource(cfg)
         self._extractor = Extractor(cfg)
-        self._audio = make_audio_store(cfg)  # local (VPS) or drive, per AUDIO_BACKEND
         self._sheet = SheetWriter(cfg)
         self._store = ProcessedStore(cfg.state_file)
 
     def run(self) -> RunSummary:
         summary = RunSummary()
-        self._audio.prune()  # light retention: drop stored audio past the retention window
         voicemails = self._source.fetch_voicemails()
         summary.voicemails = len(voicemails)
         for vm in voicemails:
@@ -128,7 +119,6 @@ class Pipeline:
 
     def _handle(self, vm: VoicemailEmail, att: AudioAttachment) -> None:
         info = self._extractor.extract(att)  # transcribe + extract in one Gemini call
-        link = self._audio.upload(att.filename, att.data, att.content_type)  # hosted-copy download
         email_link = build_email_link(
             self._cfg.email_link_template,
             message_id=vm.message_id,
@@ -136,5 +126,5 @@ class Pipeline:
             mailbox=self._cfg.imap_mailbox,
             gm_msgid=vm.gm_msgid,
         )
-        self._sheet.append_row(build_row(vm, att, info, link, email_link))
+        self._sheet.append_row(build_row(vm, att, info, email_link))
         log.info("uploaded voicemail from %s (%s)", info.caller_name or vm.from_addr, att.filename)
