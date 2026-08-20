@@ -172,12 +172,16 @@ class EmailSource:
         try:
             conn.select(cfg.imap_mailbox, readonly=True)
             ids = self._search(conn)
-            log.info("found %d candidate message(s) in %s", len(ids), cfg.imap_mailbox)
+            total = len(ids)
+            log.info("found %d candidate message(s) in %s", total, cfg.imap_mailbox)
             voicemails: list[VoicemailEmail] = []
-            for num in ids:
+            for i, num in enumerate(ids, 1):
                 vm = self._load(conn, num)
                 if vm and vm.attachments:
                     voicemails.append(vm)
+                # Heartbeat while downloading, so a large scan doesn't look frozen.
+                if i % 20 == 0 or i == total:
+                    log.info("scanned %d/%d message(s), %d with audio so far", i, total, len(voicemails))
             log.info("%d message(s) carry an audio attachment", len(voicemails))
             return voicemails
         finally:
@@ -188,10 +192,14 @@ class EmailSource:
 
     def _connect(self) -> imaplib.IMAP4:
         cfg = self._cfg
+        # A socket timeout so a stalled connection raises instead of hanging the run forever.
+        log.info("connecting to %s:%d as %s ...", cfg.imap_host, cfg.imap_port, cfg.imap_username)
         if cfg.imap_ssl:
-            conn: imaplib.IMAP4 = imaplib.IMAP4_SSL(cfg.imap_host, cfg.imap_port)
+            conn: imaplib.IMAP4 = imaplib.IMAP4_SSL(
+                cfg.imap_host, cfg.imap_port, timeout=cfg.request_timeout
+            )
         else:
-            conn = imaplib.IMAP4(cfg.imap_host, cfg.imap_port)
+            conn = imaplib.IMAP4(cfg.imap_host, cfg.imap_port, timeout=cfg.request_timeout)
             conn.starttls()
         # imaplib encodes the LOGIN command with this codec; it defaults to ASCII, which raises on
         # a non-ASCII password (e.g. one containing Korean). UTF-8 lets such a password be sent at
@@ -199,6 +207,7 @@ class EmailSource:
         # normalization handling that goes with this.
         conn._encoding = "utf-8"
         _login(conn, cfg.imap_username, cfg.imap_password)
+        log.info("connected — scanning mailbox %s", cfg.imap_mailbox)
         return conn
 
     def _search(self, conn: imaplib.IMAP4) -> list[bytes]:

@@ -103,7 +103,13 @@ class Extractor:
 
     def _gemini(self) -> genai.Client:
         if self._client is None:
-            self._client = genai.Client(api_key=self._cfg.gemini_api_key)
+            # Bound each request so a stalled API call can't hang the run forever (ms). Generous,
+            # since transcribing a longer voicemail legitimately takes a few seconds.
+            timeout_ms = int(max(self._cfg.request_timeout, 120) * 1000)
+            self._client = genai.Client(
+                api_key=self._cfg.gemini_api_key,
+                http_options=types.HttpOptions(timeout=timeout_ms),
+            )
         return self._client
 
     def extract(self, attachment: AudioAttachment) -> VoicemailInfo:
@@ -112,6 +118,10 @@ class Extractor:
         record so we don't spend a model call on nothing."""
         if not attachment.data:
             return VoicemailInfo(None, None, None, None, False, "")
+        log.info(
+            "transcribing %s (%d bytes) with %s ...",
+            attachment.filename, len(attachment.data), self._cfg.extract_model,
+        )
         audio = types.Part.from_bytes(data=attachment.data, mime_type=attachment.content_type)
         response = self._gemini().models.generate_content(
             model=self._cfg.extract_model,

@@ -115,6 +115,7 @@ class Pipeline:
                 if not self._reprocess and self._store.has(key):
                     summary.skipped += 1
                     continue
+                log.info("processing %s from %s ...", att.filename, vm.from_addr)
                 try:
                     self._handle(vm, att)
                 except Exception as exc:  # noqa: BLE001 — one bad file shouldn't stop the batch
