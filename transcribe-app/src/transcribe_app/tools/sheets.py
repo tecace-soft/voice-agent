@@ -8,20 +8,17 @@ write a header row if the sheet is empty.
 
 from __future__ import annotations
 
-import json
 import logging
 
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
 from ..config import Config
+from .google_auth import load_service_credentials
 
 log = logging.getLogger(__name__)
 
 _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-# The OAuth2 token endpoint is the same for every service account, so we can supply it when
-# building credentials from just a private key + email (rather than a full JSON file).
-_TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 # Column order for every appended row — keep in sync with pipeline.build_row().
 HEADER = [
@@ -35,6 +32,7 @@ HEADER = [
     "Summary",
     "Transcript",
     "Audio file",
+    "Listen",
 ]
 
 
@@ -45,24 +43,7 @@ class SheetWriter:
         self._header_checked = False
 
     def _credentials(self) -> Credentials:
-        cfg = self._cfg
-        # 1. Leanest: just the private key + email (token endpoint is a constant).
-        if cfg.google_private_key and cfg.google_client_email:
-            return Credentials.from_service_account_info(
-                {
-                    "client_email": cfg.google_client_email,
-                    "private_key": cfg.google_private_key,
-                    "token_uri": _TOKEN_URI,
-                },
-                scopes=_SCOPES,
-            )
-        # 2. Full JSON inline.
-        if cfg.google_credentials_json:
-            return Credentials.from_service_account_info(
-                json.loads(cfg.google_credentials_json), scopes=_SCOPES
-            )
-        # 3. JSON key file on disk.
-        return Credentials.from_service_account_file(cfg.google_credentials_file, scopes=_SCOPES)
+        return load_service_credentials(self._cfg, _SCOPES)
 
     def _sheets(self):
         if self._service is None:

@@ -95,6 +95,13 @@ class Config:
     google_sheet_id: str
     # A1 range whose sheet/tab we append under, e.g. "Voicemails!A1".
     sheet_range: str
+    # ---- Voicemail audio storage (Google Drive, same service account) ----
+    # Optional Drive folder to upload the audio into (the long id in the folder URL). Empty = the
+    # service account's own Drive root.
+    google_drive_folder_id: str
+    # Also set an "anyone with the link can view" permission on each upload, so the sheet's Listen
+    # link works without per-user sharing. False = rely on the folder's own sharing instead.
+    google_drive_public: bool
     # ---- Runtime ----
     # Where we remember which (message, attachment) pairs are already done, so re-runs are
     # idempotent without mutating the mailbox.
@@ -129,6 +136,8 @@ class Config:
             google_private_key=_optional("GOOGLE_PRIVATE_KEY").replace("\\n", "\n"),
             google_sheet_id=_optional("GOOGLE_SHEET_ID"),
             sheet_range=_optional("SHEET_RANGE", "Voicemails!A1"),
+            google_drive_folder_id=_optional("GOOGLE_DRIVE_FOLDER_ID"),
+            google_drive_public=_bool("GOOGLE_DRIVE_PUBLIC", True),
             state_file=_optional("STATE_FILE") or str(PROJECT_ROOT / ".processed.json"),
             request_timeout=float(_optional("REQUEST_TIMEOUT_SECONDS", "60")),
         )

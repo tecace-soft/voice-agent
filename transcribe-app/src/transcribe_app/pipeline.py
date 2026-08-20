@@ -16,12 +16,13 @@ from pathlib import Path
 
 from .config import Config
 from .tools import (
+    AudioAttachment,
+    DriveUploader,
     EmailSource,
     Extractor,
     SheetWriter,
     VoicemailEmail,
     VoicemailInfo,
-    AudioAttachment,
 )
 
 log = logging.getLogger(__name__)
@@ -60,8 +61,12 @@ def _key(vm: VoicemailEmail, att: AudioAttachment) -> str:
     return f"{vm.message_id}::{att.filename}"
 
 
-def build_row(vm: VoicemailEmail, att: AudioAttachment, info: VoicemailInfo) -> list[str]:
+def build_row(
+    vm: VoicemailEmail, att: AudioAttachment, info: VoicemailInfo, audio_link: str = ""
+) -> list[str]:
     """One spreadsheet row — column order must match sheets.HEADER."""
+    # A HYPERLINK formula renders as a clickable "Listen" cell (valueInputOption is USER_ENTERED).
+    listen = f'=HYPERLINK("{audio_link}","Listen")' if audio_link else ""
     return [
         datetime.now(timezone.utc).isoformat(timespec="seconds"),
         vm.from_addr,
@@ -73,6 +78,7 @@ def build_row(vm: VoicemailEmail, att: AudioAttachment, info: VoicemailInfo) -> 
         info.summary,
         info.transcript,
         att.filename,
+        listen,
     ]
 
 
@@ -81,6 +87,7 @@ class Pipeline:
         self._cfg = cfg
         self._source = EmailSource(cfg)
         self._extractor = Extractor(cfg)
+        self._drive = DriveUploader(cfg)
         self._sheet = SheetWriter(cfg)
         self._store = ProcessedStore(cfg.state_file)
 
@@ -106,5 +113,6 @@ class Pipeline:
 
     def _handle(self, vm: VoicemailEmail, att: AudioAttachment) -> None:
         info = self._extractor.extract(att)  # transcribe + extract in one Gemini call
-        self._sheet.append_row(build_row(vm, att, info))
+        link = self._drive.upload(att.filename, att.data, att.content_type)  # for a Listen link
+        self._sheet.append_row(build_row(vm, att, info, link))
         log.info("uploaded voicemail from %s (%s)", info.caller_name or vm.from_addr, att.filename)
