@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from email.header import decode_header, make_header
 from email.message import Message
 from email.utils import parseaddr
+from urllib.parse import quote
 
 from ..config import Config
 
@@ -73,7 +74,29 @@ class VoicemailEmail:
     from_addr: str
     subject: str
     date: str
+    # The message's IMAP UID (stable within the mailbox) — used to build a webmail "Open email"
+    # link for the ones (like Roundcube) that open a message by UID rather than Message-ID.
+    uid: str = ""
     attachments: list[AudioAttachment] = field(default_factory=list)
+
+
+def build_email_link(template: str, *, message_id: str, uid: str, mailbox: str) -> str:
+    """Fill an EMAIL_LINK_TEMPLATE for one message so the sheet can deep-link to it in webmail.
+    Placeholders: {message_id} (angle brackets stripped, URL-encoded — Gmail's rfc822msgid: and
+    most webmail want the bare id), {uid} and {mailbox} (for webmail that opens by IMAP UID, e.g.
+    Roundcube). Empty template -> no link."""
+    if not template:
+        return ""
+    mid = message_id.strip().lstrip("<").rstrip(">")
+    try:
+        return template.format(
+            message_id=quote(mid, safe=""),
+            uid=quote(uid, safe=""),
+            mailbox=quote(mailbox, safe=""),
+        )
+    except (KeyError, IndexError, ValueError) as exc:
+        log.warning("EMAIL_LINK_TEMPLATE could not be filled (%s): %s", exc, template)
+        return ""
 
 
 def _decode(value: str | None) -> str:
@@ -194,19 +217,23 @@ class EmailSource:
             criteria += ["SUBJECT", f'"{cfg.voicemail_subject}"']
         if not criteria:
             criteria = ["ALL"]
-        typ, data = conn.search(None, *criteria)
+        # UID search/fetch (not sequence numbers) so each message carries a stable id we can put in
+        # a webmail "Open email" link.
+        typ, data = conn.uid("search", *criteria)
         if typ != "OK" or not data or not data[0]:
             return []
         return data[0].split()
 
     def _load(self, conn: imaplib.IMAP4, num: bytes) -> VoicemailEmail | None:
-        typ, data = conn.fetch(num, "(RFC822)")
+        typ, data = conn.uid("fetch", num, "(RFC822)")
         if typ != "OK" or not data or not isinstance(data[0], tuple):
             return None
         msg = email.message_from_bytes(data[0][1])
-        message_id = _decode(msg.get("Message-ID")) or f"uid-{num.decode(errors='ignore')}"
+        uid = num.decode(errors="ignore")
+        message_id = _decode(msg.get("Message-ID")) or f"uid-{uid}"
         return VoicemailEmail(
             message_id=message_id,
+            uid=uid,
             from_addr=parseaddr(_decode(msg.get("From")))[1],
             subject=_decode(msg.get("Subject")),
             date=_decode(msg.get("Date")),

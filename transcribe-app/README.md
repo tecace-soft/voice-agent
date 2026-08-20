@@ -24,10 +24,17 @@ voicemail's audio never bleeds into another's transcript or row.
 | Store the audio → a "Listen" link | `tools/local_store.py` (or `drive.py`) | this host, served over HTTPS (default) / Google Drive |
 | Append a row (incl. the Listen link) | `tools/sheets.py` | Google Sheets (service account) |
 
-Each sheet row includes a clickable **Listen** link so the team can play the voicemail straight
-from the spreadsheet. By default the audio is stored **on this host** and served by the web
-server already running here (zero extra cost) under a random, unguessable filename; set
-`AUDIO_BACKEND=drive` to use Google Drive instead (needs a Shared Drive or OAuth).
+Each sheet row can carry two ways to reach the recording:
+
+- **Open email** (`EMAIL_LINK_TEMPLATE`) — a webmail deep-link to the **source message**, so the
+  person downloads the recording straight from the email. Nothing is stored or served by us (best
+  for privacy); it only works for people logged into that mailbox. Templates use `{message_id}` /
+  `{uid}` / `{mailbox}` (Gmail via `rfc822msgid:`, Roundcube via `_uid`).
+- **Download** (`AUDIO_BACKEND`) — a copy is stored and served so the file downloads on click.
+  `local` (this host, default), `drive` (Google Drive — needs a Shared Drive/OAuth), or `none`.
+
+For the **no-copies** setup, use `AUDIO_BACKEND=none` + `EMAIL_LINK_TEMPLATE` — the sheet only
+links back to the email.
 | Orchestrate + idempotency | `pipeline.py` | local `.processed.json` |
 
 ## Layout

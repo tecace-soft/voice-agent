@@ -8,17 +8,26 @@
 
 from ..config import Config
 from .drive import DriveUploader
-from .email_source import AudioAttachment, EmailSource, VoicemailEmail, audio_mime_for
+from .email_source import (
+    AudioAttachment,
+    EmailSource,
+    VoicemailEmail,
+    audio_mime_for,
+    build_email_link,
+)
 from .extractor import Extractor, VoicemailInfo
-from .local_store import LocalAudioStore
+from .local_store import LocalAudioStore, NullAudioStore
 from .sheets import HEADER, SheetWriter
 
 
 def make_audio_store(cfg: Config):
-    """The audio store selected by AUDIO_BACKEND. Both backends expose the same
-    `upload(filename, data, content_type) -> url`, so the pipeline doesn't care which one it is."""
+    """The audio store selected by AUDIO_BACKEND. All backends expose the same
+    `upload(filename, data, content_type) -> url` (and `prune()`), so the pipeline doesn't care
+    which one it is: "drive", "none" (store nothing), or "local" (default)."""
     if cfg.audio_backend == "drive":
         return DriveUploader(cfg)
+    if cfg.audio_backend == "none":
+        return NullAudioStore(cfg)
     return LocalAudioStore(cfg)
 
 
@@ -27,9 +36,11 @@ __all__ = [
     "VoicemailEmail",
     "AudioAttachment",
     "audio_mime_for",
+    "build_email_link",
     "Extractor",
     "VoicemailInfo",
     "LocalAudioStore",
+    "NullAudioStore",
     "DriveUploader",
     "make_audio_store",
     "SheetWriter",

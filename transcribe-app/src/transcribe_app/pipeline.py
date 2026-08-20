@@ -22,6 +22,7 @@ from .tools import (
     SheetWriter,
     VoicemailEmail,
     VoicemailInfo,
+    build_email_link,
     make_audio_store,
 )
 
@@ -62,12 +63,18 @@ def _key(vm: VoicemailEmail, att: AudioAttachment) -> str:
 
 
 def build_row(
-    vm: VoicemailEmail, att: AudioAttachment, info: VoicemailInfo, audio_link: str = ""
+    vm: VoicemailEmail,
+    att: AudioAttachment,
+    info: VoicemailInfo,
+    audio_link: str = "",
+    email_link: str = "",
 ) -> list[str]:
     """One spreadsheet row — column order must match sheets.HEADER."""
-    # A HYPERLINK formula renders as a clickable "Download" cell (valueInputOption is USER_ENTERED).
-    # The server sends the file as an attachment, so clicking it downloads the voicemail.
-    listen = f'=HYPERLINK("{audio_link}","Download")' if audio_link else ""
+    # HYPERLINK formulas render as clickable cells (valueInputOption is USER_ENTERED). "Download"
+    # pulls the hosted copy (sent as an attachment); "Open email" opens the source message in
+    # webmail so the person downloads the recording straight from the email.
+    download = f'=HYPERLINK("{audio_link}","Download")' if audio_link else ""
+    open_email = f'=HYPERLINK("{email_link}","Open email")' if email_link else ""
     return [
         datetime.now(timezone.utc).isoformat(timespec="seconds"),
         vm.from_addr,
@@ -79,7 +86,8 @@ def build_row(
         info.summary,
         info.transcript,
         att.filename,
-        listen,
+        download,
+        open_email,
     ]
 
 
@@ -119,6 +127,12 @@ class Pipeline:
 
     def _handle(self, vm: VoicemailEmail, att: AudioAttachment) -> None:
         info = self._extractor.extract(att)  # transcribe + extract in one Gemini call
-        link = self._audio.upload(att.filename, att.data, att.content_type)  # for a Listen link
-        self._sheet.append_row(build_row(vm, att, info, link))
+        link = self._audio.upload(att.filename, att.data, att.content_type)  # hosted-copy download
+        email_link = build_email_link(
+            self._cfg.email_link_template,
+            message_id=vm.message_id,
+            uid=vm.uid,
+            mailbox=self._cfg.imap_mailbox,
+        )
+        self._sheet.append_row(build_row(vm, att, info, link, email_link))
         log.info("uploaded voicemail from %s (%s)", info.caller_name or vm.from_addr, att.filename)

@@ -60,3 +60,17 @@ class LocalAudioStore:
         if removed:
             log.info("pruned %d audio file(s) older than %d days", removed, self._retention_days)
         return removed
+
+
+class NullAudioStore:
+    """Stores nothing and returns no link — for AUDIO_BACKEND=none, when the sheet points at the
+    source email (EMAIL_LINK_TEMPLATE) instead of a hosted copy. Same interface as the others."""
+
+    def __init__(self, cfg: Config) -> None:
+        pass
+
+    def upload(self, filename: str, data: bytes, content_type: str) -> str:
+        return ""
+
+    def prune(self) -> int:
+        return 0

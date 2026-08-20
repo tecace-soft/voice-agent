@@ -97,9 +97,15 @@ class Config:
     sheet_range: str
     # ---- Voicemail audio storage (so the sheet can link to a playable recording) ----
     # Which backend stores the audio: "local" (write on this host and serve it — zero extra cost,
-    # the default) or "drive" (Google Drive — needs a Shared Drive or OAuth, since a plain service
-    # account has no Drive storage).
+    # the default), "drive" (Google Drive — needs a Shared Drive or OAuth), or "none" (store
+    # nothing — use with EMAIL_LINK_TEMPLATE so people open the source email and download from it).
     audio_backend: str
+    # Optional webmail deep-link template for an "Open email" column, so the sheet points at the
+    # source email instead of (or as well as) a hosted copy. Placeholders {message_id}/{uid}/
+    # {mailbox}. Empty = no link. Examples:
+    #   Gmail:     https://mail.google.com/mail/u/0/#search/rfc822msgid:{message_id}
+    #   Roundcube: https://mail.<host>/?_task=mail&_action=show&_mbox={mailbox}&_uid={uid}
+    email_link_template: str
     # For AUDIO_BACKEND=local: the directory to write audio into, and the public URL prefix that
     # same directory is served at (e.g. https://voicemails.example.com). A web server (Traefik/
     # nginx/caddy on the VPS) serves the directory; the sheet links to <AUDIO_BASE_URL>/<file>.
@@ -147,6 +153,7 @@ class Config:
             google_sheet_id=_optional("GOOGLE_SHEET_ID"),
             sheet_range=_optional("SHEET_RANGE", "Voicemails!A1"),
             audio_backend=_optional("AUDIO_BACKEND", "local").lower(),
+            email_link_template=_optional("EMAIL_LINK_TEMPLATE"),
             audio_storage_dir=_optional("AUDIO_STORAGE_DIR") or str(PROJECT_ROOT / "voicemail-audio"),
             audio_base_url=_optional("AUDIO_BASE_URL"),
             audio_retention_days=int(_optional("AUDIO_RETENTION_DAYS", "30")),
