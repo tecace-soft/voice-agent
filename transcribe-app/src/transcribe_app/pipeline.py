@@ -83,8 +83,12 @@ def build_row(
 
 
 class Pipeline:
-    def __init__(self, cfg: Config) -> None:
+    def __init__(self, cfg: Config, *, reprocess: bool = False) -> None:
         self._cfg = cfg
+        # When True, process every voicemail found even if it's already in the state file — for
+        # testing against the same voicemail repeatedly. Normal runs leave this False so a voicemail
+        # is only ever handled once.
+        self._reprocess = reprocess
         self._source = EmailSource(cfg)
         self._extractor = Extractor(cfg)
         self._drive = DriveUploader(cfg)
@@ -98,7 +102,7 @@ class Pipeline:
         for vm in voicemails:
             for att in vm.attachments:
                 key = _key(vm, att)
-                if self._store.has(key):
+                if not self._reprocess and self._store.has(key):
                     summary.skipped += 1
                     continue
                 try:

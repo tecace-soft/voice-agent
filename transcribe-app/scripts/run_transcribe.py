@@ -10,6 +10,7 @@ Scheduler). Requires the settings listed in .env.example (see Config.missing()).
 
 from __future__ import annotations
 
+import argparse
 import logging
 import sys
 
@@ -18,6 +19,16 @@ from transcribe_app.pipeline import Pipeline
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Run the voicemail transcription pipeline once.")
+    parser.add_argument(
+        "--reprocess",
+        action="store_true",
+        help="Process every voicemail found, even ones already recorded as done. For testing — "
+        "re-runs the same voicemail(s), appending a fresh row + Drive upload each time. Without "
+        "this flag, already-handled voicemails are skipped (the normal behavior).",
+    )
+    args = parser.parse_args()
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     cfg = Config.load()
     gaps = cfg.missing()
@@ -28,7 +39,7 @@ def main() -> int:
         print("Fill these in .env (see .env.example) and re-run.")
         return 1
 
-    summary = Pipeline(cfg).run()
+    summary = Pipeline(cfg, reprocess=args.reprocess).run()
     print(
         f"Done: {summary.processed} uploaded, {summary.skipped} already done, "
         f"{summary.failed} failed, across {summary.voicemails} voicemail email(s)."
