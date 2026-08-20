@@ -17,9 +17,11 @@ services:
   voicemail-files:
     image: caddy:2-alpine
     restart: unless-stopped
-    # caddy is the image entrypoint, so the command starts at its subcommand. Listing is off by
-    # default (no --browse), so the directory index isn't exposed.
-    command: file-server --root /srv/audio --listen :80
+    # Set the entrypoint explicitly so `caddy` is always the process (the image runs its binary via
+    # CMD, not ENTRYPOINT, so a bare command: would try to exec "file-server" directly). Listing is
+    # off by default (no --browse), so the directory index isn't exposed.
+    entrypoint: ["caddy"]
+    command: ["file-server", "--root", "/srv/audio", "--listen", ":80"]
     volumes:
       - /srv/voicemail-audio:/srv/audio:ro
     networks:
