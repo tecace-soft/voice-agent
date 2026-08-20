@@ -17,12 +17,12 @@ from pathlib import Path
 from .config import Config
 from .tools import (
     AudioAttachment,
-    DriveUploader,
     EmailSource,
     Extractor,
     SheetWriter,
     VoicemailEmail,
     VoicemailInfo,
+    make_audio_store,
 )
 
 log = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ class Pipeline:
         self._reprocess = reprocess
         self._source = EmailSource(cfg)
         self._extractor = Extractor(cfg)
-        self._drive = DriveUploader(cfg)
+        self._audio = make_audio_store(cfg)  # local (VPS) or drive, per AUDIO_BACKEND
         self._sheet = SheetWriter(cfg)
         self._store = ProcessedStore(cfg.state_file)
 
@@ -117,6 +117,6 @@ class Pipeline:
 
     def _handle(self, vm: VoicemailEmail, att: AudioAttachment) -> None:
         info = self._extractor.extract(att)  # transcribe + extract in one Gemini call
-        link = self._drive.upload(att.filename, att.data, att.content_type)  # for a Listen link
+        link = self._audio.upload(att.filename, att.data, att.content_type)  # for a Listen link
         self._sheet.append_row(build_row(vm, att, info, link))
         log.info("uploaded voicemail from %s (%s)", info.caller_name or vm.from_addr, att.filename)

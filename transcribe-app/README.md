@@ -21,11 +21,13 @@ voicemail's audio never bleeds into another's transcript or row.
 | --- | --- | --- |
 | Find voicemail mail, pull audio (`.wav`/`.mp3`/…) | `tools/email_source.py` | generic IMAP (Gmail, Outlook, Yahoo, …) |
 | Transcribe audio + extract caller name / phone / requested time / summary | `tools/extractor.py` | Google Gemini (audio in, structured output) |
-| Upload the audio → a "Listen" link | `tools/drive.py` | Google Drive (same service account) |
+| Store the audio → a "Listen" link | `tools/local_store.py` (or `drive.py`) | this host, served over HTTPS (default) / Google Drive |
 | Append a row (incl. the Listen link) | `tools/sheets.py` | Google Sheets (service account) |
 
-Each sheet row includes a clickable **Listen** link — the audio is uploaded to Google Drive so
-the team can play the voicemail straight from the spreadsheet.
+Each sheet row includes a clickable **Listen** link so the team can play the voicemail straight
+from the spreadsheet. By default the audio is stored **on this host** and served by the web
+server already running here (zero extra cost) under a random, unguessable filename; set
+`AUDIO_BACKEND=drive` to use Google Drive instead (needs a Shared Drive or OAuth).
 | Orchestrate + idempotency | `pipeline.py` | local `.processed.json` |
 
 ## Layout
@@ -40,7 +42,8 @@ transcribe-app/
     tools/                 # one module per external service
       email_source.py      #   IMAP: find voicemail mail, pull audio attachments (.wav/.mp3/…)
       extractor.py         #   Google Gemini: audio -> transcript + structured fields (one call)
-      drive.py             #   Google Drive: upload the audio -> a "Listen" link
+      local_store.py       #   store audio on this host + serve it -> a "Listen" link (default)
+      drive.py             #   alternative: upload the audio to Google Drive
       google_auth.py       #   shared service-account credentials (Sheets + Drive)
       sheets.py            #   Google Sheets: append a row
     pipeline.py            # orchestrates the tools; per-file isolation + idempotency
@@ -72,11 +75,21 @@ Fill in `.env` (see the comments there):
 - **Google Sheets** — a service account: create one in Google Cloud, download its JSON key to
   `service-account.json`, set `GOOGLE_SHEET_ID`, and **share the sheet with the service
   account's email as an Editor**.
-- **Google Drive** (for the Listen links) — in the **same** Google Cloud project, **enable the
-  Google Drive API**. Recommended: create a Drive folder, share it with the service account
-  (Editor) and your team (Viewer), and set `GOOGLE_DRIVE_FOLDER_ID`. Leave `GOOGLE_DRIVE_PUBLIC=true`
-  for the simplest setup (each upload gets an "anyone with the link" view permission so the Listen
-  link just works), or set it `false` to rely on the folder's sharing instead.
+- **Audio storage** (for the Listen links) — default `AUDIO_BACKEND=local`: set `AUDIO_STORAGE_DIR`
+  (a directory on this host) and `AUDIO_BASE_URL` (the public URL that directory is served at), then
+  point your web server at that directory. With Caddy, add a `handle_path` block (see below). Files
+  get random, unguessable names. Set `AUDIO_BACKEND=drive` only if you have a Google **Shared Drive**
+  or OAuth — a plain service account has no Drive storage.
+
+  Example Caddy route (append inside the existing site block for your host):
+
+  ```
+  handle_path /voicemails/* {
+      root * /srv/voicemail-audio
+      file_server
+  }
+  ```
+  with `AUDIO_STORAGE_DIR=/srv/voicemail-audio` and `AUDIO_BASE_URL=https://<your-host>/voicemails`.
 
 ## Run
 

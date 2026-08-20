@@ -19,11 +19,11 @@ from transcribe_app.config import Config
 from transcribe_app.pipeline import build_row
 from transcribe_app.tools import (
     AudioAttachment,
-    DriveUploader,
     Extractor,
     SheetWriter,
     VoicemailEmail,
     audio_mime_for,
+    make_audio_store,
 )
 
 
@@ -44,7 +44,7 @@ def main() -> int:
         return 1
 
     extractor = Extractor(cfg)
-    drive = DriveUploader(cfg)
+    audio = make_audio_store(cfg)  # local (VPS) or drive, per AUDIO_BACKEND
     sheet = SheetWriter(cfg)
 
     done = 0
@@ -60,7 +60,7 @@ def main() -> int:
         try:
             att = AudioAttachment(filename=path.name, data=path.read_bytes(), content_type=mime)
             info = extractor.extract(att)
-            link = drive.upload(att.filename, att.data, att.content_type)
+            link = audio.upload(att.filename, att.data, att.content_type)
             # No email envelope for a manual upload — label the source so the row is still traceable.
             vm = VoicemailEmail(message_id=f"manual:{path.name}", from_addr="(manual upload)",
                                 subject="", date="")
