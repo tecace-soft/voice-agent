@@ -13,6 +13,7 @@ import email
 import imaplib
 import logging
 import os
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from email.header import decode_header, make_header
@@ -109,6 +110,32 @@ def _audio_attachments(msg: Message) -> list[AudioAttachment]:
     return out
 
 
+def _login(conn: imaplib.IMAP4, user: str, password: str) -> None:
+    """Log in, tolerating a non-ASCII password (e.g. one containing a Korean character).
+
+    Two things trip up non-ASCII credentials: (1) imaplib encodes the LOGIN command with the
+    connection's codec, which defaults to ASCII — the caller sets it to UTF-8 so the password can
+    be sent at all; (2) the same character can be stored on the server in a different Unicode
+    normalization form (NFC vs NFD) than the one we were handed, so equal-looking passwords differ
+    byte-for-byte. We try the password as given, then NFC and NFD, until one authenticates. A
+    failed LOGIN leaves the connection in the non-authenticated state, so retrying on it is safe.
+    """
+    candidates = [password]
+    for form in ("NFC", "NFD"):
+        norm = unicodedata.normalize(form, password)
+        if norm not in candidates:
+            candidates.append(norm)
+    last_exc: Exception | None = None
+    for candidate in candidates:
+        try:
+            conn.login(user, candidate)
+            return
+        except imaplib.IMAP4.error as exc:
+            last_exc = exc
+    assert last_exc is not None  # candidates is never empty
+    raise last_exc
+
+
 class EmailSource:
     """A minimal IMAP reader: connect, search for candidate messages, return the ones that
     carry an audio attachment. Provider-agnostic — driven entirely by Config."""
@@ -143,7 +170,12 @@ class EmailSource:
         else:
             conn = imaplib.IMAP4(cfg.imap_host, cfg.imap_port)
             conn.starttls()
-        conn.login(cfg.imap_username, cfg.imap_password)
+        # imaplib encodes the LOGIN command with this codec; it defaults to ASCII, which raises on
+        # a non-ASCII password (e.g. one containing Korean). UTF-8 lets such a password be sent at
+        # all; the mail server (Dovecot/cPanel here) compares it as UTF-8. See _login for the
+        # normalization handling that goes with this.
+        conn._encoding = "utf-8"
+        _login(conn, cfg.imap_username, cfg.imap_password)
         return conn
 
     def _search(self, conn: imaplib.IMAP4) -> list[bytes]:
