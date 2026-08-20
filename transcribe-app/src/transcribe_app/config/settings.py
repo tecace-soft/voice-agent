@@ -52,6 +52,12 @@ IMAP_PROVIDERS: dict[str, tuple[str, int, bool]] = {
     "icloud": ("imap.mail.me.com", 993, True),
     "aol": ("imap.aol.com", 993, True),
     "zoho": ("imap.zoho.com", 993, True),
+    # Comcast/Xfinity residential and Comcast Business (classic comcastbiz mail — NOT the
+    # Microsoft-365-hosted variant, which needs OAuth2 like Outlook does).
+    "comcast": ("imap.comcast.net", 993, True),
+    "xfinity": ("imap.comcast.net", 993, True),
+    "comcastbiz": ("imap.comcastbiz.net", 993, True),
+    "comcastbusiness": ("imap.comcastbiz.net", 993, True),
 }
 
 
