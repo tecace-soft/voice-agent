@@ -81,15 +81,19 @@ Fill in `.env` (see the comments there):
   get random, unguessable names. Set `AUDIO_BACKEND=drive` only if you have a Google **Shared Drive**
   or OAuth — a plain service account has no Drive storage.
 
-  Example Caddy route (append inside the existing site block for your host):
+  Example Caddy route (append inside the existing site block for your host) — the
+  `Content-Disposition` header makes the browser **download** the voicemail rather than play it:
 
   ```
   handle_path /voicemails/* {
       root * /srv/voicemail-audio
+      header Content-Disposition attachment
       file_server
   }
   ```
   with `AUDIO_STORAGE_DIR=/srv/voicemail-audio` and `AUDIO_BASE_URL=https://<your-host>/voicemails`.
+  Stored audio is auto-deleted after `AUDIO_RETENTION_DAYS` (default 30), pruned on each run — so
+  recordings aren't kept around; the person downloads what they need within the window.
 
 ## Run
 

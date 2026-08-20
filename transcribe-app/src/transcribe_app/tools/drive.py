@@ -65,3 +65,8 @@ class DriveUploader:
         except Exception as exc:  # noqa: BLE001 — Drive is best-effort; keep the row either way
             log.warning("could not upload %s to Drive: %s", filename, exc)
             return ""
+
+    def prune(self) -> int:
+        """No-op — retention for the Drive backend isn't managed here (use Drive rules if needed).
+        Present so the pipeline can call prune() on either backend uniformly."""
+        return 0

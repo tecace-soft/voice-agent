@@ -105,6 +105,9 @@ class Config:
     # nginx/caddy on the VPS) serves the directory; the sheet links to <AUDIO_BASE_URL>/<file>.
     audio_storage_dir: str
     audio_base_url: str
+    # Delete stored audio older than this many days, pruned on each run so recordings aren't kept
+    # indefinitely (the person downloads what they need within the window). 0 = keep forever.
+    audio_retention_days: int
     # For AUDIO_BACKEND=drive: optional Drive folder id (empty = the account's Drive root)...
     google_drive_folder_id: str
     # ...and whether to set an "anyone with the link can view" permission on each upload.
@@ -146,6 +149,7 @@ class Config:
             audio_backend=_optional("AUDIO_BACKEND", "local").lower(),
             audio_storage_dir=_optional("AUDIO_STORAGE_DIR") or str(PROJECT_ROOT / "voicemail-audio"),
             audio_base_url=_optional("AUDIO_BASE_URL"),
+            audio_retention_days=int(_optional("AUDIO_RETENTION_DAYS", "30")),
             google_drive_folder_id=_optional("GOOGLE_DRIVE_FOLDER_ID"),
             google_drive_public=_bool("GOOGLE_DRIVE_PUBLIC", True),
             state_file=_optional("STATE_FILE") or str(PROJECT_ROOT / ".processed.json"),

@@ -65,8 +65,9 @@ def build_row(
     vm: VoicemailEmail, att: AudioAttachment, info: VoicemailInfo, audio_link: str = ""
 ) -> list[str]:
     """One spreadsheet row — column order must match sheets.HEADER."""
-    # A HYPERLINK formula renders as a clickable "Listen" cell (valueInputOption is USER_ENTERED).
-    listen = f'=HYPERLINK("{audio_link}","Listen")' if audio_link else ""
+    # A HYPERLINK formula renders as a clickable "Download" cell (valueInputOption is USER_ENTERED).
+    # The server sends the file as an attachment, so clicking it downloads the voicemail.
+    listen = f'=HYPERLINK("{audio_link}","Download")' if audio_link else ""
     return [
         datetime.now(timezone.utc).isoformat(timespec="seconds"),
         vm.from_addr,
@@ -97,6 +98,7 @@ class Pipeline:
 
     def run(self) -> RunSummary:
         summary = RunSummary()
+        self._audio.prune()  # light retention: drop stored audio past the retention window
         voicemails = self._source.fetch_voicemails()
         summary.voicemails = len(voicemails)
         for vm in voicemails:
