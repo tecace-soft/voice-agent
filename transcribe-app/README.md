@@ -95,6 +95,10 @@ Fill in `.env` (see the comments there):
   Stored audio is auto-deleted after `AUDIO_RETENTION_DAYS` (default 30), pruned on each run — so
   recordings aren't kept around; the person downloads what they need within the window.
 
+  **On the VPS (Traefik):** a ready-made static server is in `deploy/docker-compose.yml` — it
+  serves `/srv/voicemail-audio` at `https://<host>/voicemails` (download + prefix strip already
+  wired). Bring it up with `docker compose -f deploy/docker-compose.yml up -d`.
+
 ## Run
 
 ```bash
