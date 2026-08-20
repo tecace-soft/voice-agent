@@ -1,4 +1,10 @@
-import type { AgentPrompt, IntakeList, IntakeRecord, IntakeStatus } from "./types";
+import type {
+  AgentPrompt,
+  IntakeList,
+  IntakeRecord,
+  IntakeStatus,
+  TranscribeStats,
+} from "./types";
 
 // Single place that talks to the backend API. Every screen reads through here, so the
 // UI never builds URLs or parses responses itself. Base URL comes from VITE_BACKEND_URL
@@ -78,4 +84,9 @@ export function deleteClient(id: string): Promise<{ status: string; id: string }
 // The agent's current prompt + scenario (read-only for now).
 export function getPrompt(): Promise<AgentPrompt> {
   return get<AgentPrompt>("/prompt");
+}
+
+// Voicemail transcription stats for the Transcriptions tab.
+export function getTranscribeStats(): Promise<TranscribeStats> {
+  return get<TranscribeStats>("/transcribe/stats");
 }

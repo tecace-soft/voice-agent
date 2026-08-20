@@ -102,6 +102,11 @@ class Config:
     #   Gmail (opens directly):  https://mail.google.com/mail/u/0/#all/{gm_msgid}
     #   Roundcube:               https://mail.<host>/?_task=mail&_action=show&_mbox={mailbox}&_uid={uid}
     email_link_template: str
+    # ---- Metrics reporting (optional — powers the dashboard's Transcriptions tab) ----
+    # After each run we POST the RunSummary to <BACKEND_URL>/transcribe/runs. Empty = don't report.
+    backend_url: str
+    # Matches TRANSCRIBE_INGEST_KEY on the backend; sent as the x-transcribe-key header. Empty = none.
+    transcribe_ingest_key: str
     # ---- Runtime ----
     # Where we remember which (message, attachment) pairs are already done, so re-runs are
     # idempotent without mutating the mailbox.
@@ -137,6 +142,8 @@ class Config:
             google_sheet_id=_optional("GOOGLE_SHEET_ID"),
             sheet_range=_optional("SHEET_RANGE", "Voicemails!A1"),
             email_link_template=_optional("EMAIL_LINK_TEMPLATE"),
+            backend_url=_optional("BACKEND_URL"),
+            transcribe_ingest_key=_optional("TRANSCRIBE_INGEST_KEY"),
             state_file=_optional("STATE_FILE") or str(PROJECT_ROOT / ".processed.json"),
             request_timeout=float(_optional("REQUEST_TIMEOUT_SECONDS", "60")),
         )

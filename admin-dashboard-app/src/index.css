@@ -1,35 +1,39 @@
-/* TecAce-branded theme for the admin dashboard.
-   Palette + type taken from tecace.com: deep navy ink on a soft blue-gray canvas,
-   white surfaces, and the signature pink -> purple -> blue gradient as the accent.
-   All tokens live in :root so the look can be retuned in one place. */
-@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Inter:wght@400;500;600&display=swap");
+/* Admin dashboard theme, driven by the TecAce design system (.claude/skills/tecace-design).
+   The DS tokens (fig-tokens.css) define the full light/dark palette under [data-theme]; we map
+   the dashboard's own token names onto them here, so every component picks up the brand look and
+   follows the light/dark toggle automatically. Fonts: Pretendard (UI/body) via CDN, Poppins
+   (display/numbers) via Google Fonts. Never hardcode hex — always reference a token. */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css");
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap");
+@import "./tecace/fig-tokens.css";
+@import "./tecace/typography.css";
 
 :root {
-  /* text */
-  --ink: #1b2559; /* headings, strong text, logo — TecAce navy */
-  --body: #414c6e; /* body copy */
-  --muted: #838ca6; /* secondary / captions */
+  /* text — DS label hierarchy (adapts light/dark) */
+  --ink: var(--label-strong); /* headings, strong text */
+  --body: var(--label-normal); /* body copy */
+  --muted: var(--label-alternative); /* secondary / captions */
   /* surfaces */
-  --bg: #f4f7fb; /* page canvas (the hero's blue-gray tint) */
-  --surface: #ffffff; /* cards, table, topbar */
-  --border: #e4e9f2; /* hairlines */
-  --border-strong: #c9d2e3; /* input / button outlines */
-  /* brand accents */
-  --primary: #2f6be0; /* brand blue — links, active, focus, interactive */
-  --primary-dark: #2456c0;
-  --primary-tint: #eef4fe;
-  --brand-pink: #e0219b;
-  --brand-purple: #8a35d9;
-  /* topbar divider — shades of blue: cyan-blue -> brand blue -> deep blue */
-  --gradient: linear-gradient(90deg, #22a7f0 0%, #2f6be0 52%, #1b3fa0 100%);
-  /* danger (rose-red — reads destructive, still sits in the brand's warm-to-cool range) */
-  --danger: #d92d4b;
-  --danger-tint: #fdeef1;
-  --danger-border: #f6c9d3;
-  /* shape + type */
-  --radius: 10px;
-  --font-head: "Poppins", "Segoe UI", system-ui, sans-serif;
-  --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --bg: var(--background-normal-alternative); /* page canvas */
+  --surface: var(--background-normal-normal); /* cards, table, topbar */
+  --border: var(--line-normal-neutral); /* hairlines */
+  --border-strong: var(--line-normal-strong); /* input / button outlines */
+  /* brand — TecAce blue (#116DFF) */
+  --primary: var(--primary-normal); /* links, active, focus, interactive */
+  --primary-dark: var(--primary-strong);
+  --primary-tint: var(--fill-normal); /* subtle interactive fill */
+  --brand-pink: var(--primary-normal); /* DS is blue-forward — retire pink/purple to blue */
+  --brand-purple: var(--primary-strong);
+  /* topbar divider — TecAce blue ramp */
+  --gradient: linear-gradient(90deg, var(--blue-40) 0%, var(--blue-50) 52%, var(--blue-60) 100%);
+  /* danger — DS negative status */
+  --danger: var(--status-negative);
+  --danger-tint: var(--fill-normal);
+  --danger-border: var(--status-negative);
+  /* shape + type — DS uses Pretendard for UI/titles, Poppins for display/numeric */
+  --radius: 12px;
+  --font-head: var(--font-sans); /* Pretendard — headings/titles */
+  --font-body: var(--font-sans); /* Pretendard — body/UI */
 
   font-family: var(--font-body);
   color: var(--body);
@@ -99,6 +103,32 @@ a:hover {
 .nav a.active {
   color: var(--primary);
   border-bottom-color: var(--primary);
+}
+
+/* Light/dark toggle, pushed to the right edge of the topbar. */
+.theme-toggle {
+  margin-left: auto;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 8px;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.theme-toggle:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-tint);
 }
 
 .content {
@@ -183,7 +213,7 @@ h2 {
 .btn-danger:hover:not(:disabled) {
   border-color: var(--danger);
   color: var(--danger);
-  background: #fbe0e6;
+  background: var(--fill-strong);
 }
 .actions {
   display: flex;
@@ -232,7 +262,7 @@ td {
   vertical-align: top;
 }
 th {
-  background: #f6f8fc;
+  background: var(--fill-normal);
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -242,7 +272,7 @@ tbody tr:last-child td {
   border-bottom: none;
 }
 tbody tr:hover td {
-  background: #fafbfe;
+  background: var(--fill-normal);
 }
 td.notes {
   max-width: 260px;
@@ -271,7 +301,7 @@ td.purpose {
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--brand-purple);
-  background: #f3ecfb;
+  background: var(--fill-normal);
   border-radius: 999px;
   padding: 0.05rem 0.45rem;
 }
@@ -293,24 +323,24 @@ td.purpose {
   white-space: nowrap;
 }
 .badge-new {
-  background: #eef4fe;
-  color: #2456c0;
+  background: var(--fill-normal);
+  color: var(--primary-normal);
 }
 .badge-contacted {
-  background: #fef3d6;
-  color: #92610a;
+  background: var(--fill-normal);
+  color: var(--status-cautionary);
 }
 .badge-booked {
-  background: #dff5e5;
-  color: #14713a;
+  background: var(--fill-normal);
+  color: var(--status-positive);
 }
 .badge-unreachable {
-  background: #eef0f5;
-  color: #5b6683;
+  background: var(--fill-normal);
+  color: var(--label-alternative);
 }
 .badge-canceled {
-  background: var(--danger-tint);
-  color: #a51d3b;
+  background: var(--fill-normal);
+  color: var(--status-negative);
 }
 
 /* ---- calendar ---- */
@@ -373,7 +403,7 @@ td.purpose {
 }
 .cal-cell.has {
   background: var(--primary-tint);
-  border-color: #cfe0fb;
+  border-color: var(--line-normal-neutral);
 }
 /* Current day: a brand-pink edge ring — distinct from the blue "booked" tint, on-brand,
    and still visible when the cell is colored. Inset box-shadow keeps it on the edges
@@ -385,14 +415,14 @@ td.purpose {
 /* Past days: bookings still show but de-emphasized. Placed after .has so its muted look
    wins on a past day that also has bookings. (Today is never past, so no conflict.) */
 .cal-cell.past {
-  background: #f7f8fb;
+  background: var(--fill-normal);
   border-color: var(--border);
 }
 .cal-cell.past .cal-day {
   color: var(--muted);
 }
 .cal-cell.past .cal-count {
-  background: #aab2c6;
+  background: var(--label-alternative);
 }
 .cal-day {
   font-weight: 600;
@@ -434,7 +464,7 @@ td.purpose {
 }
 /* Past appointments: shown but de-emphasized (e.g. earlier-today ones). */
 .appt.past {
-  background: #f7f8fb;
+  background: var(--fill-normal);
 }
 .appt.past .appt-time {
   color: var(--muted);
@@ -467,6 +497,66 @@ td.purpose {
   line-height: 1.55;
   color: var(--ink);
   overflow-x: auto;
+}
+
+/* ---- stat tiles (Transcriptions) ---- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.9rem;
+  margin-bottom: 1.5rem;
+}
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+}
+.stat-num {
+  font-family: var(--font-display); /* Poppins — numeric display */
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.stat-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: 0.3rem;
+}
+
+/* ---- mini bar chart (transcribed per day) ---- */
+.chart {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.15rem;
+}
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 150px;
+}
+.bars .bar {
+  flex: 1;
+  min-height: 3px;
+  background: var(--gradient);
+  border-radius: 6px 6px 0 0;
+}
+.bar-labels {
+  display: flex;
+  gap: 6px;
+  margin-top: 0.4rem;
+}
+.bar-labels span {
+  flex: 1;
+  text-align: center;
+  font-size: 0.68rem;
+  color: var(--muted);
 }
 
 /* Expandable per-client call transcript (Clients table). */

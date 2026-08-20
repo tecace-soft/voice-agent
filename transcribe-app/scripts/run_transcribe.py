@@ -16,6 +16,7 @@ import sys
 
 from transcribe_app.config import Config
 from transcribe_app.pipeline import Pipeline
+from transcribe_app.reporter import report_run
 
 
 def main() -> int:
@@ -43,6 +44,14 @@ def main() -> int:
     print(
         f"Done: {summary.processed} uploaded, {summary.skipped} already done, "
         f"{summary.failed} failed, across {summary.voicemails} voicemail email(s)."
+    )
+    # Report the run to the backend for the dashboard's Transcriptions tab (best-effort).
+    report_run(
+        cfg,
+        voicemails=summary.voicemails,
+        processed=summary.processed,
+        skipped=summary.skipped,
+        failed=summary.failed,
     )
     return 1 if summary.failed else 0
 
