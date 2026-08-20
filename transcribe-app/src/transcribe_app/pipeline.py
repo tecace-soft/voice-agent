@@ -134,6 +134,7 @@ class Pipeline:
             message_id=vm.message_id,
             uid=vm.uid,
             mailbox=self._cfg.imap_mailbox,
+            gm_msgid=vm.gm_msgid,
         )
         self._sheet.append_row(build_row(vm, att, info, link, email_link))
         log.info("uploaded voicemail from %s (%s)", info.caller_name or vm.from_addr, att.filename)

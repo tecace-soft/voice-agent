@@ -13,6 +13,7 @@ import email
 import imaplib
 import logging
 import os
+import re
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -77,14 +78,19 @@ class VoicemailEmail:
     # The message's IMAP UID (stable within the mailbox) — used to build a webmail "Open email"
     # link for the ones (like Roundcube) that open a message by UID rather than Message-ID.
     uid: str = ""
+    # Gmail only: the hex form of X-GM-MSGID, which is the message id in a Gmail web URL — lets the
+    # "Open email" link open the message DIRECTLY instead of landing on a search result.
+    gm_msgid: str = ""
     attachments: list[AudioAttachment] = field(default_factory=list)
 
 
-def build_email_link(template: str, *, message_id: str, uid: str, mailbox: str) -> str:
+def build_email_link(
+    template: str, *, message_id: str, uid: str, mailbox: str, gm_msgid: str = ""
+) -> str:
     """Fill an EMAIL_LINK_TEMPLATE for one message so the sheet can deep-link to it in webmail.
-    Placeholders: {message_id} (angle brackets stripped, URL-encoded — Gmail's rfc822msgid: and
-    most webmail want the bare id), {uid} and {mailbox} (for webmail that opens by IMAP UID, e.g.
-    Roundcube). Empty template -> no link."""
+    Placeholders: {message_id} (angle brackets stripped, URL-encoded — for Gmail's rfc822msgid:
+    search and most webmail); {uid}/{mailbox} (webmail that opens by IMAP UID, e.g. Roundcube);
+    {gm_msgid} (Gmail only — opens the message directly). Empty template -> no link."""
     if not template:
         return ""
     mid = message_id.strip().lstrip("<").rstrip(">")
@@ -93,6 +99,7 @@ def build_email_link(template: str, *, message_id: str, uid: str, mailbox: str) 
             message_id=quote(mid, safe=""),
             uid=quote(uid, safe=""),
             mailbox=quote(mailbox, safe=""),
+            gm_msgid=quote(gm_msgid, safe=""),
         )
     except (KeyError, IndexError, ValueError) as exc:
         log.warning("EMAIL_LINK_TEMPLATE could not be filled (%s): %s", exc, template)
@@ -234,15 +241,25 @@ class EmailSource:
         return data[0].split()
 
     def _load(self, conn: imaplib.IMAP4, num: bytes) -> VoicemailEmail | None:
-        typ, data = conn.uid("fetch", num, "(RFC822)")
+        # On Gmail, also pull X-GM-MSGID (a Gmail IMAP extension) so the "Open email" link can open
+        # the message directly. Other servers don't support it, so only ask Gmail for it.
+        is_gmail = "gmail" in self._cfg.imap_host.lower()
+        items = "(RFC822 X-GM-MSGID)" if is_gmail else "(RFC822)"
+        typ, data = conn.uid("fetch", num, items)
         if typ != "OK" or not data or not isinstance(data[0], tuple):
             return None
         msg = email.message_from_bytes(data[0][1])
         uid = num.decode(errors="ignore")
+        gm_msgid = ""
+        if is_gmail:
+            m = re.search(rb"X-GM-MSGID (\d+)", data[0][0] or b"")
+            if m:
+                gm_msgid = format(int(m.group(1)), "x")  # hex = the id in the Gmail web URL
         message_id = _decode(msg.get("Message-ID")) or f"uid-{uid}"
         return VoicemailEmail(
             message_id=message_id,
             uid=uid,
+            gm_msgid=gm_msgid,
             from_addr=parseaddr(_decode(msg.get("From")))[1],
             subject=_decode(msg.get("Subject")),
             date=_decode(msg.get("Date")),
