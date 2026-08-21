@@ -25,8 +25,14 @@ export interface VoicemailStats {
   today: number; // processed today (business timezone)
   last7Days: number; // processed in the last 7 days
   daily: { day: string; processed: number }[]; // per-day trend, last 14 days
-  recent: VoicemailRunRecord[]; // the most recent runs
+  recent: VoicemailRunRecord[]; // the most recent runs (newest first) — feeds the table
+  runSeries: VoicemailRunRecord[]; // the last runs in chronological order — feeds the per-run line chart
 }
+
+// How many runs the per-run line chart plots. Bounded so the line stays readable as runs pile up,
+// but generous enough that new points keep extending the line rather than pushing old ones off a
+// tiny window.
+const RUN_SERIES_LIMIT = 60;
 
 const RETURN_COLUMNS = sql`
   id,
@@ -52,7 +58,7 @@ export async function insertVoicemailRun(input: VoicemailRunInput): Promise<Voic
 
 // Everything the dashboard needs, in one call.
 export async function getVoicemailStats(): Promise<VoicemailStats> {
-  const [totals, daily, recent] = await Promise.all([
+  const [totals, daily, recent, runSeries] = await Promise.all([
     sql`
       SELECT
         coalesce(sum(processed), 0)::int AS "totalProcessed",
@@ -76,6 +82,16 @@ export async function getVoicemailStats(): Promise<VoicemailStats> {
       ORDER BY 1
     `,
     sql`SELECT ${RETURN_COLUMNS} FROM voicemail_runs ORDER BY created_at DESC LIMIT 10`,
+    // The most recent RUN_SERIES_LIMIT runs, returned oldest→newest so the chart reads left→right.
+    sql`
+      SELECT ${RETURN_COLUMNS} FROM (
+        SELECT id, voicemails, processed, skipped, failed, created_at
+        FROM voicemail_runs
+        ORDER BY created_at DESC
+        LIMIT ${RUN_SERIES_LIMIT}
+      ) sub
+      ORDER BY created_at ASC
+    `,
   ]);
 
   const t = totals[0] as {
@@ -90,5 +106,6 @@ export async function getVoicemailStats(): Promise<VoicemailStats> {
     ...t,
     daily: daily as unknown as { day: string; processed: number }[],
     recent: recent as unknown as VoicemailRunRecord[],
+    runSeries: runSeries as unknown as VoicemailRunRecord[],
   };
 }

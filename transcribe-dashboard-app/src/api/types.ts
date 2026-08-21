@@ -19,5 +19,6 @@ export interface TranscribeStats {
   today: number;
   last7Days: number;
   daily: { day: string; processed: number }[]; // last 14 days
-  recent: VoicemailRun[];
+  recent: VoicemailRun[]; // newest first — the "Recent runs" table
+  runSeries: VoicemailRun[]; // oldest→newest — one point per run for the line chart
 }

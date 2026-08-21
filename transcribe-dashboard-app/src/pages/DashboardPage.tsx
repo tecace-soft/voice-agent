@@ -40,6 +40,13 @@ function RunLineChart({ runs }: { runs: VoicemailRun[] }) {
   const rawTicks = yMax >= 2 ? [0, Math.round(yMax / 2), yMax] : [0, yMax];
   const ticks = [...new Set(rawTicks)];
 
+  // The line always connects every run. Once there are many points, drawing a marker on each one
+  // gets noisy, so show per-run dots only while the series is sparse — the connecting line and the
+  // emphasized newest point still carry the shape, and hover tooltips stay on every run.
+  const showDots = n <= 24;
+  const spacing = n > 1 ? plotW / (n - 1) : plotW;
+  const hitR = Math.max(5, Math.min(12, spacing / 1.5)); // shrink hit targets as points crowd
+
   return (
     <svg className="linechart" viewBox={`0 0 ${W} ${H}`} width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Voicemails transcribed per run">
       <defs>
@@ -62,15 +69,20 @@ function RunLineChart({ runs }: { runs: VoicemailRun[] }) {
       {n >= 2 && <path className="area" d={areaPath} fill="url(#runFill)" />}
       {n >= 2 && <path className="line" d={linePath} />}
 
-      {/* one marker per run, with a wide invisible hit target for the hover tooltip */}
-      {pts.map((p, i) => (
-        <g key={p.run.id}>
-          <circle className={i === n - 1 ? "dot dot-last" : "dot"} cx={p.cx} cy={p.cy} r={i === n - 1 ? 5 : 4} />
-          <circle className="hit" cx={p.cx} cy={p.cy} r={12}>
-            <title>{`${formatDateTime(p.run.createdAt)} — ${p.run.processed} transcribed`}</title>
-          </circle>
-        </g>
-      ))}
+      {/* markers (thinned when dense) plus a hit target on every run for the hover tooltip */}
+      {pts.map((p, i) => {
+        const isLast = i === n - 1;
+        return (
+          <g key={p.run.id}>
+            {(showDots || isLast) && (
+              <circle className={isLast ? "dot dot-last" : "dot"} cx={p.cx} cy={p.cy} r={isLast ? 5 : 4} />
+            )}
+            <circle className="hit" cx={p.cx} cy={p.cy} r={hitR}>
+              <title>{`${formatDateTime(p.run.createdAt)} — ${p.run.processed} transcribed`}</title>
+            </circle>
+          </g>
+        );
+      })}
 
       {/* direct-label the newest run's value (clamped so a max-value point doesn't clip the top) */}
       <text className="endpoint" x={last.cx} y={Math.max(last.cy - 10, 12)} textAnchor="end">
@@ -113,8 +125,9 @@ export function DashboardPage() {
   }, []);
 
   const hasAny = data && data.runs > 0;
-  // Each point on the chart is one run; `recent` is newest-first, so read it left→right in time.
-  const runsChrono = data ? [...data.recent].reverse() : [];
+  // Each point on the chart is one run. `runSeries` already comes back oldest→newest from the
+  // backend, so the line reads left→right and keeps extending as new runs are added.
+  const runsChrono = data?.runSeries ?? [];
 
   return (
     <section>
