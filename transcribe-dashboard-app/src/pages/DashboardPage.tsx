@@ -10,7 +10,7 @@ function shortDay(ymd: string): string {
   return `${Number(m)}/${Number(d)}`;
 }
 
-export function TranscriptionsPage() {
+export function DashboardPage() {
   const [data, setData] = useState<TranscribeStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

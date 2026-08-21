@@ -499,65 +499,6 @@ td.purpose {
   overflow-x: auto;
 }
 
-/* ---- stat tiles (Transcriptions) ---- */
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 0.9rem;
-  margin-bottom: 1.5rem;
-}
-.stat {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1rem 1.1rem;
-}
-.stat-num {
-  font-family: var(--font-display); /* Poppins — numeric display */
-  font-size: 1.9rem;
-  font-weight: 700;
-  color: var(--ink);
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-}
-.stat-label {
-  font-size: 0.78rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  margin-top: 0.3rem;
-}
-
-/* ---- mini bar chart (transcribed per day) ---- */
-.chart {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1rem 1.15rem;
-}
-.bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-  height: 150px;
-}
-.bars .bar {
-  flex: 1;
-  min-height: 3px;
-  background: var(--gradient);
-  border-radius: 6px 6px 0 0;
-}
-.bar-labels {
-  display: flex;
-  gap: 6px;
-  margin-top: 0.4rem;
-}
-.bar-labels span {
-  flex: 1;
-  text-align: center;
-  font-size: 0.68rem;
-  color: var(--muted);
-}
 
 /* Expandable per-client call transcript (Clients table). */
 .transcript-row td {

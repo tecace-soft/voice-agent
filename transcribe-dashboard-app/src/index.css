@@ -1,0 +1,240 @@
+/* Transcribe dashboard theme, driven by the TecAce design system (.claude/skills/tecace-design).
+   The DS tokens (fig-tokens.css) define the full light/dark palette under [data-theme]; we map the
+   app's own token names onto them here, so components follow the light/dark toggle automatically.
+   Fonts: Pretendard (UI/body) via CDN, Poppins (display/numbers) via Google Fonts. */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css");
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap");
+@import "./tecace/fig-tokens.css";
+@import "./tecace/typography.css";
+
+:root {
+  --ink: var(--label-strong); /* headings, strong text */
+  --body: var(--label-normal); /* body copy */
+  --muted: var(--label-alternative); /* secondary / captions */
+  --bg: var(--background-normal-alternative); /* page canvas */
+  --surface: var(--background-normal-normal); /* cards, table, topbar */
+  --border: var(--line-normal-neutral); /* hairlines */
+  --border-strong: var(--line-normal-strong); /* input / button outlines */
+  --primary: var(--primary-normal); /* TecAce blue #116DFF */
+  --primary-tint: var(--fill-normal);
+  --gradient: linear-gradient(90deg, var(--blue-40) 0%, var(--blue-50) 52%, var(--blue-60) 100%);
+  --danger: var(--status-negative);
+  --danger-tint: var(--fill-normal);
+  --danger-border: var(--status-negative);
+  --radius: 12px;
+  --font-head: var(--font-sans); /* Pretendard — headings/titles */
+  --font-body: var(--font-sans); /* Pretendard — body/UI */
+
+  font-family: var(--font-body);
+  color: var(--body);
+  background: var(--bg);
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+}
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+:where(button, a, input, select):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ---- shell ---- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 0 1.5rem;
+  height: 60px;
+  background: var(--surface);
+  color: var(--ink);
+  border-bottom: 3px solid;
+  border-image: var(--gradient) 1;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.brand {
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.theme-toggle {
+  margin-left: auto;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 8px;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.theme-toggle:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-tint);
+}
+
+.content {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+h1 {
+  font-family: var(--font-head);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0.25rem 0;
+}
+h2 {
+  font-family: var(--font-head);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 1.5rem 0 0.5rem;
+}
+.muted {
+  color: var(--muted);
+}
+.error {
+  color: var(--danger);
+  background: var(--danger-tint);
+  border: 1px solid var(--danger-border);
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+}
+code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--fill-normal);
+  color: var(--ink);
+  padding: 1px 6px;
+  border-radius: 5px;
+}
+
+/* ---- stat tiles ---- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.9rem;
+  margin-bottom: 1.5rem;
+}
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+}
+.stat-num {
+  font-family: var(--font-display); /* Poppins — numeric display */
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.stat-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: 0.3rem;
+}
+
+/* ---- mini bar chart ---- */
+.chart {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.15rem;
+}
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 150px;
+}
+.bars .bar {
+  flex: 1;
+  min-height: 3px;
+  background: var(--gradient);
+  border-radius: 6px 6px 0 0;
+}
+.bar-labels {
+  display: flex;
+  gap: 6px;
+  margin-top: 0.4rem;
+}
+.bar-labels span {
+  flex: 1;
+  text-align: center;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+/* ---- table (recent runs) ---- */
+.table-wrap {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+th,
+td {
+  text-align: left;
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+th {
+  background: var(--fill-normal);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+tbody tr:last-child td {
+  border-bottom: none;
+}
+tbody tr:hover td {
+  background: var(--fill-normal);
+}
+td {
+  font-variant-numeric: tabular-nums;
+}

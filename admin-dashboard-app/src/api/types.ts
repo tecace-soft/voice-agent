@@ -33,28 +33,6 @@ export interface IntakeList {
   intakes: IntakeRecord[];
 }
 
-// One reported transcribe-app run.
-export interface VoicemailRun {
-  id: string;
-  voicemails: number; // messages carrying audio the run found
-  processed: number; // transcribed + written to the sheet this run
-  skipped: number; // already handled on a prior run
-  failed: number; // errored (left for a retry)
-  createdAt: string;
-}
-
-// Response shape of GET /transcribe/stats (the Transcriptions tab).
-export interface TranscribeStats {
-  totalProcessed: number; // all-time voicemails transcribed
-  totalFailed: number;
-  runs: number;
-  lastRunAt: string | null;
-  today: number;
-  last7Days: number;
-  daily: { day: string; processed: number }[]; // last 14 days
-  recent: VoicemailRun[];
-}
-
 // Response shape of GET /prompt (the agent's current prompt + scenario).
 export interface AgentPrompt {
   agentName: string;
