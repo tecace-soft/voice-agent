@@ -17,6 +17,7 @@ from pathlib import Path
 from .config import Config
 from .tools import (
     AudioAttachment,
+    DriveUploader,
     EmailSource,
     Extractor,
     SheetWriter,
@@ -62,12 +63,17 @@ def _key(vm: VoicemailEmail, att: AudioAttachment) -> str:
 
 
 def build_row(
-    vm: VoicemailEmail, att: AudioAttachment, info: VoicemailInfo, email_link: str = ""
+    vm: VoicemailEmail,
+    att: AudioAttachment,
+    info: VoicemailInfo,
+    email_link: str = "",
+    audio_link: str = "",
 ) -> list[str]:
     """One spreadsheet row — column order must match sheets.HEADER."""
-    # A HYPERLINK formula renders as a clickable cell (valueInputOption is USER_ENTERED). "Open
-    # email" opens the source message in webmail so the person downloads the recording straight
-    # from the email — we never store or serve a copy.
+    # HYPERLINK formulas render as clickable cells (valueInputOption is USER_ENTERED).
+    # "Audio file" links straight to the recording in Drive when we uploaded it (falls back to just
+    # the filename otherwise); "Open email" opens the source message in webmail.
+    audio_cell = f'=HYPERLINK("{audio_link}","Download")' if audio_link else att.filename
     open_email = f'=HYPERLINK("{email_link}","Open email")' if email_link else ""
     return [
         datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -79,7 +85,7 @@ def build_row(
         "yes" if info.callback_requested else "no",
         info.summary,
         info.transcript,
-        att.filename,
+        audio_cell,
         open_email,
     ]
 
@@ -94,6 +100,8 @@ class Pipeline:
         self._source = EmailSource(cfg)
         self._extractor = Extractor(cfg)
         self._sheet = SheetWriter(cfg)
+        # Drive upload is opt-in (DRIVE_UPLOAD=1); when off we link back to the source email only.
+        self._uploader = DriveUploader(cfg) if cfg.drive_upload_enabled else None
         self._store = ProcessedStore(cfg.state_file)
 
     def run(self) -> RunSummary:
@@ -126,5 +134,10 @@ class Pipeline:
             mailbox=self._cfg.imap_mailbox,
             gm_msgid=vm.gm_msgid,
         )
-        self._sheet.append_row(build_row(vm, att, info, email_link))
-        log.info("uploaded voicemail from %s (%s)", info.caller_name or vm.from_addr, att.filename)
+        # Optionally stash the recording in the user's Drive and link it from the sheet. Best-effort:
+        # a failed upload returns "" and the row still lands (with the "Open email" link as before).
+        audio_link = ""
+        if self._uploader is not None:
+            audio_link = self._uploader.upload(att.filename, att.data, att.content_type)
+        self._sheet.append_row(build_row(vm, att, info, email_link, audio_link))
+        log.info("processed voicemail from %s (%s)", info.caller_name or vm.from_addr, att.filename)

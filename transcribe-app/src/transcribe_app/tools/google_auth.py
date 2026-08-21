@@ -1,14 +1,18 @@
-"""Build service-account credentials from Config, for any Google API (Sheets, Drive).
+"""Build Google credentials from Config.
 
-The key can be supplied three ways (checked in this order): a private key + client email, the full
-JSON inline, or a JSON key file on disk. Scopes differ per API, so the caller passes what it needs
-— that's why this is shared between the Sheets writer and the Drive uploader.
+Two identities live here:
+  - Service account (Sheets): unattended, no browser — a private key the app signs with. Supplied
+    three ways (checked in order): private key + client email, full JSON inline, or a JSON key file.
+  - A real user via OAuth (Drive): needed because on a personal @gmail.com a service account has no
+    storage quota and can't own uploaded files. We hold a long-lived refresh token (minted once by
+    scripts/authorize_drive.py) and mint access tokens from it, so the poller still runs unattended.
 """
 
 from __future__ import annotations
 
 import json
 
+from google.oauth2.credentials import Credentials as UserCredentials
 from google.oauth2.service_account import Credentials
 
 from ..config import Config
@@ -37,3 +41,18 @@ def load_service_credentials(cfg: Config, scopes: list[str]) -> Credentials:
         )
     # 3. JSON key file on disk.
     return Credentials.from_service_account_file(cfg.google_credentials_file, scopes=scopes)
+
+
+def load_user_credentials(cfg: Config, scopes: list[str]) -> UserCredentials:
+    """User OAuth credentials (for Drive), built from the stored refresh token + OAuth client.
+
+    The access token is left None on purpose — google-auth refreshes it from the refresh token on
+    first use and again whenever it expires, so the unattended poller never needs a browser."""
+    return UserCredentials(
+        None,
+        refresh_token=cfg.google_oauth_refresh_token,
+        token_uri=_TOKEN_URI,
+        client_id=cfg.google_oauth_client_id,
+        client_secret=cfg.google_oauth_client_secret,
+        scopes=scopes,
+    )

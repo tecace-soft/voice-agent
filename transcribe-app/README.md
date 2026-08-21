@@ -23,11 +23,19 @@ voicemail's audio never bleeds into another's transcript or row.
 | Transcribe audio + extract caller name / phone / requested time / summary | `tools/extractor.py` | Google Gemini (audio in, structured output) |
 | Append a row (incl. an "Open email" link) | `tools/sheets.py` | Google Sheets (service account) |
 
-**The recording is never stored or served by us.** Each sheet row gets an **Open email**
+**By default the recording is never stored or served by us.** Each sheet row gets an **Open email**
 (`EMAIL_LINK_TEMPLATE`) webmail deep-link to the **source message**, so the person opens that email
 and downloads the recording from it — for privacy and security, no copy is kept anywhere. It works
 for people logged into that mailbox. Placeholders: `{message_id}` / `{uid}` / `{mailbox}` /
 `{gm_msgid}` (Gmail opens directly via `{gm_msgid}`; Roundcube via `{uid}`).
+
+**Optional — upload the recording to Google Drive** (`tools/drive.py`, off by default). Set
+`DRIVE_UPLOAD=1` and the audio is uploaded to Drive and the **Audio file** column becomes a
+clickable **Download** link. On a personal `@gmail.com` a service account has no storage quota and
+can't own uploaded files, so this authenticates **as a user** via OAuth — the recordings use that
+user's 15 GB. Mint the refresh token once with `scripts/authorize_drive.py` (see
+[Enable Drive upload](#enable-drive-upload-optional)). `DRIVE_PUBLIC=1` (default) gives each file an
+"anyone with the link" download link; `DRIVE_PUBLIC=0` keeps it private to the owner + shared users.
 | Orchestrate + idempotency | `pipeline.py` | local `.processed.json` |
 
 ## Layout
@@ -125,6 +133,32 @@ Each file is transcribed and a row appended to the sheet. Since these are local 
 email), the row has the transcript + caller details but no "Open email" link — for a one-off
 transcript. Needs `GEMINI_API_KEY` and the Sheets service account; the IMAP settings are not
 required.
+
+### Enable Drive upload (optional)
+
+By default no copy of the recording is stored (the sheet just links back to the source email). To
+instead upload each recording to Google Drive and get a **Download** link in the sheet:
+
+1. **Google Cloud** (once): enable the **Drive API**, then **APIs & Services → Credentials → Create
+   credentials → OAuth client ID → "Desktop app"** and download its JSON. On the **OAuth consent
+   screen**, add yourself as a user and **publish the app to "Production"** — a "Testing" app's
+   refresh tokens expire after 7 days; a Production one's don't. The only scope used is
+   `drive.file` (non-sensitive), so no Google verification is required.
+2. **Authorize** (once) — sign in as the account whose Drive (and 15 GB) should hold the recordings:
+
+   ```bash
+   python scripts/authorize_drive.py --client-secrets /path/to/oauth_client.json
+   ```
+
+   A browser opens; approve it. The script prints `GOOGLE_OAUTH_CLIENT_ID`,
+   `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REFRESH_TOKEN`, and a `GOOGLE_DRIVE_FOLDER_ID`
+   (it creates a "Voicemail recordings" folder). Paste them into `.env`.
+3. **Turn it on**: set `DRIVE_UPLOAD=1`. Leave `DRIVE_PUBLIC=1` (default) so the Download link opens
+   for anyone with it, or set `DRIVE_PUBLIC=0` to keep recordings private to this account + anyone
+   you share the folder with.
+
+From then on the poller uploads unattended — the refresh token renews its own access tokens, no
+further browser sign-in. A failed upload never loses the row (it falls back to the email link).
 
 If something's off, run the connectivity checks first — they isolate the two usual blockers
 (mailbox login and the sheet share) without touching any data:

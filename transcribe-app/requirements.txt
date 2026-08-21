@@ -1,4 +1,5 @@
 python-dotenv>=1.0.1
 google-genai>=1.0             # Gemini: transcribe + structured-extract each .wav (one call)
-google-api-python-client>=2.100  # Google Sheets append (service account)
-google-auth>=2.30             # service-account credentials for the Sheets API
+google-api-python-client>=2.100  # Google Sheets append + Drive upload
+google-auth>=2.30             # service-account (Sheets) + user OAuth (Drive) credentials
+google-auth-oauthlib>=1.2     # one-time Drive consent flow (scripts/authorize_drive.py only)

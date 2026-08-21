@@ -102,6 +102,23 @@ class Config:
     #   Gmail (opens directly):  https://mail.google.com/mail/u/0/#all/{gm_msgid}
     #   Roundcube:               https://mail.<host>/?_task=mail&_action=show&_mbox={mailbox}&_uid={uid}
     email_link_template: str
+    # ---- Optional: upload the recording to Google Drive and link it from the sheet ----
+    # On a personal @gmail.com a service account can't own files (no storage quota), so Drive
+    # upload authenticates AS A USER via OAuth (the files use that user's 15 GB). Enable with
+    # DRIVE_UPLOAD=1 and provide the OAuth client + a refresh token from scripts/authorize_drive.py.
+    # Scope is drive.file, so the app only touches files/folders it creates (no Google review).
+    drive_upload_enabled: bool
+    google_oauth_client_id: str
+    google_oauth_client_secret: str
+    # Long-lived refresh token minted by scripts/authorize_drive.py (publish the OAuth app to
+    # "Production" so it doesn't expire after 7 days).
+    google_oauth_refresh_token: str
+    # The Drive folder to drop recordings in — created/printed by authorize_drive.py. Empty = the
+    # user's My Drive root.
+    google_drive_folder_id: str
+    # Give each uploaded file "anyone with the link can view" so the sheet's Download link opens
+    # for anyone (no sign-in). Off = the file stays private to the owner + accounts it's shared with.
+    google_drive_public: bool
     # ---- Metrics reporting (optional — powers the dashboard's Transcriptions tab) ----
     # After each run we POST the RunSummary to <BACKEND_URL>/transcribe/runs. Empty = don't report.
     backend_url: str
@@ -145,6 +162,12 @@ class Config:
             google_sheet_id=_optional("GOOGLE_SHEET_ID"),
             sheet_range=_optional("SHEET_RANGE", "Voicemails!A1"),
             email_link_template=_optional("EMAIL_LINK_TEMPLATE"),
+            drive_upload_enabled=_bool("DRIVE_UPLOAD", False),
+            google_oauth_client_id=_optional("GOOGLE_OAUTH_CLIENT_ID"),
+            google_oauth_client_secret=_optional("GOOGLE_OAUTH_CLIENT_SECRET"),
+            google_oauth_refresh_token=_optional("GOOGLE_OAUTH_REFRESH_TOKEN"),
+            google_drive_folder_id=_optional("GOOGLE_DRIVE_FOLDER_ID"),
+            google_drive_public=_bool("DRIVE_PUBLIC", True),
             backend_url=_optional("BACKEND_URL"),
             transcribe_ingest_key=_optional("TRANSCRIBE_INGEST_KEY"),
             poll_interval_seconds=float(_optional("POLL_INTERVAL_SECONDS", "300")),
@@ -177,5 +200,16 @@ class Config:
                 "a service-account key — GOOGLE_PRIVATE_KEY + GOOGLE_CLIENT_EMAIL, "
                 "or GOOGLE_CREDENTIALS_JSON, or a key file at "
                 f"{self.google_credentials_file}"
+            )
+        # Drive upload is opt-in; only demand its OAuth settings when it's turned on.
+        if self.drive_upload_enabled and not (
+            self.google_oauth_client_id
+            and self.google_oauth_client_secret
+            and self.google_oauth_refresh_token
+        ):
+            gaps.append(
+                "Drive upload is on (DRIVE_UPLOAD=1) but the user OAuth is incomplete — set "
+                "GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, and GOOGLE_OAUTH_REFRESH_TOKEN "
+                "(run scripts/authorize_drive.py to mint the refresh token)"
             )
         return gaps
