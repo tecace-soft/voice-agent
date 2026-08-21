@@ -80,7 +80,6 @@ class BackendClient:
     def create_intake(
         self,
         *,
-        language: str,
         name: str,
         email: str,
         phone_number: str,
@@ -91,7 +90,6 @@ class BackendClient:
         INBOUND callers, who aren't a pre-existing form lead — we capture their details
         on the call and create the record so they can be booked like anyone else."""
         body = {
-            "language": language or "English",
             "name": name,
             "email": email,
             "phoneNumber": phone_number,

@@ -65,7 +65,6 @@ def lead_from_intake(intake: dict, tz: str) -> tuple[dict, str]:
         "lead_name": str(intake.get("name", "")),
         "email": str(intake.get("email", "")),
         "purpose": str(intake.get("purpose", "")),
-        "language": str(intake.get("language", "")),
         # The day the lead wants (the agent asks what time that day).
         "requested_date": _spoken_date(req_iso) if req_iso else "",
         "requested_date_iso": req_iso,

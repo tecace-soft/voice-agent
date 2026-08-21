@@ -3,8 +3,6 @@ import type { ChangeEvent, FormEvent } from "react";
 import { BackendError, submitIntake } from "./api/backend";
 import type { IntakeInput } from "./api/types";
 
-const LANGUAGES = ["English", "Korean"];
-
 // We constrain the date picker to the future against the BUSINESS timezone (matches the backend's
 // SCHEDULE_TIMEZONE), so a visitor in another timezone can't pick a day that's already past in
 // Pacific. The specific appointment TIME is not chosen here anymore — the agent asks for it on the
@@ -26,7 +24,6 @@ function todayInBusinessZone(): string {
 type FormState = Omit<IntakeInput, "requestedDate"> & { date: string };
 
 const EMPTY: FormState = {
-  language: "English",
   name: "",
   email: "",
   phoneNumber: "",
@@ -95,17 +92,6 @@ export function App() {
       {error && <div className="error">{error}</div>}
 
       <form onSubmit={handleSubmit}>
-        <div className="field">
-          <label htmlFor="language">Preferred language</label>
-          <select id="language" value={form.language} onChange={update("language")}>
-            {LANGUAGES.map((lang) => (
-              <option key={lang} value={lang}>
-                {lang}
-              </option>
-            ))}
-          </select>
-        </div>
-
         <div className="field">
           <label htmlFor="name">Full name</label>
           <input id="name" type="text" required value={form.name} onChange={update("name")} />

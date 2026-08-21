@@ -64,7 +64,6 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         email=params.get("email", ""),
         timezone=cfg.timezone,
         is_callback=str(params.get("is_callback", "")).lower() in ("yes", "true", "1"),
-        language=params.get("language", ""),
     )
     executor = ToolExecutor(cfg, intake_id=params.get("intake_id", ""))
 
@@ -207,7 +206,8 @@ async def _await_start(twilio_ws: WebSocket) -> tuple[str, str, dict]:
 
 _VOICEMAIL_INSTRUCTION = (
     "You've reached the person's voicemail, not a live person. Leave a brief spoken message in the "
-    "SAME language you have been using: say you're Tess from TecAce, following up on the "
+    "language the person spoke to you (English if you haven't heard them speak): say you're Tess "
+    "from TecAce, following up on the "
     "consultation they requested, and that you'll try again soon. Do NOT ask questions or wait for "
     "a reply, and do NOT mention email. Keep it under 15 seconds and speak only the message."
 )
@@ -354,8 +354,8 @@ def _farewell_instruction(state: dict) -> str:
         )
         return (
             "The call is over. Say EXACTLY the following, word for word, and NOTHING else — no "
-            'preamble, no "let me wrap this up", no announcing it. If you have been speaking a '
-            f'language other than English, say the same thing in that language. The line: "{line}"'
+            'preamble, no "let me wrap this up", no announcing it. Say it in the language the lead '
+            f'last spoke to you — translate it if that language is not English. The line: "{line}"'
         )
 
     # FULL MODEL — unchanged behavior.
@@ -372,8 +372,8 @@ def _farewell_instruction(state: dict) -> str:
             '"Thanks so much. Have a wonderful day — goodbye!"'
         )
     return (
-        "The call is ending now. Speak a short, warm farewell to the person, in the SAME language "
-        "you have been speaking (translate the example if that language is not English). "
+        "The call is ending now. Speak a short, warm farewell to the person, in the language the "
+        "lead last spoke to you (translate the example if that language is not English). "
         + core
         + " Output ONLY the spoken farewell words — do NOT announce or describe it, and do NOT say "
         "things like 'let me wrap this up' or 'let me close things out'. Just say the farewell."

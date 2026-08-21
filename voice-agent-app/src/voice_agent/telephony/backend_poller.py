@@ -44,7 +44,7 @@ def record_from_intake(intake: dict) -> tuple[dict[str, str], str]:
     """Build the conversation `record` (and phone) from a backend intake.
 
     Keys are chosen so the scheduler's record helpers find them: `name`, `email`,
-    `phone`, `language`, and `desired_time` (the ISO time the lead picked on the form).
+    `phone` and `desired_time` (the ISO time the lead picked on the form).
     `_intake_id` lets the agent book / update this exact lead.
     """
     record = {
@@ -52,7 +52,6 @@ def record_from_intake(intake: dict) -> tuple[dict[str, str], str]:
         "name": str(intake.get("name", "")),
         "email": str(intake.get("email", "")),
         "phone": str(intake.get("phoneNumber", "")),
-        "language": str(intake.get("language", "")),
         "purpose": str(intake.get("purpose", "")),
         "desired_time": str(intake.get("scheduledAt", "")),
     }

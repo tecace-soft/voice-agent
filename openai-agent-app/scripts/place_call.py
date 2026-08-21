@@ -29,7 +29,6 @@ def main() -> int:
     parser.add_argument("--name", default="", help="Lead name (spoken as {{lead_name}}).")
     parser.add_argument("--purpose", default="", help="What they reached out about.")
     parser.add_argument("--email", default="", help="Lead email on file.")
-    parser.add_argument("--language", default="", help="Preferred language (e.g. English, Korean).")
     parser.add_argument("--requested-date", default="", help="Requested day, spoken form (e.g. 'Friday, August 15').")
     parser.add_argument("--requested-date-iso", default="", help="Requested day, YYYY-MM-DD (for building tool times).")
     parser.add_argument("--desired-time", default="", help="Pre-set time, spoken form (legacy; full agent ignores).")
@@ -54,7 +53,6 @@ def main() -> int:
         "lead_name": args.name,
         "purpose": args.purpose,
         "email": args.email,
-        "language": args.language,
         "requested_date": args.requested_date,
         "requested_date_iso": args.requested_date_iso,
         "desired_time": args.desired_time,

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { deleteClient, listIntakes } from "../api/backend";
 import type { IntakeRecord, IntakeStatus } from "../api/types";
-import { STATUS_LABEL, formatDateShort, formatDateTime, formatLanguage } from "../lib";
+import { STATUS_LABEL, formatDateShort, formatDateTime } from "../lib";
 import { AsyncState, StatusBadge } from "../ui";
 
 const STATUSES: IntakeStatus[] = ["new", "contacted", "booked", "unreachable", "canceled"];
@@ -101,7 +101,6 @@ export function ClientsPage() {
               <thead>
                 <tr>
                   <th>Client</th>
-                  <th>Language</th>
                   <th>Requested / Booked</th>
                   <th>Purpose</th>
                   <th>Status</th>
@@ -117,9 +116,6 @@ export function ClientsPage() {
                         <div className="cell-name">{r.name}</div>
                         <div className="muted cell-sub">{r.email}</div>
                         <div className="muted cell-sub">{r.phoneNumber}</div>
-                      </td>
-                      <td>
-                        <span className="lang-tag">{formatLanguage(r.language)}</span>
                       </td>
                       <td>
                         {r.scheduledAt ? (

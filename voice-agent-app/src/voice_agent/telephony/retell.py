@@ -95,7 +95,6 @@ def make_retell_trigger(cfg: Config) -> Callable[[dict[str, str], str], str]:
             "intake_id": record.get("_intake_id", ""),
             "lead_name": record.get("name", ""),
             "email": record.get("email", ""),
-            "language": record.get("language", "") or "English",
             "purpose": record.get("purpose", ""),
             # dateTime drives the tools (ISO); desired_time is the spoken version the agent
             # reads back. Both point at the same requested slot.

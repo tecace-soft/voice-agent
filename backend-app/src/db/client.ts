@@ -22,7 +22,6 @@ export async function initDb(): Promise<void> {
   await sql`
     CREATE TABLE IF NOT EXISTS intakes (
       id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      language     TEXT NOT NULL,
       name         TEXT NOT NULL,
       email        TEXT NOT NULL,
       phone_number TEXT NOT NULL,
@@ -77,6 +76,10 @@ export async function initDb(): Promise<void> {
   `;
   // The agent polls by status, so index it.
   await sql`CREATE INDEX IF NOT EXISTS idx_intakes_status ON intakes (status)`;
+
+  // `language` was removed from the intake — the agent now detects the lead's language from how
+  // they answer the phone, so the form/backend no longer store it. Drop the old column.
+  await sql`ALTER TABLE intakes DROP COLUMN IF EXISTS language`;
 }
 
 // Ensure the schema is ready before serving requests, at most once per process (cached promise).
@@ -100,12 +103,19 @@ export function ensureDbReady(): Promise<void> {
 
 async function migrateIfNeeded(): Promise<void> {
   try {
-    // Cheap, lock-free probe of the newest expected column. If it selects, the schema is current
-    // and we skip all DDL. NOTE: when adding a new column to initDb, update this probe column too.
+    // Cheap, lock-free probe of the newest expected column. If it selects, the base schema is
+    // current. NOTE: when adding a new column to initDb, update this probe column too.
     await sql`SELECT requested_date FROM intakes LIMIT 1`;
-    return;
   } catch {
     // Table or a column is missing → run the full idempotent setup (adds/updates as needed).
     await initDb();
+    return;
   }
+  // `language` was removed — if the column is still present, the schema is behind, so migrate
+  // (which drops it). Cheap lock-free catalog lookup; a no-op once the column is gone.
+  const staleLanguage = await sql`
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'intakes' AND column_name = 'language' LIMIT 1
+  `;
+  if (staleLanguage.length > 0) await initDb();
 }

@@ -159,7 +159,7 @@ export const agentTools = new Elysia({ prefix: "/agent" })
 
   // Book a slot. For an inbound caller (no intakeId) we create the lead first. Booking
   // also creates the Cal.com meeting (invite + link). args: dateTime (ISO) + either
-  // intakeId (existing lead) OR name/email[/phone/language] (new inbound lead).
+  // intakeId (existing lead) OR name/email[/phone] (new inbound lead).
   .post("/book", async ({ body }) => {
     const args = readArgs(body);
     const call = readCall(body);
@@ -314,7 +314,6 @@ async function bookNewLead(
   if (!name || !email) return { ok: false as const, reason: "missing_details" };
   return createAndBook(
     {
-      language: str(args.language) || str(dyn.language) || "English",
       name,
       email,
       phoneNumber: phone,

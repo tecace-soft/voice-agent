@@ -40,7 +40,7 @@ def build_twiml(public_host: str, lead: dict) -> str:
     connect = Connect()
     stream = Stream(url=f"wss://{public_host}/media-stream")
     for key in (
-        "intake_id", "lead_name", "purpose", "email", "language",
+        "intake_id", "lead_name", "purpose", "email",
         "requested_date", "requested_date_iso",
         "desired_time", "dateTime", "is_callback",
     ):

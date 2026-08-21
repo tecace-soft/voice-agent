@@ -2,7 +2,6 @@
 
 // The fields a client submits through the form.
 export interface IntakeInput {
-  language: string;
   name: string;
   email: string;
   phoneNumber: string;

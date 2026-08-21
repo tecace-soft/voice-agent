@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { cancelBooking, listIntakes } from "../api/backend";
 import type { IntakeRecord } from "../api/types";
-import { formatDateLong, formatLanguage, formatTime, isPast, pacificDate } from "../lib";
+import { formatDateLong, formatTime, isPast, pacificDate } from "../lib";
 import { AsyncState } from "../ui";
 
 export function DayPage() {
@@ -77,7 +77,7 @@ export function DayPage() {
                 <div className="appt-body">
                   <div className="appt-name">{a.name}</div>
                   <div className="muted">
-                    {a.email} · {a.phoneNumber} · {formatLanguage(a.language)}
+                    {a.email} · {a.phoneNumber}
                   </div>
                   {a.notes && <div className="appt-notes">{a.notes}</div>}
                 </div>

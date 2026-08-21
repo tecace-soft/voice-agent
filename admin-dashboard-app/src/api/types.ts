@@ -10,7 +10,6 @@ export type IntakeStatus =
 // A stored client intake, as the backend returns it.
 export interface IntakeRecord {
   id: string;
-  language: string;
   name: string;
   email: string;
   phoneNumber: string;

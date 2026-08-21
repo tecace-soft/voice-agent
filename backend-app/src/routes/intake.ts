@@ -48,7 +48,6 @@ export const intake = new Elysia()
     },
     {
       body: t.Object({
-        language: t.String({ minLength: 1 }),
         name: t.String({ minLength: 1 }),
         email: t.String({ format: "email" }),
         phoneNumber: t.String({ minLength: 1 }),
@@ -66,7 +65,6 @@ export const intake = new Elysia()
     async ({ query }) => {
       const filters = {
         status: query.status,
-        language: query.language,
         q: query.q,
         scheduledFrom: query.scheduledFrom,
         scheduledTo: query.scheduledTo,
@@ -83,7 +81,6 @@ export const intake = new Elysia()
         offset: t.Integer({ minimum: 0, default: 0 }),
         // Filters (all optional, combined with AND).
         status: t.Optional(filterStatusSchema),
-        language: t.Optional(t.String({ minLength: 1 })),
         q: t.Optional(t.String({ minLength: 1 })),
         scheduledFrom: t.Optional(t.String({ format: "date-time" })),
         scheduledTo: t.Optional(t.String({ format: "date-time" })),

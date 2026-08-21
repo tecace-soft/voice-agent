@@ -17,7 +17,6 @@ export type IntakeStatus = (typeof INTAKE_STATUSES)[number];
 
 // The fields collected for a callback intake (camelCase — matches the API body).
 export interface IntakeInput {
-  language: string;
   name: string;
   email: string;
   phoneNumber: string;
@@ -28,7 +27,6 @@ export interface IntakeInput {
 // A stored intake row, plus the DB-managed status/timestamps.
 export interface IntakeRecord {
   id: string;
-  language: string;
   name: string;
   email: string;
   phoneNumber: string;
@@ -49,7 +47,6 @@ export interface IntakeRecord {
 // API returns. Reused by every read/write so the record shape stays consistent.
 const RETURN_COLUMNS = sql`
   id,
-  language,
   name,
   email,
   phone_number AS "phoneNumber",
@@ -70,8 +67,8 @@ const RETURN_COLUMNS = sql`
 export async function insertIntake(input: IntakeInput): Promise<IntakeRecord> {
   // scheduled_at is left NULL — the time is set only when the agent books the confirmed slot.
   const [row] = await sql`
-    INSERT INTO intakes (language, name, email, phone_number, purpose, requested_date)
-    VALUES (${input.language}, ${input.name}, ${input.email},
+    INSERT INTO intakes (name, email, phone_number, purpose, requested_date)
+    VALUES (${input.name}, ${input.email},
             ${input.phoneNumber}, ${input.purpose}, ${input.requestedDate})
     RETURNING ${RETURN_COLUMNS}
   `;
@@ -82,7 +79,6 @@ export async function insertIntake(input: IntakeInput): Promise<IntakeRecord> {
 // omitted fields are ignored.
 export interface IntakeFilters {
   status?: IntakeStatus; // lifecycle state — the agent polls `status=new`
-  language?: string; // exact match, case-insensitive
   q?: string; // substring search across name / email
   scheduledFrom?: string; // ISO 8601 — scheduled_at >= this
   scheduledTo?: string; // ISO 8601 — scheduled_at <= this
@@ -98,9 +94,6 @@ function whereClause(filters: IntakeFilters): SqlFragment {
   const conditions: SqlFragment[] = [];
   if (filters.status) {
     conditions.push(sql`status = ${filters.status}`);
-  }
-  if (filters.language) {
-    conditions.push(sql`lower(language) = lower(${filters.language})`);
   }
   if (filters.q) {
     const like = `%${filters.q}%`;

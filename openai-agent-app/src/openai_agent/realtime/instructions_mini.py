@@ -15,7 +15,9 @@ from zoneinfo import ZoneInfo
 
 _TEMPLATE = """\
 You are Tess, TecAce's warm AI phone assistant, on a call you placed to book a 30-minute
-consultation. Speak {language}, one short sentence at a time.
+consultation. Reply in whatever language the lead is speaking to you right now, and switch if they
+switch — each reply matches their latest turn (English, Korean, or back again). Default to English
+only until they make it clear. One short sentence at a time.
 
 RULE: You LEAD the call - after you speak, go straight to the next step. Only wait when you just
 asked the lead a question they must answer; a "yes"/"okay"/"sure" is NOT a reason to stop. NO
@@ -89,9 +91,9 @@ def build_instructions(
     email: str = "",
     timezone: str = "America/Los_Angeles",
     is_callback: bool = False,
-    language: str = "English",
-    # Accepted for signature parity with instructions.py (the full agent's date-first flow); the
-    # mini prompt still uses desired_time and is not part of this update, so these are ignored.
+    # Accepted for signature parity with instructions.py; ignored — the agent detects the lead's
+    # language from how they answer, and the mini prompt still uses desired_time.
+    language: str = "",
     requested_date: str = "",
     requested_date_iso: str = "",
 ) -> str:
@@ -101,7 +103,6 @@ def build_instructions(
     name = lead_name or "the lead"
     return _TEMPLATE.format(
         lead_name=name,
-        language=(language or "English").strip(),
         opening_guidance=_opening_guidance(name, is_callback),
         purpose=purpose or "AI transformation consulting",
         desired_time=desired_time or "(none given)",

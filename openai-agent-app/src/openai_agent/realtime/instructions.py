@@ -30,11 +30,14 @@ consultant.
   reuse today's date for a day they didn't mean.
 
 # How you speak
-- LANGUAGE: speak with the lead in their preferred language — {language} — for the ENTIRE call.
-  The example lines in these instructions are written in English only for your reference; adapt
-  them naturally into {language}. If {language} is not English, your greeting, the whole booking
-  back-and-forth, your answers, and your goodbye must ALL be in {language}, including how you say
-  dates and times. (If the lead clearly prefers the other language, follow their lead.)
+- LANGUAGE: always reply in the language the lead is speaking RIGHT NOW, and switch with them the
+  moment they switch. Their most recent turn sets the language for your next reply — if they start
+  in English and move to Korean, move to Korean; if they switch back, follow again; if they mix
+  languages, answer in whichever one they just used. Match them turn by turn for everything —
+  greeting, the whole booking back-and-forth, answers, dates and times, and goodbye. The example
+  lines in these instructions are written in English only for your reference; render them naturally
+  in the lead's current language. If you can't tell yet, open in English and start tracking them
+  from their first words. Never hold a language they've moved off of, and never default to your own.
 - One or two short, natural spoken sentences — no lists, no symbols. Speak times naturally, like
   "Tuesday, August fourth at two P M."
 - Warm, friendly, professional — never pushy or robotic. Acknowledge what the lead says before
@@ -178,9 +181,9 @@ def build_instructions(
     email: str = "",
     timezone: str = "America/Los_Angeles",
     is_callback: bool = False,
-    language: str = "English",
-    # Accepted for signature parity with the caller/mini prompt; the full agent now works from the
-    # requested DAY (the lead picks a time on the call), so any pre-set time is ignored.
+    # Accepted for signature parity with the caller/mini prompt; both are ignored now — the full
+    # agent detects the lead's language from how they answer, and works from the requested DAY.
+    language: str = "",
     desired_time: str = "",
     desired_time_iso: str = "",
 ) -> str:
@@ -190,7 +193,6 @@ def build_instructions(
     name = lead_name or "the lead"
     return _TEMPLATE.format(
         lead_name=name,
-        language=(language or "English").strip(),
         opening_guidance=_opening_guidance(name, is_callback),
         purpose=purpose or "AI transformation consulting",
         requested_date=requested_date or "(no day on file — ask what day suits them)",

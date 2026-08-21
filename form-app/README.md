@@ -1,8 +1,9 @@
 # Form
 
 The client-facing web form a lead fills in to request a callback — collecting their
-language, name, email, phone number, purpose, and preferred date/time, and submitting it to
-the shared **[`backend-app/`](../backend-app/)** (`POST /intake`).
+name, email, phone number, purpose, and preferred date, and submitting it to
+the shared **[`backend-app/`](../backend-app/)** (`POST /intake`). (No language field — the agent
+detects the lead's language from how they answer the phone.)
 
 Built with **React + [Vite](https://vitejs.dev/)** (TypeScript). Deploys to Vercel.
 
