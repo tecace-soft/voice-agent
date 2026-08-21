@@ -9,6 +9,7 @@
     "start": "bun run src/index.ts",
     "build": "bun build src/index.ts --target bun --outdir dist",
     "db:migrate": "bun run src/db/migrate.ts",
+    "db:clear": "bun run src/db/clear.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

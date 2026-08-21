@@ -12,6 +12,16 @@ Standalone backend for the **voicemail transcription metrics**, split out of the
 Owns one table, `voicemail_runs` (one row per transcribe pass). The schema self-migrates on the
 first request; or run it eagerly with `bun run db:migrate`.
 
+**Wipe the metrics** (e.g. before a customer handoff, to remove all test data) with
+`bun run db:clear` — it empties `voicemail_runs` (keeps the table). It acts on whatever
+`DATABASE_URL` points at, so to clear production, run it with the production connection string:
+
+```bash
+DATABASE_URL="<production connection string>" bun run db:clear
+```
+
+Or run the SQL directly in the Neon/Vercel SQL console: `TRUNCATE TABLE voicemail_runs;`
+
 ## Run locally
 
 ```bash
