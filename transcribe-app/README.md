@@ -83,12 +83,34 @@ Fill in `.env` (see the comments there):
 
 ## Run
 
+**One pass** (manual / cron):
+
 ```bash
 python scripts/run_transcribe.py
 ```
 
 It prints how many voicemails were uploaded, skipped (already done), and failed. Missing
 settings are reported up front rather than failing deep in an API call.
+
+**Always on** (the poller) — runs a pass every `POLL_INTERVAL_SECONDS` (default 5 min), forever:
+
+```bash
+python scripts/run_poller.py
+```
+
+Each pass skips voicemails already in the state file, so it never creates duplicate rows. A failing
+pass is logged and the loop continues. Keep it running under **systemd** (recommended on the VPS):
+
+```bash
+cp deploy/transcribe-poller.service /etc/systemd/system/transcribe-poller.service
+systemctl daemon-reload
+systemctl enable --now transcribe-poller     # start now + on boot; restarts on crash
+journalctl -u transcribe-poller -f           # watch the logs
+```
+
+(Adjust the paths in `deploy/transcribe-poller.service` if the repo/venv aren't at
+`/root/voice-agent/transcribe-app`.) For a quick, non-persistent run instead: `nohup python
+scripts/run_poller.py &`.
 
 ### Manually ingest audio files (no email needed)
 

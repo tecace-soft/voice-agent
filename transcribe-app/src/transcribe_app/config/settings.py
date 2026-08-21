@@ -107,6 +107,9 @@ class Config:
     backend_url: str
     # Matches TRANSCRIBE_INGEST_KEY on the backend; sent as the x-transcribe-key header. Empty = none.
     transcribe_ingest_key: str
+    # ---- Poller (scripts/run_poller.py — the always-on mode) ----
+    # How often the poller runs a pass, in seconds. Default 5 minutes; floored to 30s in the poller.
+    poll_interval_seconds: float
     # ---- Runtime ----
     # Where we remember which (message, attachment) pairs are already done, so re-runs are
     # idempotent without mutating the mailbox.
@@ -144,6 +147,7 @@ class Config:
             email_link_template=_optional("EMAIL_LINK_TEMPLATE"),
             backend_url=_optional("BACKEND_URL"),
             transcribe_ingest_key=_optional("TRANSCRIBE_INGEST_KEY"),
+            poll_interval_seconds=float(_optional("POLL_INTERVAL_SECONDS", "300")),
             state_file=_optional("STATE_FILE") or str(PROJECT_ROOT / ".processed.json"),
             request_timeout=float(_optional("REQUEST_TIMEOUT_SECONDS", "60")),
         )

@@ -1,0 +1,28 @@
+# systemd unit to keep the transcribe poller always running on the VPS.
+#
+# Install (as root; adjust the two paths below if the repo/venv live elsewhere):
+#   cp deploy/transcribe-poller.service /etc/systemd/system/transcribe-poller.service
+#   systemctl daemon-reload
+#   systemctl enable --now transcribe-poller
+#
+# Watch it:      journalctl -u transcribe-poller -f
+# Restart it:    systemctl restart transcribe-poller
+# Stop it:       systemctl stop transcribe-poller
+#
+# The app reads its .env from WorkingDirectory (python-dotenv), so keep .env in the transcribe-app
+# directory. Restart=always brings it back on crash; WantedBy=multi-user.target starts it on boot.
+
+[Unit]
+Description=Transcribe voicemail poller (transcribe-app)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/voice-agent/transcribe-app
+ExecStart=/root/voice-agent/transcribe-app/.venv/bin/python scripts/run_poller.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
