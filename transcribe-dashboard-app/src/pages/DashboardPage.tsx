@@ -1,13 +1,93 @@
 import { useEffect, useState } from "react";
 import { getTranscribeStats } from "../api/backend";
-import type { TranscribeStats } from "../api/types";
-import { formatDateTime } from "../lib";
+import type { TranscribeStats, VoicemailRun } from "../api/types";
+import { formatDateTime, formatShort } from "../lib";
 import { AsyncState } from "../ui";
 
-// "2026-08-20" -> "8/20" for compact bar labels.
-function shortDay(ymd: string): string {
-  const [, m, d] = ymd.split("-");
-  return `${Number(m)}/${Number(d)}`;
+// Line chart where each data point is one transcribe-app run, plotted by how many voicemails that
+// run transcribed. `recent` comes back newest-first, so reverse it to read left→right in time.
+function RunLineChart({ runs }: { runs: VoicemailRun[] }) {
+  // viewBox units; the SVG scales to the container width (uniform, so points stay round).
+  const W = 720;
+  const H = 230;
+  const padL = 34; // room for y-axis value labels
+  const padR = 16;
+  const padT = 18; // room for the endpoint's value label
+  const padB = 30; // room for x-axis time labels
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const baseline = padT + plotH;
+
+  const n = runs.length;
+  if (n === 0) return null;
+
+  const yMax = Math.max(1, ...runs.map((r) => r.processed));
+  const x = (i: number) => (n <= 1 ? padL + plotW / 2 : padL + (i / (n - 1)) * plotW);
+  const y = (v: number) => padT + plotH - (v / yMax) * plotH;
+
+  const pts = runs.map((r, i) => ({ run: r, cx: x(i), cy: y(r.processed) }));
+  const first = pts[0]!;
+  const last = pts[n - 1]!;
+  const linePath = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.cx.toFixed(1)},${p.cy.toFixed(1)}`).join(" ");
+  const areaPath =
+    n >= 2
+      ? `M${first.cx.toFixed(1)},${baseline} ` +
+        pts.map((p) => `L${p.cx.toFixed(1)},${p.cy.toFixed(1)}`).join(" ") +
+        ` L${last.cx.toFixed(1)},${baseline} Z`
+      : "";
+
+  // Up to three horizontal gridlines: 0, a midpoint, and the max.
+  const rawTicks = yMax >= 2 ? [0, Math.round(yMax / 2), yMax] : [0, yMax];
+  const ticks = [...new Set(rawTicks)];
+
+  return (
+    <svg className="linechart" viewBox={`0 0 ${W} ${H}`} width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Voicemails transcribed per run">
+      <defs>
+        <linearGradient id="runFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.22} />
+          <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+        </linearGradient>
+      </defs>
+
+      {/* y grid + value labels */}
+      {ticks.map((t) => (
+        <g key={t}>
+          <line className="grid" x1={padL} y1={y(t)} x2={W - padR} y2={y(t)} />
+          <text className="axis" x={padL - 8} y={y(t)} dy="0.32em" textAnchor="end">
+            {t}
+          </text>
+        </g>
+      ))}
+
+      {n >= 2 && <path className="area" d={areaPath} fill="url(#runFill)" />}
+      {n >= 2 && <path className="line" d={linePath} />}
+
+      {/* one marker per run, with a wide invisible hit target for the hover tooltip */}
+      {pts.map((p, i) => (
+        <g key={p.run.id}>
+          <circle className={i === n - 1 ? "dot dot-last" : "dot"} cx={p.cx} cy={p.cy} r={i === n - 1 ? 5 : 4} />
+          <circle className="hit" cx={p.cx} cy={p.cy} r={12}>
+            <title>{`${formatDateTime(p.run.createdAt)} — ${p.run.processed} transcribed`}</title>
+          </circle>
+        </g>
+      ))}
+
+      {/* direct-label the newest run's value (clamped so a max-value point doesn't clip the top) */}
+      <text className="endpoint" x={last.cx} y={Math.max(last.cy - 10, 12)} textAnchor="end">
+        {last.run.processed}
+      </text>
+
+      {/* x-axis: label the first and last run so the time span is clear (hover gives the rest) */}
+      {n >= 2 && (
+        <text className="axis" x={padL} y={H - 8} textAnchor="start">
+          {formatShort(first.run.createdAt)}
+        </text>
+      )}
+      <text className="axis" x={last.cx} y={H - 8} textAnchor="end">
+        {formatShort(last.run.createdAt)}
+      </text>
+    </svg>
+  );
 }
 
 export function DashboardPage() {
@@ -32,8 +112,9 @@ export function DashboardPage() {
     };
   }, []);
 
-  const maxDaily = data ? Math.max(1, ...data.daily.map((d) => d.processed)) : 1;
   const hasAny = data && data.runs > 0;
+  // Each point on the chart is one run; `recent` is newest-first, so read it left→right in time.
+  const runsChrono = data ? [...data.recent].reverse() : [];
 
   return (
     <section>
@@ -80,23 +161,9 @@ export function DashboardPage() {
             </p>
           ) : (
             <>
-              <h2>Transcribed per day (last 14 days)</h2>
+              <h2>Voicemails transcribed per run</h2>
               <div className="chart">
-                <div className="bars">
-                  {data.daily.map((d) => (
-                    <div
-                      key={d.day}
-                      className="bar"
-                      style={{ height: `${(d.processed / maxDaily) * 100}%` }}
-                      title={`${d.day}: ${d.processed} transcribed`}
-                    />
-                  ))}
-                </div>
-                <div className="bar-labels">
-                  {data.daily.map((d) => (
-                    <span key={d.day}>{shortDay(d.day)}</span>
-                  ))}
-                </div>
+                <RunLineChart runs={runsChrono} />
               </div>
 
               <h2>Recent runs</h2>

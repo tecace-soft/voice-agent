@@ -172,35 +172,52 @@ code {
   margin-top: 0.3rem;
 }
 
-/* ---- mini bar chart ---- */
+/* ---- per-run line chart ---- */
 .chart {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1rem 1.15rem;
 }
-.bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-  height: 150px;
+.linechart {
+  display: block;
 }
-.bars .bar {
-  flex: 1;
-  min-height: 3px;
-  background: var(--gradient);
-  border-radius: 6px 6px 0 0;
+.linechart .grid {
+  stroke: var(--border);
+  stroke-width: 1;
 }
-.bar-labels {
-  display: flex;
-  gap: 6px;
-  margin-top: 0.4rem;
+.linechart .axis {
+  fill: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
-.bar-labels span {
-  flex: 1;
-  text-align: center;
-  font-size: 0.68rem;
-  color: var(--muted);
+.linechart .area {
+  stroke: none;
+}
+.linechart .line {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.linechart .dot {
+  fill: var(--surface);
+  stroke: var(--primary);
+  stroke-width: 2;
+}
+.linechart .dot-last {
+  fill: var(--primary);
+}
+.linechart .hit {
+  fill: transparent;
+  cursor: pointer;
+}
+.linechart .endpoint {
+  fill: var(--primary);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- table (recent runs) ---- */

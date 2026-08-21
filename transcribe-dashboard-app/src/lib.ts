@@ -12,3 +12,14 @@ export function formatDateTime(iso: string): string {
     minute: "2-digit",
   }).format(new Date(iso));
 }
+
+// "Aug 1, 2:30 PM" (Pacific) — compact label for the run chart's axis.
+export function formatShort(iso: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: TZ,
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}
