@@ -51,7 +51,7 @@ function RunLineChart({ runs }: { runs: VoicemailRun[] }) {
     <svg className="linechart" viewBox={`0 0 ${W} ${H}`} width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Voicemails transcribed per run">
       <defs>
         <linearGradient id="runFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.22} />
+          <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.15} />
           <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
         </linearGradient>
       </defs>
@@ -130,16 +130,16 @@ export function DashboardPage() {
   const runsChrono = data?.runSeries ?? [];
 
   return (
-    <section>
+    <section className="stack">
       <div className="page-head">
-        <h1>Voicemail Transcriptions</h1>
+        <h1>Voicemail transcriptions</h1>
       </div>
 
       <AsyncState loading={loading} error={error} />
 
       {!loading && !error && data && (
         <>
-          <p className="muted">
+          <p className="muted ta-body-2">
             How many voicemails the transcribe app has processed
             {data.lastRunAt ? ` · last run ${formatDateTime(data.lastRunAt)}` : ""}.
           </p>
@@ -162,47 +162,62 @@ export function DashboardPage() {
               <div className="stat-label">Runs</div>
             </div>
             <div className="stat">
-              <div className="stat-num">{data.totalFailed.toLocaleString()}</div>
+              <div className={`stat-num${data.totalFailed > 0 ? " is-danger" : ""}`}>
+                {data.totalFailed.toLocaleString()}
+              </div>
               <div className="stat-label">Failed</div>
             </div>
           </div>
 
           {!hasAny ? (
-            <p className="muted">
+            <p className="muted ta-body-2">
               No transcription runs reported yet. Runs appear here once the transcribe app finishes a
               pass (with <code>BACKEND_URL</code> configured).
             </p>
           ) : (
             <>
-              <h2>Voicemails transcribed per run</h2>
-              <div className="chart">
-                <RunLineChart runs={runsChrono} />
+              <div className="card">
+                <div className="card-head">
+                  <div>
+                    <div className="card-title ta-headline-2">Voicemails transcribed per run</div>
+                    <div className="card-sub ta-caption-1">
+                      One point per run · newest on the right
+                    </div>
+                  </div>
+                </div>
+                <div className="chart-body">
+                  <RunLineChart runs={runsChrono} />
+                </div>
               </div>
 
-              <h2>Recent runs</h2>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>When</th>
-                      <th>Found</th>
-                      <th>Transcribed</th>
-                      <th>Skipped</th>
-                      <th>Failed</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.recent.map((r) => (
-                      <tr key={r.id}>
-                        <td>{formatDateTime(r.createdAt)}</td>
-                        <td>{r.voicemails}</td>
-                        <td>{r.processed}</td>
-                        <td>{r.skipped}</td>
-                        <td>{r.failed}</td>
+              <div className="card">
+                <div className="card-head">
+                  <div className="card-title ta-headline-2">Recent runs</div>
+                </div>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>When</th>
+                        <th className="num">Found</th>
+                        <th className="num">Transcribed</th>
+                        <th className="num">Skipped</th>
+                        <th className="num">Failed</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {data.recent.map((r) => (
+                        <tr key={r.id}>
+                          <td>{formatDateTime(r.createdAt)}</td>
+                          <td className="num">{r.voicemails}</td>
+                          <td className="num">{r.processed}</td>
+                          <td className="num">{r.skipped}</td>
+                          <td className={`num${r.failed > 0 ? " is-danger" : ""}`}>{r.failed}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </>
           )}

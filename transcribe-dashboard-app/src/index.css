@@ -1,7 +1,9 @@
-/* Transcribe dashboard theme, driven by the TecAce design system (.claude/skills/tecace-design).
-   The DS tokens (fig-tokens.css) define the full light/dark palette under [data-theme]; we map the
-   app's own token names onto them here, so components follow the light/dark toggle automatically.
-   Fonts: Pretendard (UI/body) via CDN, Poppins (display/numbers) via Google Fonts. */
+/* Transcribe dashboard — styled with the TecAce Dashboard UI system (.claude/skills/tecace-dashboard).
+   Tokens + the 19 `.ta-*` type styles come from the design system (tecace/fig-tokens.css +
+   typography.css); this file maps them to the dashboard's component recipes and hard rules:
+   brand #116DFF only, body weight 500 (not 400), sentence case (no ALL CAPS), outlined cards at
+   radius 16 (never border + shadow), ambient shadows only, .15s ease motion, 4px spacing grid.
+   Light default + dark via [data-theme]. */
 @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css");
 @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap");
 @import "./tecace/fig-tokens.css";
@@ -10,20 +12,22 @@
 :root {
   --ink: var(--label-strong); /* headings, strong text */
   --body: var(--label-normal); /* body copy */
-  --muted: var(--label-alternative); /* secondary / captions */
+  --muted: var(--label-alternative); /* secondary / captions (0.61) */
   --bg: var(--background-normal-alternative); /* page canvas */
   --surface: var(--background-normal-normal); /* cards, table, topbar */
   --border: var(--line-normal-neutral); /* hairlines */
-  --border-strong: var(--line-normal-strong); /* input / button outlines */
-  --primary: var(--primary-normal); /* TecAce blue #116DFF */
+  --border-strong: var(--line-normal-strong); /* control outlines */
+  --primary: var(--primary-normal); /* TecAce blue #116DFF — the one and only */
   --primary-tint: var(--fill-normal);
-  --gradient: linear-gradient(90deg, var(--blue-40) 0%, var(--blue-50) 52%, var(--blue-60) 100%);
+  --accent: var(--fill-normal); /* subtle hover wash */
+  --success: var(--status-positive);
+  --warning: var(--status-cautionary);
   --danger: var(--status-negative);
   --danger-tint: var(--fill-normal);
-  --danger-border: var(--status-negative);
-  --radius: 12px;
-  --font-head: var(--font-sans); /* Pretendard — headings/titles */
-  --font-body: var(--font-sans); /* Pretendard — body/UI */
+  --radius: 12px; /* buttons / inputs */
+  --radius-card: 16px; /* cards */
+  --font-head: var(--font-sans); /* Pretendard */
+  --font-body: var(--font-sans); /* Pretendard */
 
   font-family: var(--font-body);
   color: var(--body);
@@ -37,6 +41,8 @@
 body {
   margin: 0;
   background: var(--bg);
+  font-weight: 500; /* TecAce body default is Medium 500, not 400 — the most common mistake */
+  -webkit-font-smoothing: antialiased;
 }
 a {
   color: var(--primary);
@@ -50,17 +56,16 @@ a:hover {
   outline-offset: 2px;
 }
 
-/* ---- shell ---- */
+/* ---- shell / topbar (h-14, plain hairline, no gradient, no blur) ---- */
 .topbar {
   display: flex;
   align-items: center;
-  gap: 2rem;
-  padding: 0 1.5rem;
-  height: 60px;
+  gap: 16px;
+  padding: 0 24px;
+  height: 56px;
   background: var(--surface);
   color: var(--ink);
-  border-bottom: 3px solid;
-  border-image: var(--gradient) 1;
+  border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -68,8 +73,8 @@ a:hover {
 .brand {
   font-family: var(--font-head);
   font-weight: 700;
-  font-size: 1.05rem;
-  letter-spacing: -0.01em;
+  font-size: 17px;
+  letter-spacing: -0.012em;
   color: var(--ink);
 }
 .theme-toggle {
@@ -84,12 +89,12 @@ a:hover {
   cursor: pointer;
   color: var(--ink);
   background: var(--surface);
-  border: 1.5px solid var(--border-strong);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   transition:
-    background 0.15s,
-    border-color 0.15s,
-    color 0.15s;
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
 .theme-toggle:hover {
   border-color: var(--primary);
@@ -100,29 +105,29 @@ a:hover {
 .content {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: 24px;
+}
+
+/* section rhythm on the 4px grid */
+.stack > * + * {
+  margin-top: 20px;
 }
 
 .page-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  gap: 16px;
 }
 h1 {
+  /* .ta-title-3 */
   font-family: var(--font-head);
-  font-size: 1.5rem;
-  font-weight: 600;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 700;
+  letter-spacing: -0.023em;
   color: var(--ink);
-  margin: 0.25rem 0;
-}
-h2 {
-  font-family: var(--font-head);
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 1.5rem 0 0.5rem;
+  margin: 0;
 }
 .muted {
   color: var(--muted);
@@ -130,8 +135,8 @@ h2 {
 .error {
   color: var(--danger);
   background: var(--danger-tint);
-  border: 1px solid var(--danger-border);
-  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--danger);
+  padding: 10px 12px;
   border-radius: 8px;
 }
 code {
@@ -143,47 +148,71 @@ code {
   border-radius: 5px;
 }
 
-/* ---- stat tiles ---- */
+/* ---- cards (outlined only — never border + shadow) ---- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px 8px;
+}
+.card-title {
+  color: var(--ink);
+} /* pair with .ta-headline-2 */
+.card-sub {
+  color: var(--muted);
+  margin-top: 2px;
+} /* pair with .ta-caption-1 */
+
+/* ---- KPI tiles ---- */
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 0.9rem;
-  margin-bottom: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
 }
 .stat {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1rem 1.1rem;
+  border-radius: var(--radius-card);
+  padding: 16px 20px;
 }
 .stat-num {
-  font-family: var(--font-display); /* Poppins — numeric display */
-  font-size: 1.9rem;
-  font-weight: 700;
+  /* KPI value — Poppins, tabular numerals, weight 600 */
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 600;
   color: var(--ink);
-  line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
+.stat-num.is-danger {
+  color: var(--danger);
+}
 .stat-label {
-  font-size: 0.78rem;
+  /* .ta-caption-1, sentence case (no ALL CAPS) */
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  margin-top: 0.3rem;
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0.0252em;
+  margin-top: 4px;
 }
 
 /* ---- per-run line chart ---- */
-.chart {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1rem 1.15rem;
+.chart-body {
+  padding: 4px 12px 12px;
 }
 .linechart {
   display: block;
 }
 .linechart .grid {
-  stroke: var(--border);
+  /* fill-family grid — safe in both light and dark */
+  stroke: rgba(112, 115, 124, 0.12);
   stroke-width: 1;
 }
 .linechart .axis {
@@ -197,7 +226,7 @@ code {
 .linechart .line {
   fill: none;
   stroke: var(--primary);
-  stroke-width: 2.5;
+  stroke-width: 2;
   stroke-linejoin: round;
   stroke-linecap: round;
 }
@@ -215,43 +244,54 @@ code {
 }
 .linechart .endpoint {
   fill: var(--primary);
+  font-family: var(--font-display);
   font-size: 14px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-/* ---- table (recent runs) ---- */
+/* ---- table (dense, quiet: h-11 rows, caption header, label body) ---- */
 .table-wrap {
   overflow-x: auto;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
 }
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.92rem;
 }
 th,
 td {
   text-align: left;
-  padding: 0.7rem 0.85rem;
-  border-bottom: 1px solid var(--border);
-  vertical-align: top;
+  padding: 0 16px;
+  height: 44px;
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+}
+thead th {
+  border-top: none;
 }
 th {
-  background: var(--fill-normal);
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  /* .ta-caption-1 muted, sentence case */
   color: var(--muted);
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0.0252em;
+  background: transparent;
 }
-tbody tr:last-child td {
-  border-bottom: none;
+tbody td {
+  /* .ta-label-1 */
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--body);
+  font-variant-numeric: tabular-nums;
 }
 tbody tr:hover td {
-  background: var(--fill-normal);
+  background: var(--accent);
 }
-td {
-  font-variant-numeric: tabular-nums;
+th.num,
+td.num {
+  text-align: right;
+}
+td.num.is-danger {
+  color: var(--danger);
 }
