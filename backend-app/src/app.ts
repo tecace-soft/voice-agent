@@ -8,7 +8,6 @@ import { intake } from "./routes/intake.js";
 import { prompt } from "./routes/prompt.js";
 import { retellWebhook } from "./routes/retellWebhook.js";
 import { schedule } from "./routes/schedule.js";
-import { transcribe } from "./routes/transcribe.js";
 
 // Compose the application from controllers. Exported WITHOUT `.listen()` so tests can
 // call it directly (e.g. `app.handle(new Request(...))`) and so the entrypoint owns
@@ -29,8 +28,7 @@ export const app = new Elysia()
   .use(schedule)
   .use(prompt)
   .use(agentTools)
-  .use(retellWebhook)
-  .use(transcribe);
+  .use(retellWebhook);
 
 export type App = typeof app;
 

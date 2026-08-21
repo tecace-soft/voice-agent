@@ -3,7 +3,7 @@ import { env } from "../config/env.js";
 import { getVoicemailStats, insertVoicemailRun } from "../db/voicemailRuns.js";
 
 // Transcribe controller: the transcribe-app reports each run here (write, secret-guarded), and the
-// dashboard's Transcriptions tab reads the aggregate (open, like the other dashboard reads).
+// transcribe dashboard reads the aggregate (open, like the other dashboard reads).
 export const transcribe = new Elysia({ prefix: "/transcribe" })
   // Shared-secret guard for the WRITE only. When TRANSCRIBE_INGEST_KEY is set, POSTs require a
   // matching header; GET /stats stays open for the dashboard. Unset = open (dev).
@@ -31,5 +31,5 @@ export const transcribe = new Elysia({ prefix: "/transcribe" })
     },
   )
 
-  // Aggregate stats for the dashboard's Transcriptions tab.
+  // Aggregate stats for the dashboard.
   .get("/stats", async () => getVoicemailStats());

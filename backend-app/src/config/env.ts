@@ -77,11 +77,6 @@ const corsOrigins = (process.env.CORS_ORIGIN ?? "")
 // header (configured on the Retell function). Unset = open (dev only) — set it in prod.
 const agentToolsSecret = process.env.AGENT_TOOLS_SECRET?.trim() ?? "";
 
-// --- Transcribe app (voicemail metrics ingest) -----------------------------------
-// The transcribe-app POSTs a run summary to /transcribe/runs after each pass. When this key is
-// set, that write endpoint requires a matching `x-transcribe-key` header; unset = open (dev only).
-const transcribeIngestKey = process.env.TRANSCRIBE_INGEST_KEY?.trim() ?? "";
-
 // --- Retell post-call webhook (retry / outcome handling) -------------------------
 // Retell POSTs call_ended/call_analyzed to /retell/webhook. When a call didn't connect we
 // schedule a retry (setting callback_after, which the poller honors) up to a cap, then mark
@@ -145,7 +140,6 @@ export const env = {
     enabled: Boolean(smtpHost && smtpUser && smtpPass),
   },
   agentToolsSecret,
-  transcribeIngestKey,
   retell: {
     retryDelaySeconds: retellRetryDelaySeconds,
     maxAttempts: retellMaxAttempts,

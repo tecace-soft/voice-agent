@@ -1,0 +1,9 @@
+# JS/Bun-specific ignores (the repo-root .gitignore already covers .env, .env.*)
+node_modules/
+dist/
+*.log
+
+# Bun
+.bun/
+
+# keep bun.lock committed for reproducible installs

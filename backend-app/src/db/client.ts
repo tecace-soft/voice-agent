@@ -77,21 +77,6 @@ export async function initDb(): Promise<void> {
   `;
   // The agent polls by status, so index it.
   await sql`CREATE INDEX IF NOT EXISTS idx_intakes_status ON intakes (status)`;
-
-  // Voicemail transcription runs — one row per transcribe-app pass, powering the dashboard's
-  // Transcriptions tab (how many voicemails the app has transcribed over time). Counts come from
-  // the transcribe-app's RunSummary.
-  await sql`
-    CREATE TABLE IF NOT EXISTS voicemail_runs (
-      id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      voicemails INTEGER NOT NULL DEFAULT 0,  -- messages carrying audio the run found
-      processed  INTEGER NOT NULL DEFAULT 0,  -- transcribed + written to the sheet this run
-      skipped    INTEGER NOT NULL DEFAULT 0,  -- already handled on a prior run
-      failed     INTEGER NOT NULL DEFAULT 0,  -- errored (left for a retry)
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    )
-  `;
-  await sql`CREATE INDEX IF NOT EXISTS idx_voicemail_runs_created_at ON voicemail_runs (created_at)`;
 }
 
 // Ensure the schema is ready before serving requests, at most once per process (cached promise).
@@ -115,10 +100,9 @@ export function ensureDbReady(): Promise<void> {
 
 async function migrateIfNeeded(): Promise<void> {
   try {
-    // Cheap, lock-free probe of the newest expected column/table. If these select, the schema is
-    // current and we skip all DDL. NOTE: when adding a new column/table to initDb, probe it here too.
+    // Cheap, lock-free probe of the newest expected column. If it selects, the schema is current
+    // and we skip all DDL. NOTE: when adding a new column to initDb, update this probe column too.
     await sql`SELECT requested_date FROM intakes LIMIT 1`;
-    await sql`SELECT 1 FROM voicemail_runs LIMIT 1`;
     return;
   } catch {
     // Table or a column is missing → run the full idempotent setup (adds/updates as needed).

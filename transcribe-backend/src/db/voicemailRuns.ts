@@ -16,7 +16,7 @@ export interface VoicemailRunRecord extends VoicemailRunInput {
   createdAt: string;
 }
 
-// The aggregate the dashboard's Transcriptions tab reads.
+// The aggregate the dashboard reads.
 export interface VoicemailStats {
   totalProcessed: number; // all-time voicemails transcribed — the headline number
   totalFailed: number;
@@ -38,7 +38,7 @@ const RETURN_COLUMNS = sql`
 `;
 
 // Day boundaries follow the business timezone so "today" matches what the dashboard user expects.
-const TZ = env.schedule.timezone;
+const TZ = env.timezone;
 
 // Persist one reported run and return the stored row.
 export async function insertVoicemailRun(input: VoicemailRunInput): Promise<VoicemailRunRecord> {
@@ -50,7 +50,7 @@ export async function insertVoicemailRun(input: VoicemailRunInput): Promise<Voic
   return row as VoicemailRunRecord;
 }
 
-// Everything the Transcriptions tab needs, in one call.
+// Everything the dashboard needs, in one call.
 export async function getVoicemailStats(): Promise<VoicemailStats> {
   const [totals, daily, recent] = await Promise.all([
     sql`

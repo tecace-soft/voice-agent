@@ -1,0 +1,4 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "echo 'No custom build step — Vercel serves the Elysia app (src/app.ts default export)'"
+}
