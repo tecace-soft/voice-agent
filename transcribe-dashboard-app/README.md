@@ -44,12 +44,14 @@ A sidebar shell (rail → header → KPI row → chart → table) with four view
   trend badge; a per-run area chart with an "all / last 30 / last 10 runs" range picker; and a
   tabbed run table (recent · all · failed · empty passes) with column toggles and pagination.
 - **Analytics** — the operational view, over the app's whole history rather than the 60-run window
-  the other pages read: success and skip rates, how regularly the app runs (typical gap between runs
-  and the longest stall, with when it ended), the share of passes that found nothing, a 90-day
-  trend, hour-of-day and weekday patterns, a found → transcribed / skipped / failed breakdown, and
-  **what a run actually transcribes** — a distribution over the runs that did work (never an average
-  across every run, which the empty passes would make meaningless) plus the ten busiest runs listed
-  one by one.
+  the other pages read, and broken out **by session rather than by day**. Headline rates (success,
+  already-handled, typical gap between runs with the longest stall, share of passes that found
+  nothing), then **Transcribed sessions**: every run that transcribed something as its own entry
+  with its own found / transcribed / already-handled / failed, success rate, share that was new
+  work, the gap since the previous run, and a bar splitting what it found. Orderable newest or
+  biggest, paged. Below that, the distribution of what a session transcribes (never an average
+  across every run, which the empty passes would make meaningless), hour-of-day and weekday
+  patterns, and the all-time breakdown.
   Reads `GET /transcribe/analytics`.
 - **Daily activity** — the 14-day daily series as an area chart plus a per-day totals table.
 - **All runs** / **Failed runs** — the run log on its own, newest first.

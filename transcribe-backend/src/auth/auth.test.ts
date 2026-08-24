@@ -145,10 +145,13 @@ await mock.module("../db/feedback.js", () => ({
 }));
 const ANALYTICS = {
   totals: { voicemails: 20, processed: 17, skipped: 2, failed: 1, runs: 5, emptyRuns: 1, firstRunAt: null, lastRunAt: null },
-  daily: [],
+  sessions: [
+    { id: "r1", voicemails: 5, processed: 4, skipped: 1, failed: 0, createdAt: new Date().toISOString(), sincePreviousSeconds: 1800 },
+  ],
   byHour: [{ hour: 9, processed: 12, runs: 3 }],
   byWeekday: [{ weekday: 4, processed: 12, runs: 3 }],
   cadence: { medianGapSeconds: 1800, longestGapSeconds: 309600, longestGapEndedAt: null },
+  perRun: { productiveRuns: 3, medianProcessed: 4, maxProcessed: 9, distribution: [{ processed: 4, runs: 2 }] },
 };
 await mock.module("../db/analytics.js", () => ({
   getTranscribeAnalytics: async () => ANALYTICS,
@@ -632,6 +635,9 @@ describe("GET /transcribe/stats", () => {
       expect(body.totals.processed).toBe(17);
       expect(body.cadence.medianGapSeconds).toBe(1800);
       expect(body.byHour[0]).toEqual({ hour: 9, processed: 12, runs: 3 });
+      // sessions, not a daily rollup — each transcribed run carries its own figures
+      expect(body.sessions[0]).toMatchObject({ processed: 4, sincePreviousSeconds: 1800 });
+      expect(body.daily).toBeUndefined();
     }
   });
 

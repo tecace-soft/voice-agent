@@ -26,7 +26,16 @@ export interface TranscribeAnalytics {
     firstRunAt: string | null;
     lastRunAt: string | null;
   };
-  daily: { day: string; voicemails: number; processed: number; skipped: number; failed: number; runs: number }[];
+  // Each run that transcribed something, newest first, with the gap since the run before it.
+  sessions: {
+    id: string;
+    voicemails: number;
+    processed: number;
+    skipped: number;
+    failed: number;
+    createdAt: string;
+    sincePreviousSeconds: number;
+  }[];
   byHour: { hour: number; processed: number; runs: number }[];
   byWeekday: { weekday: number; processed: number; runs: number }[]; // 1=Mon … 7=Sun
   cadence: { medianGapSeconds: number; longestGapSeconds: number; longestGapEndedAt: string | null };
@@ -36,14 +45,6 @@ export interface TranscribeAnalytics {
     medianProcessed: number;
     maxProcessed: number;
     distribution: { processed: number; runs: number }[];
-    busiest: {
-      id: string;
-      voicemails: number;
-      processed: number;
-      skipped: number;
-      failed: number;
-      createdAt: string;
-    }[];
   };
 }
 

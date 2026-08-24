@@ -11,9 +11,10 @@ Standalone backend for the **voicemail transcription metrics**, split out of the
 - **`POST /auth/login`**, **`GET /auth/me`**, **`POST /auth/logout`** — dashboard sign-in.
 - **`GET|POST /auth/users`**, **`POST /auth/users/:id/password`**, **`POST /auth/users/:id/revoke`**,
   **`DELETE /auth/users/:id`** — account management, for the dashboard's Accounts page.
-- **`GET /transcribe/analytics`** — the dashboard's Analytics view: all-time totals, 90 days of
-  daily figures, hour-of-day and weekday patterns, and run cadence, aggregated in SQL over the whole
-  history (`/stats` only ships a 60-run window). Any signed-in user, same as `/stats`.
+- **`GET /transcribe/analytics`** — the dashboard's Analytics view: all-time totals, the last 100
+  **transcribed sessions** with their own figures, hour-of-day and weekday patterns, run cadence,
+  and the per-session output distribution, aggregated in SQL over the whole history (`/stats` only
+  ships a 60-run window). Any signed-in user, same as `/stats`.
 - **`POST /feedback`**, **`GET /feedback/mine`** — anyone signed in sends a note and reads their own.
 - **`GET /feedback`**, **`GET /feedback/open-count`**, **`POST /feedback/:id/status`** — admins read
   everyone's and resolve them.
@@ -113,6 +114,13 @@ otherwise the only way back in would be the CLI.
 `src/db/analytics.ts` answers three operational questions in one round trip: is the app keeping up
 (totals + success/skip rates), is it running on schedule (`cadence` — the gaps between consecutive
 runs), and when does work arrive (`byHour` / `byWeekday`, bucketed in `BUSINESS_TIMEZONE`).
+
+It is organised by **session, not by day** — a calendar day is an arbitrary bucket for a job that
+runs on its own schedule. `sessions` returns each run that transcribed something, newest first, with
+`sincePreviousSeconds`: the gap to the previous run **of any kind**, empty passes included. The
+window runs over every row and the filter to transcribed runs happens after it, because measuring
+only against the previous *transcribed* run would hide a poller that was running fine but finding
+nothing.
 
 `perRun` deliberately ships a **distribution rather than an average**: most passes find nothing, so
 `processed / runs` describes no run that has ever happened. It carries the count of runs that

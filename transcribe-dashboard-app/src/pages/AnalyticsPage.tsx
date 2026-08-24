@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { getTranscribeAnalytics } from "../api/backend";
 import type { TranscribeAnalytics } from "../api/types";
-import { AreaChart, type ChartPoint } from "../components/AreaChart";
 import { BarChart, type Bar } from "../components/BarChart";
+import { SessionCard } from "../components/SessionCard";
 import { StatCard, TrendBadge } from "../components/StatCard";
-import { formatDateTime, formatDayKey, formatDuration, formatHour, formatWeekday } from "../lib";
+import { TabBar, type TabDef } from "../components/TabBar";
+import { IconChevronLeft, IconChevronRight } from "../icons";
+import { formatDateTime, formatDuration, formatHour, formatWeekday } from "../lib";
 import { DashboardSkeleton } from "../ui";
 
 // The operational view of the transcribe-app, over its whole history rather than the 60-run window
-// the other pages read. Three things worth knowing about a pipeline that runs unattended:
-// is it keeping up, is it running on schedule, and when does the work actually turn up.
+// the other pages read — and broken out by SESSION rather than by day. A calendar day is an
+// arbitrary bucket for a job that runs on its own schedule; what actually happened is a series of
+// runs, so each transcribed session gets its own numbers here.
 
 // Two days without a run is well past any normal poll interval — worth calling out rather than
 // leaving as a number nobody reads.
@@ -17,9 +20,14 @@ const STALL_SECONDS = 48 * 3600;
 
 const pct = (part: number, whole: number) => (whole <= 0 ? 0 : (part / whole) * 100);
 
+type SessionSort = "recent" | "busiest";
+const PER_PAGE = 8;
+
 export function AnalyticsPage() {
   const [data, setData] = useState<TranscribeAnalytics | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sessionSort, setSessionSort] = useState<SessionSort>("recent");
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -30,6 +38,22 @@ export function AnalyticsPage() {
       active = false;
     };
   }, []);
+
+  // Re-ordering the list should start you at the top of the new order, not page 4 of it.
+  useEffect(() => {
+    setPage(0);
+  }, [sessionSort]);
+
+  const sessions = useMemo(() => data?.sessions ?? [], [data]);
+  const shownSessions = useMemo(() => {
+    const ordered =
+      sessionSort === "busiest"
+        ? [...sessions].sort(
+            (a, b) => b.processed - a.processed || +new Date(b.createdAt) - +new Date(a.createdAt),
+          )
+        : sessions;
+    return ordered.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE);
+  }, [sessions, sessionSort, page]);
 
   const derived = useMemo(() => {
     if (!data) return null;
@@ -48,14 +72,14 @@ export function AnalyticsPage() {
 
   const { totals, cadence, perRun } = data;
 
-  // 90-day trend. The backend only returns days that had runs, so gaps are simply absent rather
-  // than zero — with a 90-day window, filling every quiet day in would bury the shape.
-  const dailyPoints: ChartPoint[] = data.daily.map((d) => ({
-    key: d.day,
-    label: formatDayKey(d.day).replace(/^\w+, /, ""),
-    value: d.processed,
-    tip: `${formatDayKey(d.day)} — ${d.processed} transcribed across ${d.runs} ${d.runs === 1 ? "run" : "runs"}`,
-  }));
+  const pageCount = Math.max(1, Math.ceil(sessions.length / PER_PAGE));
+  const listedProcessed = sessions.reduce((sum, s) => sum + s.processed, 0);
+  // Newest first is the operational read ("what just happened"); biggest first answers "which were
+  // the heavy sessions". Same list, two orderings.
+  const sessionTabs: TabDef<SessionSort>[] = [
+    { id: "recent", label: "Newest" },
+    { id: "busiest", label: "Biggest" },
+  ];
 
   // Every hour of the day, including the quiet ones — the gaps are the point here.
   const hourMap = new Map(data.byHour.map((h) => [h.hour, h]));
@@ -80,7 +104,7 @@ export function AnalyticsPage() {
     };
   });
 
-  // Every output from 1 to the busiest run, so a gap in the middle reads as a gap rather than
+  // Every output from 1 to the busiest session, so a gap in the middle reads as a gap rather than
   // two neighbouring bars.
   const distCounts = new Map(perRun.distribution.map((d) => [d.processed, d.runs]));
   const distributionBars: Bar[] = Array.from({ length: perRun.maxProcessed }, (_, i) => {
@@ -90,7 +114,7 @@ export function AnalyticsPage() {
       key: `d${processed}`,
       label: perRun.maxProcessed <= 20 || processed % 5 === 0 ? String(processed) : "",
       value: runs,
-      tip: `${runs} ${runs === 1 ? "run" : "runs"} transcribed ${processed} ${processed === 1 ? "voicemail" : "voicemails"}`,
+      tip: `${runs} ${runs === 1 ? "session" : "sessions"} transcribed ${processed} ${processed === 1 ? "voicemail" : "voicemails"}`,
     };
   });
 
@@ -145,21 +169,98 @@ export function AnalyticsPage() {
       </section>
 
       <section className="card">
+        <div className="card-toolbar">
+          <div>
+            <div className="card-title ta-headline-2">Transcribed sessions</div>
+            <div className="card-sub ta-caption-1">
+              Every run that transcribed something, on its own · {sessions.length} of{" "}
+              {perRun.productiveRuns.toLocaleString()} listed
+            </div>
+          </div>
+          <TabBar
+            tabs={sessionTabs}
+            active={sessionSort}
+            onChange={setSessionSort}
+            label="How to order the sessions"
+          />
+        </div>
+
+        {sessions.length === 0 ? (
+          <p className="feedback-empty muted ta-body-2">
+            No run has transcribed anything yet. Sessions appear here as soon as one does.
+          </p>
+        ) : (
+          <>
+            <ul className="session-list">
+              {shownSessions.map((session) => (
+                <SessionCard
+                  key={session.id}
+                  session={session}
+                  share={pct(session.processed, listedProcessed)}
+                />
+              ))}
+            </ul>
+            <div className="table-foot">
+              <div className="ta-caption-1 muted">
+                {sessions.length} {sessions.length === 1 ? "session" : "sessions"}
+              </div>
+              <div className="table-foot-controls">
+                <div className="ta-caption-1 page-count">
+                  Page {page + 1} of {pageCount}
+                </div>
+                <div className="pager">
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label="Previous page"
+                    disabled={page === 0}
+                    onClick={() => setPage((n) => n - 1)}
+                  >
+                    <IconChevronLeft size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label="Next page"
+                    disabled={page >= pageCount - 1}
+                    onClick={() => setPage((n) => n + 1)}
+                  >
+                    <IconChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="card">
         <div className="card-head">
           <div>
-            <div className="card-title ta-headline-2">Transcribed per day</div>
+            <div className="card-title ta-headline-2">What a session actually transcribes</div>
             <div className="card-sub ta-caption-1">
-              Last 90 days · {data.daily.length} {data.daily.length === 1 ? "day" : "days"} with runs
+              Sessions that transcribed something · {perRun.productiveRuns.toLocaleString()} of{" "}
+              {totals.runs.toLocaleString()} runs · median {perRun.medianProcessed} (highlighted) ·
+              busiest {perRun.maxProcessed}
             </div>
           </div>
         </div>
         <div className="chart-body">
-          {dailyPoints.length > 0 ? (
-            <AreaChart points={dailyPoints} ariaLabel="Voicemails transcribed per day" gradientId="analyticsFill" />
+          {perRun.distribution.length > 0 ? (
+            <BarChart
+              bars={distributionBars}
+              ariaLabel="How many voicemails each session transcribed"
+              highlightKey={`d${perRun.medianProcessed}`}
+            />
           ) : (
-            <p className="muted ta-body-2 chart-empty">No runs in the last 90 days.</p>
+            <p className="muted ta-body-2 chart-empty">No session has transcribed anything yet.</p>
           )}
         </div>
+        <p className="card-foot muted ta-caption-1">
+          Each bar is a number of voicemails; its height is how many sessions transcribed exactly
+          that many. The {totals.emptyRuns.toLocaleString()} passes that found nothing are left out —
+          an average across every run describes no run that has actually happened.
+        </p>
       </section>
 
       <div className="split-grid">
@@ -192,91 +293,11 @@ export function AnalyticsPage() {
       </div>
 
       <section className="card">
-        <div className="card-head">
-          <div>
-            <div className="card-title ta-headline-2">What a run actually transcribes</div>
-            <div className="card-sub ta-caption-1">
-              Runs that transcribed something ·{" "}
-              {perRun.productiveRuns.toLocaleString()} of {totals.runs.toLocaleString()} runs ·
-              median {perRun.medianProcessed} (highlighted) · busiest {perRun.maxProcessed}
-            </div>
-          </div>
-        </div>
-        <div className="chart-body">
-          {perRun.distribution.length > 0 ? (
-            <BarChart
-              bars={distributionBars}
-              ariaLabel="How many voicemails each run transcribed"
-              highlightKey={`d${perRun.medianProcessed}`}
-            />
-          ) : (
-            <p className="muted ta-body-2 chart-empty">No run has transcribed anything yet.</p>
-          )}
-        </div>
-        <p className="card-foot muted ta-caption-1">
-          Each bar is a number of voicemails; its height is how many runs transcribed exactly that
-          many. The {totals.emptyRuns.toLocaleString()} passes that found nothing are left out — an
-          average across every run describes no run that has actually happened.
-        </p>
-      </section>
-
-      <section className="card">
-        <div className="card-toolbar">
-          <div>
-            <div className="card-title ta-headline-2">Busiest runs</div>
-            <div className="card-sub ta-caption-1">The ten single runs that transcribed the most</div>
-          </div>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">When</th>
-                <th className="num" scope="col">
-                  Found
-                </th>
-                <th className="num" scope="col">
-                  Transcribed
-                </th>
-                <th className="num" scope="col">
-                  Skipped
-                </th>
-                <th className="num" scope="col">
-                  Failed
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {perRun.busiest.length === 0 ? (
-                <tr>
-                  <td className="table-empty" colSpan={5}>
-                    No run has transcribed anything yet.
-                  </td>
-                </tr>
-              ) : (
-                perRun.busiest.map((run) => (
-                  <tr key={run.id}>
-                    <td>{formatDateTime(run.createdAt)}</td>
-                    <td className="num">{run.voicemails}</td>
-                    <td className="num">{run.processed}</td>
-                    <td className="num">{run.skipped}</td>
-                    <td className={`num${run.failed > 0 ? " is-danger" : ""}`}>{run.failed}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="card">
         <div className="card-toolbar">
           <div>
             <div className="card-title ta-headline-2">What the app has done overall</div>
             <div className="card-sub ta-caption-1">
-              {totals.firstRunAt
-                ? `Since ${formatDateTime(totals.firstRunAt)}`
-                : "No runs reported yet"}
+              {totals.firstRunAt ? `Since ${formatDateTime(totals.firstRunAt)}` : "No runs reported yet"}
             </div>
           </div>
         </div>

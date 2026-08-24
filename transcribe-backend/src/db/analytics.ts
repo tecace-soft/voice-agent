@@ -11,6 +11,10 @@ import { sql } from "./client.js";
 // Day and hour boundaries follow the business timezone, so "3 PM" means 3 PM to whoever reads it.
 const TZ = env.timezone;
 
+// How many transcribed sessions the Analytics view lists. Enough to page through a few weeks of
+// work without shipping the whole history to a browser.
+const SESSION_LIMIT = 100;
+
 export interface TranscribeAnalytics {
   totals: {
     voicemails: number; // messages carrying audio, all time
@@ -22,14 +26,17 @@ export interface TranscribeAnalytics {
     firstRunAt: string | null;
     lastRunAt: string | null;
   };
-  daily: {
-    day: string;
+  // Each run that transcribed something, as its own session with the context needed to read it on
+  // its own: what it found, what it did with it, and how long the app had been quiet beforehand.
+  sessions: {
+    id: string;
     voicemails: number;
     processed: number;
     skipped: number;
     failed: number;
-    runs: number;
-  }[]; // last 90 days
+    createdAt: string;
+    sincePreviousSeconds: number; // gap since the run before it (0 for the very first run)
+  }[];
   byHour: { hour: number; processed: number; runs: number }[]; // 0-23, business timezone
   byWeekday: { weekday: number; processed: number; runs: number }[]; // 1=Mon … 7=Sun
   cadence: {
@@ -45,19 +52,11 @@ export interface TranscribeAnalytics {
     medianProcessed: number; // across productive runs only
     maxProcessed: number;
     distribution: { processed: number; runs: number }[]; // productive runs, grouped by output
-    busiest: {
-      id: string;
-      voicemails: number;
-      processed: number;
-      skipped: number;
-      failed: number;
-      createdAt: string;
-    }[];
   };
 }
 
 export async function getTranscribeAnalytics(): Promise<TranscribeAnalytics> {
-  const [totals, daily, byHour, byWeekday, cadence, perRunStats, distribution, busiest] =
+  const [totals, sessions, byHour, byWeekday, cadence, perRunStats, distribution] =
     await Promise.all([
     sql`
       SELECT
@@ -71,17 +70,22 @@ export async function getTranscribeAnalytics(): Promise<TranscribeAnalytics> {
         max(created_at)                   AS "lastRunAt"
       FROM voicemail_runs
     `,
+    // The gap is measured against the previous run of ANY kind — including the empty passes — because
+    // that is what says whether the app was running while the voicemails piled up. So the window
+    // runs over every row and the filter to transcribed sessions happens after it.
     sql`
-      SELECT to_char(date_trunc('day', created_at AT TIME ZONE ${TZ}), 'YYYY-MM-DD') AS day,
-             sum(voicemails)::int AS voicemails,
-             sum(processed)::int  AS processed,
-             sum(skipped)::int    AS skipped,
-             sum(failed)::int     AS failed,
-             count(*)::int        AS runs
-      FROM voicemail_runs
-      WHERE created_at >= now() - interval '90 days'
-      GROUP BY 1
-      ORDER BY 1
+      WITH ordered AS (
+        SELECT id, voicemails, processed, skipped, failed, created_at,
+               extract(epoch FROM created_at - lag(created_at) OVER (ORDER BY created_at)) AS since_prev
+        FROM voicemail_runs
+      )
+      SELECT id, voicemails, processed, skipped, failed,
+             created_at AS "createdAt",
+             coalesce(since_prev, 0)::int AS "sincePreviousSeconds"
+      FROM ordered
+      WHERE processed > 0
+      ORDER BY created_at DESC
+      LIMIT ${SESSION_LIMIT}
     `,
     sql`
       SELECT extract(hour FROM created_at AT TIME ZONE ${TZ})::int AS hour,
@@ -135,18 +139,11 @@ export async function getTranscribeAnalytics(): Promise<TranscribeAnalytics> {
       GROUP BY processed
       ORDER BY processed
     `,
-    sql`
-      SELECT id, voicemails, processed, skipped, failed, created_at AS "createdAt"
-      FROM voicemail_runs
-      WHERE processed > 0
-      ORDER BY processed DESC, created_at DESC
-      LIMIT 10
-    `,
   ]);
 
   return {
     totals: totals[0] as TranscribeAnalytics["totals"],
-    daily: daily as unknown as TranscribeAnalytics["daily"],
+    sessions: sessions as unknown as TranscribeAnalytics["sessions"],
     byHour: byHour as unknown as TranscribeAnalytics["byHour"],
     byWeekday: byWeekday as unknown as TranscribeAnalytics["byWeekday"],
     // With fewer than two runs there are no gaps at all, so the row comes back empty.
@@ -158,7 +155,6 @@ export async function getTranscribeAnalytics(): Promise<TranscribeAnalytics> {
     perRun: {
       ...(perRunStats[0] as { productiveRuns: number; medianProcessed: number; maxProcessed: number }),
       distribution: distribution as unknown as TranscribeAnalytics["perRun"]["distribution"],
-      busiest: busiest as unknown as TranscribeAnalytics["perRun"]["busiest"],
     },
   };
 }
