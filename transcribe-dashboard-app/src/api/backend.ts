@@ -1,4 +1,13 @@
-import type { AuthUser, CreatedAccount, LoginResponse, Role, TranscribeStats } from "./types";
+import type {
+  AuthUser,
+  CreatedAccount,
+  Feedback,
+  FeedbackCategory,
+  FeedbackStatus,
+  LoginResponse,
+  Role,
+  TranscribeStats,
+} from "./types";
 
 // Single place that talks to the backend API. Base URL comes from VITE_BACKEND_URL (set in .env
 // locally and in the Vercel project for production).
@@ -180,6 +189,33 @@ export function revokeAccountSessions(id: string): Promise<{ user: AuthUser }> {
 
 export function removeAccount(id: string): Promise<void> {
   return request<void>("DELETE", `/auth/users/${id}`);
+}
+
+// ---- feedback ----
+
+// Send a note. The backend takes the author from the session, so there's nothing to pass but the
+// note itself.
+export function sendFeedback(category: FeedbackCategory, message: string): Promise<{ feedback: Feedback }> {
+  return request<{ feedback: Feedback }>("POST", "/feedback", { body: { category, message } });
+}
+
+// Your own notes.
+export async function listMyFeedback(): Promise<Feedback[]> {
+  return (await get<{ feedback: Feedback[] }>("/feedback/mine")).feedback;
+}
+
+// Everything anyone has sent (admins only), with the open count.
+export function listAllFeedback(): Promise<{ feedback: Feedback[]; open: number }> {
+  return get<{ feedback: Feedback[]; open: number }>("/feedback");
+}
+
+// Just the open count, for the sidebar badge (admins only).
+export async function countOpenFeedback(): Promise<number> {
+  return (await get<{ open: number }>("/feedback/open-count")).open;
+}
+
+export function setFeedbackStatus(id: string, status: FeedbackStatus): Promise<{ feedback: Feedback }> {
+  return request<{ feedback: Feedback }>("POST", `/feedback/${id}/status`, { body: { status } });
 }
 
 // ---- data ----

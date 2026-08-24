@@ -108,6 +108,41 @@ await mock.module("../db/users.js", () => {
     },
   };
 });
+// In-memory `feedback` table.
+let notes: any[] = [];
+let noteId = 0;
+await mock.module("../db/feedback.js", () => ({
+  isCategory: (v: unknown) => ["bug", "idea", "data", "other"].includes(v as string),
+  isStatus: (v: unknown) => v === "open" || v === "resolved",
+  insertFeedback: async (input: any) => {
+    const row = {
+      id: `f${++noteId}`,
+      userId: input.userId,
+      authorName: input.authorName,
+      authorEmail: input.authorEmail,
+      category: input.category,
+      message: input.message.trim(),
+      status: "open",
+      createdAt: new Date().toISOString(),
+      resolvedAt: null,
+      resolvedBy: null,
+    };
+    notes.unshift(row);
+    return row;
+  },
+  listFeedback: async () => [...notes],
+  listFeedbackByUser: async (userId: string) => notes.filter((n) => n.userId === userId),
+  findFeedbackById: async (id: string) => notes.find((n) => n.id === id) ?? null,
+  setFeedbackStatus: async (id: string, status: string, resolvedBy: string) => {
+    const n = notes.find((x) => x.id === id);
+    if (!n) return null;
+    n.status = status;
+    n.resolvedAt = status === "resolved" ? new Date().toISOString() : null;
+    n.resolvedBy = status === "resolved" ? resolvedBy : null;
+    return n;
+  },
+  countOpenFeedback: async () => notes.filter((n) => n.status === "open").length,
+}));
 await mock.module("../db/voicemailRuns.js", () => ({
   getVoicemailStats: async () => STATS,
   insertVoicemailRun: async (r: unknown) => r,
@@ -138,7 +173,11 @@ async function tokenFor(email = "jane@tecace.com", password = PASSWORD): Promise
   return (await json<{ token: string }>(res)).token;
 }
 
-beforeEach(() => resetUsers());
+beforeEach(() => {
+  resetUsers();
+  notes = [];
+  noteId = 0;
+});
 afterAll(() => mock.restore());
 
 describe("POST /auth/login", () => {
@@ -408,6 +447,99 @@ describe("roles", () => {
   it("rejects a role that isn't admin or user", async () => {
     const admin = await tokenFor();
     expect((await post(`/auth/users/${JANE_ID}/role`, { role: "superuser" }, admin)).status).toBe(422);
+  });
+});
+
+describe("feedback", () => {
+  async function plainUserToken(): Promise<string> {
+    const admin = await tokenFor();
+    const created = await json(await post("/auth/users", { name: "Sam Lee", email: "sam@tecace.com" }, admin));
+    return tokenFor("sam@tecace.com", created.password);
+  }
+
+  it("needs a session to send anything", async () => {
+    expect((await post("/feedback", { category: "bug", message: "hi" })).status).toBe(401);
+    expect((await call("/feedback/mine")).status).toBe(401);
+  });
+
+  it("records a note against whoever is signed in", async () => {
+    const res = await post("/feedback", { category: "bug", message: "  The chart is empty.  " }, await tokenFor());
+    expect(res.status).toBe(201);
+    const note = (await json(res)).feedback;
+    expect(note).toMatchObject({
+      authorName: "Jane Kim",
+      authorEmail: "jane@tecace.com",
+      category: "bug",
+      message: "The chart is empty.", // trimmed
+      status: "open",
+      resolvedAt: null,
+    });
+  });
+
+  it("takes the author from the session, ignoring anything the body claims", async () => {
+    const res = await post(
+      "/feedback",
+      { category: "idea", message: "spoofed?", authorName: "Someone Else", authorEmail: "evil@example.com" },
+      await tokenFor(),
+    );
+    // Extra fields are ignored rather than rejected, so what matters is that they change nothing:
+    // the stored author is whoever the token belongs to.
+    expect(res.status).toBe(201);
+    const note = (await json(res)).feedback;
+    expect(note.authorName).toBe("Jane Kim");
+    expect(note.authorEmail).toBe("jane@tecace.com");
+    expect(note.userId).toBe(JANE_ID);
+  });
+
+  it("rejects an empty message and an unknown category", async () => {
+    const token = await tokenFor();
+    expect((await post("/feedback", { category: "bug", message: "" }, token)).status).toBe(422);
+    expect((await post("/feedback", { category: "rant", message: "hi" }, token)).status).toBe(422);
+  });
+
+  it("shows a user only their own notes", async () => {
+    const admin = await tokenFor();
+    const sam = await plainUserToken();
+    await post("/feedback", { category: "bug", message: "from jane" }, admin);
+    await post("/feedback", { category: "idea", message: "from sam" }, sam);
+
+    const mine = await json(await call("/feedback/mine", { headers: { authorization: `Bearer ${sam}` } }));
+    expect(mine.feedback).toHaveLength(1);
+    expect(mine.feedback[0].message).toBe("from sam");
+  });
+
+  it("lets any signed-in user send, but only admins read everything", async () => {
+    const sam = await plainUserToken();
+    expect((await post("/feedback", { category: "other", message: "from sam" }, sam)).status).toBe(201);
+
+    const asUser = await call("/feedback", { headers: { authorization: `Bearer ${sam}` } });
+    expect(asUser.status).toBe(403);
+    expect((await call("/feedback/open-count", { headers: { authorization: `Bearer ${sam}` } })).status).toBe(403);
+    expect((await post("/feedback/f1/status", { status: "resolved" }, sam)).status).toBe(403);
+
+    const asAdmin = await json(await call("/feedback", { headers: { authorization: `Bearer ${await tokenFor()}` } }));
+    expect(asAdmin.feedback).toHaveLength(1);
+    expect(asAdmin.open).toBe(1);
+  });
+
+  it("resolves and reopens, recording who resolved it", async () => {
+    const admin = await tokenFor();
+    const note = (await json(await post("/feedback", { category: "bug", message: "broken" }, admin))).feedback;
+
+    const resolved = (await json(await post(`/feedback/${note.id}/status`, { status: "resolved" }, admin))).feedback;
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.resolvedBy).toBe("Jane Kim");
+    expect(resolved.resolvedAt).toEqual(expect.any(String));
+    expect((await json(await call("/feedback/open-count", { headers: { authorization: `Bearer ${admin}` } }))).open).toBe(0);
+
+    const reopened = (await json(await post(`/feedback/${note.id}/status`, { status: "open" }, admin))).feedback;
+    expect(reopened.status).toBe("open");
+    expect(reopened.resolvedAt).toBeNull();
+    expect(reopened.resolvedBy).toBeNull();
+  });
+
+  it("404s on an unknown note", async () => {
+    expect((await post("/feedback/nope/status", { status: "resolved" }, await tokenFor())).status).toBe(404);
   });
 });
 

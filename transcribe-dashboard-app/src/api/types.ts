@@ -13,6 +13,24 @@ export interface AuthUser {
   lastLoginAt: string | null;
 }
 
+// A note someone sent from the Feedback page. `authorName`/`authorEmail` are snapshots taken at
+// submit time, so a note still says who wrote it after that account is removed.
+export type FeedbackCategory = "bug" | "idea" | "data" | "other";
+export type FeedbackStatus = "open" | "resolved";
+
+export interface Feedback {
+  id: string;
+  userId: string | null;
+  authorName: string;
+  authorEmail: string;
+  category: FeedbackCategory;
+  message: string;
+  status: FeedbackStatus;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+}
+
 // POST /auth/users and POST /auth/users/:id/password. `password` is the generated one, returned
 // exactly once — it is null when the caller supplied a password of their own.
 export interface CreatedAccount {

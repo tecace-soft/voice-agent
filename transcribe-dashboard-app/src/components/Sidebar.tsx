@@ -2,6 +2,8 @@ import type { AuthUser } from "../api/types";
 import {
   IconActivity,
   IconAlert,
+  IconInbox,
+  IconMessage,
   IconOverview,
   IconRuns,
   IconSignOut,
@@ -10,7 +12,14 @@ import {
 } from "../icons";
 import { formatDateTime } from "../lib";
 
-export type ViewId = "overview" | "activity" | "runs" | "failed" | "accounts";
+export type ViewId =
+  | "overview"
+  | "activity"
+  | "runs"
+  | "failed"
+  | "feedback"
+  | "allFeedback"
+  | "accounts";
 
 const NAV: {
   group: string;
@@ -28,6 +37,13 @@ const NAV: {
     items: [
       { id: "runs", label: "All runs", icon: IconRuns },
       { id: "failed", label: "Failed runs", icon: IconAlert },
+    ],
+  },
+  {
+    group: "Feedback",
+    items: [
+      { id: "feedback", label: "Send feedback", icon: IconMessage },
+      { id: "allFeedback", label: "All feedback", icon: IconInbox, adminOnly: true },
     ],
   },
   {
@@ -49,6 +65,7 @@ export function Sidebar({
   active,
   onSelect,
   failedCount,
+  openFeedback,
   lastRunAt,
   user,
   onSignOut,
@@ -56,6 +73,7 @@ export function Sidebar({
   active: ViewId;
   onSelect: (id: ViewId) => void;
   failedCount: number;
+  openFeedback: number;
   lastRunAt: string | null;
   user: AuthUser;
   onSignOut: () => void;
@@ -94,6 +112,9 @@ export function Sidebar({
                 <span className="nav-label">{item.label}</span>
                 {item.id === "failed" && failedCount > 0 && (
                   <span className="nav-count">{failedCount}</span>
+                )}
+                {item.id === "allFeedback" && openFeedback > 0 && (
+                  <span className="nav-count nav-count-info">{openFeedback}</span>
                 )}
               </button>
             );

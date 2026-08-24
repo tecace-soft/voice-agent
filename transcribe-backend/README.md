@@ -11,10 +11,14 @@ Standalone backend for the **voicemail transcription metrics**, split out of the
 - **`POST /auth/login`**, **`GET /auth/me`**, **`POST /auth/logout`** — dashboard sign-in.
 - **`GET|POST /auth/users`**, **`POST /auth/users/:id/password`**, **`POST /auth/users/:id/revoke`**,
   **`DELETE /auth/users/:id`** — account management, for the dashboard's Accounts page.
+- **`POST /feedback`**, **`GET /feedback/mine`** — anyone signed in sends a note and reads their own.
+- **`GET /feedback`**, **`GET /feedback/open-count`**, **`POST /feedback/:id/status`** — admins read
+  everyone's and resolve them.
 - **`GET /health`** — liveness.
 
-Owns two tables, `voicemail_runs` (one row per transcribe pass) and `users` (dashboard accounts).
-The schema self-migrates on the first request; or run it eagerly with `bun run db:migrate`.
+Owns three tables: `voicemail_runs` (one row per transcribe pass), `users` (dashboard accounts), and
+`feedback` (notes sent from the dashboard). The schema self-migrates on the first request; or run it
+eagerly with `bun run db:migrate`.
 
 **Wipe the metrics** (e.g. before a customer handoff, to remove all test data) with
 `bun run db:clear` — it empties `voicemail_runs` (keeps the table). It acts on whatever
@@ -40,8 +44,10 @@ Every account is an **admin** or a **user**:
 | | user | admin |
 | --- | --- | --- |
 | Sign in, read the dashboard | ✅ | ✅ |
+| Send feedback, read their own | ✅ | ✅ |
 | Add / reset / sign out / remove accounts | — | ✅ |
 | Promote and demote others | — | ✅ |
+| Read everyone's feedback and resolve it | — | ✅ |
 
 The dashboard hides its Accounts page from a `user`, but that is a convenience — every account route
 requires an admin server-side. The role is read from the database on each request, so a demotion
@@ -99,8 +105,16 @@ issued before it. A password reset does the same. Changing `AUTH_SECRET` signs *
 An account can't remove itself, and neither the last admin nor the last account can be removed —
 otherwise the only way back in would be the CLI.
 
-`bun test` covers sign-in, the guards, first-run setup, account management, roles, and revocation
-with an in-memory stand-in for the database (no Postgres needed).
+### Feedback
+
+`feedback` holds notes people send from the dashboard: a category (`bug` / `idea` / `data` /
+`other`), the message, and a status (`open` / `resolved`, with who resolved it and when). The
+author's name and email are copied onto the row at submit time and `user_id` is `ON DELETE SET
+NULL`, so a note still says who wrote it after that account is removed. The author is always taken
+from the session, never the request body.
+
+`bun test` covers sign-in, the guards, first-run setup, account management, roles, revocation, and
+feedback with an in-memory stand-in for the database (no Postgres needed).
 
 ## Run locally
 

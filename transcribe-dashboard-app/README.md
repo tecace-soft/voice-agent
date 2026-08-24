@@ -24,8 +24,8 @@ nobody can get in.
 Accounts are either **admin** or **user**:
 
 - **user** — signs in and reads the dashboard. The Accounts nav item isn't rendered for them.
-- **admin** — the same, plus the Accounts page: add a teammate (generated password, shown once),
-  reset a password, sign an account out everywhere, remove it, and promote/demote.
+- **admin** — the same, plus the Accounts page (add a teammate with a generated password shown once,
+  reset a password, sign an account out everywhere, remove it, promote/demote) and All feedback.
 
 Hiding the page is a convenience only — the backend refuses account routes from a `user` regardless,
 and reads the role fresh on every request, so a promotion or demotion applies without re-signing in.
@@ -45,6 +45,10 @@ A sidebar shell (rail → header → KPI row → chart → table) with four view
   tabbed run table (recent · all · failed · empty passes) with column toggles and pagination.
 - **Daily activity** — the 14-day daily series as an area chart plus a per-day totals table.
 - **All runs** / **Failed runs** — the run log on its own, newest first.
+- **Send feedback** — anyone signed in writes a note to the team (a bug, an idea, a question about
+  the data) and sees their own past notes with whether they've been dealt with.
+- **All feedback** (admins) — everything anyone has sent, filterable by open/resolved, with
+  mark-resolved and reopen. The count of open notes badges the sidebar.
 
 All four read the single `GET /transcribe/stats` response; the deltas (today vs yesterday, this week
 vs last week) are derived from its 14-day `daily` series in `src/stats.ts`.

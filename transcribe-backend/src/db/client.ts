@@ -56,6 +56,35 @@ export async function initDb(): Promise<void> {
     WHERE id = (SELECT id FROM users ORDER BY created_at, id LIMIT 1)
       AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin')
   `;
+
+  // Notes people send from the dashboard's Feedback page. The author's name and email are copied
+  // in rather than joined, so a note still says who wrote it after that account is removed —
+  // which is also why user_id is nullable and set to NULL rather than cascading the delete.
+  await sql`
+    CREATE TABLE IF NOT EXISTS feedback (
+      id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id      UUID REFERENCES users(id) ON DELETE SET NULL,
+      author_name  TEXT NOT NULL,
+      author_email TEXT NOT NULL,
+      category     TEXT NOT NULL DEFAULT 'other',
+      message      TEXT NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'open',
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+      resolved_at  TIMESTAMPTZ,
+      resolved_by  TEXT
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback (created_at DESC)`;
+  await sql`ALTER TABLE feedback DROP CONSTRAINT IF EXISTS feedback_category_check`;
+  await sql`
+    ALTER TABLE feedback ADD CONSTRAINT feedback_category_check
+    CHECK (category IN ('bug', 'idea', 'data', 'other'))
+  `;
+  await sql`ALTER TABLE feedback DROP CONSTRAINT IF EXISTS feedback_status_check`;
+  await sql`
+    ALTER TABLE feedback ADD CONSTRAINT feedback_status_check
+    CHECK (status IN ('open', 'resolved'))
+  `;
 }
 
 // Ensure the schema is ready before serving requests, at most once per process (cached promise).
@@ -79,6 +108,7 @@ async function migrateIfNeeded(): Promise<void> {
     // older version of this schema still gets migrated.
     await sql`SELECT 1 FROM voicemail_runs LIMIT 1`;
     await sql`SELECT role FROM users LIMIT 1`;
+    await sql`SELECT 1 FROM feedback LIMIT 1`;
     return;
   } catch {
     await initDb();

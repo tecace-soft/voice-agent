@@ -4,6 +4,7 @@ import { env } from "./config/env.js";
 import { ensureDbReady } from "./db/client.js";
 import { ensureSeedAdmin } from "./auth/seed.js";
 import { auth } from "./routes/auth.js";
+import { feedback } from "./routes/feedback.js";
 import { health } from "./routes/health.js";
 import { transcribe } from "./routes/transcribe.js";
 
@@ -30,6 +31,7 @@ export const app = new Elysia()
   .get("/", () => ({ name: "transcribe-backend", message: "Elysia is running" }))
   .use(health)
   .use(auth)
+  .use(feedback)
   .use(transcribe);
 
 export type App = typeof app;

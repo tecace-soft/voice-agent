@@ -207,3 +207,32 @@ export const IconTrash = (p: IconProps) => (
     <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
   </Icon>
 );
+
+export const IconIdea = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M9 18h6" />
+    <path d="M10 22h4" />
+    <path d="M12 2a7 7 0 0 0-4 12.7V16h8v-1.3A7 7 0 0 0 12 2Z" />
+  </Icon>
+);
+
+export const IconTable = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <line x1="3" y1="9" x2="21" y2="9" />
+    <line x1="10" y1="9" x2="10" y2="21" />
+  </Icon>
+);
+
+export const IconMessage = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2Z" />
+  </Icon>
+);
+
+export const IconInbox = (p: IconProps) => (
+  <Icon {...p}>
+    <polyline points="21 12 16 12 14 15 10 15 8 12 3 12" />
+    <path d="M5.5 5h13l2.5 7v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6Z" />
+  </Icon>
+);

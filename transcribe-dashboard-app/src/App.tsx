@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { getTranscribeStats } from "./api/backend";
+import { countOpenFeedback, getTranscribeStats } from "./api/backend";
 import type { AuthUser, TranscribeStats } from "./api/types";
 import { useAuth } from "./auth";
 import { Sidebar, type ViewId } from "./components/Sidebar";
 import { IconPanelLeft, IconRefresh } from "./icons";
 import { AccountsPage } from "./pages/AccountsPage";
 import { ActivityPage } from "./pages/ActivityPage";
+import { AllFeedbackPage } from "./pages/AllFeedbackPage";
+import { FeedbackPage } from "./pages/FeedbackPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { RunsPage } from "./pages/RunsPage";
@@ -14,11 +16,16 @@ import { derive } from "./stats";
 import { ThemeToggle } from "./theme";
 import { DashboardSkeleton } from "./ui";
 
+// Views that don't read the transcription stats, so a stats failure shouldn't hide them.
+const STANDALONE_VIEWS = new Set<ViewId>(["accounts", "feedback", "allFeedback"]);
+
 const VIEW_TITLES: Record<ViewId, string> = {
   overview: "Overview",
   activity: "Daily activity",
   runs: "All runs",
   failed: "Failed runs",
+  feedback: "Send feedback",
+  allFeedback: "All feedback",
   accounts: "Accounts",
 };
 
@@ -55,6 +62,23 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   const [navOpen, setNavOpen] = useState(() => window.innerWidth >= 900);
   const { data, loading, error, refresh } = useStats();
 
+  // How many notes are waiting on the team, for the sidebar badge. Admins only — it's the one
+  // number a `user` isn't allowed to see, and it's cheap enough to refresh with everything else.
+  const [openFeedback, setOpenFeedback] = useState(0);
+  const isAdmin = user.role === "admin";
+  useEffect(() => {
+    if (!isAdmin) return;
+    let active = true;
+    countOpenFeedback()
+      .then((n) => active && setOpenFeedback(n))
+      .catch(() => {
+        /* the badge is a nicety; a failure here shouldn't surface as an error */
+      });
+    return () => {
+      active = false;
+    };
+  }, [isAdmin, data]);
+
   const failedCount = data ? derive(data).failedRuns.length : 0;
   const openView = (id: ViewId) => {
     setView(id);
@@ -67,6 +91,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
         active={view}
         onSelect={openView}
         failedCount={failedCount}
+        openFeedback={openFeedback}
         lastRunAt={data?.lastRunAt ?? null}
         user={user}
         onSignOut={onSignOut}
@@ -107,12 +132,19 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
 
         <main className="content">
           {/* The accounts view doesn't depend on the stats, so a stats failure shouldn't hide it. */}
-          {error && view !== "accounts" && <p className="error ta-body-2">{error}</p>}
-          {!data && loading && view !== "accounts" && <DashboardSkeleton />}
+          {error && !STANDALONE_VIEWS.has(view) && <p className="error ta-body-2">{error}</p>}
+          {!data && loading && !STANDALONE_VIEWS.has(view) && <DashboardSkeleton />}
           {data && view === "overview" && <OverviewPage data={data} />}
           {data && view === "activity" && <ActivityPage data={data} />}
           {data && view === "runs" && <RunsPage data={data} />}
           {data && view === "failed" && <RunsPage data={data} onlyFailed />}
+          {view === "feedback" && <FeedbackPage />}
+          {view === "allFeedback" &&
+            (isAdmin ? (
+              <AllFeedbackPage onCountChange={setOpenFeedback} />
+            ) : (
+              <p className="muted ta-body-2">Only an admin can read everyone's feedback.</p>
+            ))}
           {view === "accounts" &&
             (user.role === "admin" ? (
               <AccountsPage me={user} onSignOut={onSignOut} />

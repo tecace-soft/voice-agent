@@ -1006,6 +1006,159 @@ td.actions-col {
   font-size: 12px;
 }
 
+/* ---- feedback ---- */
+.textarea {
+  height: auto;
+  padding: 10px 12px;
+  line-height: 22px;
+  resize: vertical;
+  min-height: 120px;
+  font-family: inherit;
+}
+.feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 20px 20px;
+}
+.feedback-form .error {
+  margin: 0;
+}
+
+/* category picker — radio buttons wearing outlined cards */
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+.choice-grid legend {
+  color: var(--muted);
+  padding: 0 0 8px;
+}
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--body);
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.choice:hover {
+  background: var(--accent-soft);
+}
+.choice.is-active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+  color: var(--ink);
+}
+.choice input {
+  accent-color: var(--primary);
+  margin: 0;
+}
+
+.notice-slim {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start; /* .notice spreads its children apart; this one is a single line */
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  border-radius: var(--radius);
+}
+
+.feedback-empty {
+  margin: 0;
+  padding: 40px 20px;
+  text-align: center;
+}
+.feedback-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.feedback-item {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+.feedback-item:first-child {
+  border-top: none;
+}
+.feedback-item.is-resolved {
+  background: var(--accent-soft);
+}
+.feedback-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.feedback-author {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  min-width: 0;
+}
+.feedback-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.feedback-message {
+  margin: 8px 0 0;
+  color: var(--body);
+  white-space: pre-wrap; /* people press enter; keep their line breaks */
+  overflow-wrap: anywhere;
+}
+.feedback-resolved {
+  margin: 6px 0 0;
+}
+.feedback-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+/* category badges stay in one quiet family — the status badge carries the colour that matters */
+.badge-cat {
+  background: var(--accent);
+  color: var(--muted);
+}
+.badge-cat.cat-bug {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+}
+.badge-cat.cat-idea {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+}
+.badge-cat.cat-data {
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  color: var(--warning);
+}
+.nav-count-info {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+
 /* ---- loading skeleton ---- */
 .skeleton {
   background: var(--accent);
@@ -1081,7 +1234,8 @@ td.actions-col {
 }
 @media (max-width: 640px) {
   .kpi-grid,
-  .kpi-grid-3 {
+  .kpi-grid-3,
+  .choice-grid {
     grid-template-columns: minmax(0, 1fr);
   }
   .card-head {
