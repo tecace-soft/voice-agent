@@ -12,10 +12,15 @@ export function BarChart({
   bars,
   ariaLabel,
   highlightMax = true,
+  highlightKey,
 }: {
   bars: Bar[];
   ariaLabel: string;
+  /** Emphasise the tallest bar — right when "the biggest" is the point (busiest hour, busiest day). */
   highlightMax?: boolean;
+  /** Emphasise one specific bar instead. On a distribution the tallest bar is the most COMMON
+   *  value, which is easy to misread as the median — so the caller names the bar it means. */
+  highlightKey?: string;
 }) {
   const W = 900;
   const H = 220;
@@ -57,7 +62,9 @@ export function BarChart({
       {bars.map((bar, i) => {
         const cx = padL + slot * i + slot / 2;
         const h = Math.max(bar.value > 0 ? 2 : 0, (bar.value / max) * plotH);
-        const isMax = highlightMax && bar.value === max && max > 0;
+        const isMax = highlightKey
+          ? bar.key === highlightKey
+          : highlightMax && bar.value === max && max > 0;
         return (
           <g key={bar.key}>
             {h > 0 && (

@@ -37,10 +37,28 @@ export interface TranscribeAnalytics {
     longestGapSeconds: number;
     longestGapEndedAt: string | null; // the run that ended the longest quiet stretch
   };
+  // What a run that actually transcribes something does. Deliberately NOT an average over all runs:
+  // most passes find nothing, so processed/runs describes no run that ever happened. The exact
+  // distribution is small (a run handles a handful of voicemails), so it ships whole.
+  perRun: {
+    productiveRuns: number; // runs that transcribed at least one voicemail
+    medianProcessed: number; // across productive runs only
+    maxProcessed: number;
+    distribution: { processed: number; runs: number }[]; // productive runs, grouped by output
+    busiest: {
+      id: string;
+      voicemails: number;
+      processed: number;
+      skipped: number;
+      failed: number;
+      createdAt: string;
+    }[];
+  };
 }
 
 export async function getTranscribeAnalytics(): Promise<TranscribeAnalytics> {
-  const [totals, daily, byHour, byWeekday, cadence] = await Promise.all([
+  const [totals, daily, byHour, byWeekday, cadence, perRunStats, distribution, busiest] =
+    await Promise.all([
     sql`
       SELECT
         coalesce(sum(voicemails), 0)::int AS voicemails,
@@ -100,6 +118,30 @@ export async function getTranscribeAnalytics(): Promise<TranscribeAnalytics> {
       FROM gaps
       WHERE gap IS NOT NULL
     `,
+    // Everything below looks only at runs that transcribed something — the ones an average over all
+    // runs quietly dilutes.
+    sql`
+      SELECT
+        count(*)::int AS "productiveRuns",
+        coalesce(percentile_disc(0.5) WITHIN GROUP (ORDER BY processed), 0)::int AS "medianProcessed",
+        coalesce(max(processed), 0)::int AS "maxProcessed"
+      FROM voicemail_runs
+      WHERE processed > 0
+    `,
+    sql`
+      SELECT processed, count(*)::int AS runs
+      FROM voicemail_runs
+      WHERE processed > 0
+      GROUP BY processed
+      ORDER BY processed
+    `,
+    sql`
+      SELECT id, voicemails, processed, skipped, failed, created_at AS "createdAt"
+      FROM voicemail_runs
+      WHERE processed > 0
+      ORDER BY processed DESC, created_at DESC
+      LIMIT 10
+    `,
   ]);
 
   return {
@@ -112,6 +154,11 @@ export async function getTranscribeAnalytics(): Promise<TranscribeAnalytics> {
       medianGapSeconds: 0,
       longestGapSeconds: 0,
       longestGapEndedAt: null,
+    },
+    perRun: {
+      ...(perRunStats[0] as { productiveRuns: number; medianProcessed: number; maxProcessed: number }),
+      distribution: distribution as unknown as TranscribeAnalytics["perRun"]["distribution"],
+      busiest: busiest as unknown as TranscribeAnalytics["perRun"]["busiest"],
     },
   };
 }

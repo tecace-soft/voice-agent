@@ -595,6 +595,10 @@ code {
   color: var(--muted);
   margin-top: 2px;
 } /* pair with .ta-caption-1 */
+.card-foot {
+  margin: 0;
+  padding: 0 20px 16px;
+} /* a note under a chart, explaining what it does and doesn't include */
 
 /* ---- KPI row ---- */
 .kpi-grid {

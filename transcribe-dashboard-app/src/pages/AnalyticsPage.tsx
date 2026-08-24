@@ -40,14 +40,13 @@ export function AnalyticsPage() {
       skipRate: pct(totals.skipped, totals.voicemails),
       emptyRate: pct(totals.emptyRuns, totals.runs),
       attempted,
-      perRun: totals.runs === 0 ? 0 : totals.processed / totals.runs,
     };
   }, [data]);
 
   if (error) return <p className="error ta-body-2">{error}</p>;
   if (!data || !derived) return <DashboardSkeleton />;
 
-  const { totals, cadence } = data;
+  const { totals, cadence, perRun } = data;
 
   // 90-day trend. The backend only returns days that had runs, so gaps are simply absent rather
   // than zero — with a 90-day window, filling every quiet day in would bury the shape.
@@ -78,6 +77,20 @@ export function AnalyticsPage() {
       label: formatWeekday(i + 1),
       value: row?.processed ?? 0,
       tip: `${formatWeekday(i + 1)} — ${row?.processed ?? 0} transcribed across ${row?.runs ?? 0} runs`,
+    };
+  });
+
+  // Every output from 1 to the busiest run, so a gap in the middle reads as a gap rather than
+  // two neighbouring bars.
+  const distCounts = new Map(perRun.distribution.map((d) => [d.processed, d.runs]));
+  const distributionBars: Bar[] = Array.from({ length: perRun.maxProcessed }, (_, i) => {
+    const processed = i + 1;
+    const runs = distCounts.get(processed) ?? 0;
+    return {
+      key: `d${processed}`,
+      label: perRun.maxProcessed <= 20 || processed % 5 === 0 ? String(processed) : "",
+      value: runs,
+      tip: `${runs} ${runs === 1 ? "run" : "runs"} transcribed ${processed} ${processed === 1 ? "voicemail" : "voicemails"}`,
     };
   });
 
@@ -179,6 +192,84 @@ export function AnalyticsPage() {
       </div>
 
       <section className="card">
+        <div className="card-head">
+          <div>
+            <div className="card-title ta-headline-2">What a run actually transcribes</div>
+            <div className="card-sub ta-caption-1">
+              Runs that transcribed something ·{" "}
+              {perRun.productiveRuns.toLocaleString()} of {totals.runs.toLocaleString()} runs ·
+              median {perRun.medianProcessed} (highlighted) · busiest {perRun.maxProcessed}
+            </div>
+          </div>
+        </div>
+        <div className="chart-body">
+          {perRun.distribution.length > 0 ? (
+            <BarChart
+              bars={distributionBars}
+              ariaLabel="How many voicemails each run transcribed"
+              highlightKey={`d${perRun.medianProcessed}`}
+            />
+          ) : (
+            <p className="muted ta-body-2 chart-empty">No run has transcribed anything yet.</p>
+          )}
+        </div>
+        <p className="card-foot muted ta-caption-1">
+          Each bar is a number of voicemails; its height is how many runs transcribed exactly that
+          many. The {totals.emptyRuns.toLocaleString()} passes that found nothing are left out — an
+          average across every run describes no run that has actually happened.
+        </p>
+      </section>
+
+      <section className="card">
+        <div className="card-toolbar">
+          <div>
+            <div className="card-title ta-headline-2">Busiest runs</div>
+            <div className="card-sub ta-caption-1">The ten single runs that transcribed the most</div>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">When</th>
+                <th className="num" scope="col">
+                  Found
+                </th>
+                <th className="num" scope="col">
+                  Transcribed
+                </th>
+                <th className="num" scope="col">
+                  Skipped
+                </th>
+                <th className="num" scope="col">
+                  Failed
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {perRun.busiest.length === 0 ? (
+                <tr>
+                  <td className="table-empty" colSpan={5}>
+                    No run has transcribed anything yet.
+                  </td>
+                </tr>
+              ) : (
+                perRun.busiest.map((run) => (
+                  <tr key={run.id}>
+                    <td>{formatDateTime(run.createdAt)}</td>
+                    <td className="num">{run.voicemails}</td>
+                    <td className="num">{run.processed}</td>
+                    <td className="num">{run.skipped}</td>
+                    <td className={`num${run.failed > 0 ? " is-danger" : ""}`}>{run.failed}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="card">
         <div className="card-toolbar">
           <div>
             <div className="card-title ta-headline-2">What the app has done overall</div>
@@ -228,7 +319,9 @@ export function AnalyticsPage() {
               <tr>
                 <td>Runs reported</td>
                 <td className="num">{totals.runs.toLocaleString()}</td>
-                <td className="num">{derived.perRun.toFixed(1)} per run</td>
+                <td className="num">
+                  {perRun.productiveRuns.toLocaleString()} transcribed something
+                </td>
               </tr>
             </tbody>
           </table>

@@ -30,6 +30,21 @@ export interface TranscribeAnalytics {
   byHour: { hour: number; processed: number; runs: number }[];
   byWeekday: { weekday: number; processed: number; runs: number }[]; // 1=Mon … 7=Sun
   cadence: { medianGapSeconds: number; longestGapSeconds: number; longestGapEndedAt: string | null };
+  // What a run that actually transcribes does — a distribution, not an average over every run.
+  perRun: {
+    productiveRuns: number;
+    medianProcessed: number;
+    maxProcessed: number;
+    distribution: { processed: number; runs: number }[];
+    busiest: {
+      id: string;
+      voicemails: number;
+      processed: number;
+      skipped: number;
+      failed: number;
+      createdAt: string;
+    }[];
+  };
 }
 
 // A note someone sent from the Feedback page. `authorName`/`authorEmail` are snapshots taken at

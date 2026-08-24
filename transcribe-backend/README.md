@@ -114,6 +114,12 @@ otherwise the only way back in would be the CLI.
 (totals + success/skip rates), is it running on schedule (`cadence` — the gaps between consecutive
 runs), and when does work arrive (`byHour` / `byWeekday`, bucketed in `BUSINESS_TIMEZONE`).
 
+`perRun` deliberately ships a **distribution rather than an average**: most passes find nothing, so
+`processed / runs` describes no run that has ever happened. It carries the count of runs that
+transcribed something, the median and maximum across only those runs, the exact histogram (grouped
+by output — small, since a run handles a handful of voicemails), and the ten biggest runs
+individually.
+
 The median gap uses **`percentile_disc`**, not `percentile_cont`: the discrete median returns a gap
 that actually happened, where the continuous one averages the two middle values and can report a
 cadence the app has never had — a poller that runs every 30 minutes but occasionally stalls for days
