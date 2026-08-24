@@ -1,5 +1,6 @@
 // Typed access to environment configuration.
 // Bun automatically loads `.env` from the project root at startup — no dotenv needed.
+import { randomBytes } from "node:crypto";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -29,14 +30,48 @@ const corsOrigins = (process.env.CORS_ORIGIN ?? "")
 // `x-transcribe-key` header (the transcribe-app sends it). Unset = open (dev only).
 const transcribeIngestKey = process.env.TRANSCRIBE_INGEST_KEY?.trim() ?? "";
 
+const nodeEnv = process.env.NODE_ENV ?? "development";
+
+// Secret that signs dashboard session tokens. Required in production — without it nobody could be
+// kept signed in across deploys, and a predictable secret would let anyone mint a valid token.
+// In development an ephemeral one is generated so `bun run dev` works with no setup; it changes on
+// every restart, which signs everyone out (the warning says so).
+function resolveAuthSecret(): string {
+  const configured = process.env.AUTH_SECRET?.trim();
+  if (configured) {
+    if (configured.length < 32 && nodeEnv === "production") {
+      throw new Error("AUTH_SECRET must be at least 32 characters. Generate one with: openssl rand -hex 32");
+    }
+    return configured;
+  }
+  if (nodeEnv === "production") {
+    throw new Error(
+      "AUTH_SECRET is not set. Dashboard sign-in needs it. Generate one with: openssl rand -hex 32",
+    );
+  }
+  console.warn(
+    "⚠️  AUTH_SECRET is not set — using a random per-process secret. Sessions won't survive a restart.",
+  );
+  return randomBytes(32).toString("hex");
+}
+
+// How long a session token stays valid. Default 7 days: long enough that the team isn't retyping a
+// password daily, short enough that a leaked token isn't useful forever.
+const ttlHours = Number(process.env.AUTH_TOKEN_TTL_HOURS ?? 168);
+if (!Number.isFinite(ttlHours) || ttlHours <= 0) {
+  throw new Error("AUTH_TOKEN_TTL_HOURS must be a positive number of hours.");
+}
+
 export const env = {
-  nodeEnv: process.env.NODE_ENV ?? "development",
+  nodeEnv,
   port: Number(process.env.PORT ?? 8001),
   databaseUrl,
   corsOrigins,
   // Day boundaries for the "today"/daily stats follow this timezone.
   timezone: assertTimeZone(process.env.BUSINESS_TIMEZONE ?? "America/Los_Angeles"),
   transcribeIngestKey,
+  authSecret: resolveAuthSecret(),
+  authTokenTtlHours: ttlHours,
 } as const;
 
 export type Env = typeof env;

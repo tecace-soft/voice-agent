@@ -1,4 +1,27 @@
-// Shapes shared with the backend API (kept in sync with backend-app's /transcribe/stats).
+// Shapes shared with the backend API (kept in sync with transcribe-backend's routes).
+
+// A signed-in dashboard user, as GET /auth/me and POST /auth/login return them. The backend never
+// sends the password hash or token version.
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  lastLoginAt: string | null;
+}
+
+// POST /auth/users and POST /auth/users/:id/password. `password` is the generated one, returned
+// exactly once — it is null when the caller supplied a password of their own.
+export interface CreatedAccount {
+  user: AuthUser;
+  password: string | null;
+}
+
+// POST /auth/login and POST /auth/setup
+export interface LoginResponse {
+  token: string;
+  expiresAt: string;
+  user: AuthUser;
+}
 
 // One reported transcribe-app run.
 export interface VoicemailRun {

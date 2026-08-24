@@ -222,9 +222,53 @@ code {
 }
 .sidebar-foot {
   margin-top: auto;
-  padding: 12px 16px;
   border-top: 1px solid var(--border);
   color: var(--body);
+}
+.sidebar-meta {
+  padding: 12px 16px;
+}
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+.avatar {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--primary-tint);
+  color: var(--primary);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.user-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.2;
+}
+.user-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+.user-email {
+  color: var(--muted);
+}
+.user-name,
+.user-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---- topbar (h-14, plain hairline, no gradient, no blur) ---- */
@@ -734,6 +778,201 @@ td.table-empty {
   height: 28px;
 }
 
+/* ---- sign-in screen ---- */
+.boot {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+}
+.login-topbar {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 1;
+}
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.login-head h1 {
+  margin: 0;
+  color: var(--ink);
+}
+.login-head p {
+  margin: 2px 0 0;
+}
+.login-card .error {
+  margin: 0;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field-label {
+  color: var(--muted);
+}
+.input {
+  height: 40px;
+  padding: 0 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.0145em;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+.input::placeholder {
+  color: var(--label-assistive);
+}
+.input:hover {
+  border-color: var(--primary);
+}
+.btn-block {
+  width: 100%;
+  height: 40px;
+  justify-content: center;
+  font-size: 14px;
+}
+.login-foot {
+  margin: 0;
+  text-align: center;
+}
+.login-foot code {
+  font-size: 0.95em;
+}
+
+.field-hint {
+  margin-top: 2px;
+}
+
+/* ---- accounts ---- */
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger);
+  filter: brightness(0.94);
+}
+.link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--primary);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* the add-a-teammate panel, opened from the card toolbar */
+.inline-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 16px;
+  align-items: end;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--accent-soft);
+}
+.inline-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* a generated password, shown once */
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-card);
+}
+.notice-body {
+  min-width: 0;
+}
+.notice-title {
+  color: var(--ink);
+}
+.secret {
+  display: inline-block;
+  margin: 6px 0;
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--accent);
+  border-radius: 8px;
+  user-select: all;
+  word-break: break-all;
+}
+.notice-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.person {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.avatar-sm {
+  width: 26px;
+  height: 26px;
+  font-size: 11px;
+}
+.person .user-name {
+  font-weight: 500;
+}
+th.actions-col,
+td.actions-col {
+  text-align: right;
+}
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.row-actions .btn {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
 /* ---- loading skeleton ---- */
 .skeleton {
   background: var(--accent);
@@ -795,6 +1034,11 @@ td.table-empty {
   }
   .view {
     gap: 16px;
+  }
+}
+@media (max-width: 900px) {
+  .inline-form {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 @media (max-width: 640px) {

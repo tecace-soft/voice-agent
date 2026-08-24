@@ -2,6 +2,7 @@ import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
 import { env } from "./config/env.js";
 import { ensureDbReady } from "./db/client.js";
+import { auth } from "./routes/auth.js";
 import { health } from "./routes/health.js";
 import { transcribe } from "./routes/transcribe.js";
 
@@ -10,13 +11,22 @@ import { transcribe } from "./routes/transcribe.js";
 // CORS lets the transcribe dashboard call this API from the browser; with no configured origins it
 // reflects any origin (dev), otherwise it restricts to the configured list.
 export const app = new Elysia()
-  .use(cors(env.corsOrigins.length ? { origin: env.corsOrigins } : {}))
+  // `authorization` has to be allowed explicitly, otherwise the browser's preflight rejects the
+  // dashboard's signed-in requests.
+  .use(
+    cors({
+      ...(env.corsOrigins.length ? { origin: env.corsOrigins } : {}),
+      methods: ["GET", "POST", "DELETE", "OPTIONS"],
+      allowedHeaders: ["content-type", "authorization", "x-transcribe-key"],
+    }),
+  )
   // Self-migrate on cold start: ensure the schema is ready before any handler runs a query.
   .onBeforeHandle({ as: "global" }, async () => {
     await ensureDbReady();
   })
   .get("/", () => ({ name: "transcribe-backend", message: "Elysia is running" }))
   .use(health)
+  .use(auth)
   .use(transcribe);
 
 export type App = typeof app;

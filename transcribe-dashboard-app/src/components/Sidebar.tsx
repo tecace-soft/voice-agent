@@ -1,7 +1,16 @@
-import { IconActivity, IconAlert, IconOverview, IconRuns, IconVoicemail } from "../icons";
+import type { AuthUser } from "../api/types";
+import {
+  IconActivity,
+  IconAlert,
+  IconOverview,
+  IconRuns,
+  IconSignOut,
+  IconUsers,
+  IconVoicemail,
+} from "../icons";
 import { formatDateTime } from "../lib";
 
-export type ViewId = "overview" | "activity" | "runs" | "failed";
+export type ViewId = "overview" | "activity" | "runs" | "failed" | "accounts";
 
 const NAV: { group: string; items: { id: ViewId; label: string; icon: typeof IconOverview }[] }[] = [
   {
@@ -18,20 +27,35 @@ const NAV: { group: string; items: { id: ViewId; label: string; icon: typeof Ico
       { id: "failed", label: "Failed runs", icon: IconAlert },
     ],
   },
+  {
+    group: "Settings",
+    items: [{ id: "accounts", label: "Accounts", icon: IconUsers }],
+  },
 ];
 
-// Left rail: brand, grouped navigation between the dashboard's views, and the last-run time pinned
-// to the bottom so it's visible from every view.
+// Up to two initials for the account avatar ("Jane Kim" -> "JK"), falling back to the email.
+function initials(user: AuthUser): string {
+  const source = user.name.trim() || user.email;
+  const parts = source.split(/[\s@._-]+/).filter(Boolean);
+  return (parts.slice(0, 2).map((p) => p[0]).join("") || "?").toUpperCase();
+}
+
+// Left rail: brand, grouped navigation between the dashboard's views, and — pinned to the bottom so
+// they're visible from every view — the last-run time and who is signed in.
 export function Sidebar({
   active,
   onSelect,
   failedCount,
   lastRunAt,
+  user,
+  onSignOut,
 }: {
   active: ViewId;
   onSelect: (id: ViewId) => void;
   failedCount: number;
   lastRunAt: string | null;
+  user: AuthUser;
+  onSignOut: () => void;
 }) {
   return (
     <nav className="sidebar" aria-label="Dashboard sections">
@@ -70,8 +94,33 @@ export function Sidebar({
       ))}
 
       <div className="sidebar-foot">
-        <div className="ta-caption-1 muted">Last run</div>
-        <div className="ta-label-2">{lastRunAt ? formatDateTime(lastRunAt) : "No runs yet"}</div>
+        <div className="sidebar-meta">
+          <div className="ta-caption-1 muted">Last run</div>
+          <div className="ta-label-2">{lastRunAt ? formatDateTime(lastRunAt) : "No runs yet"}</div>
+        </div>
+
+        <div className="sidebar-user">
+          <span className="avatar" aria-hidden="true">
+            {initials(user)}
+          </span>
+          <span className="user-text">
+            <span className="user-name ta-label-1" title={user.name}>
+              {user.name}
+            </span>
+            <span className="user-email ta-caption-2" title={user.email}>
+              {user.email}
+            </span>
+          </span>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={onSignOut}
+            aria-label={`Sign out ${user.name}`}
+            title="Sign out"
+          >
+            <IconSignOut size={16} />
+          </button>
+        </div>
       </div>
     </nav>
   );

@@ -26,6 +26,21 @@ export async function initDb(): Promise<void> {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_voicemail_runs_created_at ON voicemail_runs (created_at)`;
+
+  // Dashboard accounts. Passwords are scrypt hashes (src/auth/password.ts) — never plaintext.
+  // `token_version` is bumped to invalidate the session tokens an account already handed out.
+  await sql`
+    CREATE TABLE IF NOT EXISTS users (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      email         TEXT NOT NULL,           -- stored lower-cased; sign-in is case-insensitive
+      name          TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      token_version INTEGER NOT NULL DEFAULT 1,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_login_at TIMESTAMPTZ
+    )
+  `;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email)`;
 }
 
 // Ensure the schema is ready before serving requests, at most once per process (cached promise).
@@ -45,7 +60,9 @@ export function ensureDbReady(): Promise<void> {
 
 async function migrateIfNeeded(): Promise<void> {
   try {
+    // Probe every table, so a database created before a table was added still gets migrated.
     await sql`SELECT 1 FROM voicemail_runs LIMIT 1`;
+    await sql`SELECT 1 FROM users LIMIT 1`;
     return;
   } catch {
     await initDb();

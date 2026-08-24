@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { getTranscribeStats } from "./api/backend";
-import type { TranscribeStats } from "./api/types";
+import type { AuthUser, TranscribeStats } from "./api/types";
+import { useAuth } from "./auth";
 import { Sidebar, type ViewId } from "./components/Sidebar";
-import { IconMoon, IconPanelLeft, IconRefresh, IconSun } from "./icons";
+import { IconPanelLeft, IconRefresh } from "./icons";
+import { AccountsPage } from "./pages/AccountsPage";
 import { ActivityPage } from "./pages/ActivityPage";
+import { LoginPage } from "./pages/LoginPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { RunsPage } from "./pages/RunsPage";
+import { SetupPage } from "./pages/SetupPage";
 import { derive } from "./stats";
+import { ThemeToggle } from "./theme";
 import { DashboardSkeleton } from "./ui";
 
 const VIEW_TITLES: Record<ViewId, string> = {
@@ -14,24 +19,8 @@ const VIEW_TITLES: Record<ViewId, string> = {
   activity: "Daily activity",
   runs: "All runs",
   failed: "Failed runs",
+  accounts: "Accounts",
 };
-
-// Light/dark theme, applied via the design system's `data-theme` on <html> and persisted so it
-// survives reloads (index.html also applies the saved value before first paint to avoid a flash).
-function useTheme(): [("light" | "dark"), () => void] {
-  const [theme, setTheme] = useState<"light" | "dark">(() =>
-    document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light",
-  );
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    try {
-      localStorage.setItem("theme", theme);
-    } catch {
-      /* localStorage unavailable — theme just won't persist */
-    }
-  }, [theme]);
-  return [theme, () => setTheme((t) => (t === "dark" ? "light" : "dark"))];
-}
 
 // One fetch of GET /transcribe/stats, shared by every view, with a manual refresh that keeps the
 // current numbers on screen while the new ones load.
@@ -58,8 +47,8 @@ function useStats() {
   return { data, loading, error, refresh: load };
 }
 
-export function App() {
-  const [theme, toggleTheme] = useTheme();
+// The signed-in dashboard.
+function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void }) {
   const [view, setView] = useState<ViewId>("overview");
   // Open by default on a desktop-width screen; on narrow screens the rail is an overlay, so it
   // starts closed and the header's toggle brings it in.
@@ -79,6 +68,8 @@ export function App() {
         onSelect={openView}
         failedCount={failedCount}
         lastRunAt={data?.lastRunAt ?? null}
+        user={user}
+        onSignOut={onSignOut}
       />
       <div className="nav-scrim" onClick={() => setNavOpen(false)} aria-hidden="true" />
 
@@ -110,27 +101,56 @@ export function App() {
               <IconRefresh size={14} />
               {loading ? "Refreshing…" : "Refresh"}
             </button>
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={toggleTheme}
-              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-              title={theme === "dark" ? "Light theme" : "Dark theme"}
-            >
-              {theme === "dark" ? <IconSun size={16} /> : <IconMoon size={16} />}
-            </button>
+            <ThemeToggle />
           </div>
         </header>
 
         <main className="content">
-          {error && <p className="error ta-body-2">{error}</p>}
-          {!data && loading && <DashboardSkeleton />}
+          {/* The accounts view doesn't depend on the stats, so a stats failure shouldn't hide it. */}
+          {error && view !== "accounts" && <p className="error ta-body-2">{error}</p>}
+          {!data && loading && view !== "accounts" && <DashboardSkeleton />}
           {data && view === "overview" && <OverviewPage data={data} />}
           {data && view === "activity" && <ActivityPage data={data} />}
           {data && view === "runs" && <RunsPage data={data} />}
           {data && view === "failed" && <RunsPage data={data} onlyFailed />}
+          {view === "accounts" && <AccountsPage me={user} onSignOut={onSignOut} />}
         </main>
       </div>
     </div>
   );
+}
+
+// Nothing but the sign-in screen exists until there's a session: the stats endpoint is guarded, so
+// rendering the dashboard shell first would only produce a 401.
+export function App() {
+  const { status, user, signOut } = useAuth();
+
+  if (status === "loading") {
+    return (
+      <div className="boot">
+        <span className="muted ta-body-2">Signing you in…</span>
+      </div>
+    );
+  }
+  if (status === "setup") {
+    return (
+      <>
+        <div className="login-topbar">
+          <ThemeToggle />
+        </div>
+        <SetupPage />
+      </>
+    );
+  }
+  if (status === "signed-out" || !user) {
+    return (
+      <>
+        <div className="login-topbar">
+          <ThemeToggle />
+        </div>
+        <LoginPage />
+      </>
+    );
+  }
+  return <Dashboard user={user} onSignOut={() => void signOut()} />;
 }

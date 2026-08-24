@@ -7,6 +7,25 @@ that reads `GET /transcribe/stats` from the standalone [transcribe-backend](../t
 Migrated out of `admin-dashboard-app` (which had it as a tab) so the transcription metrics can live
 and deploy on their own.
 
+## Signing in
+
+The dashboard is behind a sign-in screen — `GET /transcribe/stats` requires a session, so there is
+nothing to render without one.
+
+**The first time** you open it against an empty database, it shows **"Create the first account"**
+instead: fill in a name, email and password, and you're in. That screen closes for good once any
+account exists.
+
+**Everyone after that** is added from the **Accounts** page in the sidebar — any signed-in person
+can add a teammate (with a generated password, shown once), reset a password, sign an account out
+everywhere, or remove it. There is no public sign-up. The backend CLI
+(`cd ../transcribe-backend && bun run auth create ...`) stays available for when nobody can get in.
+
+`POST /auth/login` returns a session token, kept in `localStorage` (`transcribe.token`) and sent as
+`Authorization: Bearer <token>` on every request. On load the app calls `GET /auth/me` to restore
+the session; any 401 (expired token, or one revoked with `bun run auth revoke`) drops straight back
+to the sign-in screen. The signed-in person shows at the bottom of the sidebar, with sign-out.
+
 ## What it shows
 
 A sidebar shell (rail → header → KPI row → chart → table) with four views:
