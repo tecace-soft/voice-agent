@@ -43,6 +43,11 @@ A sidebar shell (rail → header → KPI row → chart → table) with four view
 - **Overview** — four KPI cards (total transcribed, today, last 7 days, success rate) each with a
   trend badge; a per-run area chart with an "all / last 30 / last 10 runs" range picker; and a
   tabbed run table (recent · all · failed · empty passes) with column toggles and pagination.
+- **Analytics** — the operational view, over the app's whole history rather than the 60-run window
+  the other pages read: success and skip rates, how regularly the app runs (typical gap between runs
+  and the longest stall, with when it ended), the share of passes that found nothing, a 90-day
+  trend, hour-of-day and weekday patterns, and a found → transcribed / skipped / failed breakdown.
+  Reads `GET /transcribe/analytics`.
 - **Daily activity** — the 14-day daily series as an area chart plus a per-day totals table.
 - **All runs** / **Failed runs** — the run log on its own, newest first.
 - **Send feedback** — anyone signed in writes a note to the team (a bug, an idea, a question about

@@ -143,6 +143,16 @@ await mock.module("../db/feedback.js", () => ({
   },
   countOpenFeedback: async () => notes.filter((n) => n.status === "open").length,
 }));
+const ANALYTICS = {
+  totals: { voicemails: 20, processed: 17, skipped: 2, failed: 1, runs: 5, emptyRuns: 1, firstRunAt: null, lastRunAt: null },
+  daily: [],
+  byHour: [{ hour: 9, processed: 12, runs: 3 }],
+  byWeekday: [{ weekday: 4, processed: 12, runs: 3 }],
+  cadence: { medianGapSeconds: 1800, longestGapSeconds: 309600, longestGapEndedAt: null },
+};
+await mock.module("../db/analytics.js", () => ({
+  getTranscribeAnalytics: async () => ANALYTICS,
+}));
 await mock.module("../db/voicemailRuns.js", () => ({
   getVoicemailStats: async () => STATS,
   insertVoicemailRun: async (r: unknown) => r,
@@ -604,6 +614,25 @@ describe("GET /transcribe/stats", () => {
     const res = await call("/transcribe/stats", { headers: { authorization: `Bearer ${await tokenFor()}` } });
     expect(res.status).toBe(200);
     expect((await json(res)).totalProcessed).toBe(42);
+  });
+
+  it("guards /transcribe/analytics the same way as /stats", async () => {
+    expect((await call("/transcribe/analytics")).status).toBe(401);
+    expect((await call("/transcribe/analytics", { headers: { authorization: "Bearer junk" } })).status).toBe(401);
+
+    // any signed-in user, admin or not — it's the same operational data /stats shows
+    const admin = await tokenFor();
+    const created = await json(await post("/auth/users", { name: "Sam", email: "sam@tecace.com" }, admin));
+    const sam = await tokenFor("sam@tecace.com", created.password);
+
+    for (const token of [admin, sam]) {
+      const res = await call("/transcribe/analytics", { headers: { authorization: `Bearer ${token}` } });
+      expect(res.status).toBe(200);
+      const body = await json(res);
+      expect(body.totals.processed).toBe(17);
+      expect(body.cadence.medianGapSeconds).toBe(1800);
+      expect(body.byHour[0]).toEqual({ hour: 9, processed: 12, runs: 3 });
+    }
   });
 
   it("lets a CORS preflight through", async () => {

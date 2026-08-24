@@ -71,6 +71,28 @@ export function deltaPct(curr: number, prev: number): number | null {
   return ((curr - prev) / prev) * 100;
 }
 
+// "35 min" / "4.2 hours" / "3.6 days" — a gap between runs, at whatever scale reads best.
+export function formatDuration(seconds: number): string {
+  if (seconds <= 0) return "—";
+  if (seconds < 90) return `${Math.round(seconds)} sec`;
+  const minutes = seconds / 60;
+  if (minutes < 90) return `${Math.round(minutes)} min`;
+  const hours = minutes / 60;
+  if (hours < 36) return `${hours.toFixed(1)} hours`;
+  return `${(hours / 24).toFixed(1)} days`;
+}
+
+// "9 AM" / "12 PM" — an hour-of-day bucket.
+export function formatHour(hour: number): string {
+  const suffix = hour < 12 ? "AM" : "PM";
+  const h = hour % 12 === 0 ? 12 : hour % 12;
+  return `${h} ${suffix}`;
+}
+
+// 1=Mon … 7=Sun, as Postgres's isodow returns them.
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+export const formatWeekday = (isoDow: number): string => WEEKDAYS[isoDow - 1] ?? "?";
+
 // "+12.5%" / "-20%" / "0%" — the delta as it reads on a trend badge.
 export function formatPct(pct: number): string {
   const rounded = Math.round(pct * 10) / 10;

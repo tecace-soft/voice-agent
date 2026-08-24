@@ -236,3 +236,12 @@ export const IconInbox = (p: IconProps) => (
     <path d="M5.5 5h13l2.5 7v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6Z" />
   </Icon>
 );
+
+export const IconAnalytics = (p: IconProps) => (
+  <Icon {...p}>
+    <line x1="3" y1="21" x2="21" y2="21" />
+    <rect x="5" y="11" width="4" height="7" rx="1" />
+    <rect x="11" y="6" width="4" height="12" rx="1" />
+    <rect x="17" y="14" width="4" height="4" rx="1" />
+  </Icon>
+);

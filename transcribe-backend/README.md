@@ -11,6 +11,9 @@ Standalone backend for the **voicemail transcription metrics**, split out of the
 - **`POST /auth/login`**, **`GET /auth/me`**, **`POST /auth/logout`** — dashboard sign-in.
 - **`GET|POST /auth/users`**, **`POST /auth/users/:id/password`**, **`POST /auth/users/:id/revoke`**,
   **`DELETE /auth/users/:id`** — account management, for the dashboard's Accounts page.
+- **`GET /transcribe/analytics`** — the dashboard's Analytics view: all-time totals, 90 days of
+  daily figures, hour-of-day and weekday patterns, and run cadence, aggregated in SQL over the whole
+  history (`/stats` only ships a 60-run window). Any signed-in user, same as `/stats`.
 - **`POST /feedback`**, **`GET /feedback/mine`** — anyone signed in sends a note and reads their own.
 - **`GET /feedback`**, **`GET /feedback/open-count`**, **`POST /feedback/:id/status`** — admins read
   everyone's and resolve them.
@@ -104,6 +107,17 @@ issued before it. A password reset does the same. Changing `AUTH_SECRET` signs *
 
 An account can't remove itself, and neither the last admin nor the last account can be removed —
 otherwise the only way back in would be the CLI.
+
+### Analytics
+
+`src/db/analytics.ts` answers three operational questions in one round trip: is the app keeping up
+(totals + success/skip rates), is it running on schedule (`cadence` — the gaps between consecutive
+runs), and when does work arrive (`byHour` / `byWeekday`, bucketed in `BUSINESS_TIMEZONE`).
+
+The median gap uses **`percentile_disc`**, not `percentile_cont`: the discrete median returns a gap
+that actually happened, where the continuous one averages the two middle values and can report a
+cadence the app has never had — a poller that runs every 30 minutes but occasionally stalls for days
+would otherwise "typically" run every few hours, which is true of no run at all.
 
 ### Feedback
 

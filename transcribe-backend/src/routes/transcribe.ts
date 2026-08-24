@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { authenticate, UNAUTHORIZED } from "../auth/guard.js";
 import { env } from "../config/env.js";
+import { getTranscribeAnalytics } from "../db/analytics.js";
 import { getVoicemailStats, insertVoicemailRun } from "../db/voicemailRuns.js";
 
 // Transcribe controller: the transcribe-app reports each run here (write, secret-guarded), and a
@@ -41,4 +42,8 @@ export const transcribe = new Elysia({ prefix: "/transcribe" })
   )
 
   // Aggregate stats for the dashboard.
-  .get("/stats", async () => getVoicemailStats());
+  .get("/stats", async () => getVoicemailStats())
+
+  // Deeper analysis for the dashboard's Analytics view — aggregated over the whole history rather
+  // than the 60-run window /stats ships. Same guard as /stats: any signed-in user.
+  .get("/analytics", async () => getTranscribeAnalytics());

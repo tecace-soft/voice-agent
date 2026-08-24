@@ -2,6 +2,7 @@ import type { AuthUser } from "../api/types";
 import {
   IconActivity,
   IconAlert,
+  IconAnalytics,
   IconInbox,
   IconMessage,
   IconOverview,
@@ -14,6 +15,7 @@ import { formatDateTime } from "../lib";
 
 export type ViewId =
   | "overview"
+  | "analytics"
   | "activity"
   | "runs"
   | "failed"
@@ -29,6 +31,7 @@ const NAV: {
     group: "Dashboard",
     items: [
       { id: "overview", label: "Overview", icon: IconOverview },
+      { id: "analytics", label: "Analytics", icon: IconAnalytics },
       { id: "activity", label: "Daily activity", icon: IconActivity },
     ],
   },

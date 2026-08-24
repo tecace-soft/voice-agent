@@ -6,6 +6,7 @@ import type {
   FeedbackStatus,
   LoginResponse,
   Role,
+  TranscribeAnalytics,
   TranscribeStats,
 } from "./types";
 
@@ -223,4 +224,10 @@ export function setFeedbackStatus(id: string, status: FeedbackStatus): Promise<{
 // Voicemail transcription stats (requires a signed-in session).
 export function getTranscribeStats(): Promise<TranscribeStats> {
   return get<TranscribeStats>("/transcribe/stats");
+}
+
+// The deeper cut behind the Analytics view — all-time totals, 90 days of daily figures, hour and
+// weekday patterns, and how regularly the app has been running.
+export function getTranscribeAnalytics(): Promise<TranscribeAnalytics> {
+  return get<TranscribeAnalytics>("/transcribe/analytics");
 }

@@ -1006,6 +1006,37 @@ td.actions-col {
   font-size: 12px;
 }
 
+/* ---- analytics ---- */
+/* two cards side by side, stacking before they get too narrow to read */
+.split-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.barchart {
+  display: block;
+  min-width: 100%;
+}
+.barchart .grid {
+  stroke: rgba(112, 115, 124, 0.12);
+  stroke-width: 1;
+}
+.barchart .axis {
+  fill: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.barchart .bar {
+  fill: color-mix(in srgb, var(--chart-1) 55%, transparent);
+}
+.barchart .bar-max {
+  fill: var(--chart-1);
+}
+.barchart .hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
 /* ---- feedback ---- */
 .textarea {
   height: auto;
@@ -1188,6 +1219,11 @@ td.actions-col {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+@media (max-width: 1100px) {
+  .split-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 @media (max-width: 899px) {
   .sidebar {
     position: fixed;
@@ -1212,7 +1248,8 @@ td.actions-col {
     z-index: 30;
     background: rgba(0, 0, 0, 0.32);
   }
-  .areachart {
+  .areachart,
+  .barchart {
     min-width: 560px; /* below this the axis labels stop being readable */
   }
   .content {

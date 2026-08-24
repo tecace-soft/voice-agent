@@ -13,6 +13,25 @@ export interface AuthUser {
   lastLoginAt: string | null;
 }
 
+// Response shape of GET /transcribe/analytics — aggregated over the backend's whole history,
+// unlike /transcribe/stats which ships a 60-run window.
+export interface TranscribeAnalytics {
+  totals: {
+    voicemails: number;
+    processed: number;
+    skipped: number;
+    failed: number;
+    runs: number;
+    emptyRuns: number;
+    firstRunAt: string | null;
+    lastRunAt: string | null;
+  };
+  daily: { day: string; voicemails: number; processed: number; skipped: number; failed: number; runs: number }[];
+  byHour: { hour: number; processed: number; runs: number }[];
+  byWeekday: { weekday: number; processed: number; runs: number }[]; // 1=Mon … 7=Sun
+  cadence: { medianGapSeconds: number; longestGapSeconds: number; longestGapEndedAt: string | null };
+}
+
 // A note someone sent from the Feedback page. `authorName`/`authorEmail` are snapshots taken at
 // submit time, so a note still says who wrote it after that account is removed.
 export type FeedbackCategory = "bug" | "idea" | "data" | "other";

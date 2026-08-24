@@ -7,6 +7,7 @@ import { IconPanelLeft, IconRefresh } from "./icons";
 import { AccountsPage } from "./pages/AccountsPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AllFeedbackPage } from "./pages/AllFeedbackPage";
+import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -17,10 +18,12 @@ import { ThemeToggle } from "./theme";
 import { DashboardSkeleton } from "./ui";
 
 // Views that don't read the transcription stats, so a stats failure shouldn't hide them.
-const STANDALONE_VIEWS = new Set<ViewId>(["accounts", "feedback", "allFeedback"]);
+// Analytics reads its own endpoint, so it belongs with the views that don't wait on /transcribe/stats.
+const STANDALONE_VIEWS = new Set<ViewId>(["accounts", "feedback", "allFeedback", "analytics"]);
 
 const VIEW_TITLES: Record<ViewId, string> = {
   overview: "Overview",
+  analytics: "Analytics",
   activity: "Daily activity",
   runs: "All runs",
   failed: "Failed runs",
@@ -135,6 +138,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           {error && !STANDALONE_VIEWS.has(view) && <p className="error ta-body-2">{error}</p>}
           {!data && loading && !STANDALONE_VIEWS.has(view) && <DashboardSkeleton />}
           {data && view === "overview" && <OverviewPage data={data} />}
+          {view === "analytics" && <AnalyticsPage />}
           {data && view === "activity" && <ActivityPage data={data} />}
           {data && view === "runs" && <RunsPage data={data} />}
           {data && view === "failed" && <RunsPage data={data} onlyFailed />}
