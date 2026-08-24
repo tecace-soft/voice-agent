@@ -2,25 +2,36 @@
 
 Standalone dashboard for the **voicemail transcription** service — how many voicemails the
 [transcribe-app](../transcribe-app/) has processed over time. A **React + Vite + TypeScript** SPA
-that reads `GET /transcribe/stats` from the shared [backend-app](../backend-app/).
+that reads `GET /transcribe/stats` from the standalone [transcribe-backend](../transcribe-backend/).
 
 Migrated out of `admin-dashboard-app` (which had it as a tab) so the transcription metrics can live
 and deploy on their own.
 
 ## What it shows
 
-- **Total transcribed / Today / Last 7 days / Runs / Failed** — headline stat tiles.
-- **Transcribed per day** — a 14-day mini bar chart.
-- **Recent runs** — the latest transcribe-app passes with their counts.
+A sidebar shell (rail → header → KPI row → chart → table) with four views:
+
+- **Overview** — four KPI cards (total transcribed, today, last 7 days, success rate) each with a
+  trend badge; a per-run area chart with an "all / last 30 / last 10 runs" range picker; and a
+  tabbed run table (recent · all · failed · empty passes) with column toggles and pagination.
+- **Daily activity** — the 14-day daily series as an area chart plus a per-day totals table.
+- **All runs** / **Failed runs** — the run log on its own, newest first.
+
+All four read the single `GET /transcribe/stats` response; the deltas (today vs yesterday, this week
+vs last week) are derived from its 14-day `daily` series in `src/stats.ts`.
 
 Data flow: the transcribe-app POSTs each run's summary to the backend (`POST /transcribe/runs`),
 which stores it in `voicemail_runs`; this app reads the aggregate from `GET /transcribe/stats`.
 
 ## Styling
 
-Uses the TecAce design system (`.claude/skills/tecace-design`): the DS token CSS lives in
-`src/tecace/` and `src/index.css` maps the app's tokens onto it, so it matches the admin dashboard
-and follows the light/dark toggle (top-right).
+Follows the **`tecace-dashboard-ui`** skill — see [CLAUDE.md](./CLAUDE.md) before touching any UI.
+The design system's token CSS lives in `src/tecace/`; `src/index.css` maps the app's component
+styles onto those tokens (never hardcode a hex). Plain React + hand-rolled CSS, no Tailwind/shadcn.
+Light/dark via `data-theme` on `<html>`, toggled from the header.
+
+Layout pieces live in `src/components/` (`Sidebar`, `StatCard`, `AreaChart`, `RunsTable`, `TabBar`)
+and the views in `src/pages/`.
 
 ## Setup
 
