@@ -1,4 +1,4 @@
-import type { AuthUser, CreatedAccount, LoginResponse, TranscribeStats } from "./types";
+import type { AuthUser, CreatedAccount, LoginResponse, Role, TranscribeStats } from "./types";
 
 // Single place that talks to the backend API. Base URL comes from VITE_BACKEND_URL (set in .env
 // locally and in the Vercel project for production).
@@ -154,8 +154,20 @@ export async function listAccounts(): Promise<AuthUser[]> {
 }
 
 // Omit the password to have the backend generate one — it comes back once, in the response.
-export function createAccount(name: string, email: string, password?: string): Promise<CreatedAccount> {
-  return request<CreatedAccount>("POST", "/auth/users", { body: { name, email, password: password ?? "" } });
+export function createAccount(
+  name: string,
+  email: string,
+  role: Role,
+  password?: string,
+): Promise<CreatedAccount> {
+  return request<CreatedAccount>("POST", "/auth/users", {
+    body: { name, email, role, password: password ?? "" },
+  });
+}
+
+// Promote to admin or demote to user.
+export function setAccountRole(id: string, role: Role): Promise<{ user: AuthUser }> {
+  return request<{ user: AuthUser }>("POST", `/auth/users/${id}/role`, { body: { role } });
 }
 
 export function resetAccountPassword(id: string, password?: string): Promise<CreatedAccount> {

@@ -1,11 +1,15 @@
 // Shapes shared with the backend API (kept in sync with transcribe-backend's routes).
 
+// What an account may do: `admin` manages accounts, `user` reads the dashboard.
+export type Role = "admin" | "user";
+
 // A signed-in dashboard user, as GET /auth/me and POST /auth/login return them. The backend never
 // sends the password hash or token version.
 export interface AuthUser {
   id: string;
   email: string;
   name: string;
+  role: Role;
   lastLoginAt: string | null;
 }
 

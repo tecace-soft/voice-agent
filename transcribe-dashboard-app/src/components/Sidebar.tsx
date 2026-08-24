@@ -12,7 +12,10 @@ import { formatDateTime } from "../lib";
 
 export type ViewId = "overview" | "activity" | "runs" | "failed" | "accounts";
 
-const NAV: { group: string; items: { id: ViewId; label: string; icon: typeof IconOverview }[] }[] = [
+const NAV: {
+  group: string;
+  items: { id: ViewId; label: string; icon: typeof IconOverview; adminOnly?: boolean }[];
+}[] = [
   {
     group: "Dashboard",
     items: [
@@ -29,7 +32,7 @@ const NAV: { group: string; items: { id: ViewId; label: string; icon: typeof Ico
   },
   {
     group: "Settings",
-    items: [{ id: "accounts", label: "Accounts", icon: IconUsers }],
+    items: [{ id: "accounts", label: "Accounts", icon: IconUsers, adminOnly: true }],
   },
 ];
 
@@ -69,10 +72,15 @@ export function Sidebar({
         </span>
       </div>
 
-      {NAV.map((section) => (
+      {NAV.map((section) => {
+        // Account management is admin-only; a `user` doesn't see the section at all. The backend
+        // enforces it too — this only keeps the nav honest about what's reachable.
+        const items = section.items.filter((item) => !item.adminOnly || user.role === "admin");
+        if (items.length === 0) return null;
+        return (
         <div className="sidebar-group" key={section.group}>
           <div className="sidebar-group-label ta-caption-1">{section.group}</div>
-          {section.items.map((item) => {
+          {items.map((item) => {
             const ItemIcon = item.icon;
             return (
               <button
@@ -91,7 +99,8 @@ export function Sidebar({
             );
           })}
         </div>
-      ))}
+        );
+      })}
 
       <div className="sidebar-foot">
         <div className="sidebar-meta">
@@ -104,8 +113,11 @@ export function Sidebar({
             {initials(user)}
           </span>
           <span className="user-text">
-            <span className="user-name ta-label-1" title={user.name}>
-              {user.name}
+            <span className="user-name-row">
+              <span className="user-name ta-label-1" title={user.name}>
+                {user.name}
+              </span>
+              {user.role === "admin" && <span className="badge badge-admin badge-sm">Admin</span>}
             </span>
             <span className="user-email ta-caption-2" title={user.email}>
               {user.email}

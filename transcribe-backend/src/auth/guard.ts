@@ -16,3 +16,19 @@ export async function authenticate(authorization: string | undefined): Promise<P
 }
 
 export const UNAUTHORIZED = { error: "unauthorized", message: "Sign in to continue." } as const;
+export const FORBIDDEN = {
+  error: "forbidden",
+  message: "Only an admin can manage accounts.",
+} as const;
+
+// Resolve the caller and require the admin role. Returns the user, or the reason they can't act —
+// the role is read from the database on every request, so a demotion takes effect at once rather
+// than lingering until that person's token expires.
+export async function authenticateAdmin(
+  authorization: string | undefined,
+): Promise<{ user: PublicUser } | { denied: 401 | 403 }> {
+  const user = await authenticate(authorization);
+  if (!user) return { denied: 401 };
+  if (user.role !== "admin") return { denied: 403 };
+  return { user };
+}

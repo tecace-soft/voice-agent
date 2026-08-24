@@ -113,7 +113,12 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           {data && view === "activity" && <ActivityPage data={data} />}
           {data && view === "runs" && <RunsPage data={data} />}
           {data && view === "failed" && <RunsPage data={data} onlyFailed />}
-          {view === "accounts" && <AccountsPage me={user} onSignOut={onSignOut} />}
+          {view === "accounts" &&
+            (user.role === "admin" ? (
+              <AccountsPage me={user} onSignOut={onSignOut} />
+            ) : (
+              <p className="muted ta-body-2">Only an admin can manage accounts.</p>
+            ))}
         </main>
       </div>
     </div>

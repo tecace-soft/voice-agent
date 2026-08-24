@@ -19,6 +19,7 @@ function jane(): UserRecord {
     id: JANE_ID,
     email: "jane@tecace.com",
     name: "Jane Kim",
+    role: "admin",
     passwordHash: hashPassword(PASSWORD),
     tokenVersion: 1,
     createdAt: new Date().toISOString(),
@@ -43,11 +44,12 @@ await mock.module("../db/client.js", () => ({
   ensureDbReady: async () => {},
 }));
 await mock.module("../db/users.js", () => {
-  const insert = (input: { email: string; name: string; passwordHash: string }): UserRecord => {
+  const insert = (input: { email: string; name: string; passwordHash: string; role?: "admin" | "user" }, role?: "admin" | "user"): UserRecord => {
     const row: UserRecord = {
       id: `user-${++nextId}`,
       email: normalize(input.email),
       name: input.name.trim(),
+      role: role ?? input.role ?? "user",
       passwordHash: input.passwordHash,
       tokenVersion: 1,
       createdAt: new Date().toISOString(),
@@ -58,19 +60,22 @@ await mock.module("../db/users.js", () => {
   };
   return {
     normalizeEmail: normalize,
-    toPublicUser: (u: UserRecord) => ({ id: u.id, email: u.email, name: u.name, lastLoginAt: u.lastLoginAt }),
+    isRole: (v: unknown) => v === "admin" || v === "user",
+    toPublicUser: (u: UserRecord) => ({ id: u.id, email: u.email, name: u.name, role: u.role, lastLoginAt: u.lastLoginAt }),
     findUserByEmail: async (e: string) => users.find((u) => u.email === normalize(e)) ?? null,
     findUserById: async (id: string) => byId(id),
     listUsers: async () => [...users],
     countUsers: async () => users.length,
+    countAdmins: async () => users.filter((u) => u.role === "admin").length,
     recordLogin: async (id: string) => {
       const u = byId(id);
       if (u) u.lastLoginAt = new Date().toISOString();
     },
     createUser: async (input: { email: string; name: string; passwordHash: string }) =>
       users.some((u) => u.email === normalize(input.email)) ? null : insert(input),
+    // the real query hardcodes 'admin' for the first account
     createFirstUser: async (input: { email: string; name: string; passwordHash: string }) =>
-      users.length > 0 ? null : insert(input),
+      users.length > 0 ? null : insert(input, "admin"),
     setPasswordById: async (id: string, hash: string) => {
       const u = byId(id);
       if (!u) return null;
@@ -82,6 +87,18 @@ await mock.module("../db/users.js", () => {
       const u = byId(id);
       if (!u) return null;
       u.tokenVersion += 1;
+      return u;
+    },
+    promoteByEmail: async (email: string) => {
+      const u = users.find((x) => x.email === normalize(email));
+      if (!u) return null;
+      u.role = "admin";
+      return u;
+    },
+    setRoleById: async (id: string, role: "admin" | "user") => {
+      const u = byId(id);
+      if (!u) return null;
+      u.role = role;
       return u;
     },
     deleteUserById: async (id: string) => {
@@ -130,7 +147,7 @@ describe("POST /auth/login", () => {
     expect(res.status).toBe(200);
     const body = await json(res);
     expect(body.token).toMatch(/^[\w-]+\.[\w-]+$/);
-    expect(body.user).toEqual({ id: JANE_ID, email: "jane@tecace.com", name: "Jane Kim", lastLoginAt: expect.any(String) });
+    expect(body.user).toEqual({ id: JANE_ID, email: "jane@tecace.com", name: "Jane Kim", role: "admin", lastLoginAt: expect.any(String) });
     expect(body.user.passwordHash).toBeUndefined();
     expect(new Date(body.expiresAt).getTime()).toBeGreaterThan(Date.now());
   });
@@ -174,7 +191,7 @@ describe("first-run setup", () => {
     const res = await post("/auth/setup", { name: "First Admin", email: "First@TecAce.com", password: "setup-password" });
     expect(res.status).toBe(201);
     const body = await json(res);
-    expect(body.user).toMatchObject({ name: "First Admin", email: "first@tecace.com" });
+    expect(body.user).toMatchObject({ name: "First Admin", email: "first@tecace.com", role: "admin" });
 
     // the token it hands back is immediately usable
     const me = await call("/auth/me", { headers: { authorization: `Bearer ${body.token}` } });
@@ -291,9 +308,11 @@ describe("account management", () => {
     expect(removed.status).toBe(200);
     expect(users).toHaveLength(1);
 
-    // and the survivor can't be removed by someone else either
+    // and the survivor can't be removed by someone else either (Sam has to be an admin to try)
     const samToken = await (async () => {
-      const again = await json(await post("/auth/users", { name: "Sam", email: "sam@tecace.com" }, token));
+      const again = await json(
+        await post("/auth/users", { name: "Sam", email: "sam@tecace.com", role: "admin" }, token),
+      );
       return tokenFor("sam@tecace.com", again.password);
     })();
     users = users.filter((u) => u.email === "sam@tecace.com"); // pretend Jane is gone
@@ -309,6 +328,86 @@ describe("account management", () => {
     expect((await post("/auth/users/nope/password", {}, token)).status).toBe(404);
     expect((await post("/auth/users/nope/revoke", {}, token)).status).toBe(404);
     expect((await call("/auth/users/nope", { method: "DELETE", headers: { authorization: `Bearer ${token}` } })).status).toBe(404);
+  });
+});
+
+describe("roles", () => {
+  // Add a plain `user` account and sign in as them.
+  async function asPlainUser(): Promise<string> {
+    const admin = await tokenFor();
+    const created = await json(await post("/auth/users", { name: "Sam Lee", email: "sam@tecace.com" }, admin));
+    expect(created.user.role).toBe("user"); // the default when no role is given
+    return tokenFor("sam@tecace.com", created.password);
+  }
+
+  it("gives a new account the user role unless admin is asked for", async () => {
+    const admin = await tokenFor();
+    const plain = await json(await post("/auth/users", { name: "Sam", email: "sam@tecace.com" }, admin));
+    const boss = await json(await post("/auth/users", { name: "Alex", email: "alex@tecace.com", role: "admin" }, admin));
+    expect(plain.user.role).toBe("user");
+    expect(boss.user.role).toBe("admin");
+  });
+
+  it("lets a user read the dashboard but not touch accounts", async () => {
+    const sam = await asPlainUser();
+    const auth = { authorization: `Bearer ${sam}` };
+
+    // reading is fine
+    expect((await call("/auth/me", { headers: auth })).status).toBe(200);
+    expect((await call("/transcribe/stats", { headers: auth })).status).toBe(200);
+
+    // managing is not
+    const list = await call("/auth/users", { headers: auth });
+    expect(list.status).toBe(403);
+    expect((await json(list)).error).toBe("forbidden");
+    expect((await post("/auth/users", { name: "X", email: "x@tecace.com" }, sam)).status).toBe(403);
+    expect((await post(`/auth/users/${JANE_ID}/password`, {}, sam)).status).toBe(403);
+    expect((await post(`/auth/users/${JANE_ID}/revoke`, {}, sam)).status).toBe(403);
+    expect((await post(`/auth/users/${JANE_ID}/role`, { role: "user" }, sam)).status).toBe(403);
+    expect((await call(`/auth/users/${JANE_ID}`, { method: "DELETE", headers: auth })).status).toBe(403);
+  });
+
+  it("promotes and demotes, and a demotion applies to the existing session at once", async () => {
+    const sam = await asPlainUser();
+    const admin = await tokenFor();
+    const samId = users.find((u) => u.email === "sam@tecace.com")!.id;
+
+    expect((await call("/auth/users", { headers: { authorization: `Bearer ${sam}` } })).status).toBe(403);
+    const promoted = await json(await post(`/auth/users/${samId}/role`, { role: "admin" }, admin));
+    expect(promoted.user.role).toBe("admin");
+
+    // same token as before — no re-login needed, because the guard reads the role per request
+    expect((await call("/auth/users", { headers: { authorization: `Bearer ${sam}` } })).status).toBe(200);
+
+    await post(`/auth/users/${samId}/role`, { role: "user" }, admin);
+    expect((await call("/auth/users", { headers: { authorization: `Bearer ${sam}` } })).status).toBe(403);
+  });
+
+  it("refuses to demote or remove the last admin", async () => {
+    const admin = await tokenFor();
+    await post("/auth/users", { name: "Sam", email: "sam@tecace.com" }, admin); // a user, not an admin
+
+    const demote = await post(`/auth/users/${JANE_ID}/role`, { role: "user" }, admin);
+    expect(demote.status).toBe(409);
+    expect((await json(demote)).error).toBe("last_admin");
+
+    // with a second admin in place, demoting the first is allowed
+    const alex = await json(await post("/auth/users", { name: "Alex", email: "alex@tecace.com", role: "admin" }, admin));
+    expect((await post(`/auth/users/${JANE_ID}/role`, { role: "user" }, admin)).status).toBe(200);
+
+    // and now Alex is the last admin, so Alex can't be removed
+    const alexToken = await tokenFor("alex@tecace.com", alex.password);
+    const removeAlex = await call(`/auth/users/${alex.user.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${await tokenFor("jane@tecace.com", PASSWORD)}` },
+    });
+    expect(removeAlex.status).toBe(403); // Jane is only a `user` now
+    void alexToken;
+  });
+
+  it("rejects a role that isn't admin or user", async () => {
+    const admin = await tokenFor();
+    expect((await post(`/auth/users/${JANE_ID}/role`, { role: "superuser" }, admin)).status).toBe(422);
   });
 });
 

@@ -16,10 +16,19 @@ nothing to render without one.
 instead: fill in a name, email and password, and you're in. That screen closes for good once any
 account exists.
 
-**Everyone after that** is added from the **Accounts** page in the sidebar — any signed-in person
-can add a teammate (with a generated password, shown once), reset a password, sign an account out
-everywhere, or remove it. There is no public sign-up. The backend CLI
-(`cd ../transcribe-backend && bun run auth create ...`) stays available for when nobody can get in.
+**Everyone after that** is added from the **Accounts** page in the sidebar. There is no public
+sign-up; the backend CLI (`cd ../transcribe-backend && bun run auth ...`) stays available for when
+nobody can get in.
+
+Accounts are either **admin** or **user**:
+
+- **user** — signs in and reads the dashboard. The Accounts nav item isn't rendered for them.
+- **admin** — the same, plus the Accounts page: add a teammate (generated password, shown once),
+  reset a password, sign an account out everywhere, remove it, and promote/demote.
+
+Hiding the page is a convenience only — the backend refuses account routes from a `user` regardless,
+and reads the role fresh on every request, so a promotion or demotion applies without re-signing in.
+The last admin can't be demoted or removed.
 
 `POST /auth/login` returns a session token, kept in `localStorage` (`transcribe.token`) and sent as
 `Authorization: Bearer <token>` on every request. On load the app calls `GET /auth/me` to restore

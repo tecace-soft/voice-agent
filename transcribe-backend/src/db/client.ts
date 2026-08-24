@@ -29,11 +29,13 @@ export async function initDb(): Promise<void> {
 
   // Dashboard accounts. Passwords are scrypt hashes (src/auth/password.ts) — never plaintext.
   // `token_version` is bumped to invalidate the session tokens an account already handed out.
+  // `role` is 'admin' (can manage accounts) or 'user' (can only read the dashboard).
   await sql`
     CREATE TABLE IF NOT EXISTS users (
       id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       email         TEXT NOT NULL,           -- stored lower-cased; sign-in is case-insensitive
       name          TEXT NOT NULL,
+      role          TEXT NOT NULL DEFAULT 'user',
       password_hash TEXT NOT NULL,
       token_version INTEGER NOT NULL DEFAULT 1,
       created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -41,6 +43,19 @@ export async function initDb(): Promise<void> {
     )
   `;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email)`;
+
+  // Roles arrived after the table did, so an already-deployed database needs the column added.
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'`;
+  await sql`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`;
+  await sql`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'user'))`;
+
+  // Accounts that existed before roles all defaulted to 'user', which would leave nobody able to
+  // manage accounts. Promote the oldest account, but only if there is no admin at all.
+  await sql`
+    UPDATE users SET role = 'admin'
+    WHERE id = (SELECT id FROM users ORDER BY created_at, id LIMIT 1)
+      AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin')
+  `;
 }
 
 // Ensure the schema is ready before serving requests, at most once per process (cached promise).
@@ -60,9 +75,10 @@ export function ensureDbReady(): Promise<void> {
 
 async function migrateIfNeeded(): Promise<void> {
   try {
-    // Probe every table, so a database created before a table was added still gets migrated.
+    // Probe every table AND the columns added after the fact, so a database created against an
+    // older version of this schema still gets migrated.
     await sql`SELECT 1 FROM voicemail_runs LIMIT 1`;
-    await sql`SELECT 1 FROM users LIMIT 1`;
+    await sql`SELECT role FROM users LIMIT 1`;
     return;
   } catch {
     await initDb();

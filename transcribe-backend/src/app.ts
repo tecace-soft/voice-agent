@@ -2,6 +2,7 @@ import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
 import { env } from "./config/env.js";
 import { ensureDbReady } from "./db/client.js";
+import { ensureSeedAdmin } from "./auth/seed.js";
 import { auth } from "./routes/auth.js";
 import { health } from "./routes/health.js";
 import { transcribe } from "./routes/transcribe.js";
@@ -20,9 +21,11 @@ export const app = new Elysia()
       allowedHeaders: ["content-type", "authorization", "x-transcribe-key"],
     }),
   )
-  // Self-migrate on cold start: ensure the schema is ready before any handler runs a query.
+  // Self-migrate on cold start: ensure the schema is ready before any handler runs a query, then
+  // apply the optional SEED_ADMIN_* bootstrap account. Both are cached per process.
   .onBeforeHandle({ as: "global" }, async () => {
     await ensureDbReady();
+    await ensureSeedAdmin();
   })
   .get("/", () => ({ name: "transcribe-backend", message: "Elysia is running" }))
   .use(health)

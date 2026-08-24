@@ -1,11 +1,18 @@
 import { sql } from "./client.js";
 
+// What an account is allowed to do. `admin` additionally manages accounts (add / reset / sign out /
+// remove / change roles); `user` signs in and reads the dashboard.
+export type Role = "admin" | "user";
+
+export const isRole = (value: unknown): value is Role => value === "admin" || value === "user";
+
 // A dashboard account. `passwordHash` and `tokenVersion` never leave the backend — routes return
 // the `PublicUser` shape instead.
 export interface UserRecord {
   id: string;
   email: string;
   name: string;
+  role: Role;
   passwordHash: string;
   tokenVersion: number;
   createdAt: string;
@@ -16,6 +23,7 @@ export interface PublicUser {
   id: string;
   email: string;
   name: string;
+  role: Role;
   lastLoginAt: string | null;
 }
 
@@ -23,6 +31,7 @@ export const toPublicUser = (u: UserRecord): PublicUser => ({
   id: u.id,
   email: u.email,
   name: u.name,
+  role: u.role,
   lastLoginAt: u.lastLoginAt,
 });
 
@@ -33,6 +42,7 @@ const COLUMNS = sql`
   id,
   email,
   name,
+  role,
   password_hash  AS "passwordHash",
   token_version  AS "tokenVersion",
   created_at     AS "createdAt",
@@ -60,10 +70,11 @@ export async function createUser(input: {
   email: string;
   name: string;
   passwordHash: string;
+  role?: Role;
 }): Promise<UserRecord | null> {
   const [row] = await sql`
-    INSERT INTO users (email, name, password_hash)
-    VALUES (${normalizeEmail(input.email)}, ${input.name.trim()}, ${input.passwordHash})
+    INSERT INTO users (email, name, role, password_hash)
+    VALUES (${normalizeEmail(input.email)}, ${input.name.trim()}, ${input.role ?? "user"}, ${input.passwordHash})
     ON CONFLICT (email) DO NOTHING
     RETURNING ${COLUMNS}
   `;
@@ -80,8 +91,8 @@ export async function createFirstUser(input: {
   passwordHash: string;
 }): Promise<UserRecord | null> {
   const [row] = await sql`
-    INSERT INTO users (email, name, password_hash)
-    SELECT ${normalizeEmail(input.email)}, ${input.name.trim()}, ${input.passwordHash}
+    INSERT INTO users (email, name, role, password_hash)
+    SELECT ${normalizeEmail(input.email)}, ${input.name.trim()}, 'admin', ${input.passwordHash}
     WHERE NOT EXISTS (SELECT 1 FROM users)
     RETURNING ${COLUMNS}
   `;
@@ -95,13 +106,16 @@ export async function upsertUser(input: {
   email: string;
   name: string;
   passwordHash: string;
+  role?: Role;
 }): Promise<UserRecord> {
   const [row] = await sql`
-    INSERT INTO users (email, name, password_hash)
-    VALUES (${normalizeEmail(input.email)}, ${input.name.trim()}, ${input.passwordHash})
+    INSERT INTO users (email, name, role, password_hash)
+    VALUES (${normalizeEmail(input.email)}, ${input.name.trim()}, ${input.role ?? "user"}, ${input.passwordHash})
     ON CONFLICT (email) DO UPDATE SET
       name          = EXCLUDED.name,
       password_hash = EXCLUDED.password_hash,
+      -- an explicit role on the CLI wins; otherwise the existing one is kept
+      role          = coalesce(${input.role ?? null}, users.role),
       token_version = users.token_version + 1
     RETURNING ${COLUMNS}
   `;
@@ -154,4 +168,25 @@ export async function recordLogin(id: string): Promise<void> {
 export async function countUsers(): Promise<number> {
   const [row] = await sql`SELECT count(*)::int AS count FROM users`;
   return (row as { count: number }).count;
+}
+
+// How many admins remain — the check behind "you can't remove or demote the last admin".
+export async function countAdmins(): Promise<number> {
+  const [row] = await sql`SELECT count(*)::int AS count FROM users WHERE role = 'admin'`;
+  return (row as { count: number }).count;
+}
+
+// Promote or demote. Changing a role doesn't touch the password or the sessions: the guard reads
+// the role from the database on every request, so a demotion takes effect immediately.
+export async function setRoleById(id: string, role: Role): Promise<UserRecord | null> {
+  const [row] = await sql`UPDATE users SET role = ${role} WHERE id = ${id} RETURNING ${COLUMNS}`;
+  return (row as UserRecord | undefined) ?? null;
+}
+
+// Make an existing account an admin by email — the env-var seed's "promote me" path.
+export async function promoteByEmail(email: string): Promise<UserRecord | null> {
+  const [row] = await sql`
+    UPDATE users SET role = 'admin' WHERE email = ${normalizeEmail(email)} RETURNING ${COLUMNS}
+  `;
+  return (row as UserRecord | undefined) ?? null;
 }

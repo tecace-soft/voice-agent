@@ -5,14 +5,15 @@ import {
   removeAccount,
   resetAccountPassword,
   revokeAccountSessions,
+  setAccountRole,
 } from "../api/backend";
-import type { AuthUser } from "../api/types";
+import type { AuthUser, Role } from "../api/types";
 import { accountErrorMessage } from "../auth";
-import { IconCopy, IconKey, IconPlus, IconSignOut, IconTrash } from "../icons";
+import { IconCopy, IconKey, IconPlus, IconSignOut, IconTrash, IconUsers } from "../icons";
 import { formatDateTime } from "../lib";
 
-// Who can sign in to the dashboard. Any signed-in person can manage this list — there are no roles,
-// because everyone with an account here is already staff.
+// Who can sign in to the dashboard, and what each of them may do. Admins only — the sidebar hides
+// this page from a `user`, and the backend refuses their requests regardless.
 
 const MIN_PASSWORD = 10;
 
@@ -87,6 +88,7 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState<Role>("user");
 
   const [secret, setSecret] = useState<{ email: string; password: string; self: boolean } | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null);
@@ -106,6 +108,9 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
     load();
   }, [load]);
 
+  // Mirrors the backend's "last admin" rule so the button is disabled rather than failing.
+  const adminCount = users?.filter((u) => u.role === "admin").length ?? 0;
+
   // Anything done to your own account takes your session with it, so stop talking to the backend
   // and let the notice tell the person to sign in again.
   const afterAction = (targetId: string, endsSession: boolean) => {
@@ -122,11 +127,12 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
     setBusy(true);
     setError(null);
     try {
-      const created = await createAccount(name, email, password || undefined);
+      const created = await createAccount(name, email, role, password || undefined);
       if (created.password) setSecret({ email: created.user.email, password: created.password, self: false });
       setName("");
       setEmail("");
       setPassword("");
+      setRole("user");
       setAdding(false);
       load();
     } catch (e) {
@@ -147,6 +153,21 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
       afterAction(user.id, true);
     } catch (e) {
       setError(accountErrorMessage(e, "Couldn't reset that password."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Promoting or demoting takes effect on that person's next request — no re-login needed, because
+  // the backend reads the role from the database each time.
+  async function onChangeRole(user: AuthUser, next: Role) {
+    setBusy(true);
+    setError(null);
+    try {
+      await setAccountRole(user.id, next);
+      load();
+    } catch (e) {
+      setError(accountErrorMessage(e, "Couldn't change that role."));
     } finally {
       setBusy(false);
     }
@@ -262,6 +283,13 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
                 placeholder="Leave blank to generate one"
               />
             </label>
+            <label className="field">
+              <span className="field-label ta-caption-1">Role</span>
+              <select className="input" value={role} onChange={(e) => setRole(e.target.value as Role)}>
+                <option value="user">User — reads the dashboard</option>
+                <option value="admin">Admin — also manages accounts</option>
+              </select>
+            </label>
             <div className="inline-form-actions">
               <button type="button" className="btn btn-quiet" onClick={() => setAdding(false)}>
                 Cancel
@@ -279,6 +307,7 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
               <tr>
                 <th scope="col">Person</th>
                 <th scope="col">Email</th>
+                <th scope="col">Role</th>
                 <th scope="col">Last sign-in</th>
                 <th scope="col" className="actions-col">
                   Actions
@@ -288,7 +317,7 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
             <tbody>
               {users === null ? (
                 <tr>
-                  <td className="table-empty" colSpan={4}>
+                  <td className="table-empty" colSpan={5}>
                     Loading…
                   </td>
                 </tr>
@@ -305,6 +334,11 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
                       </span>
                     </td>
                     <td>{user.email}</td>
+                    <td>
+                      <span className={user.role === "admin" ? "badge badge-admin" : "badge badge-neutral"}>
+                        {user.role === "admin" ? "Admin" : "User"}
+                      </span>
+                    </td>
                     <td>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "Never"}</td>
                     <td className="actions-col">
                       {confirmingRemove === user.id ? (
@@ -328,6 +362,24 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
                         </span>
                       ) : (
                         <span className="row-actions">
+                          <button
+                            type="button"
+                            className="btn btn-quiet"
+                            onClick={() => void onChangeRole(user, user.role === "admin" ? "user" : "admin")}
+                            disabled={
+                              busy || sessionEnded || (user.role === "admin" && adminCount <= 1)
+                            }
+                            title={
+                              user.role === "admin" && adminCount <= 1
+                                ? "This is the last admin — promote someone else first"
+                                : user.role === "admin"
+                                  ? "Take away account management"
+                                  : "Let this person manage accounts"
+                            }
+                          >
+                            <IconUsers size={14} />
+                            {user.role === "admin" ? "Make user" : "Make admin"}
+                          </button>
                           <button
                             type="button"
                             className="btn btn-quiet"
@@ -374,8 +426,9 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
       </section>
 
       <p className="muted ta-caption-1 view-foot">
-        New accounts get a generated password unless you set one. There is no public sign-up — this
-        page and the backend CLI are the only ways in.
+        Admins manage accounts; users only read the dashboard. New accounts get a generated password
+        unless you set one, and there is no public sign-up — this page and the backend CLI are the
+        only ways in.
       </p>
     </div>
   );

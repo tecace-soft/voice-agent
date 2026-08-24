@@ -1,10 +1,11 @@
 import { Elysia, t } from "elysia";
-import { authenticate, UNAUTHORIZED } from "../auth/guard.js";
+import { authenticate, authenticateAdmin, FORBIDDEN, UNAUTHORIZED } from "../auth/guard.js";
 import { generatePassword, hashPassword, verifyPassword } from "../auth/password.js";
 import { createToken } from "../auth/session.js";
 import { clearFailures, recordFailure, retryAfter } from "../auth/throttle.js";
 import {
   bumpTokenVersionById,
+  countAdmins,
   countUsers,
   createFirstUser,
   createUser,
@@ -14,17 +15,22 @@ import {
   listUsers,
   recordLogin,
   setPasswordById,
+  setRoleById,
   toPublicUser,
 } from "../db/users.js";
 
 // Sign-in and account management for the transcribe dashboard.
 //
 // There is no open sign-up. Accounts come from exactly three places:
-//   1. `POST /auth/setup`  — the first account only, and only while the users table is empty.
-//   2. `POST /auth/users`  — a signed-in user adding a teammate (the dashboard's Accounts page).
-//   3. `bun run auth create` — the CLI, for when nobody can get in.
-// Everyone who can sign in can manage accounts: there are no roles, because everyone with access to
-// this dashboard is already staff.
+//   1. `POST /auth/setup`  — the first account only, and only while the users table is empty. That
+//      account is an admin, since somebody has to be able to add everyone else.
+//   2. `POST /auth/users`  — an ADMIN adding a teammate (the dashboard's Accounts page).
+//   3. `bun run auth create` / the SEED_ADMIN_* env vars — the CLI and boot-time seed, for when
+//      nobody can get in.
+//
+// Roles: `admin` manages accounts, `user` signs in and reads the dashboard. Every route below that
+// touches an account requires an admin, so hiding the Accounts page from a `user` in the dashboard
+// is a convenience, not the actual protection.
 
 // Long enough that someone can't pick something guessable; generated passwords are longer still.
 const MIN_PASSWORD_LENGTH = 10;
@@ -33,6 +39,7 @@ const passwordField = t.String({ minLength: MIN_PASSWORD_LENGTH, maxLength: 512 
 // untouched form field sends.
 const optionalPasswordField = t.Optional(t.Union([passwordField, t.Literal("")]));
 const emailField = t.String({ minLength: 3, maxLength: 320 });
+const roleField = t.Union([t.Literal("admin"), t.Literal("user")]);
 const nameField = t.String({ minLength: 1, maxLength: 120 });
 
 const weakPassword = {
@@ -123,10 +130,11 @@ export const auth = new Elysia({ prefix: "/auth" })
   // To invalidate tokens a user still holds — a lost laptop — use "Sign out everywhere" below.
   .post("/logout", () => ({ status: "signed_out" }))
 
-  // ---- account management (any signed-in user) ----
+  // ---- account management (admins only) ----
 
   .get("/users", async ({ headers, status }) => {
-    if (!(await authenticate(headers.authorization))) return status(401, UNAUTHORIZED);
+    const caller = await authenticateAdmin(headers.authorization);
+    if ("denied" in caller) return status(caller.denied, caller.denied === 401 ? UNAUTHORIZED : FORBIDDEN);
     return { users: (await listUsers()).map(toPublicUser) };
   })
 
@@ -135,7 +143,8 @@ export const auth = new Elysia({ prefix: "/auth" })
   .post(
     "/users",
     async ({ body, headers, status }) => {
-      if (!(await authenticate(headers.authorization))) return status(401, UNAUTHORIZED);
+      const caller = await authenticateAdmin(headers.authorization);
+      if ("denied" in caller) return status(caller.denied, caller.denied === 401 ? UNAUTHORIZED : FORBIDDEN);
 
       const password = body.password || generatePassword();
       if (password.length < MIN_PASSWORD_LENGTH) return status(422, weakPassword);
@@ -143,6 +152,7 @@ export const auth = new Elysia({ prefix: "/auth" })
       const user = await createUser({
         email: body.email,
         name: body.name,
+        role: body.role ?? "user",
         passwordHash: hashPassword(password),
       });
       if (!user) {
@@ -150,7 +160,14 @@ export const auth = new Elysia({ prefix: "/auth" })
       }
       return status(201, { user: toPublicUser(user), password: body.password ? null : password });
     },
-    { body: t.Object({ email: emailField, name: nameField, password: optionalPasswordField }) },
+    {
+      body: t.Object({
+        email: emailField,
+        name: nameField,
+        password: optionalPasswordField,
+        role: t.Optional(roleField),
+      }),
+    },
   )
 
   // Reset an account's password (your own included). Signs that account out everywhere, so a
@@ -158,7 +175,8 @@ export const auth = new Elysia({ prefix: "/auth" })
   .post(
     "/users/:id/password",
     async ({ body, headers, params, status }) => {
-      if (!(await authenticate(headers.authorization))) return status(401, UNAUTHORIZED);
+      const caller = await authenticateAdmin(headers.authorization);
+      if ("denied" in caller) return status(caller.denied, caller.denied === 401 ? UNAUTHORIZED : FORBIDDEN);
 
       const password = body.password || generatePassword();
       if (password.length < MIN_PASSWORD_LENGTH) return status(422, weakPassword);
@@ -177,7 +195,8 @@ export const auth = new Elysia({ prefix: "/auth" })
   .post(
     "/users/:id/revoke",
     async ({ headers, params, status }) => {
-      if (!(await authenticate(headers.authorization))) return status(401, UNAUTHORIZED);
+      const caller = await authenticateAdmin(headers.authorization);
+      if ("denied" in caller) return status(caller.denied, caller.denied === 401 ? UNAUTHORIZED : FORBIDDEN);
       const user = await bumpTokenVersionById(params.id);
       if (!user) return status(404, { error: "not_found", message: "No such account." });
       return { user: toPublicUser(user) };
@@ -190,22 +209,51 @@ export const auth = new Elysia({ prefix: "/auth" })
   .delete(
     "/users/:id",
     async ({ headers, params, status }) => {
-      const caller = await authenticate(headers.authorization);
-      if (!caller) return status(401, UNAUTHORIZED);
-      if (caller.id === params.id) {
+      const caller = await authenticateAdmin(headers.authorization);
+      if ("denied" in caller) return status(caller.denied, caller.denied === 401 ? UNAUTHORIZED : FORBIDDEN);
+      if (caller.user.id === params.id) {
         return status(409, { error: "self_delete", message: "You can't remove your own account." });
       }
-      if (!(await findUserById(params.id))) {
-        return status(404, { error: "not_found", message: "No such account." });
-      }
+      const target = await findUserById(params.id);
+      if (!target) return status(404, { error: "not_found", message: "No such account." });
       if ((await countUsers()) <= 1) {
         return status(409, {
           error: "last_account",
           message: "This is the last account — removing it would lock everyone out.",
         });
       }
+      if (target.role === "admin" && (await countAdmins()) <= 1) {
+        return status(409, {
+          error: "last_admin",
+          message: "This is the last admin — promote someone else first.",
+        });
+      }
       await deleteUserById(params.id);
       return { status: "removed" };
     },
     { params: t.Object({ id: t.String() }) },
+  )
+
+  // Promote to admin or demote to user. The guard reads the role from the database on every
+  // request, so a demotion applies immediately rather than when that person's token expires.
+  .post(
+    "/users/:id/role",
+    async ({ body, headers, params, status }) => {
+      const caller = await authenticateAdmin(headers.authorization);
+      if ("denied" in caller) return status(caller.denied, caller.denied === 401 ? UNAUTHORIZED : FORBIDDEN);
+
+      const target = await findUserById(params.id);
+      if (!target) return status(404, { error: "not_found", message: "No such account." });
+      // Demoting the only admin would leave nobody able to manage accounts — including whoever
+      // just did it.
+      if (target.role === "admin" && body.role === "user" && (await countAdmins()) <= 1) {
+        return status(409, {
+          error: "last_admin",
+          message: "This is the last admin — promote someone else first.",
+        });
+      }
+      const user = await setRoleById(params.id, body.role);
+      return { user: toPublicUser(user!) };
+    },
+    { params: t.Object({ id: t.String() }), body: t.Object({ role: roleField }) },
   );

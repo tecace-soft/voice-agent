@@ -33,21 +33,46 @@ Sign-in is **email + password**, with accounts in the `users` table. Passwords a
 returns an HMAC-signed session token that the dashboard sends as `Authorization: Bearer <token>`.
 Tokens last `AUTH_TOKEN_TTL_HOURS` (default 7 days).
 
-There is **no open sign-up**. Accounts come from exactly three places:
+### Roles
+
+Every account is an **admin** or a **user**:
+
+| | user | admin |
+| --- | --- | --- |
+| Sign in, read the dashboard | ✅ | ✅ |
+| Add / reset / sign out / remove accounts | — | ✅ |
+| Promote and demote others | — | ✅ |
+
+The dashboard hides its Accounts page from a `user`, but that is a convenience — every account route
+requires an admin server-side. The role is read from the database on each request, so a demotion
+takes effect immediately rather than when that person's token expires.
+
+Two things are refused so nobody can lock the team out: the **last admin** can't be demoted or
+removed, and the **last account** can't be removed at all.
+
+### Where accounts come from
+
+There is **no open sign-up**. Accounts come from exactly four places:
 
 1. **First-run setup.** While the `users` table is empty, the dashboard shows "Create the first
-   account" instead of a sign-in form, and `POST /auth/setup` creates that account and signs it in.
+   account" instead of a sign-in form, and `POST /auth/setup` creates that account — as an **admin**,
+   since somebody has to be able to add everyone else — and signs it in.
    The route closes permanently as soon as any account exists (the check and the insert are a single
    statement, so two simultaneous setups can't both win). `GET /auth/setup-state` is what the
    dashboard asks to decide which screen to show.
-2. **The dashboard's Accounts page.** Any signed-in person can add, reset, sign out, or remove
-   teammates. There are no roles — everyone with an account here is staff. New accounts get a
-   generated password, shown once.
-3. **This CLI** — the escape hatch for when nobody can get in:
+2. **The dashboard's Accounts page.** An admin adds, resets, signs out, removes, promotes, and
+   demotes teammates. New accounts get a generated password, shown once, and default to `user`.
+3. **`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`** — an optional bootstrap admin, applied on the
+   first request after a deploy. It creates the account if that email has none, promotes it if it
+   exists without admin, and *never* changes an existing account's password. Use it to exist as an
+   admin before the dashboard is ever opened; delete the variables afterwards. See `.env.example`.
+4. **This CLI** — the escape hatch for when nobody can get in:
 
 ```bash
-bun run auth create jane@tecace.com "Jane Kim"   # prints a generated password ONCE
-bun run auth list                                # who has an account + last sign-in
+bun run auth create jane@tecace.com "Jane Kim"           # a `user`; prints a password ONCE
+bun run auth create jane@tecace.com "Jane Kim" --admin   # ...or an admin
+bun run auth list                                # accounts, roles, last sign-in
+bun run auth role jane@tecace.com admin          # promote (or `user` to demote)
 bun run auth reset jane@tecace.com               # new password (signs that account out)
 bun run auth revoke jane@tecace.com              # sign out everywhere, password unchanged
 bun run auth delete jane@tecace.com
@@ -71,11 +96,11 @@ invalidate a token someone still holds (a lost laptop), use "Sign out" on the Ac
 `bun run auth revoke <email>` — both bump that account's `token_version`, which rejects every token
 issued before it. A password reset does the same. Changing `AUTH_SECRET` signs *everyone* out.
 
-An account can't remove itself, and the last remaining account can't be removed at all — otherwise
-the only way back in would be the CLI.
+An account can't remove itself, and neither the last admin nor the last account can be removed —
+otherwise the only way back in would be the CLI.
 
-`bun test` covers sign-in, the guards, first-run setup, account management, and revocation with an
-in-memory stand-in for the database (no Postgres needed).
+`bun test` covers sign-in, the guards, first-run setup, account management, roles, and revocation
+with an in-memory stand-in for the database (no Postgres needed).
 
 ## Run locally
 
@@ -97,7 +122,8 @@ Its own Vercel project (Root Directory = `transcribe-backend`). Vercel serves th
 (`src/app.ts` default export).
 
 Environment variables (Project → Settings → Environment Variables): `DATABASE_URL`,
-`TRANSCRIBE_INGEST_KEY`, `CORS_ORIGIN` (the transcribe dashboard's origin), and `AUTH_SECRET`.
+`TRANSCRIBE_INGEST_KEY`, `CORS_ORIGIN` (the transcribe dashboard's origin), `AUTH_SECRET`, and
+optionally `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` to have an admin account waiting.
 Generate the secret with `openssl rand -hex 32`, or without openssl:
 
 ```bash

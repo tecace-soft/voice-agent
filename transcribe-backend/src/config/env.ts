@@ -62,6 +62,13 @@ if (!Number.isFinite(ttlHours) || ttlHours <= 0) {
   throw new Error("AUTH_TOKEN_TTL_HOURS must be a positive number of hours.");
 }
 
+// Optional bootstrap admin, applied on the first request after a deploy. Lets an account exist
+// before anyone opens the dashboard, without shell access to the database. Idempotent, and it never
+// overwrites the password of an account that already exists — see src/auth/seed.ts.
+const seedAdminEmail = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
+const seedAdminPassword = process.env.SEED_ADMIN_PASSWORD ?? "";
+const seedAdminName = process.env.SEED_ADMIN_NAME?.trim() || seedAdminEmail.split("@")[0] || "Admin";
+
 export const env = {
   nodeEnv,
   port: Number(process.env.PORT ?? 8001),
@@ -72,6 +79,9 @@ export const env = {
   transcribeIngestKey,
   authSecret: resolveAuthSecret(),
   authTokenTtlHours: ttlHours,
+  seedAdminEmail,
+  seedAdminPassword,
+  seedAdminName,
 } as const;
 
 export type Env = typeof env;
