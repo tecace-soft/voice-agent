@@ -1,5 +1,5 @@
 import { Elysia, t } from "elysia";
-import { authenticate, authenticateAdmin, FORBIDDEN, UNAUTHORIZED } from "../auth/guard.js";
+import { authenticate, authenticateAdmin, UNAUTHORIZED } from "../auth/guard.js";
 import { generatePassword, hashPassword, verifyPassword } from "../auth/password.js";
 import { createToken } from "../auth/session.js";
 import { clearFailures, recordFailure, retryAfter } from "../auth/throttle.js";
@@ -133,8 +133,8 @@ export const auth = new Elysia({ prefix: "/auth" })
   // ---- account management (admins only) ----
 
   .get("/users", async ({ headers, status }) => {
-    const caller = await authenticateAdmin(headers.authorization);
-    if ("denied" in caller) return status(caller.denied, caller.denied === 401 ? UNAUTHORIZED : FORBIDDEN);
+    const caller = await authenticateAdmin(headers.authorization, "Only an admin can manage accounts.");
+    if ("denied" in caller) return status(caller.denied, caller.body);
     return { users: (await listUsers()).map(toPublicUser) };
   })
 
@@ -143,8 +143,8 @@ export const auth = new Elysia({ prefix: "/auth" })
   .post(
     "/users",
     async ({ body, headers, status }) => {
-      const caller = await authenticateAdmin(headers.authorization);
-      if ("denied" in caller) return status(caller.denied, caller.denied === 401 ? UNAUTHORIZED : FORBIDDEN);
+      const caller = await authenticateAdmin(headers.authorization, "Only an admin can manage accounts.");
+      if ("denied" in caller) return status(caller.denied, caller.body);
 
       const password = body.password || generatePassword();
       if (password.length < MIN_PASSWORD_LENGTH) return status(422, weakPassword);
@@ -175,8 +175,8 @@ export const auth = new Elysia({ prefix: "/auth" })
   .post(
     "/users/:id/password",
     async ({ body, headers, params, status }) => {
-      const caller = await authenticateAdmin(headers.authorization);
-      if ("denied" in caller) return status(caller.denied, caller.denied === 401 ? UNAUTHORIZED : FORBIDDEN);
+      const caller = await authenticateAdmin(headers.authorization, "Only an admin can manage accounts.");
+      if ("denied" in caller) return status(caller.denied, caller.body);
 
       const password = body.password || generatePassword();
       if (password.length < MIN_PASSWORD_LENGTH) return status(422, weakPassword);
@@ -195,8 +195,8 @@ export const auth = new Elysia({ prefix: "/auth" })
   .post(
     "/users/:id/revoke",
     async ({ headers, params, status }) => {
-      const caller = await authenticateAdmin(headers.authorization);
-      if ("denied" in caller) return status(caller.denied, caller.denied === 401 ? UNAUTHORIZED : FORBIDDEN);
+      const caller = await authenticateAdmin(headers.authorization, "Only an admin can manage accounts.");
+      if ("denied" in caller) return status(caller.denied, caller.body);
       const user = await bumpTokenVersionById(params.id);
       if (!user) return status(404, { error: "not_found", message: "No such account." });
       return { user: toPublicUser(user) };
@@ -209,8 +209,8 @@ export const auth = new Elysia({ prefix: "/auth" })
   .delete(
     "/users/:id",
     async ({ headers, params, status }) => {
-      const caller = await authenticateAdmin(headers.authorization);
-      if ("denied" in caller) return status(caller.denied, caller.denied === 401 ? UNAUTHORIZED : FORBIDDEN);
+      const caller = await authenticateAdmin(headers.authorization, "Only an admin can manage accounts.");
+      if ("denied" in caller) return status(caller.denied, caller.body);
       if (caller.user.id === params.id) {
         return status(409, { error: "self_delete", message: "You can't remove your own account." });
       }
@@ -239,8 +239,8 @@ export const auth = new Elysia({ prefix: "/auth" })
   .post(
     "/users/:id/role",
     async ({ body, headers, params, status }) => {
-      const caller = await authenticateAdmin(headers.authorization);
-      if ("denied" in caller) return status(caller.denied, caller.denied === 401 ? UNAUTHORIZED : FORBIDDEN);
+      const caller = await authenticateAdmin(headers.authorization, "Only an admin can manage accounts.");
+      if ("denied" in caller) return status(caller.denied, caller.body);
 
       const target = await findUserById(params.id);
       if (!target) return status(404, { error: "not_found", message: "No such account." });

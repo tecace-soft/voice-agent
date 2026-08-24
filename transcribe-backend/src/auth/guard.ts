@@ -16,19 +16,27 @@ export async function authenticate(authorization: string | undefined): Promise<P
 }
 
 export const UNAUTHORIZED = { error: "unauthorized", message: "Sign in to continue." } as const;
-export const FORBIDDEN = {
-  error: "forbidden",
-  message: "Only an admin can manage accounts.",
-} as const;
 
-// Resolve the caller and require the admin role. Returns the user, or the reason they can't act —
-// the role is read from the database on every request, so a demotion takes effect at once rather
+interface Denial {
+  denied: 401 | 403;
+  body: { error: string; message: string };
+}
+
+// Resolve the caller and require the admin role. Returns either the user or a ready-made denial —
+// the status to send and the body to send with it, so no route has to remember which is which.
+// `forbiddenMessage` says what specifically needs an admin, since "you can't do that" is more
+// useful when it names the thing.
+//
+// The role is read from the database on every request, so a demotion takes effect at once rather
 // than lingering until that person's token expires.
 export async function authenticateAdmin(
   authorization: string | undefined,
-): Promise<{ user: PublicUser } | { denied: 401 | 403 }> {
+  forbiddenMessage = "This needs an admin account.",
+): Promise<{ user: PublicUser } | Denial> {
   const user = await authenticate(authorization);
-  if (!user) return { denied: 401 };
-  if (user.role !== "admin") return { denied: 403 };
+  if (!user) return { denied: 401, body: UNAUTHORIZED };
+  if (user.role !== "admin") {
+    return { denied: 403, body: { error: "forbidden", message: forbiddenMessage } };
+  }
   return { user };
 }

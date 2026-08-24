@@ -541,6 +541,58 @@ describe("feedback", () => {
   it("404s on an unknown note", async () => {
     expect((await post("/feedback/nope/status", { status: "resolved" }, await tokenFor())).status).toBe(404);
   });
+
+  // The dashboard hides "All feedback" from a `user`, but that is only cosmetic. These are the
+  // checks that matter: every way of reaching everyone's notes, tried with a real `user` session.
+  it("never exposes everyone's feedback to a non-admin", async () => {
+    const admin = await tokenFor();
+    await post("/feedback", { category: "bug", message: "jane's private note" }, admin);
+    const sam = await plainUserToken();
+    const asSam = { authorization: `Bearer ${sam}` };
+
+    for (const [label, res] of [
+      ["GET /feedback", await call("/feedback", { headers: asSam })],
+      ["GET /feedback/ (trailing slash)", await call("/feedback/", { headers: asSam })],
+      ["GET /feedback/open-count", await call("/feedback/open-count", { headers: asSam })],
+      ["POST /feedback/f1/status", await post("/feedback/f1/status", { status: "resolved" }, sam)],
+    ] as const) {
+      expect(res.status, label).toBe(403);
+      const body = await json(res);
+      expect(body.error, label).toBe("forbidden");
+      // and nothing of anyone else's leaks out in the refusal
+      expect(JSON.stringify(body), label).not.toContain("private note");
+    }
+
+    // their own notes still work, and show only their own
+    const mine = await call("/feedback/mine", { headers: asSam });
+    expect(mine.status).toBe(200);
+    expect((await json(mine)).feedback).toHaveLength(0);
+
+    // signed out is refused too, not merely un-navigable
+    expect((await call("/feedback")).status).toBe(401);
+    expect((await call("/feedback/open-count")).status).toBe(401);
+  });
+
+  it("says what needs an admin, per route", async () => {
+    const sam = await plainUserToken();
+    const feedbackDenial = await json(await call("/feedback", { headers: { authorization: `Bearer ${sam}` } }));
+    const accountsDenial = await json(await call("/auth/users", { headers: { authorization: `Bearer ${sam}` } }));
+    expect(feedbackDenial.message).toBe("Only an admin can read everyone's feedback.");
+    expect(accountsDenial.message).toBe("Only an admin can manage accounts.");
+  });
+
+  it("stops a demoted admin reading everyone's feedback on their existing session", async () => {
+    const admin = await tokenFor();
+    const sam = await plainUserToken();
+    const samId = users.find((u) => u.email === "sam@tecace.com")!.id;
+
+    await post(`/auth/users/${samId}/role`, { role: "admin" }, admin);
+    expect((await call("/feedback", { headers: { authorization: `Bearer ${sam}` } })).status).toBe(200);
+
+    await post(`/auth/users/${samId}/role`, { role: "user" }, admin);
+    // same token, no re-login: the guard re-reads the role every request
+    expect((await call("/feedback", { headers: { authorization: `Bearer ${sam}` } })).status).toBe(403);
+  });
 });
 
 describe("GET /transcribe/stats", () => {
