@@ -65,7 +65,6 @@ export function LoginPage({
             autoComplete="username"
             autoFocus
             required
-            placeholder="you@tecace.com"
           />
         </label>
 

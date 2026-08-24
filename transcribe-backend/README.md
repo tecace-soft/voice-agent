@@ -67,7 +67,7 @@ There is **no open sign-up**. Accounts come from exactly four places:
    statement, so two simultaneous setups can't both win). `GET /auth/setup-state` is what the
    dashboard asks to decide which screen to show.
 2. **The dashboard's Accounts page.** An admin adds, resets, signs out, removes, promotes, and
-   demotes teammates. New accounts get a generated password, shown once, and default to `user`.
+   demotes users. New accounts get a generated password, shown once, and default to `user`.
 3. **`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`** — an optional bootstrap admin, applied on the
    first request after a deploy. It creates the account if that email has none, promotes it if it
    exists without admin, and *never* changes an existing account's password. Use it to exist as an

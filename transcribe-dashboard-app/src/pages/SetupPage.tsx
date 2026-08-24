@@ -89,7 +89,6 @@ export function SetupPage({ onBack }: { onBack: () => void }) {
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="username"
             required
-            placeholder="you@tecace.com"
           />
         </label>
 

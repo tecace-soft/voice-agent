@@ -24,7 +24,7 @@ nobody can get in.
 Accounts are either **admin** or **user**:
 
 - **user** — signs in and reads the dashboard. The Accounts nav item isn't rendered for them.
-- **admin** — the same, plus the Accounts page (add a teammate with a generated password shown once,
+- **admin** — the same, plus the Accounts page (add a user with a generated password shown once,
   reset a password, sign an account out everywhere, remove it, promote/demote) and All feedback.
 
 Hiding the page is a convenience only — the backend refuses account routes from a `user` regardless,

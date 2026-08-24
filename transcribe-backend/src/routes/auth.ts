@@ -24,7 +24,7 @@ import {
 // There is no open sign-up. Accounts come from exactly three places:
 //   1. `POST /auth/setup`  — the first account only, and only while the users table is empty. That
 //      account is an admin, since somebody has to be able to add everyone else.
-//   2. `POST /auth/users`  — an ADMIN adding a teammate (the dashboard's Accounts page).
+//   2. `POST /auth/users`  — an ADMIN adding a user (the dashboard's Accounts page).
 //   3. `bun run auth create` / the SEED_ADMIN_* env vars — the CLI and boot-time seed, for when
 //      nobody can get in.
 //
@@ -138,7 +138,7 @@ export const auth = new Elysia({ prefix: "/auth" })
     return { users: (await listUsers()).map(toPublicUser) };
   })
 
-  // Add a teammate. With no password given, one is generated and returned ONCE so whoever adds them
+  // Add a user. With no password given, one is generated and returned ONCE so whoever adds them
   // can pass it on — from here it is only a hash, which can be reset but never read back.
   .post(
     "/users",

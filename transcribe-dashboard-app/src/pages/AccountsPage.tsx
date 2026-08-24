@@ -244,7 +244,7 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
             disabled={sessionEnded}
           >
             <IconPlus size={14} />
-            Add teammate
+            Add user
           </button>
         </div>
 
@@ -269,7 +269,6 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                placeholder="sam@tecace.com"
               />
             </label>
             <label className="field">
@@ -295,7 +294,7 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
                 Cancel
               </button>
               <button type="submit" className="btn btn-primary" disabled={busy}>
-                {busy ? "Adding…" : "Add account"}
+                {busy ? "Adding…" : "Add user"}
               </button>
             </div>
           </form>
