@@ -2,12 +2,13 @@ import { useState, type FormEvent } from "react";
 import { accountErrorMessage, useAuth } from "../auth";
 import { IconVoicemail } from "../icons";
 
-// Shown only while the backend reports that no accounts exist: this is how the very first login
-// gets created, without anyone needing shell access to the backend. Once it succeeds the route
-// closes for good and everyone else is added from the Accounts page.
+// Reached from the sign-in screen's "Create the first account" link, which only appears while the
+// backend reports that no accounts exist. This is how the very first login gets created without
+// anyone needing shell access; once it succeeds the route closes for good and everyone else is
+// added from the Accounts page.
 const MIN_PASSWORD = 10;
 
-export function SetupPage() {
+export function SetupPage({ onBack }: { onBack: () => void }) {
   const { createFirstAccount } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -122,6 +123,12 @@ export function SetupPage() {
         <button type="submit" className="btn btn-primary btn-block" disabled={pending}>
           {pending ? "Creating…" : "Create account and sign in"}
         </button>
+
+        <div className="login-alt">
+          <button type="button" className="link-button ta-caption-1" onClick={onBack}>
+            Back to sign in
+          </button>
+        </div>
       </form>
     </main>
   );

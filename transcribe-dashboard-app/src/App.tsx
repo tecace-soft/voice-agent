@@ -126,9 +126,11 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
 }
 
 // Nothing but the sign-in screen exists until there's a session: the stats endpoint is guarded, so
-// rendering the dashboard shell first would only produce a 401.
+// rendering the dashboard shell first would only produce a 401. Signing in is always the landing
+// screen; creating the first account is a step you choose from there, never one you're dropped into.
 export function App() {
-  const { status, user, signOut } = useAuth();
+  const { status, user, needsSetup, signOut } = useAuth();
+  const [screen, setScreen] = useState<"signin" | "setup">("signin");
 
   if (status === "loading") {
     return (
@@ -137,23 +139,19 @@ export function App() {
       </div>
     );
   }
-  if (status === "setup") {
-    return (
-      <>
-        <div className="login-topbar">
-          <ThemeToggle />
-        </div>
-        <SetupPage />
-      </>
-    );
-  }
   if (status === "signed-out" || !user) {
     return (
       <>
         <div className="login-topbar">
           <ThemeToggle />
         </div>
-        <LoginPage />
+        {/* Setup is only reachable while there is genuinely nothing to sign in to, so this also
+            sends you back to the sign-in form the moment the first account exists. */}
+        {screen === "setup" && needsSetup ? (
+          <SetupPage onBack={() => setScreen("signin")} />
+        ) : (
+          <LoginPage needsSetup={needsSetup} onCreateFirstAccount={() => setScreen("setup")} />
+        )}
       </>
     );
   }

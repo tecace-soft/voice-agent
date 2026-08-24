@@ -883,6 +883,19 @@ select.input {
   margin: 0;
   text-align: center;
 }
+/* the "no accounts yet" / "back to sign in" block under the submit button */
+.login-alt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+.login-alt p {
+  margin: 0;
+}
 .login-foot code {
   font-size: 0.95em;
 }

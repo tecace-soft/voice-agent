@@ -54,9 +54,9 @@ removed, and the **last account** can't be removed at all.
 
 There is **no open sign-up**. Accounts come from exactly four places:
 
-1. **First-run setup.** While the `users` table is empty, the dashboard shows "Create the first
-   account" instead of a sign-in form, and `POST /auth/setup` creates that account — as an **admin**,
-   since somebody has to be able to add everyone else — and signs it in.
+1. **First-run setup.** The dashboard always lands on sign-in, but while the `users` table is empty
+   it also offers a "Create the first account" button; `POST /auth/setup` creates that account — as
+   an **admin**, since somebody has to be able to add everyone else — and signs it in.
    The route closes permanently as soon as any account exists (the check and the insert are a single
    statement, so two simultaneous setups can't both win). `GET /auth/setup-state` is what the
    dashboard asks to decide which screen to show.

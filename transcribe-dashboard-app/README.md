@@ -12,8 +12,9 @@ and deploy on their own.
 The dashboard is behind a sign-in screen — `GET /transcribe/stats` requires a session, so there is
 nothing to render without one.
 
-**The first time** you open it against an empty database, it shows **"Create the first account"**
-instead: fill in a name, email and password, and you're in. That screen closes for good once any
+**Sign in is always the landing screen.** While the database has no accounts at all, it also offers
+a **"Create the first account"** button underneath — that leads to a name/email/password form, and
+signs you in as an admin. The button disappears (and the backend closes the route) the moment any
 account exists.
 
 **Everyone after that** is added from the **Accounts** page in the sidebar. There is no public

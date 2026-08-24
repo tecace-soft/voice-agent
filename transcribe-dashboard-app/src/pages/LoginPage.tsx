@@ -2,9 +2,16 @@ import { useState, type FormEvent } from "react";
 import { signInErrorMessage, useAuth } from "../auth";
 import { IconVoicemail } from "../icons";
 
-// The whole app behind one form. Accounts are created by an admin from the backend CLI
-// (`bun run auth create`), so there is deliberately no sign-up or password-reset flow here.
-export function LoginPage() {
+// The whole app behind one form, and the screen everyone lands on. There is no open sign-up: the
+// only way through to creating an account is the first-run link below, which the backend closes the
+// moment any account exists. Everyone after that is added by an admin.
+export function LoginPage({
+  needsSetup,
+  onCreateFirstAccount,
+}: {
+  needsSetup: boolean;
+  onCreateFirstAccount: () => void;
+}) {
   const { signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -79,9 +86,18 @@ export function LoginPage() {
           {pending ? "Signing in…" : "Sign in"}
         </button>
 
-        <p className="login-foot muted ta-caption-1">
-          Need an account? Ask your TecAce admin to create one.
-        </p>
+        {needsSetup ? (
+          <div className="login-alt">
+            <p className="muted ta-caption-1">This dashboard has no accounts yet.</p>
+            <button type="button" className="btn btn-quiet btn-block" onClick={onCreateFirstAccount}>
+              Create the first account
+            </button>
+          </div>
+        ) : (
+          <p className="login-foot muted ta-caption-1">
+            Need an account? Ask your TecAce admin to create one.
+          </p>
+        )}
       </form>
     </main>
   );

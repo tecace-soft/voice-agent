@@ -12,13 +12,14 @@ import {
 } from "./api/backend";
 import type { AuthUser } from "./api/types";
 
-// "setup" is the state a brand-new deployment starts in: the database has no accounts yet, so the
-// app offers to create the first one instead of asking for a password nobody has.
-type Status = "loading" | "setup" | "signed-out" | "signed-in";
+type Status = "loading" | "signed-out" | "signed-in";
 
 interface AuthValue {
   status: Status;
   user: AuthUser | null;
+  // True while the database has no accounts at all. Sign-in is still the first screen either way —
+  // this only decides whether it offers a way through to creating the first account.
+  needsSetup: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   createFirstAccount: (name: string, email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -32,6 +33,7 @@ const AuthContext = createContext<AuthValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [needsSetup, setNeedsSetup] = useState(false);
 
   useEffect(() => {
     // The API layer calls this when any request comes back 401 — an expired token, or one revoked
@@ -46,12 +48,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
 
-    // No accounts yet -> offer setup; otherwise the sign-in screen. If the backend can't be reached
-    // we still land on sign-in, where the error is actionable.
+    // Always land on sign-in; the setup-state answer only decides whether that screen offers a link
+    // to create the first account. If the backend can't be reached we still show sign-in, where the
+    // error is actionable.
     const decideSignedOutState = () =>
       getSetupState()
-        .then(({ needsSetup }) => {
-          if (active) setStatus(needsSetup ? "setup" : "signed-out");
+        .then((state) => {
+          if (!active) return;
+          setNeedsSetup(state.needsSetup);
+          setStatus("signed-out");
         })
         .catch(() => {
           if (active) setStatus("signed-out");
@@ -86,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const createFirstAccount = useCallback(async (name: string, email: string, password: string) => {
     const { user: created } = await setupFirstAccount(name, email, password);
     setUser(created);
+    setNeedsSetup(false);
     setStatus("signed-in");
   }, []);
 
@@ -96,8 +102,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthValue>(
-    () => ({ status, user, signIn, createFirstAccount, signOut }),
-    [status, user, signIn, createFirstAccount, signOut],
+    () => ({ status, user, needsSetup, signIn, createFirstAccount, signOut }),
+    [status, user, needsSetup, signIn, createFirstAccount, signOut],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
