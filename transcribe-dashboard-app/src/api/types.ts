@@ -13,6 +13,19 @@ export interface AuthUser {
   lastLoginAt: string | null;
 }
 
+// One mailbox the transcribe-app has reported for — GET /transcribe/mailboxes (admins only).
+// `mailboxEmail` is null for the group of runs reported before mailboxes were recorded.
+export interface MailboxSummary {
+  mailboxEmail: string | null;
+  runs: number;
+  processed: number;
+  failed: number;
+  lastRunAt: string | null;
+}
+
+// The mailbox an admin is looking at: undefined = every mailbox, null = the unattributed ones.
+export type MailboxScope = string | null | undefined;
+
 // Response shape of GET /transcribe/analytics — aggregated over the backend's whole history,
 // unlike /transcribe/stats which ships a 60-run window.
 export interface TranscribeAnalytics {
@@ -83,6 +96,7 @@ export interface LoginResponse {
 // One reported transcribe-app run.
 export interface VoicemailRun {
   id: string;
+  mailboxEmail: string | null; // the address this run fetched from; null for pre-mailbox runs
   voicemails: number; // messages carrying audio the run found
   processed: number; // transcribed + written to the sheet this run
   skipped: number; // already handled on a prior run

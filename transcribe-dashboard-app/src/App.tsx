@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { countOpenFeedback, getTranscribeStats } from "./api/backend";
-import type { AuthUser, TranscribeStats } from "./api/types";
+import type { AuthUser, MailboxScope, TranscribeStats } from "./api/types";
 import { useAuth } from "./auth";
 import { Sidebar, type ViewId } from "./components/Sidebar";
+import { MailboxPicker } from "./components/MailboxPicker";
 import { IconPanelLeft, IconRefresh } from "./icons";
 import { AccountsPage } from "./pages/AccountsPage";
 import { ActivityPage } from "./pages/ActivityPage";
@@ -33,22 +34,23 @@ const VIEW_TITLES: Record<ViewId, string> = {
 };
 
 // One fetch of GET /transcribe/stats, shared by every view, with a manual refresh that keeps the
-// current numbers on screen while the new ones load.
-function useStats() {
+// current numbers on screen while the new ones load. `mailbox` only narrows an admin's view — the
+// backend pins everyone else to their own mailbox whatever is asked for.
+function useStats(mailbox: MailboxScope) {
   const [data, setData] = useState<TranscribeStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
-    return getTranscribeStats()
+    return getTranscribeStats(mailbox)
       .then((d) => {
         setData(d);
         setError(null);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load transcription stats."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [mailbox]);
 
   useEffect(() => {
     void load();
@@ -63,7 +65,10 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // Open by default on a desktop-width screen; on narrow screens the rail is an overlay, so it
   // starts closed and the header's toggle brings it in.
   const [navOpen, setNavOpen] = useState(() => window.innerWidth >= 900);
-  const { data, loading, error, refresh } = useStats();
+  // Which mailbox is on screen. Admins choose; for everyone else this stays undefined and the
+  // backend scopes them to their own address.
+  const [mailbox, setMailbox] = useState<MailboxScope>(undefined);
+  const { data, loading, error, refresh } = useStats(mailbox);
 
   // How many notes are waiting on the team, for the sidebar badge. Admins only — it's the one
   // number a `user` isn't allowed to see, and it's cheap enough to refresh with everything else.
@@ -82,6 +87,16 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
     };
   }, [isAdmin, data]);
 
+  // What the numbers on screen belong to, said plainly — it's the difference between "we have no
+  // voicemails" and "none of this data is yours".
+  const mailboxLabel = isAdmin
+    ? mailbox === undefined
+      ? "all mailboxes"
+      : mailbox === null
+        ? "runs reported before mailboxes were recorded"
+        : mailbox
+    : user.email;
+
   const failedCount = data ? derive(data).failedRuns.length : 0;
   const openView = (id: ViewId) => {
     setView(id);
@@ -96,6 +111,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
         failedCount={failedCount}
         openFeedback={openFeedback}
         lastRunAt={data?.lastRunAt ?? null}
+        mailboxLabel={mailboxLabel}
         user={user}
         onSignOut={onSignOut}
       />
@@ -120,6 +136,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             <span className="crumb-current">{VIEW_TITLES[view]}</span>
           </nav>
           <div className="topbar-actions">
+            {isAdmin && <MailboxPicker value={mailbox} onChange={setMailbox} />}
             <button
               type="button"
               className="btn btn-primary"
@@ -137,8 +154,8 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           {/* The accounts view doesn't depend on the stats, so a stats failure shouldn't hide it. */}
           {error && !STANDALONE_VIEWS.has(view) && <p className="error ta-body-2">{error}</p>}
           {!data && loading && !STANDALONE_VIEWS.has(view) && <DashboardSkeleton />}
-          {data && view === "overview" && <OverviewPage data={data} />}
-          {view === "analytics" && <AnalyticsPage />}
+          {data && view === "overview" && <OverviewPage data={data} mailboxLabel={mailboxLabel} />}
+          {view === "analytics" && <AnalyticsPage mailbox={mailbox} />}
           {data && view === "activity" && <ActivityPage data={data} />}
           {data && view === "runs" && <RunsPage data={data} />}
           {data && view === "failed" && <RunsPage data={data} onlyFailed />}

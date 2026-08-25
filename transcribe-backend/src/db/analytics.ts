@@ -1,5 +1,6 @@
 import { env } from "../config/env.js";
 import { sql } from "./client.js";
+import { mailboxFilter, type MailboxScope } from "./voicemailRuns.js";
 
 // Deeper analysis of the transcribe-app than the dashboard's headline stats: aggregated over the
 // WHOLE history in Postgres rather than over the 60 runs `/transcribe/stats` ships to the browser.
@@ -55,7 +56,12 @@ export interface TranscribeAnalytics {
   };
 }
 
-export async function getTranscribeAnalytics(): Promise<TranscribeAnalytics> {
+// `mailbox` scopes every figure to one mailbox; undefined means every mailbox (an admin looking at
+// the lot). The filter goes into each query rather than wrapping the results, so the cadence window
+// and the percentiles are computed within the mailbox too — a stall in one mailbox shouldn't be
+// hidden by another mailbox running fine.
+export async function getTranscribeAnalytics(mailbox?: MailboxScope): Promise<TranscribeAnalytics> {
+  const scope = mailboxFilter(mailbox);
   const [totals, sessions, byHour, byWeekday, cadence, perRunStats, distribution] =
     await Promise.all([
     sql`
@@ -69,6 +75,7 @@ export async function getTranscribeAnalytics(): Promise<TranscribeAnalytics> {
         min(created_at)                   AS "firstRunAt",
         max(created_at)                   AS "lastRunAt"
       FROM voicemail_runs
+      WHERE ${scope}
     `,
     // The gap is measured against the previous run of ANY kind — including the empty passes — because
     // that is what says whether the app was running while the voicemails piled up. So the window
@@ -78,6 +85,7 @@ export async function getTranscribeAnalytics(): Promise<TranscribeAnalytics> {
         SELECT id, voicemails, processed, skipped, failed, created_at,
                extract(epoch FROM created_at - lag(created_at) OVER (ORDER BY created_at)) AS since_prev
         FROM voicemail_runs
+        WHERE ${scope}
       )
       SELECT id, voicemails, processed, skipped, failed,
              created_at AS "createdAt",
@@ -92,6 +100,7 @@ export async function getTranscribeAnalytics(): Promise<TranscribeAnalytics> {
              sum(processed)::int AS processed,
              count(*)::int       AS runs
       FROM voicemail_runs
+      WHERE ${scope}
       GROUP BY 1
       ORDER BY 1
     `,
@@ -100,6 +109,7 @@ export async function getTranscribeAnalytics(): Promise<TranscribeAnalytics> {
              sum(processed)::int AS processed,
              count(*)::int       AS runs
       FROM voicemail_runs
+      WHERE ${scope}
       GROUP BY 1
       ORDER BY 1
     `,
@@ -113,6 +123,7 @@ export async function getTranscribeAnalytics(): Promise<TranscribeAnalytics> {
         SELECT created_at,
                extract(epoch FROM created_at - lag(created_at) OVER (ORDER BY created_at)) AS gap
         FROM voicemail_runs
+        WHERE ${scope}
       )
       SELECT
         coalesce(percentile_disc(0.5) WITHIN GROUP (ORDER BY gap), 0)::int AS "medianGapSeconds",
@@ -130,12 +141,12 @@ export async function getTranscribeAnalytics(): Promise<TranscribeAnalytics> {
         coalesce(percentile_disc(0.5) WITHIN GROUP (ORDER BY processed), 0)::int AS "medianProcessed",
         coalesce(max(processed), 0)::int AS "maxProcessed"
       FROM voicemail_runs
-      WHERE processed > 0
+      WHERE ${scope} AND processed > 0
     `,
     sql`
       SELECT processed, count(*)::int AS runs
       FROM voicemail_runs
-      WHERE processed > 0
+      WHERE ${scope} AND processed > 0
       GROUP BY processed
       ORDER BY processed
     `,

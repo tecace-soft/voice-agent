@@ -18,13 +18,24 @@ log = logging.getLogger(__name__)
 def report_run(
     cfg: Config, *, voicemails: int, processed: int, skipped: int, failed: int
 ) -> None:
-    """POST the run counts to <BACKEND_URL>/transcribe/runs, if BACKEND_URL is configured."""
+    """POST the run counts to <BACKEND_URL>/transcribe/runs, if BACKEND_URL is configured.
+
+    The mailbox we fetched from travels with the counts: the dashboard attributes voicemail data to
+    that address, and shows a person only the mailbox matching their own account email.
+    """
     if not cfg.backend_url:
         return
     url = cfg.backend_url.rstrip("/") + "/transcribe/runs"
-    body = json.dumps(
-        {"voicemails": voicemails, "processed": processed, "skipped": skipped, "failed": failed}
-    ).encode("utf-8")
+    payload = {
+        "voicemails": voicemails,
+        "processed": processed,
+        "skipped": skipped,
+        "failed": failed,
+    }
+    mailbox = cfg.mailbox_email()
+    if mailbox:
+        payload["mailboxEmail"] = mailbox
+    body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=body, method="POST")
     req.add_header("Content-Type", "application/json")
     if cfg.transcribe_ingest_key:

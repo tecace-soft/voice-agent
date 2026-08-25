@@ -7,6 +7,15 @@ transcribes each one, extracts the important details, and appends a row per voic
 It's a batch job: run it by hand or on a schedule. It's idempotent — voicemails it has already
 handled are skipped — and it never modifies the mailbox.
 
+## Reporting
+
+Each finished pass POSTs its counts to `<BACKEND_URL>/transcribe/runs` together with **the mailbox
+it fetched from** (`IMAP_USERNAME`, or `VOICEMAIL_MAILBOX_EMAIL` when the username isn't an
+address). The dashboard attributes voicemail data to that address and shows each person only the
+mailbox matching their own account email, so it must be the address they sign in with. If neither
+value looks like an email the run is reported unattributed rather than attributed to something
+wrong.
+
 ## Pipeline
 
 ```

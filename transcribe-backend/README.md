@@ -4,7 +4,8 @@ Standalone backend for the **voicemail transcription metrics**, split out of the
 [backend-app](../backend-app/). **Elysia** (Bun locally, Vercel/Node in prod) + Postgres.
 
 - **`POST /transcribe/runs`** — the [transcribe-app](../transcribe-app/) reports each run's counts
-  here (guarded by the `x-transcribe-key` header when `TRANSCRIBE_INGEST_KEY` is set).
+  here, with the **mailbox they were fetched from** (guarded by the `x-transcribe-key` header when
+  `TRANSCRIBE_INGEST_KEY` is set).
 - **`GET /transcribe/stats`** — the [transcribe-dashboard-app](../transcribe-dashboard-app/) reads
   the aggregate. **Requires a signed-in dashboard user** (`Authorization: Bearer <token>`).
 - **`GET /auth/setup-state`**, **`POST /auth/setup`** — first-run account creation (below).
@@ -108,6 +109,27 @@ issued before it. A password reset does the same. Changing `AUTH_SECRET` signs *
 
 An account can't remove itself, and neither the last admin nor the last account can be removed —
 otherwise the only way back in would be the CLI.
+
+### Mailboxes — who sees which voicemail data
+
+Every run is attributed to the mailbox the transcribe-app fetched it from (`voicemail_runs.
+mailbox_email`), and that address is what ties the data to a person:
+
+| | `user` | `admin` |
+| --- | --- | --- |
+| Reads | only the mailbox matching **their own account email** | every mailbox, or one at a time |
+| `?mailbox=` on `/stats` and `/analytics` | ignored | filters; `unattributed` isolates pre-mailbox runs |
+| `GET /transcribe/mailboxes` | 403 | the list, with per-mailbox totals |
+
+The scoping is decided server-side in `scopeFor()` from the session, so the query parameter is only
+ever a filter for an admin and never a way in — a `user` asking for someone else's mailbox still
+gets their own. A user whose email matches no mailbox simply matches no rows, which is the honest
+answer rather than an error.
+
+`mailbox_email` is nullable: runs reported before this existed are **unattributed**, visible only to
+an admin (an account email always contains "@", so it can never match `IS NULL`). Older
+transcribe-app builds that don't send the address keep reporting successfully — those runs just land
+unattributed.
 
 ### Analytics
 

@@ -27,7 +27,13 @@ function delta(curr: number, prev: number): { trend: Trend; text: string } {
   return { trend, text: formatPct(pct) };
 }
 
-export function OverviewPage({ data }: { data: TranscribeStats }) {
+export function OverviewPage({
+  data,
+  mailboxLabel,
+}: {
+  data: TranscribeStats;
+  mailboxLabel: string;
+}) {
   const [range, setRange] = useState<RangeId>("all");
   const [tab, setTab] = useState<TabId>("recent");
   const d = useMemo(() => derive(data), [data]);
@@ -72,6 +78,28 @@ export function OverviewPage({ data }: { data: TranscribeStats }) {
       : windowed.length === 1
         ? formatShort(windowed[0]!.createdAt)
         : "no runs yet";
+
+  // With no runs at all, say WHOSE data is missing. "Nothing here" reads very differently when the
+  // reason is that this mailbox has never been polled.
+  if (data.runs === 0) {
+    return (
+      <div className="view">
+        <section className="card">
+          <div className="card-head">
+            <div>
+              <div className="card-title ta-headline-2">No voicemail data yet</div>
+              <div className="card-sub ta-caption-1">Showing {mailboxLabel}</div>
+            </div>
+          </div>
+          <p className="feedback-empty muted ta-body-2">
+            Nothing has been transcribed for <strong>{mailboxLabel}</strong>. Voicemail data is
+            attributed to the mailbox it was fetched from, so it appears here once the transcribe
+            app has run against that address.
+          </p>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="view">

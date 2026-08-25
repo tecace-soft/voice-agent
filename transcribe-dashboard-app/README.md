@@ -36,6 +36,20 @@ The last admin can't be demoted or removed.
 the session; any 401 (expired token, or one revoked with `bun run auth revoke`) drops straight back
 to the sign-in screen. The signed-in person shows at the bottom of the sidebar, with sign-out.
 
+## Whose data you see
+
+Voicemail data is attributed to the mailbox the transcribe-app fetched it from, and matched to
+people by email:
+
+- A **user** sees only the mailbox matching their own account email — no picker, nothing to switch
+  to. If nothing has been transcribed for their address they get a plain explanation naming it,
+  rather than a page of zeros.
+- An **admin** gets a mailbox picker in the header: all mailboxes (the default), any single one, or
+  the runs reported before mailboxes were recorded. It scopes every view, Analytics included.
+
+The sidebar always says which mailbox is on screen. The backend decides the scope from the session,
+so the picker narrows an admin's view rather than granting access.
+
 ## What it shows
 
 A sidebar shell (rail → header → KPI row → chart → table) with four views:

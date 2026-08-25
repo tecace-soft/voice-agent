@@ -154,11 +154,30 @@ const ANALYTICS = {
   perRun: { productiveRuns: 3, medianProcessed: 4, maxProcessed: 9, distribution: [{ processed: 4, runs: 2 }] },
 };
 await mock.module("../db/analytics.js", () => ({
-  getTranscribeAnalytics: async () => ANALYTICS,
+  getTranscribeAnalytics: async (mailbox?: string) => {
+    analyticsScope = mailbox;
+    return ANALYTICS;
+  },
 }));
+// Capture the mailbox each read was scoped to — that argument IS the access rule, so the tests
+// assert on it directly rather than on whatever rows a fake would have returned.
+let statsScope: string | undefined = undefined;
+let analyticsScope: string | undefined = undefined;
+let lastInsertedRun: any = null;
 await mock.module("../db/voicemailRuns.js", () => ({
-  getVoicemailStats: async () => STATS,
-  insertVoicemailRun: async (r: unknown) => r,
+  mailboxFilter: () => "TRUE",
+  getVoicemailStats: async (mailbox?: string) => {
+    statsScope = mailbox;
+    return STATS;
+  },
+  insertVoicemailRun: async (r: any) => {
+    lastInsertedRun = r;
+    return { id: "run-1", mailboxEmail: r.mailboxEmail ?? null, ...r };
+  },
+  listMailboxes: async () => [
+    { mailboxEmail: "sam@tecace.com", runs: 4, processed: 9, failed: 0, lastRunAt: null },
+    { mailboxEmail: null, runs: 2, processed: 3, failed: 1, lastRunAt: null },
+  ],
 }));
 
 const { app } = await import("../app.js");
@@ -605,6 +624,102 @@ describe("feedback", () => {
     await post(`/auth/users/${samId}/role`, { role: "user" }, admin);
     // same token, no re-login: the guard re-reads the role every request
     expect((await call("/feedback", { headers: { authorization: `Bearer ${sam}` } })).status).toBe(403);
+  });
+});
+
+describe("mailbox scoping", () => {
+  // Voicemail data is attributed to the mailbox it was fetched from; an account only gets the
+  // mailbox matching its own email. These tests read the scope the route resolved, because that
+  // argument is the access rule — a fake returning rows would prove nothing about it.
+  async function plainUser(): Promise<string> {
+    const admin = await tokenFor();
+    const created = await json(await post("/auth/users", { name: "Sam Lee", email: "sam@tecace.com" }, admin));
+    return tokenFor("sam@tecace.com", created.password);
+  }
+
+  beforeEach(() => {
+    statsScope = undefined;
+    analyticsScope = undefined;
+  });
+
+  it("pins a user to the mailbox matching their own email", async () => {
+    const sam = await plainUser();
+    await call("/transcribe/stats", { headers: { authorization: `Bearer ${sam}` } });
+    expect(statsScope).toBe("sam@tecace.com");
+    await call("/transcribe/analytics", { headers: { authorization: `Bearer ${sam}` } });
+    expect(analyticsScope).toBe("sam@tecace.com");
+  });
+
+  it("ignores a mailbox a user asks for that isn't theirs", async () => {
+    const sam = await plainUser();
+    const headers = { authorization: `Bearer ${sam}` };
+
+    for (const attempt of ["jane@tecace.com", "", "  JANE@TECACE.COM  ", "boss@example.com"]) {
+      await call(`/transcribe/stats?mailbox=${encodeURIComponent(attempt)}`, { headers });
+      expect(statsScope, `stats with ?mailbox=${attempt}`).toBe("sam@tecace.com");
+      await call(`/transcribe/analytics?mailbox=${encodeURIComponent(attempt)}`, { headers });
+      expect(analyticsScope, `analytics with ?mailbox=${attempt}`).toBe("sam@tecace.com");
+    }
+  });
+
+  it("gives an admin every mailbox by default, and one when asked", async () => {
+    const admin = await tokenFor();
+    const headers = { authorization: `Bearer ${admin}` };
+
+    await call("/transcribe/stats", { headers });
+    expect(statsScope).toBeUndefined(); // undefined = no filter = every mailbox
+
+    await call("/transcribe/stats?mailbox=Sam%40TecAce.com", { headers });
+    expect(statsScope).toBe("sam@tecace.com"); // normalised, so it matches how runs are stored
+
+    await call("/transcribe/analytics?mailbox=sam%40tecace.com", { headers });
+    expect(analyticsScope).toBe("sam@tecace.com");
+  });
+
+  it("lets an admin isolate the runs that predate mailboxes, but never a user", async () => {
+    const admin = await tokenFor();
+    await call("/transcribe/stats?mailbox=unattributed", { headers: { authorization: `Bearer ${admin}` } });
+    expect(statsScope).toBeNull(); // null = "mailbox_email IS NULL"
+
+    // for a user the word is just a string that isn't their email, so they stay pinned to theirs
+    const sam = await plainUser();
+    await call("/transcribe/stats?mailbox=unattributed", { headers: { authorization: `Bearer ${sam}` } });
+    expect(statsScope).toBe("sam@tecace.com");
+  });
+
+  it("still requires a session to read anything", async () => {
+    expect((await call("/transcribe/stats")).status).toBe(401);
+    expect((await call("/transcribe/analytics")).status).toBe(401);
+    expect((await call("/transcribe/stats?mailbox=jane@tecace.com")).status).toBe(401);
+    expect(statsScope).toBeUndefined(); // never even reached the query
+  });
+
+  it("lets only an admin enumerate the mailboxes", async () => {
+    const sam = await plainUser();
+    const denied = await call("/transcribe/mailboxes", { headers: { authorization: `Bearer ${sam}` } });
+    expect(denied.status).toBe(403);
+    expect((await json(denied)).message).toBe("Only an admin can see every mailbox.");
+    expect((await call("/transcribe/mailboxes")).status).toBe(401);
+
+    const allowed = await call("/transcribe/mailboxes", { headers: { authorization: `Bearer ${await tokenFor()}` } });
+    expect(allowed.status).toBe(200);
+    const { mailboxes } = await json(allowed);
+    expect(mailboxes).toHaveLength(2);
+    expect(mailboxes[0].mailboxEmail).toBe("sam@tecace.com");
+    expect(mailboxes[1].mailboxEmail).toBeNull(); // runs from before mailboxes existed
+  });
+
+  it("records the mailbox a run was fetched from, and tolerates one that omits it", async () => {
+    const withMailbox = await post("/transcribe/runs", {
+      voicemails: 3, processed: 3, skipped: 0, failed: 0, mailboxEmail: "sam@tecace.com",
+    });
+    expect(withMailbox.status).toBe(201);
+    expect(lastInsertedRun.mailboxEmail).toBe("sam@tecace.com");
+
+    // an older transcribe-app that doesn't send one still reports successfully
+    const without = await post("/transcribe/runs", { voicemails: 1, processed: 1, skipped: 0, failed: 0 });
+    expect(without.status).toBe(201);
+    expect(lastInsertedRun.mailboxEmail).toBeUndefined();
   });
 });
 

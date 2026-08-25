@@ -70,6 +70,7 @@ export function Sidebar({
   failedCount,
   openFeedback,
   lastRunAt,
+  mailboxLabel,
   user,
   onSignOut,
 }: {
@@ -78,6 +79,7 @@ export function Sidebar({
   failedCount: number;
   openFeedback: number;
   lastRunAt: string | null;
+  mailboxLabel: string;
   user: AuthUser;
   onSignOut: () => void;
 }) {
@@ -128,6 +130,12 @@ export function Sidebar({
 
       <div className="sidebar-foot">
         <div className="sidebar-meta">
+          <div className="ta-caption-1 muted">Showing</div>
+          <div className="ta-label-2 mailbox-label" title={mailboxLabel}>
+            {mailboxLabel}
+          </div>
+        </div>
+        <div className="sidebar-meta sidebar-meta-tight">
           <div className="ta-caption-1 muted">Last run</div>
           <div className="ta-label-2">{lastRunAt ? formatDateTime(lastRunAt) : "No runs yet"}</div>
         </div>

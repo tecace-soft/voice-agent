@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getTranscribeAnalytics } from "../api/backend";
-import type { TranscribeAnalytics } from "../api/types";
+import type { MailboxScope, TranscribeAnalytics } from "../api/types";
 import { BarChart, type Bar } from "../components/BarChart";
 import { SessionCard } from "../components/SessionCard";
 import { StatCard, TrendBadge } from "../components/StatCard";
@@ -23,7 +23,7 @@ const pct = (part: number, whole: number) => (whole <= 0 ? 0 : (part / whole) * 
 type SessionSort = "recent" | "busiest";
 const PER_PAGE = 8;
 
-export function AnalyticsPage() {
+export function AnalyticsPage({ mailbox }: { mailbox?: MailboxScope }) {
   const [data, setData] = useState<TranscribeAnalytics | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessionSort, setSessionSort] = useState<SessionSort>("recent");
@@ -31,13 +31,14 @@ export function AnalyticsPage() {
 
   useEffect(() => {
     let active = true;
-    getTranscribeAnalytics()
+    setData(null); // switching mailbox shouldn't leave the previous one's figures on screen
+    getTranscribeAnalytics(mailbox)
       .then((d) => active && setData(d))
       .catch((e) => active && setError(e instanceof Error ? e.message : "Couldn't load analytics."));
     return () => {
       active = false;
     };
-  }, []);
+  }, [mailbox]);
 
   // Re-ordering the list should start you at the top of the new order, not page 4 of it.
   useEffect(() => {

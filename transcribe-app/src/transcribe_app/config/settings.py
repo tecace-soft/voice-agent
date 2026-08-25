@@ -107,6 +107,11 @@ class Config:
     backend_url: str
     # Matches TRANSCRIBE_INGEST_KEY on the backend; sent as the x-transcribe-key header. Empty = none.
     transcribe_ingest_key: str
+    # The address reported runs are attributed to. Defaults to IMAP_USERNAME, which is the mailbox
+    # we actually fetch from; set this only when the IMAP username isn't the email address (some
+    # providers use a bare login name). The dashboard matches it against a person's account email,
+    # so it has to be the address they sign in with.
+    mailbox_email_override: str
     # ---- Poller (scripts/run_poller.py — the always-on mode) ----
     # How often the poller runs a pass, in seconds. Default 5 minutes; floored to 30s in the poller.
     poll_interval_seconds: float
@@ -147,10 +152,21 @@ class Config:
             email_link_template=_optional("EMAIL_LINK_TEMPLATE"),
             backend_url=_optional("BACKEND_URL"),
             transcribe_ingest_key=_optional("TRANSCRIBE_INGEST_KEY"),
+            mailbox_email_override=_optional("VOICEMAIL_MAILBOX_EMAIL"),
             poll_interval_seconds=float(_optional("POLL_INTERVAL_SECONDS", "300")),
             state_file=_optional("STATE_FILE") or str(PROJECT_ROOT / ".processed.json"),
             request_timeout=float(_optional("REQUEST_TIMEOUT_SECONDS", "60")),
         )
+
+    def mailbox_email(self) -> str:
+        """The address to attribute this run's voicemails to, lower-cased.
+
+        IMAP usernames are normally the mailbox address, so that is the default; the override
+        exists for providers where it isn't. Returns "" when neither looks like an address, and the
+        run is then reported unattributed rather than attributed to something wrong.
+        """
+        candidate = (self.mailbox_email_override or self.imap_username).strip().lower()
+        return candidate if "@" in candidate else ""
 
     def missing(self) -> list[str]:
         """Names of settings the pipeline genuinely needs but doesn't have. The entrypoint

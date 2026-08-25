@@ -1,5 +1,7 @@
 import type {
   AuthUser,
+  MailboxScope,
+  MailboxSummary,
   CreatedAccount,
   Feedback,
   FeedbackCategory,
@@ -221,13 +223,25 @@ export function setFeedbackStatus(id: string, status: FeedbackStatus): Promise<{
 
 // ---- data ----
 
+// The backend pins a non-admin to their own mailbox regardless of what is sent, so this parameter
+// only ever narrows an admin's view. `null` asks for the runs reported before mailboxes existed.
+function mailboxQuery(mailbox: MailboxScope): string {
+  if (mailbox === undefined) return "";
+  return `?mailbox=${encodeURIComponent(mailbox === null ? "unattributed" : mailbox)}`;
+}
+
 // Voicemail transcription stats (requires a signed-in session).
-export function getTranscribeStats(): Promise<TranscribeStats> {
-  return get<TranscribeStats>("/transcribe/stats");
+export function getTranscribeStats(mailbox?: MailboxScope): Promise<TranscribeStats> {
+  return get<TranscribeStats>(`/transcribe/stats${mailboxQuery(mailbox)}`);
+}
+
+// Which mailboxes have reported runs (admins only).
+export async function listMailboxes(): Promise<MailboxSummary[]> {
+  return (await get<{ mailboxes: MailboxSummary[] }>("/transcribe/mailboxes")).mailboxes;
 }
 
 // The deeper cut behind the Analytics view — all-time totals, 90 days of daily figures, hour and
 // weekday patterns, and how regularly the app has been running.
-export function getTranscribeAnalytics(): Promise<TranscribeAnalytics> {
-  return get<TranscribeAnalytics>("/transcribe/analytics");
+export function getTranscribeAnalytics(mailbox?: MailboxScope): Promise<TranscribeAnalytics> {
+  return get<TranscribeAnalytics>(`/transcribe/analytics${mailboxQuery(mailbox)}`);
 }

@@ -27,6 +27,16 @@ export async function initDb(): Promise<void> {
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_voicemail_runs_created_at ON voicemail_runs (created_at)`;
 
+  // Which mailbox the run fetched from — the address the transcribe-app polls. Everything the
+  // dashboard shows is scoped by it: a `user` sees only the mailbox matching their own account
+  // email. Nullable because runs reported before this existed have no mailbox to attribute them
+  // to; those read as "unattributed" and only an admin ever sees them.
+  await sql`ALTER TABLE voicemail_runs ADD COLUMN IF NOT EXISTS mailbox_email TEXT`;
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_voicemail_runs_mailbox
+    ON voicemail_runs (mailbox_email, created_at DESC)
+  `;
+
   // Dashboard accounts. Passwords are scrypt hashes (src/auth/password.ts) — never plaintext.
   // `token_version` is bumped to invalidate the session tokens an account already handed out.
   // `role` is 'admin' (can manage accounts) or 'user' (can only read the dashboard).
@@ -106,7 +116,7 @@ async function migrateIfNeeded(): Promise<void> {
   try {
     // Probe every table AND the columns added after the fact, so a database created against an
     // older version of this schema still gets migrated.
-    await sql`SELECT 1 FROM voicemail_runs LIMIT 1`;
+    await sql`SELECT mailbox_email FROM voicemail_runs LIMIT 1`;
     await sql`SELECT role FROM users LIMIT 1`;
     await sql`SELECT 1 FROM feedback LIMIT 1`;
     return;
