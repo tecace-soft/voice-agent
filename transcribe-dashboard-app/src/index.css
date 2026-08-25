@@ -1563,3 +1563,45 @@ td.actions-col {
     align-items: flex-start;
   }
 }
+
+/* ---- person identity: the name leads, the address supports ---- */
+.person-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.person-primary {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+}
+button.person-primary {
+  text-decoration: none;
+  color: var(--primary);
+}
+button.person-primary:hover {
+  text-decoration: underline;
+}
+.person-primary.is-unattributed {
+  color: var(--muted);
+  font-style: italic;
+  font-weight: 500;
+}
+.person-secondary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* the accordion header's person line */
+.panel-name {
+  font-size: 15px;
+  line-height: 22px;
+}
+.panel-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

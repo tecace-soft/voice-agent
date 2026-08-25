@@ -16,6 +16,7 @@ import { PeoplePage } from "./pages/PeoplePage";
 import { PersonBoardsPage } from "./pages/PersonBoardsPage";
 import { RunsPage } from "./pages/RunsPage";
 import { SetupPage } from "./pages/SetupPage";
+import { useAccountNames } from "./people";
 import { derive } from "./stats";
 import { ThemeToggle } from "./theme";
 import { DashboardSkeleton } from "./ui";
@@ -81,6 +82,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // Which mailbox is on screen. Admins choose; for everyone else this stays undefined and the
   // backend scopes them to their own address.
   const [mailbox, setMailbox] = useState<MailboxScope>(undefined);
+  const accountNames = useAccountNames();
   const { data, loading, error, refresh } = useStats(mailbox);
 
   // How many notes are waiting on the team, for the sidebar badge. Admins only — it's the one
@@ -108,7 +110,13 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
       ? "All mailboxes"
       : mailbox === null
         ? "Unattributed"
-        : mailbox
+        : (accountNames.get(mailbox) ?? mailbox)
+    : user.name;
+  // the address stays visible, just as the quieter second line
+  const mailboxSubLabel = isAdmin
+    ? mailbox && accountNames.has(mailbox)
+      ? mailbox
+      : ""
     : user.email;
 
   // Only when the view can actually contain more than one mailbox is per-row attribution useful;
@@ -130,6 +138,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
         openFeedback={openFeedback}
         lastRunAt={data?.lastRunAt ?? null}
         mailboxLabel={mailboxLabel}
+        mailboxSubLabel={mailboxSubLabel}
         user={user}
         onSignOut={onSignOut}
       />

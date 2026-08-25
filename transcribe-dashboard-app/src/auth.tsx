@@ -11,6 +11,7 @@ import {
   setUnauthorizedHandler,
 } from "./api/backend";
 import type { AuthUser } from "./api/types";
+import { forgetAccountNames } from "./people";
 
 type Status = "loading" | "signed-out" | "signed-in";
 
@@ -97,6 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await apiLogout();
+    forgetAccountNames(); // the next person to sign in may not be allowed to see that list
     setUser(null);
     setStatus("signed-out");
   }, []);

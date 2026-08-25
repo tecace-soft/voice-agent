@@ -61,6 +61,12 @@ share and last run per mailbox, each clickable to scope the whole dashboard to i
 single mailbox and all of that disappears, since it would just be one address repeated down the
 page.
 
+Everywhere you pick or read a person — the header picker, the per-person cards, the Per person
+table, the Analytics breakdown, the sidebar's "Showing" line — the **name leads and the address is
+the smaller supporting line**, falling back to the address when no account matches it. The names
+come from one shared lookup (`src/people.ts`), fetched once per session rather than once per
+component.
+
 The sidebar always says which mailbox is on screen. The backend decides the scope from the session,
 so the picker narrows an admin's view rather than granting access.
 

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { listAccounts, listMailboxes } from "../api/backend";
-import type { AuthUser, MailboxScope, MailboxSummary } from "../api/types";
+import { listMailboxes } from "../api/backend";
+import type { MailboxScope, MailboxSummary } from "../api/types";
 import { accountErrorMessage } from "../auth";
 import { TabBar, type TabDef } from "../components/TabBar";
 import { IconAlert } from "../icons";
 import { formatDateTime, formatMailbox } from "../lib";
+import { useAccountNames } from "../people";
 
 // How much each person is getting. Admin-only.
 //
@@ -26,15 +27,15 @@ const pct = (part: number, whole: number) => (whole <= 0 ? 0 : (part / whole) * 
 
 export function PeoplePage({ onPick }: { onPick?: (mailbox: MailboxScope) => void }) {
   const [mailboxes, setMailboxes] = useState<MailboxSummary[] | null>(null);
-  const [accounts, setAccounts] = useState<AuthUser[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>("all");
+  // email -> name, from the shared lookup rather than another trip for the account list
+  const accounts = useAccountNames();
 
   const load = useCallback(() => {
-    Promise.all([listMailboxes(), listAccounts().catch(() => [] as AuthUser[])])
-      .then(([boxes, users]) => {
+    listMailboxes()
+      .then((boxes) => {
         setMailboxes(boxes);
-        setAccounts(users);
         setError(null);
       })
       .catch((e) => setError(accountErrorMessage(e, "Couldn't load per-person totals.")));
@@ -46,7 +47,6 @@ export function PeoplePage({ onPick }: { onPick?: (mailbox: MailboxScope) => voi
 
   const rows = useMemo<Row[]>(() => {
     if (!mailboxes) return [];
-    const byEmail = new Map(accounts.map((a) => [a.email, a]));
     const seen = new Set<string>();
 
     const withData: Row[] = mailboxes.map((m) => {
@@ -54,15 +54,15 @@ export function PeoplePage({ onPick }: { onPick?: (mailbox: MailboxScope) => voi
       return {
         key: m.mailboxEmail ?? "unattributed",
         email: m.mailboxEmail,
-        name: (m.mailboxEmail && byEmail.get(m.mailboxEmail)?.name) || null,
+        name: (m.mailboxEmail && accounts.get(m.mailboxEmail)) || null,
         data: m,
       };
     });
 
     // accounts that have never had a voicemail reported for them
-    const withoutData: Row[] = accounts
-      .filter((a) => !seen.has(a.email))
-      .map((a) => ({ key: a.email, email: a.email, name: a.name, data: null }));
+    const withoutData: Row[] = [...accounts.entries()]
+      .filter(([email]) => !seen.has(email))
+      .map(([email, name]) => ({ key: email, email, name, data: null }));
 
     return [...withData, ...withoutData];
   }, [mailboxes, accounts]);
@@ -141,21 +141,25 @@ export function PeoplePage({ onPick }: { onPick?: (mailbox: MailboxScope) => voi
                   <tr key={row.key}>
                     <td>
                       <span className="person-cell">
-                        {row.data && row.email && onPick ? (
-                          <button
-                            type="button"
-                            className="link-button"
-                            onClick={() => onPick(row.email)}
-                            title={`Show only ${row.email}`}
-                          >
-                            {formatMailbox(row.email)}
-                          </button>
-                        ) : (
-                          <span className={row.email ? "" : "is-unattributed"}>
-                            {formatMailbox(row.email)}
-                          </span>
-                        )}
-                        {row.name && <span className="ta-caption-1 muted">{row.name}</span>}
+                        <span className="person-identity">
+                          {row.data && row.email && onPick ? (
+                            <button
+                              type="button"
+                              className="link-button person-primary"
+                              onClick={() => onPick(row.email)}
+                              title={`Show only ${row.email}`}
+                            >
+                              {row.name ?? formatMailbox(row.email)}
+                            </button>
+                          ) : (
+                            <span className={`person-primary${row.email ? "" : " is-unattributed"}`}>
+                              {row.name ?? formatMailbox(row.email)}
+                            </span>
+                          )}
+                          {row.name && row.email && (
+                            <span className="person-secondary ta-caption-1 muted">{row.email}</span>
+                          )}
+                        </span>
                         {!row.data && (
                           <span className="badge badge-warning" title="This account has an inbox on the dashboard but no voicemails have ever been reported for its address">
                             <IconAlert size={12} />

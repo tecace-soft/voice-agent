@@ -73,6 +73,7 @@ export function Sidebar({
   openFeedback,
   lastRunAt,
   mailboxLabel,
+  mailboxSubLabel,
   user,
   onSignOut,
 }: {
@@ -82,6 +83,7 @@ export function Sidebar({
   openFeedback: number;
   lastRunAt: string | null;
   mailboxLabel: string;
+  mailboxSubLabel: string;
   user: AuthUser;
   onSignOut: () => void;
 }) {
@@ -133,9 +135,14 @@ export function Sidebar({
       <div className="sidebar-foot">
         <div className="sidebar-meta">
           <div className="ta-caption-1 muted">Showing</div>
-          <div className="ta-label-2 mailbox-label" title={mailboxLabel}>
+          <div className="ta-label-2 mailbox-label" title={mailboxSubLabel || mailboxLabel}>
             {mailboxLabel}
           </div>
+          {mailboxSubLabel && (
+            <div className="ta-caption-2 muted mailbox-label" title={mailboxSubLabel}>
+              {mailboxSubLabel}
+            </div>
+          )}
         </div>
         <div className="sidebar-meta sidebar-meta-tight">
           <div className="ta-caption-1 muted">Last run</div>

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { listAccounts, listMailboxes } from "../api/backend";
-import type { AuthUser, MailboxSummary } from "../api/types";
+import { listMailboxes } from "../api/backend";
+import type { MailboxSummary } from "../api/types";
 import { accountErrorMessage } from "../auth";
 import { PersonPanel } from "../components/PersonPanel";
+import { useAccountNames } from "../people";
 import { ActivityPage } from "./ActivityPage";
 import { OverviewPage } from "./OverviewPage";
 
@@ -16,14 +17,15 @@ import { OverviewPage } from "./OverviewPage";
 
 export function PersonBoardsPage({ kind }: { kind: "overview" | "activity" }) {
   const [mailboxes, setMailboxes] = useState<MailboxSummary[] | null>(null);
-  const [accounts, setAccounts] = useState<AuthUser[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Names come from the shared lookup, so this page doesn't re-fetch the account list that the
+  // header's picker has already asked for.
+  const names = useAccountNames();
 
   const load = useCallback(() => {
-    Promise.all([listMailboxes(), listAccounts().catch(() => [] as AuthUser[])])
-      .then(([boxes, users]) => {
+    listMailboxes()
+      .then((boxes) => {
         setMailboxes(boxes);
-        setAccounts(users);
         setError(null);
       })
       .catch((e) => setError(accountErrorMessage(e, "Couldn't load the list of people.")));
@@ -53,8 +55,7 @@ export function PersonBoardsPage({ kind }: { kind: "overview" | "activity" }) {
     );
   }
 
-  const nameFor = (email: string | null) =>
-    email ? (accounts.find((a) => a.email === email)?.name ?? null) : null;
+  const nameFor = (email: string | null) => (email ? (names.get(email) ?? null) : null);
 
   return (
     <div className="view">

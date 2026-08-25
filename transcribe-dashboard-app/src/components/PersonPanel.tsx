@@ -57,11 +57,12 @@ export function PersonPanel({
         </span>
 
         <span className="panel-who">
-          <span className={`panel-name ta-label-1${mailbox.mailboxEmail ? "" : " is-unattributed"}`}>
-            {label}
+          {/* the person first, the address second — you pick a person, not a string */}
+          <span className={`panel-name${mailbox.mailboxEmail ? "" : " is-unattributed"}`}>
+            {accountName ?? label}
           </span>
-          <span className="ta-caption-1 muted">
-            {accountName ? `${accountName} · ` : ""}
+          <span className="panel-sub ta-caption-1 muted">
+            {accountName && mailbox.mailboxEmail ? `${mailbox.mailboxEmail} · ` : ""}
             {mailbox.lastRunAt ? `last run ${formatDateTime(mailbox.lastRunAt)}` : "no runs yet"}
           </span>
         </span>

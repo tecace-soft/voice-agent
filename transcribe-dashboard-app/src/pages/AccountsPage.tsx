@@ -9,6 +9,7 @@ import {
 } from "../api/backend";
 import type { AuthUser, Role } from "../api/types";
 import { accountErrorMessage } from "../auth";
+import { forgetAccountNames } from "../people";
 import { IconCopy, IconKey, IconPlus, IconSignOut, IconTrash, IconUsers } from "../icons";
 import { formatDateTime } from "../lib";
 
@@ -96,6 +97,9 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
   const [sessionEnded, setSessionEnded] = useState(false);
 
   const load = useCallback(() => {
+    // Anything this page changes can rename or remove someone, so the shared email -> name lookup
+    // the rest of the dashboard reads from is dropped and rebuilt on the next view.
+    forgetAccountNames();
     listAccounts()
       .then((list) => {
         setUsers(list);

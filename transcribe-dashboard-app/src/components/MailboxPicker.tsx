@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { listMailboxes } from "../api/backend";
 import type { MailboxScope, MailboxSummary } from "../api/types";
 import { IconInbox } from "../icons";
+import { displayName, useAccountNames } from "../people";
 
 // Admin-only control for choosing whose voicemail data the dashboard is showing. A `user` never
 // sees this: the backend pins them to the mailbox matching their own account email, so there is
@@ -32,6 +33,7 @@ export function MailboxPicker({
   onChange: (next: MailboxScope) => void;
 }) {
   const [mailboxes, setMailboxes] = useState<MailboxSummary[] | null>(null);
+  const names = useAccountNames();
 
   useEffect(() => {
     let active = true;
@@ -60,8 +62,9 @@ export function MailboxPicker({
           <option
             key={m.mailboxEmail ?? UNATTRIBUTED}
             value={m.mailboxEmail ?? UNATTRIBUTED}
+            title={m.mailboxEmail ?? undefined}
           >
-            {m.mailboxEmail ?? "Unattributed"} ({m.processed.toLocaleString()})
+            {displayName(m.mailboxEmail, names)} ({m.processed.toLocaleString()})
           </option>
         ))}
       </select>

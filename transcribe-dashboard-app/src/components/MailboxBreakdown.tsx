@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { listMailboxes } from "../api/backend";
 import type { MailboxScope, MailboxSummary } from "../api/types";
 import { formatDateTime, formatMailbox } from "../lib";
+import { displayName, useAccountNames } from "../people";
 
 // Who the data on screen belongs to, when it belongs to more than one person. Shown only in an
 // admin's "all mailboxes" view: the totals above it are sums across everyone, and this says who
 // they're made of — and lets you jump straight into one.
 export function MailboxBreakdown({ onPick }: { onPick?: (mailbox: MailboxScope) => void }) {
   const [mailboxes, setMailboxes] = useState<MailboxSummary[] | null>(null);
+  const names = useAccountNames();
 
   useEffect(() => {
     let active = true;
@@ -38,7 +40,7 @@ export function MailboxBreakdown({ onPick }: { onPick?: (mailbox: MailboxScope) 
         <table>
           <thead>
             <tr>
-              <th scope="col">Mailbox</th>
+              <th scope="col">Person</th>
               <th className="num" scope="col">
                 Runs
               </th>
@@ -58,18 +60,23 @@ export function MailboxBreakdown({ onPick }: { onPick?: (mailbox: MailboxScope) 
             {mailboxes.map((m) => (
               <tr key={m.mailboxEmail ?? "unattributed"}>
                 <td>
-                  {onPick ? (
-                    <button
-                      type="button"
-                      className="link-button"
-                      onClick={() => onPick(m.mailboxEmail)}
-                      title={`Show only ${formatMailbox(m.mailboxEmail)}`}
-                    >
-                      {formatMailbox(m.mailboxEmail)}
-                    </button>
-                  ) : (
-                    formatMailbox(m.mailboxEmail)
-                  )}
+                  <span className="person-identity">
+                    {onPick ? (
+                      <button
+                        type="button"
+                        className="link-button person-primary"
+                        onClick={() => onPick(m.mailboxEmail)}
+                        title={`Show only ${formatMailbox(m.mailboxEmail)}`}
+                      >
+                        {displayName(m.mailboxEmail, names)}
+                      </button>
+                    ) : (
+                      <span className="person-primary">{displayName(m.mailboxEmail, names)}</span>
+                    )}
+                    {m.mailboxEmail && names.has(m.mailboxEmail) && (
+                      <span className="person-secondary ta-caption-1 muted">{m.mailboxEmail}</span>
+                    )}
+                  </span>
                 </td>
                 <td className="num">{m.runs.toLocaleString()}</td>
                 <td className="num">{m.processed.toLocaleString()}</td>
