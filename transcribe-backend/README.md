@@ -25,15 +25,24 @@ Owns three tables: `voicemail_runs` (one row per transcribe pass), `users` (dash
 `feedback` (notes sent from the dashboard). The schema self-migrates on the first request; or run it
 eagerly with `bun run db:migrate`.
 
-**Wipe the metrics** (e.g. before a customer handoff, to remove all test data) with
-`bun run db:clear` — it empties `voicemail_runs` (keeps the table). It acts on whatever
-`DATABASE_URL` points at, so to clear production, run it with the production connection string:
+**Wipe the metrics** (before a customer handoff, or to start clean on mailbox-attributed data) with
+`bun run db:clear`. It prints the current per-mailbox breakdown first, then deletes:
 
 ```bash
-DATABASE_URL="<production connection string>" bun run db:clear
+bun run db:clear                              # every run
+bun run db:clear --unattributed               # only runs with no mailbox
+bun run db:clear --mailbox you@tecace.com     # only that mailbox
+bun run db:clear --dry-run                    # show the breakdown, delete nothing
 ```
 
-Or run the SQL directly in the Neon/Vercel SQL console: `TRUNCATE TABLE voicemail_runs;`
+It only ever touches `voicemail_runs` — dashboard accounts and feedback are left alone, so nobody
+loses their login. **Destructive and irreversible**, and it acts on whatever `DATABASE_URL` points
+at, so to clear production run it with the production connection string:
+
+```bash
+DATABASE_URL="<production connection string>" bun run db:clear --dry-run   # look first
+DATABASE_URL="<production connection string>" bun run db:clear
+```
 
 ## Dashboard accounts
 

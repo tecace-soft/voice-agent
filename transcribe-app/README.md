@@ -7,6 +7,26 @@ transcribes each one, extracts the important details, and appends a row per voic
 It's a batch job: run it by hand or on a schedule. It's idempotent — voicemails it has already
 handled are skipped — and it never modifies the mailbox.
 
+## Starting a fresh pass
+
+The poller skips anything recorded in the state file (`STATE_FILE`, default `.processed.json`),
+keyed by Message-ID + attachment name, so a voicemail is only ever transcribed once. To make it
+treat everything as new again — e.g. to push current voicemails through a new backend or dashboard
+setup:
+
+```bash
+python scripts/reset_state.py --dry-run   # what's remembered
+python scripts/reset_state.py             # forget it
+systemctl restart transcribe-poller       # if it runs under systemd
+```
+
+It reads `STATE_FILE` the same way the app does, so it clears the file the poller actually uses. It
+never touches the mailbox — nothing is deleted, moved, or marked read on the mail server.
+
+Two consequences worth planning for: every voicemail still within `IMAP_SINCE_DAYS` is transcribed
+again, so each **appends a fresh row to the sheet** (clear the sheet, or point `SHEET_RANGE` at a
+test tab, if you want a clean result), and each re-transcription is another Gemini call.
+
 ## Reporting
 
 Each finished pass POSTs its counts to `<BACKEND_URL>/transcribe/runs` together with **the mailbox
