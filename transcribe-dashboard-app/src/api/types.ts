@@ -18,8 +18,14 @@ export interface AuthUser {
 export interface MailboxSummary {
   mailboxEmail: string | null;
   runs: number;
+  voicemails: number;
   processed: number;
+  skipped: number;
   failed: number;
+  today: number;
+  last7Days: number;
+  activeDays: number;
+  firstRunAt: string | null;
   lastRunAt: string | null;
 }
 

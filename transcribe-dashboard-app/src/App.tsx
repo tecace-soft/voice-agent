@@ -12,6 +12,7 @@ import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OverviewPage } from "./pages/OverviewPage";
+import { PeoplePage } from "./pages/PeoplePage";
 import { RunsPage } from "./pages/RunsPage";
 import { SetupPage } from "./pages/SetupPage";
 import { derive } from "./stats";
@@ -20,11 +21,18 @@ import { DashboardSkeleton } from "./ui";
 
 // Views that don't read the transcription stats, so a stats failure shouldn't hide them.
 // Analytics reads its own endpoint, so it belongs with the views that don't wait on /transcribe/stats.
-const STANDALONE_VIEWS = new Set<ViewId>(["accounts", "feedback", "allFeedback", "analytics"]);
+const STANDALONE_VIEWS = new Set<ViewId>([
+  "accounts",
+  "feedback",
+  "allFeedback",
+  "analytics",
+  "people",
+]);
 
 const VIEW_TITLES: Record<ViewId, string> = {
   overview: "Overview",
   analytics: "Analytics",
+  people: "Per person",
   activity: "Daily activity",
   runs: "All runs",
   failed: "Failed runs",
@@ -162,6 +170,12 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           {data && view === "overview" && (
             <OverviewPage data={data} mailboxLabel={mailboxLabel} showMailbox={showMailbox} />
           )}
+          {view === "people" &&
+            (isAdmin ? (
+              <PeoplePage onPick={setMailbox} />
+            ) : (
+              <p className="muted ta-body-2">Only an admin can see everyone's totals.</p>
+            ))}
           {view === "analytics" && (
             <AnalyticsPage mailbox={mailbox} showMailbox={showMailbox} onPickMailbox={setMailbox} />
           )}

@@ -128,7 +128,7 @@ mailbox_email`), and that address is what ties the data to a person:
 | --- | --- | --- |
 | Reads | only the mailbox matching **their own account email** | every mailbox, or one at a time |
 | `?mailbox=` on `/stats` and `/analytics` | ignored | filters; `unattributed` isolates pre-mailbox runs |
-| `GET /transcribe/mailboxes` | 403 | the list, with per-mailbox totals |
+| `GET /transcribe/mailboxes` | 403 | per-mailbox totals — runs, found, transcribed, skipped, failed, today, last 7 days, active days, first/last run — ordered by volume |
 
 The scoping is decided server-side in `scopeFor()` from the session, so the query parameter is only
 ever a filter for an admin and never a way in — a `user` asking for someone else's mailbox still

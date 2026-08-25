@@ -80,26 +80,43 @@ export async function insertVoicemailRun(input: VoicemailRunInput): Promise<Voic
   return row as VoicemailRunRecord;
 }
 
-// Every mailbox that has reported a run, with enough of a summary for an admin to see who is
-// producing what before picking one to look at.
+// Per-mailbox totals — how much each person is actually getting. One row per mailbox, ordered by
+// volume so the heaviest is first, which is the question this answers.
 export interface MailboxSummary {
   mailboxEmail: string | null; // null = runs reported before mailboxes existed
   runs: number;
-  processed: number;
+  voicemails: number; // found
+  processed: number; // transcribed
+  skipped: number; // already handled on an earlier pass
   failed: number;
+  today: number; // transcribed today, business timezone
+  last7Days: number;
+  activeDays: number; // distinct days this mailbox has had a run on
+  firstRunAt: string | null;
   lastRunAt: string | null;
 }
 
 export async function listMailboxes(): Promise<MailboxSummary[]> {
+  const tz = env.timezone;
   return (await sql`
     SELECT mailbox_email AS "mailboxEmail",
-           count(*)::int AS runs,
-           coalesce(sum(processed), 0)::int AS processed,
-           coalesce(sum(failed), 0)::int AS failed,
-           max(created_at) AS "lastRunAt"
+           count(*)::int                       AS runs,
+           coalesce(sum(voicemails), 0)::int   AS voicemails,
+           coalesce(sum(processed), 0)::int    AS processed,
+           coalesce(sum(skipped), 0)::int      AS skipped,
+           coalesce(sum(failed), 0)::int       AS failed,
+           coalesce(sum(processed) FILTER (
+             WHERE created_at AT TIME ZONE ${tz} >= date_trunc('day', now() AT TIME ZONE ${tz})
+           ), 0)::int                          AS today,
+           coalesce(sum(processed) FILTER (
+             WHERE created_at >= now() - interval '7 days'
+           ), 0)::int                          AS "last7Days",
+           count(DISTINCT date_trunc('day', created_at AT TIME ZONE ${tz}))::int AS "activeDays",
+           min(created_at)                     AS "firstRunAt",
+           max(created_at)                     AS "lastRunAt"
     FROM voicemail_runs
     GROUP BY mailbox_email
-    ORDER BY max(created_at) DESC
+    ORDER BY sum(processed) DESC NULLS LAST, max(created_at) DESC
   `) as unknown as MailboxSummary[];
 }
 

@@ -1442,3 +1442,19 @@ td.actions-col {
   flex-wrap: wrap;
   min-width: 0;
 }
+
+/* ---- per-person totals ---- */
+.person-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.person-cell .is-unattributed {
+  color: var(--muted);
+  font-style: italic;
+}
+.badge-warning {
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  color: var(--warning);
+}

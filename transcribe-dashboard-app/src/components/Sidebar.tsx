@@ -16,6 +16,7 @@ import { formatDateTime } from "../lib";
 export type ViewId =
   | "overview"
   | "analytics"
+  | "people"
   | "activity"
   | "runs"
   | "failed"
@@ -32,6 +33,7 @@ const NAV: {
     items: [
       { id: "overview", label: "Overview", icon: IconOverview },
       { id: "analytics", label: "Analytics", icon: IconAnalytics },
+      { id: "people", label: "Per person", icon: IconUsers, adminOnly: true },
       { id: "activity", label: "Daily activity", icon: IconActivity },
     ],
   },
