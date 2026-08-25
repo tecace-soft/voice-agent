@@ -1458,3 +1458,108 @@ td.actions-col {
   background: color-mix(in srgb, var(--warning) 14%, transparent);
   color: var(--warning);
 }
+
+/* ---- per-person collapsible boards (admin, all mailboxes) ---- */
+.boards-intro {
+  margin: 0;
+}
+.person-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+.person-panel-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 20px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.person-panel-head:hover {
+  background: var(--accent-soft);
+}
+.panel-chevron {
+  display: inline-flex;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+.person-panel.is-open .panel-chevron {
+  transform: rotate(180deg);
+}
+.panel-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.panel-name {
+  color: var(--ink);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel-name.is-unattributed {
+  color: var(--muted);
+  font-style: italic;
+}
+.panel-figures {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.panel-figure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.panel-figure-value {
+  font-family: var(--font-display);
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.panel-figure-value.is-danger {
+  color: var(--danger);
+}
+
+/* the expanded dashboard sits on a tinted ground so its own cards read as nested content */
+.person-panel-body {
+  padding: 16px;
+  border-top: 1px solid var(--border);
+  background: var(--accent-soft);
+}
+.person-panel-body .view {
+  gap: 16px;
+}
+.panel-status {
+  margin: 0;
+  padding: 24px 4px;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .person-panel-head {
+    flex-wrap: wrap;
+  }
+  .panel-figures {
+    width: 100%;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .panel-figure {
+    align-items: flex-start;
+  }
+}

@@ -42,14 +42,20 @@ Voicemail data is attributed to the mailbox the transcribe-app fetched it from, 
 people by email:
 
 - A **user** sees only the mailbox matching their own account email — no picker, nothing to switch
-  to. If nothing has been transcribed for their address they get a plain explanation naming it,
-  rather than a page of zeros.
+  to, and no cards to open: their dashboard is simply their own data. If nothing has been
+  transcribed for their address they get a plain explanation naming it, rather than a page of zeros.
 - An **admin** gets a mailbox picker in the header: all mailboxes (the default), any single one, or
   the runs reported before mailboxes were recorded ("Unattributed"). It scopes every view, Analytics
   included.
 
-When an admin is looking at **all** mailboxes the data on screen belongs to several people, so it is
-attributed per row: the run tables gain a **Mailbox** column, each analytics session is badged with
+When an admin is looking at **all** mailboxes, **Overview** and **Daily activity** become one
+collapsible card per person instead of everyone's numbers blended together. The closed card carries
+that person's headline figures (transcribed, today, last 7 days, failed) from the summary already
+loaded; opening it fetches only their data and renders the very same page they would see for
+themselves. Several can be open at once, and re-opening reuses what was already fetched. Narrow to a
+single mailbox in the header and the accordion goes away — you get that dashboard directly.
+
+Elsewhere the data on screen belongs to several people, so it is attributed per row: the run tables gain a **Mailbox** column, each analytics session is badged with
 its address, and Analytics leads with a **"Whose data this is"** breakdown — runs, transcribed,
 share and last run per mailbox, each clickable to scope the whole dashboard to it. Narrow to a
 single mailbox and all of that disappears, since it would just be one address repeated down the

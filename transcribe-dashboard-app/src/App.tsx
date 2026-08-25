@@ -13,6 +13,7 @@ import { FeedbackPage } from "./pages/FeedbackPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { PeoplePage } from "./pages/PeoplePage";
+import { PersonBoardsPage } from "./pages/PersonBoardsPage";
 import { RunsPage } from "./pages/RunsPage";
 import { SetupPage } from "./pages/SetupPage";
 import { derive } from "./stats";
@@ -28,6 +29,10 @@ const STANDALONE_VIEWS = new Set<ViewId>([
   "analytics",
   "people",
 ]);
+
+// Overview and Daily activity fetch per person when an admin is looking at everyone, so they don't
+// wait on (or fail with) the shared all-mailboxes stats call either.
+const perPersonViews = new Set<ViewId>(["overview", "activity"]);
 
 const VIEW_TITLES: Record<ViewId, string> = {
   overview: "Overview",
@@ -165,11 +170,18 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
 
         <main className="content">
           {/* The accounts view doesn't depend on the stats, so a stats failure shouldn't hide it. */}
-          {error && !STANDALONE_VIEWS.has(view) && <p className="error ta-body-2">{error}</p>}
-          {!data && loading && !STANDALONE_VIEWS.has(view) && <DashboardSkeleton />}
-          {data && view === "overview" && (
-            <OverviewPage data={data} mailboxLabel={mailboxLabel} showMailbox={showMailbox} />
+          {error && !STANDALONE_VIEWS.has(view) && !(showMailbox && perPersonViews.has(view)) && (
+            <p className="error ta-body-2">{error}</p>
           )}
+          {!data && loading && !STANDALONE_VIEWS.has(view) && !(showMailbox && perPersonViews.has(view)) && (
+            <DashboardSkeleton />
+          )}
+          {view === "overview" &&
+            (showMailbox ? (
+              <PersonBoardsPage kind="overview" />
+            ) : (
+              data && <OverviewPage data={data} mailboxLabel={mailboxLabel} showMailbox={false} />
+            ))}
           {view === "people" &&
             (isAdmin ? (
               <PeoplePage onPick={setMailbox} />
@@ -179,7 +191,8 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           {view === "analytics" && (
             <AnalyticsPage mailbox={mailbox} showMailbox={showMailbox} onPickMailbox={setMailbox} />
           )}
-          {data && view === "activity" && <ActivityPage data={data} />}
+          {view === "activity" &&
+            (showMailbox ? <PersonBoardsPage kind="activity" /> : data && <ActivityPage data={data} />)}
           {data && view === "runs" && <RunsPage data={data} showMailbox={showMailbox} />}
           {data && view === "failed" && <RunsPage data={data} onlyFailed showMailbox={showMailbox} />}
           {view === "feedback" && <FeedbackPage />}
