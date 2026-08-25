@@ -42,6 +42,7 @@ export interface TranscribeAnalytics {
   // Each run that transcribed something, newest first, with the gap since the run before it.
   sessions: {
     id: string;
+    mailboxEmail: string | null;
     voicemails: number;
     processed: number;
     skipped: number;

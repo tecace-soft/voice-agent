@@ -45,7 +45,15 @@ people by email:
   to. If nothing has been transcribed for their address they get a plain explanation naming it,
   rather than a page of zeros.
 - An **admin** gets a mailbox picker in the header: all mailboxes (the default), any single one, or
-  the runs reported before mailboxes were recorded. It scopes every view, Analytics included.
+  the runs reported before mailboxes were recorded ("Unattributed"). It scopes every view, Analytics
+  included.
+
+When an admin is looking at **all** mailboxes the data on screen belongs to several people, so it is
+attributed per row: the run tables gain a **Mailbox** column, each analytics session is badged with
+its address, and Analytics leads with a **"Whose data this is"** breakdown — runs, transcribed,
+share and last run per mailbox, each clickable to scope the whole dashboard to it. Narrow to a
+single mailbox and all of that disappears, since it would just be one address repeated down the
+page.
 
 The sidebar always says which mailbox is on screen. The backend decides the scope from the session,
 so the picker narrows an admin's view rather than granting access.

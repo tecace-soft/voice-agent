@@ -10,12 +10,13 @@ import {
   IconChevronsRight,
   IconColumns,
 } from "../icons";
-import { formatDateTime } from "../lib";
+import { formatDateTime, formatMailbox } from "../lib";
 
 // Columns the run table can show. "When" is the row's identity, so it's never hideable; the rest
 // can be toggled off from the Columns menu when the table gets busy.
 const COLUMNS = [
   { key: "when", label: "When", numeric: false, fixed: true },
+  { key: "mailbox", label: "Mailbox", numeric: false, fixed: false },
   { key: "status", label: "Status", numeric: false, fixed: false },
   { key: "voicemails", label: "Found", numeric: true, fixed: false },
   { key: "processed", label: "Transcribed", numeric: true, fixed: false },
@@ -43,9 +44,11 @@ function StatusBadge({ run }: { run: VoicemailRun }) {
 function ColumnsMenu({
   hidden,
   onToggle,
+  showMailbox,
 }: {
   hidden: Set<ColumnKey>;
   onToggle: (key: ColumnKey) => void;
+  showMailbox: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -81,7 +84,7 @@ function ColumnsMenu({
       </button>
       {open && (
         <div className="menu" role="group" aria-label="Toggle columns">
-          {COLUMNS.filter((c) => !c.fixed).map((c) => (
+          {COLUMNS.filter((c) => !c.fixed && (showMailbox || c.key !== "mailbox")).map((c) => (
             <button
               type="button"
               key={c.key}
@@ -108,12 +111,18 @@ export function RunsTable({
   runs,
   emptyMessage,
   tabs,
+  showMailbox = false,
 }: {
   runs: VoicemailRun[];
   emptyMessage: string;
   tabs?: ReactNode;
+  /** Whose data each row is. Only worth a column when the view mixes mailboxes — when everything
+   *  on screen is one mailbox the column is the same value repeated. */
+  showMailbox?: boolean;
 }) {
-  const [hidden, setHidden] = useState<Set<ColumnKey>>(new Set());
+  const [hidden, setHidden] = useState<Set<ColumnKey>>(() =>
+    showMailbox ? new Set() : new Set<ColumnKey>(["mailbox"]),
+  );
   const [perPage, setPerPage] = useState(ROWS_PER_PAGE[0]!);
   const [page, setPage] = useState(0);
 
@@ -136,6 +145,12 @@ export function RunsTable({
         return formatDateTime(run.createdAt);
       case "status":
         return <StatusBadge run={run} />;
+      case "mailbox":
+        return (
+          <span className={`mailbox-cell${run.mailboxEmail ? "" : " is-unattributed"}`}>
+            {formatMailbox(run.mailboxEmail)}
+          </span>
+        );
       default:
         return run[key];
     }
@@ -153,7 +168,7 @@ export function RunsTable({
     <div className="card">
       <div className="card-toolbar">
         {tabs}
-        <ColumnsMenu hidden={hidden} onToggle={toggle} />
+        <ColumnsMenu hidden={hidden} onToggle={toggle} showMailbox={showMailbox} />
       </div>
       <div className="table-wrap">
         <table>

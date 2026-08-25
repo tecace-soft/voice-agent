@@ -1,5 +1,5 @@
 import type { TranscribeAnalytics } from "../api/types";
-import { formatDateTime, formatDuration } from "../lib";
+import { formatDateTime, formatDuration, formatMailbox } from "../lib";
 
 type Session = TranscribeAnalytics["sessions"][number];
 
@@ -9,7 +9,16 @@ const pct = (part: number, whole: number) => (whole <= 0 ? 0 : (part / whole) * 
 // app had been quiet before it. The bar splits what it found into transcribed / already handled /
 // failed, so a session that mostly re-read old voicemails looks different from one that did real
 // work, even when both "transcribed" the same number.
-export function SessionCard({ session, share }: { session: Session; share: number }) {
+export function SessionCard({
+  session,
+  share,
+  showMailbox = false,
+}: {
+  session: Session;
+  share: number;
+  /** Whose session this was — shown when the list mixes mailboxes. */
+  showMailbox?: boolean;
+}) {
   const attempted = session.processed + session.failed;
   const successRate = attempted === 0 ? 100 : pct(session.processed, attempted);
   const newWork = pct(attempted, session.voicemails);
@@ -24,7 +33,14 @@ export function SessionCard({ session, share }: { session: Session; share: numbe
     <li className={`session${session.failed > 0 ? " has-failure" : ""}`}>
       <div className="session-head">
         <div className="session-when">
-          <span className="ta-label-1 session-time">{formatDateTime(session.createdAt)}</span>
+          <span className="session-title">
+            <span className="ta-label-1 session-time">{formatDateTime(session.createdAt)}</span>
+            {showMailbox && (
+              <span className={`badge badge-mailbox${session.mailboxEmail ? "" : " is-unattributed"}`}>
+                {formatMailbox(session.mailboxEmail)}
+              </span>
+            )}
+          </span>
           <span className="ta-caption-1 muted">
             {session.sincePreviousSeconds > 0
               ? `${formatDuration(session.sincePreviousSeconds)} after the previous run`

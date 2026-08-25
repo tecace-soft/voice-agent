@@ -89,13 +89,18 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
 
   // What the numbers on screen belong to, said plainly — it's the difference between "we have no
   // voicemails" and "none of this data is yours".
+  // Worded to match the picker and the breakdown — one thing should have one name across the UI.
   const mailboxLabel = isAdmin
     ? mailbox === undefined
-      ? "all mailboxes"
+      ? "All mailboxes"
       : mailbox === null
-        ? "runs reported before mailboxes were recorded"
+        ? "Unattributed"
         : mailbox
     : user.email;
+
+  // Only when the view can actually contain more than one mailbox is per-row attribution useful;
+  // scoped to one, it would be the same address repeated down the page.
+  const showMailbox = isAdmin && mailbox === undefined;
 
   const failedCount = data ? derive(data).failedRuns.length : 0;
   const openView = (id: ViewId) => {
@@ -154,11 +159,15 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           {/* The accounts view doesn't depend on the stats, so a stats failure shouldn't hide it. */}
           {error && !STANDALONE_VIEWS.has(view) && <p className="error ta-body-2">{error}</p>}
           {!data && loading && !STANDALONE_VIEWS.has(view) && <DashboardSkeleton />}
-          {data && view === "overview" && <OverviewPage data={data} mailboxLabel={mailboxLabel} />}
-          {view === "analytics" && <AnalyticsPage mailbox={mailbox} />}
+          {data && view === "overview" && (
+            <OverviewPage data={data} mailboxLabel={mailboxLabel} showMailbox={showMailbox} />
+          )}
+          {view === "analytics" && (
+            <AnalyticsPage mailbox={mailbox} showMailbox={showMailbox} onPickMailbox={setMailbox} />
+          )}
           {data && view === "activity" && <ActivityPage data={data} />}
-          {data && view === "runs" && <RunsPage data={data} />}
-          {data && view === "failed" && <RunsPage data={data} onlyFailed />}
+          {data && view === "runs" && <RunsPage data={data} showMailbox={showMailbox} />}
+          {data && view === "failed" && <RunsPage data={data} onlyFailed showMailbox={showMailbox} />}
           {view === "feedback" && <FeedbackPage />}
           {view === "allFeedback" &&
             (isAdmin ? (

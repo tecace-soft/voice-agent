@@ -1,0 +1,45 @@
+# Samples per-container CPU/memory to /var/log/docker-container-stats.log every 10s.
+#
+# Install:
+#   sudo install -m 755 deploy/docker-container-stats.sh /usr/local/bin/docker-container-stats.sh
+#   sudo cp deploy/docker-container-stats.service /etc/systemd/system/
+#   sudo cp deploy/docker-container-stats.logrotate /etc/logrotate.d/docker-container-stats
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now docker-container-stats
+#
+# Watch it:   tail -f /var/log/docker-container-stats.log
+# Status:     systemctl status docker-container-stats
+# Change the interval:  sudo systemctl edit docker-container-stats
+#                       [Service]
+#                       Environment=INTERVAL=30
+
+[Unit]
+Description=Per-container docker CPU/memory sampler
+Documentation=https://docs.docker.com/reference/cli/docker/container/stats/
+# Start after docker, but don't die with it — the sampler logs the failure and carries on, so a
+# docker restart leaves a visible gap in the log rather than stopping the monitoring.
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+Environment=INTERVAL=10
+ExecStart=/usr/local/bin/docker-container-stats.sh
+
+# systemd appends stdout straight to the log file — this is what replaces `tee -a`. Errors go to
+# the journal so a broken sampler is visible in `systemctl status` rather than buried in the file.
+StandardOutput=append:/var/log/docker-container-stats.log
+StandardError=journal
+
+Restart=always
+RestartSec=5
+
+# Modest hardening: it needs the docker socket (which is root-equivalent anyway), so this limits
+# the blast radius rather than sandboxing it properly.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

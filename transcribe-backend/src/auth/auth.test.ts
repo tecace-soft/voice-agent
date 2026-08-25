@@ -146,7 +146,7 @@ await mock.module("../db/feedback.js", () => ({
 const ANALYTICS = {
   totals: { voicemails: 20, processed: 17, skipped: 2, failed: 1, runs: 5, emptyRuns: 1, firstRunAt: null, lastRunAt: null },
   sessions: [
-    { id: "r1", voicemails: 5, processed: 4, skipped: 1, failed: 0, createdAt: new Date().toISOString(), sincePreviousSeconds: 1800 },
+    { id: "r1", mailboxEmail: "sam@tecace.com", voicemails: 5, processed: 4, skipped: 1, failed: 0, createdAt: new Date().toISOString(), sincePreviousSeconds: 1800 },
   ],
   byHour: [{ hour: 9, processed: 12, runs: 3 }],
   byWeekday: [{ weekday: 4, processed: 12, runs: 3 }],
@@ -751,7 +751,11 @@ describe("GET /transcribe/stats", () => {
       expect(body.cadence.medianGapSeconds).toBe(1800);
       expect(body.byHour[0]).toEqual({ hour: 9, processed: 12, runs: 3 });
       // sessions, not a daily rollup — each transcribed run carries its own figures
-      expect(body.sessions[0]).toMatchObject({ processed: 4, sincePreviousSeconds: 1800 });
+      expect(body.sessions[0]).toMatchObject({
+        processed: 4,
+        sincePreviousSeconds: 1800,
+        mailboxEmail: "sam@tecace.com", // so a mixed view can say whose session it is
+      });
       expect(body.daily).toBeUndefined();
     }
   });

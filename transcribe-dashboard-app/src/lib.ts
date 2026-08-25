@@ -93,6 +93,10 @@ export function formatHour(hour: number): string {
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export const formatWeekday = (isoDow: number): string => WEEKDAYS[isoDow - 1] ?? "?";
 
+// How a mailbox reads on screen. Runs reported before mailboxes were recorded have none, and
+// "Unattributed" says that plainly rather than leaving a blank cell that looks like a bug.
+export const formatMailbox = (email: string | null): string => email ?? "Unattributed";
+
 // "+12.5%" / "-20%" / "0%" — the delta as it reads on a trend badge.
 export function formatPct(pct: number): string {
   const rounded = Math.round(pct * 10) / 10;

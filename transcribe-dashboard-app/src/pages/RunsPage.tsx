@@ -4,7 +4,15 @@ import { RunsTable } from "../components/RunsTable";
 import { derive } from "../stats";
 
 // The run log on its own: every run the backend keeps in the series, or just the ones that failed.
-export function RunsPage({ data, onlyFailed }: { data: TranscribeStats; onlyFailed?: boolean }) {
+export function RunsPage({
+  data,
+  onlyFailed,
+  showMailbox,
+}: {
+  data: TranscribeStats;
+  onlyFailed?: boolean;
+  showMailbox?: boolean;
+}) {
   const d = useMemo(() => derive(data), [data]);
   const runs = onlyFailed ? d.failedRuns : d.runsNewestFirst;
 
@@ -13,6 +21,7 @@ export function RunsPage({ data, onlyFailed }: { data: TranscribeStats; onlyFail
       <RunsTable
         key={onlyFailed ? "failed" : "all"}
         runs={runs}
+        showMailbox={showMailbox}
         emptyMessage={
           onlyFailed
             ? "No run has failed a voicemail — nothing to look at here."

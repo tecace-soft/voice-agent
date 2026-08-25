@@ -30,9 +30,11 @@ function delta(curr: number, prev: number): { trend: Trend; text: string } {
 export function OverviewPage({
   data,
   mailboxLabel,
+  showMailbox,
 }: {
   data: TranscribeStats;
   mailboxLabel: string;
+  showMailbox?: boolean;
 }) {
   const [range, setRange] = useState<RangeId>("all");
   const [tab, setTab] = useState<TabId>("recent");
@@ -94,7 +96,8 @@ export function OverviewPage({
           <p className="feedback-empty muted ta-body-2">
             Nothing has been transcribed for <strong>{mailboxLabel}</strong>. Voicemail data is
             attributed to the mailbox it was fetched from, so it appears here once the transcribe
-            app has run against that address.
+            app has run against that address. ("Unattributed" is the runs reported before the app
+            started recording which mailbox they came from.)
           </p>
         </section>
       </div>
@@ -195,6 +198,7 @@ export function OverviewPage({
       <RunsTable
         key={tab}
         runs={rows}
+        showMailbox={showMailbox}
         emptyMessage={emptyMessage}
         tabs={<TabBar tabs={tabs} active={tab} onChange={setTab} label="Which runs to show" />}
       />

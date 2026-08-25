@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getTranscribeAnalytics } from "../api/backend";
 import type { MailboxScope, TranscribeAnalytics } from "../api/types";
 import { BarChart, type Bar } from "../components/BarChart";
+import { MailboxBreakdown } from "../components/MailboxBreakdown";
 import { SessionCard } from "../components/SessionCard";
 import { StatCard, TrendBadge } from "../components/StatCard";
 import { TabBar, type TabDef } from "../components/TabBar";
@@ -23,7 +24,15 @@ const pct = (part: number, whole: number) => (whole <= 0 ? 0 : (part / whole) * 
 type SessionSort = "recent" | "busiest";
 const PER_PAGE = 8;
 
-export function AnalyticsPage({ mailbox }: { mailbox?: MailboxScope }) {
+export function AnalyticsPage({
+  mailbox,
+  showMailbox,
+  onPickMailbox,
+}: {
+  mailbox?: MailboxScope;
+  showMailbox?: boolean;
+  onPickMailbox?: (next: MailboxScope) => void;
+}) {
   const [data, setData] = useState<TranscribeAnalytics | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessionSort, setSessionSort] = useState<SessionSort>("recent");
@@ -169,6 +178,8 @@ export function AnalyticsPage({ mailbox }: { mailbox?: MailboxScope }) {
         />
       </section>
 
+      {showMailbox && <MailboxBreakdown onPick={onPickMailbox} />}
+
       <section className="card">
         <div className="card-toolbar">
           <div>
@@ -198,6 +209,7 @@ export function AnalyticsPage({ mailbox }: { mailbox?: MailboxScope }) {
                   key={session.id}
                   session={session}
                   share={pct(session.processed, listedProcessed)}
+                  showMailbox={showMailbox}
                 />
               ))}
             </ul>

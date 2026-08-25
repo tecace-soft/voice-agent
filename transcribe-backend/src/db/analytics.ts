@@ -31,7 +31,8 @@ export interface TranscribeAnalytics {
   // its own: what it found, what it did with it, and how long the app had been quiet beforehand.
   sessions: {
     id: string;
-    voicemails: number;
+    mailboxEmail: string | null; // whose voicemails these were — the admin's "all mailboxes" view
+    voicemails: number;          // interleaves sessions from several mailboxes
     processed: number;
     skipped: number;
     failed: number;
@@ -82,12 +83,13 @@ export async function getTranscribeAnalytics(mailbox?: MailboxScope): Promise<Tr
     // runs over every row and the filter to transcribed sessions happens after it.
     sql`
       WITH ordered AS (
-        SELECT id, voicemails, processed, skipped, failed, created_at,
+        SELECT id, mailbox_email, voicemails, processed, skipped, failed, created_at,
                extract(epoch FROM created_at - lag(created_at) OVER (ORDER BY created_at)) AS since_prev
         FROM voicemail_runs
         WHERE ${scope}
       )
       SELECT id, voicemails, processed, skipped, failed,
+             mailbox_email AS "mailboxEmail",
              created_at AS "createdAt",
              coalesce(since_prev, 0)::int AS "sincePreviousSeconds"
       FROM ordered
