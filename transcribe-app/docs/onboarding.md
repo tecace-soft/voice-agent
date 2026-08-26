@@ -50,14 +50,24 @@ You'll need an `EMAIL_LINK_TEMPLATE` for Comcast, because the one in `.env.examp
 `{gm_msgid}` comes from `X-GM-MSGID`, a Gmail IMAP extension that no other provider sends. For
 anything else the usable placeholders are `{uid}`, `{mailbox}` and `{message_id}`.
 
-To work out whether Comcast has one at all:
+Don't work it out by eye — there's a script for it:
 
-- Open a single voicemail in Comcast webmail and watch the address bar.
-- **If the URL changes per message** and contains an identifier, template it — put `{uid}` where the
-  message id sits and `{mailbox}` where the folder does.
-- **If the URL doesn't change** (a single-page webmail that doesn't route per message, which is
-  common), there is no template to write. **Leave `EMAIL_LINK_TEMPLATE` empty.** The "Open email"
-  column is then blank and everything else works exactly the same — it is not a blocker.
+```bash
+# 1. open one voicemail in Comcast webmail
+# 2. copy the URL out of the address bar
+python scripts/checks/derive_link_template.py "<the url you copied>"
+```
+
+It reads the recent voicemails over IMAP, finds the one whose identifiers appear in that URL, and
+prints the finished line to paste into `.env` — handling the encoding along the way (a Message-ID
+arrives as `<abc@host>` but reaches a URL as `abc%40host`, which is easy to miss by hand).
+
+If it reports that **nothing in the URL identifies the message** — common for single-page webmail
+that doesn't route per message — there is no template to write. **Leave `EMAIL_LINK_TEMPLATE`
+empty.** The "Open email" column is then blank and everything else works exactly the same; it is
+not a blocker.
+
+Either way, run the pipeline once afterwards and actually click the link in the sheet.
 
 ### Step 3 — Only if we can't read Comcast: forward to Gmail
 
