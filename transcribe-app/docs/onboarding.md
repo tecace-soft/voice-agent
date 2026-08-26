@@ -1,12 +1,90 @@
 # Onboarding a customer
 
-Work down this in order. Each stage ends with something you can *check*, so a mistake surfaces at
-the step that caused it rather than three steps later as "no rows in the sheet".
+Work down this in order, starting at §0 — before anything we control. Each stage ends with something
+you can *check*, so a mistake surfaces at the step that caused it rather than three steps later as
+"no rows in the sheet".
 
 One poller instance polls **one mailbox**. If the customer wants several people's voicemails
 transcribed separately, that's a poller instance each — the dashboard already handles many mailboxes.
 
 ---
+
+## 0. Get the voicemails into a mailbox we can read
+
+Everything downstream assumes voicemail audio is already arriving somewhere we can poll. With
+Comcast that's three steps, and the middle one decides the shape of the whole setup.
+
+### Step 1 — Turn on voicemail-to-email at Comcast, with the recording attached
+
+A client who says "voicemails go to my email" has often enabled the *notification* version instead:
+an email saying "you have a new voicemail", with no audio or a link into a portal. That is useless
+to us — we need the file.
+
+Where the setting lives depends on the product, and Comcast moves these menus, so look for the
+setting rather than an exact path:
+
+- **Xfinity Voice** (residential): Xfinity account → Voice / Voicemail settings → send voicemail to
+  an email address.
+- **Comcast Business VoiceEdge**: the VoiceEdge portal, under that user's voicemail settings →
+  receive a copy by email.
+
+**Check it yourself:** leave a test voicemail, open the message in the Comcast inbox, and confirm
+there's a playable audio attachment on it. Don't take their word for it.
+
+### Step 2 — Can we read the Comcast mailbox directly?
+
+This is the decision point. Polling Comcast directly is the better setup — one less link to break,
+and the sheet's `Received` time stays exactly as Comcast sent it. Find out before you set up any
+forwarding:
+
+1. Have them switch on **third-party access** in the Xfinity email settings. No IMAP client can
+   connect until that's on. It's the user's own setting, not an admin's.
+2. Get the **account password** — Comcast has no app passwords.
+3. Point a `.env` at it (`IMAP_PROVIDER=comcast`, their address and password) and run
+   `python scripts/checks/verify_imap.py`.
+
+**If it logs in → poll Comcast directly.** Skip step 3 entirely; the mailbox in §3 is the Comcast
+one, and the dashboard account in §5 uses the Comcast address.
+
+You'll need an `EMAIL_LINK_TEMPLATE` for Comcast, because the one in `.env.example` is Gmail-only:
+`{gm_msgid}` comes from `X-GM-MSGID`, a Gmail IMAP extension that no other provider sends. For
+anything else the usable placeholders are `{uid}`, `{mailbox}` and `{message_id}`.
+
+To work out whether Comcast has one at all:
+
+- Open a single voicemail in Comcast webmail and watch the address bar.
+- **If the URL changes per message** and contains an identifier, template it — put `{uid}` where the
+  message id sits and `{mailbox}` where the folder does.
+- **If the URL doesn't change** (a single-page webmail that doesn't route per message, which is
+  common), there is no template to write. **Leave `EMAIL_LINK_TEMPLATE` empty.** The "Open email"
+  column is then blank and everything else works exactly the same — it is not a blocker.
+
+### Step 3 — Only if we can't read Comcast: forward to Gmail
+
+If `verify_imap.py` can't log in, put a Gmail account in the middle:
+
+```
+phone  →  Comcast voicemail-to-email  →  Comcast inbox  →  forward  →  Gmail  →  us
+```
+
+Comcast webmail → Settings → auto-forward, pointed at the Gmail address (keeping a copy or not is
+up to them). Then leave a second test voicemail and confirm it arrives in **Gmail** with the
+attachment intact.
+
+From here the rest of the page is the Gmail path: the mailbox in §3 is the Gmail one, the dashboard
+account in §5 uses the Gmail address, and `EMAIL_LINK_TEMPLATE` is the Gmail template already in
+`.env.example`.
+
+> **Prefer a plain auto-forward over "forward as attachment."** Either will work — we look inside
+> nested messages, so the audio is still found — but a forward-as-attachment creates a *new* message
+> with its own `Date`, and that becomes the sheet's `Received` time instead of when the caller
+> actually rang. A straight auto-forward preserves the original.
+
+### Verify
+
+A voicemail you leave right now appears in the mailbox you settled on — Comcast or Gmail — within a
+minute or two, with an audio attachment you can play, and `verify_imap.py` can log in to it. Until
+both are true, nothing further on this page will work.
 
 ## 1. What to ask the customer for
 
@@ -17,17 +95,38 @@ Three things. Everything else on this page is ours to do — don't put any of it
 | **The mailbox address** voicemails land in, and an **app password** for it | The app password is the credential we read the mailbox with. Google only issues one once **2-Step Verification is on** for that account, so if they don't have the option, that's why — and a Workspace admin can block app passwords entirely. |
 | **A link to the Google Sheet**, shared with our service account as **Editor** | Send them the `client_email` from our key (ends `…iam.gserviceaccount.com`) and ask them to share the sheet with it. Viewer is not enough — we append rows. Adding our Cloud *project* is not the same thing, and it's what produces the 403. |
 | **One sample voicemail email**, forwarded | Tells you whether this will work at all before you promise anything — see §2. |
+| **IMAP switched on** — *only if it applies to them* | Depends entirely on the provider; see below. Ask for it up front when it applies, because it can need an admin and you don't want to discover that at §4. |
 
 Two things to confirm in passing, not to make them go and find:
 
 - **Their timezone**, if it isn't Pacific — it sets the sheet's `Received` column and the dashboard's "today".
 - **Who else needs to see the dashboard.** Everyone signing in sees only the mailbox matching their own address, so two people on one mailbox means one of them needs an admin account from us.
 
+### Does this customer need IMAP switched on?
+
+We read the mailbox over IMAP. Their voicemail system *delivers* mail in over SMTP — a different
+direction that needs nothing enabled — so pointing voicemails at the mailbox only covers half of it.
+Whether IMAP needs enabling is entirely a provider question:
+
+| Provider | What to ask for |
+| --- | --- |
+| **Personal Gmail** | Nothing. Google retired the on/off setting; IMAP is always on. Don't send them looking for it. Auth is an **app password**. |
+| **Comcast / Xfinity** | A **third-party access** setting in Xfinity email settings has to be on before any IMAP client can connect. It's the user's own setting, so they can fix it themselves. Auth is the **account password** — Comcast has no app passwords. |
+| **Google Workspace** | An **admin** can disable IMAP per organisational unit — Admin console → Apps → Google Workspace → Gmail → End user access. If it's off, only their admin can change it. |
+| **Microsoft 365 / Outlook.com** | ⛔ **Not supported.** Microsoft retired basic auth for IMAP and requires OAuth2, which we don't implement — see below. |
+| **Zoho, Yahoo, iCloud, cPanel hosts** | Usually a per-account toggle in the mail settings, and on some of these it is **off by default** — worth asking before you start. |
+
+**We authenticate with plain IMAP LOGIN.** There's no OAuth in the poller, so a provider that has
+retired basic auth can't be polled at all — no setting on their side fixes it. If a customer is on
+Microsoft 365 or Outlook.com, the options are to route voicemails to a mailbox we *can* poll (a
+Gmail account, as in §0) or to build OAuth support, which is real work rather than configuration.
+
+`verify_imap.py` in §4 is the arbiter either way: it fails at login if IMAP is blocked, rather than
+returning zero messages.
+
 ### Don't ask them for these
 
 - **The sheet ID** — it's in the link they send; pull it out yourself.
-- **Anything about IMAP.** Google retired the on/off setting for personal Gmail and it's always on
-  now. If access genuinely fails, §4 catches it and the answer is their Workspace admin, not them.
 - **Anything on our side**: `GEMINI_API_KEY`, the service-account key, `TRANSCRIBE_INGEST_KEY`,
   `BACKEND_URL`, the webmail link template.
 
@@ -92,9 +191,9 @@ If `verify_imap.py` **reports 0 voicemails** but the mailbox has some: check `IM
 then the `VOICEMAIL_FROM`/`VOICEMAIL_SUBJECT` filters — a filter that doesn't match is the usual
 cause.
 
-If it **can't log in at all** and you're sure the app password is right, their Workspace admin has
-IMAP disabled for the organisation. That's the only remaining place it can be switched off, and the
-only point at which IMAP is worth mentioning to anyone.
+If it **can't log in at all** and you're sure the app password is right, IMAP is switched off for
+that account — see the provider table in §1 for who can turn it back on. On personal Gmail this
+isn't possible, so look at the password instead.
 
 ## 5. Create their dashboard account
 

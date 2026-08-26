@@ -143,6 +143,11 @@ def _audio_attachments(msg: Message) -> list[AudioAttachment]:
 def _login(conn: imaplib.IMAP4, user: str, password: str) -> None:
     """Log in, tolerating a non-ASCII password (e.g. one containing a Korean character).
 
+    This is plain IMAP LOGIN — basic auth. Gmail accepts it with an app password and Comcast with
+    the account password (once third-party access is enabled), but Microsoft 365 and Outlook.com
+    have retired basic auth for IMAP and need OAuth2, which would be a real piece of work rather
+    than a config change.
+
     Two things trip up non-ASCII credentials: (1) imaplib encodes the LOGIN command with the
     connection's codec, which defaults to ASCII — the caller sets it to UTF-8 so the password can
     be sent at all; (2) the same character can be stored on the server in a different Unicode
