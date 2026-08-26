@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { listAccounts } from "./api/backend";
+import type { Role } from "./api/types";
 
 // Who a mailbox address belongs to.
 //
@@ -8,15 +9,20 @@ import { listAccounts } from "./api/backend";
 // per session rather than once per component — a cached promise, not a cached result, so
 // components mounting at the same moment join the same request instead of racing it.
 
-let pending: Promise<Map<string, string>> | null = null;
+export interface AccountInfo {
+  name: string;
+  role: Role;
+}
 
-function loadNames(): Promise<Map<string, string>> {
+let pending: Promise<Map<string, AccountInfo>> | null = null;
+
+function loadAccounts(): Promise<Map<string, AccountInfo>> {
   if (!pending) {
     pending = listAccounts()
-      .then((accounts) => new Map(accounts.map((a) => [a.email, a.name])))
+      .then((accounts) => new Map(accounts.map((a) => [a.email, { name: a.name, role: a.role }])))
       .catch(() => {
         pending = null; // let a later mount retry rather than caching the failure
-        return new Map<string, string>();
+        return new Map<string, AccountInfo>();
       });
   }
   return pending;
@@ -28,18 +34,28 @@ export function forgetAccountNames(): void {
   pending = null;
 }
 
-export function useAccountNames(): Map<string, string> {
-  const [names, setNames] = useState<Map<string, string>>(new Map());
+// email -> { name, role }. Everything below derives from this one cached fetch.
+export function useAccounts(): Map<string, AccountInfo> {
+  const [accounts, setAccounts] = useState<Map<string, AccountInfo>>(new Map());
 
   useEffect(() => {
     let active = true;
-    void loadNames().then((map) => active && setNames(map));
+    void loadAccounts().then((map) => active && setAccounts(map));
     return () => {
       active = false;
     };
   }, []);
 
-  return names;
+  return accounts;
+}
+
+// Just the names, for the places that only display who a mailbox belongs to.
+export function useAccountNames(): Map<string, string> {
+  const accounts = useAccounts();
+  return useMemo(
+    () => new Map([...accounts].map(([email, info]) => [email, info.name])),
+    [accounts],
+  );
 }
 
 // How a mailbox reads when we lead with the person: their name if we know it, otherwise the address

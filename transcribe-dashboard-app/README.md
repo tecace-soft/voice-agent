@@ -94,7 +94,8 @@ A sidebar shell (rail → header → KPI row → chart → table) with four view
 - **Overview** — four KPI cards (total transcribed, today, last 7 days, success rate) each with a
   trend badge; a per-run area chart with an "all / last 30 / last 10 runs" range picker; and a
   tabbed run table (recent · all · failed · empty passes) with column toggles and pagination.
-- **Per person** (admins) — how much each person is getting: transcribed, share of the total,
+- **Per person** (admins) — how much each *user* is getting (admin accounts are left out: no mailbox
+  is polled for them, so listing them all as "No data" would be a permanent row of false alarms): transcribed, share of the total,
   today, last 7 days, found, failed, runs and last run, one row per mailbox and ordered by volume.
   It joins the mailboxes that have reported data against the accounts that can sign in, so the
   mismatches are visible: **No account** is data nobody but an admin can see, **No data** is someone

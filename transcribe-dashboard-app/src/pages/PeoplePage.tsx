@@ -5,7 +5,7 @@ import { accountErrorMessage } from "../auth";
 import { TabBar, type TabDef } from "../components/TabBar";
 import { IconAlert } from "../icons";
 import { formatDateTime, formatMailbox } from "../lib";
-import { useAccountNames } from "../people";
+import { useAccounts } from "../people";
 
 // How much each person is getting. Admin-only.
 //
@@ -13,6 +13,10 @@ import { useAccountNames } from "../people";
 // and the accounts that can sign in — because the interesting cases are the ones that DON'T pair
 // up: a mailbox nobody can see, or a person who signs in to an empty dashboard. Those are
 // configuration mistakes that are otherwise invisible until somebody complains.
+//
+// ADMIN accounts are left out of the second list. Nobody polls a mailbox for an admin, so listing
+// them all as "No data" would be a permanent row of false alarms drowning the real ones. An admin
+// who somehow DOES have voicemail data still appears, because hiding real data would be worse.
 
 type Row = {
   key: string;
@@ -29,8 +33,8 @@ export function PeoplePage({ onPick }: { onPick?: (mailbox: MailboxScope) => voi
   const [mailboxes, setMailboxes] = useState<MailboxSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>("all");
-  // email -> name, from the shared lookup rather than another trip for the account list
-  const accounts = useAccountNames();
+  // email -> { name, role }, from the shared lookup rather than another trip for the account list
+  const accounts = useAccounts();
 
   const load = useCallback(() => {
     listMailboxes()
@@ -54,15 +58,16 @@ export function PeoplePage({ onPick }: { onPick?: (mailbox: MailboxScope) => voi
       return {
         key: m.mailboxEmail ?? "unattributed",
         email: m.mailboxEmail,
-        name: (m.mailboxEmail && accounts.get(m.mailboxEmail)) || null,
+        name: (m.mailboxEmail && accounts.get(m.mailboxEmail)?.name) || null,
         data: m,
       };
     });
 
-    // accounts that have never had a voicemail reported for them
+    // accounts that have never had a voicemail reported for them — admins excluded, since that is
+    // their normal state rather than something to fix
     const withoutData: Row[] = [...accounts.entries()]
-      .filter(([email]) => !seen.has(email))
-      .map(([email, name]) => ({ key: email, email, name, data: null }));
+      .filter(([email, info]) => !seen.has(email) && info.role !== "admin")
+      .map(([email, info]) => ({ key: email, email, name: info.name, data: null }));
 
     return [...withData, ...withoutData];
   }, [mailboxes, accounts]);
@@ -85,8 +90,8 @@ export function PeoplePage({ onPick }: { onPick?: (mailbox: MailboxScope) => voi
           <div>
             <div className="card-title ta-headline-2">Per person</div>
             <div className="card-sub ta-caption-1">
-              Voicemail volume by mailbox, matched to the account that can see it ·{" "}
-              {totalProcessed.toLocaleString()} transcribed in total
+              Voicemail volume by mailbox, matched to the account that can see it · admin accounts
+              are left out · {totalProcessed.toLocaleString()} transcribed in total
             </div>
           </div>
           <TabBar tabs={tabs} active={tab} onChange={setTab} label="Which people to show" />
@@ -199,7 +204,8 @@ export function PeoplePage({ onPick }: { onPick?: (mailbox: MailboxScope) => voi
       <p className="muted ta-caption-1 view-foot">
         Voicemail data is matched to a person by email: the mailbox the transcribe app fetched from
         has to be the address they sign in with. <strong>No account</strong> means data nobody but an
-        admin can see; <strong>No data</strong> means someone signs in to an empty dashboard.
+        admin can see; <strong>No data</strong> means someone signs in to an empty dashboard. Admin
+        accounts aren't listed — no mailbox is polled for them, so they'd never have data to show.
       </p>
     </div>
   );
