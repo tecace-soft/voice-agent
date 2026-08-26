@@ -36,6 +36,23 @@ The last admin can't be demoted or removed.
 the session; any 401 (expired token, or one revoked with `bun run auth revoke`) drops straight back
 to the sign-in screen. The signed-in person shows at the bottom of the sidebar, with sign-out.
 
+## The URL
+
+What's on screen lives in the URL hash, so a refresh stays where you were rather than dropping back
+to Overview:
+
+```
+#/analytics
+#/overview?mailbox=sam%40tecace.com
+#/overview?mailbox=unattributed
+```
+
+That also makes browser Back/Forward walk the views you visited, and a view something you can send
+to someone — open a link while signed out and you land on it after signing in. A hash is used rather
+than a real path so no server rewrite is involved and a stale link can't 404. An unknown view falls
+back to Overview, and `?mailbox=` is ignored for a `user` (the backend pins them to their own
+mailbox regardless). Lives in `src/routing.ts`.
+
 ## Whose data you see
 
 Voicemail data is attributed to the mailbox the transcribe-app fetched it from, and matched to
@@ -48,8 +65,8 @@ people by email:
   the runs reported before mailboxes were recorded ("Unattributed"). It scopes every view, Analytics
   included.
 
-When an admin is looking at **all** mailboxes, **Overview** and **Daily activity** become one
-collapsible card per person instead of everyone's numbers blended together. The closed card carries
+When an admin is looking at **all** mailboxes, **Overview**, **Analytics** and **Daily activity**
+all become one collapsible card per person instead of everyone's numbers blended together. The closed card carries
 that person's headline figures (transcribed, today, last 7 days, failed) from the summary already
 loaded; opening it fetches only their data and renders the very same page they would see for
 themselves. Several can be open at once, and re-opening reuses what was already fetched. Narrow to a
@@ -83,8 +100,9 @@ A sidebar shell (rail → header → KPI row → chart → table) with four view
   mismatches are visible: **No account** is data nobody but an admin can see, **No data** is someone
   signing in to an empty dashboard. A "Needs attention" tab isolates just those, and clicking a
   person scopes the whole dashboard to them.
-- **Analytics** — the operational view, over the app's whole history rather than the 60-run window
-  the other pages read, and broken out **by session rather than by day**. Headline rates (success,
+- **Analytics** — one person's operational view, over their whole history rather than the 60-run
+  window the other pages read, and broken out **by session rather than by day**. A user sees only
+  their own; an admin gets a card per person. Headline rates (success,
   already-handled, typical gap between runs with the longest stall, share of passes that found
   nothing), then **Transcribed sessions**: every run that transcribed something as its own entry
   with its own found / transcribed / already-handled / failed, success rate, share that was new

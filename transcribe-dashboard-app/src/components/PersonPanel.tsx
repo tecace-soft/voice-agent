@@ -16,10 +16,14 @@ export function PersonPanel({
   mailbox,
   accountName,
   children,
+  body,
 }: {
   mailbox: MailboxSummary;
   accountName?: string | null;
-  children: (data: TranscribeStats) => ReactNode;
+  /** Body that needs this person's stats — fetched on first open and kept afterwards. */
+  children?: (data: TranscribeStats) => ReactNode;
+  /** Body that loads its own data (Analytics does). Rendered on open; no stats fetch happens. */
+  body?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<TranscribeStats | null>(null);
@@ -32,6 +36,7 @@ export function PersonPanel({
   function toggle() {
     const next = !open;
     setOpen(next);
+    if (body) return; // that body fetches whatever it needs itself
     if (!next || data || loading) return; // already have it, or on the way
 
     setLoading(true);
@@ -92,9 +97,13 @@ export function PersonPanel({
 
       {open && (
         <div className="person-panel-body">
-          {loading && <p className="muted ta-body-2 panel-status">Loading {label}…</p>}
-          {error && <p className="error ta-body-2">{error}</p>}
-          {data && children(data)}
+          {body ?? (
+            <>
+              {loading && <p className="muted ta-body-2 panel-status">Loading {label}…</p>}
+              {error && <p className="error ta-body-2">{error}</p>}
+              {data && children?.(data)}
+            </>
+          )}
         </div>
       )}
     </section>

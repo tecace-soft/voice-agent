@@ -17,6 +17,7 @@ import { PersonBoardsPage } from "./pages/PersonBoardsPage";
 import { RunsPage } from "./pages/RunsPage";
 import { SetupPage } from "./pages/SetupPage";
 import { useAccountNames } from "./people";
+import { useRoute } from "./routing";
 import { derive } from "./stats";
 import { ThemeToggle } from "./theme";
 import { DashboardSkeleton } from "./ui";
@@ -33,7 +34,7 @@ const STANDALONE_VIEWS = new Set<ViewId>([
 
 // Overview and Daily activity fetch per person when an admin is looking at everyone, so they don't
 // wait on (or fail with) the shared all-mailboxes stats call either.
-const perPersonViews = new Set<ViewId>(["overview", "activity"]);
+const perPersonViews = new Set<ViewId>(["overview", "activity", "analytics"]);
 
 const VIEW_TITLES: Record<ViewId, string> = {
   overview: "Overview",
@@ -75,20 +76,24 @@ function useStats(mailbox: MailboxScope) {
 
 // The signed-in dashboard.
 function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void }) {
-  const [view, setView] = useState<ViewId>("overview");
+  // The view and the mailbox both live in the URL, so a refresh stays where you were and the
+  // browser's Back button walks the views you visited.
+  const [{ view, mailbox: routeMailbox }, navigate] = useRoute();
   // Open by default on a desktop-width screen; on narrow screens the rail is an overlay, so it
   // starts closed and the header's toggle brings it in.
   const [navOpen, setNavOpen] = useState(() => window.innerWidth >= 900);
-  // Which mailbox is on screen. Admins choose; for everyone else this stays undefined and the
-  // backend scopes them to their own address.
-  const [mailbox, setMailbox] = useState<MailboxScope>(undefined);
   const accountNames = useAccountNames();
+  // Which mailbox is on screen. Admins choose; for everyone else it stays undefined and the backend
+  // scopes them to their own address — so a ?mailbox= in the URL is ignored for a `user` rather than
+  // silently doing nothing.
+  const isAdmin = user.role === "admin";
+  const mailbox: MailboxScope = isAdmin ? routeMailbox : undefined;
+  const setMailbox = useCallback((next: MailboxScope) => navigate({ mailbox: next }), [navigate]);
   const { data, loading, error, refresh } = useStats(mailbox);
 
   // How many notes are waiting on the team, for the sidebar badge. Admins only — it's the one
   // number a `user` isn't allowed to see, and it's cheap enough to refresh with everything else.
   const [openFeedback, setOpenFeedback] = useState(0);
-  const isAdmin = user.role === "admin";
   useEffect(() => {
     if (!isAdmin) return;
     let active = true;
@@ -125,7 +130,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
 
   const failedCount = data ? derive(data).failedRuns.length : 0;
   const openView = (id: ViewId) => {
-    setView(id);
+    navigate({ view: id });
     if (window.innerWidth < 900) setNavOpen(false);
   };
 
@@ -197,9 +202,8 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             ) : (
               <p className="muted ta-body-2">Only an admin can see everyone's totals.</p>
             ))}
-          {view === "analytics" && (
-            <AnalyticsPage mailbox={mailbox} showMailbox={showMailbox} onPickMailbox={setMailbox} />
-          )}
+          {view === "analytics" &&
+            (showMailbox ? <PersonBoardsPage kind="analytics" /> : <AnalyticsPage mailbox={mailbox} />)}
           {view === "activity" &&
             (showMailbox ? <PersonBoardsPage kind="activity" /> : data && <ActivityPage data={data} />)}
           {data && view === "runs" && <RunsPage data={data} showMailbox={showMailbox} />}

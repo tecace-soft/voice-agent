@@ -5,6 +5,7 @@ import { accountErrorMessage } from "../auth";
 import { PersonPanel } from "../components/PersonPanel";
 import { useAccountNames } from "../people";
 import { ActivityPage } from "./ActivityPage";
+import { AnalyticsPage } from "./AnalyticsPage";
 import { OverviewPage } from "./OverviewPage";
 
 // The admin's "all mailboxes" version of Overview and Daily activity: one collapsible card per
@@ -15,7 +16,7 @@ import { OverviewPage } from "./OverviewPage";
 // Scoped to a single mailbox (or signed in as a `user`), the page is rendered directly and none of
 // this is involved.
 
-export function PersonBoardsPage({ kind }: { kind: "overview" | "activity" }) {
+export function PersonBoardsPage({ kind }: { kind: "overview" | "activity" | "analytics" }) {
   const [mailboxes, setMailboxes] = useState<MailboxSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Names come from the shared lookup, so this page doesn't re-fetch the account list that the
@@ -61,8 +62,9 @@ export function PersonBoardsPage({ kind }: { kind: "overview" | "activity" }) {
     <div className="view">
       <p className="muted ta-caption-1 boards-intro">
         {mailboxes.length} {mailboxes.length === 1 ? "person" : "people"} with voicemail data, busiest
-        first. Open one to see their {kind === "overview" ? "overview" : "daily activity"} — or pick a
-        single mailbox in the header to view it on its own.
+        first. Open one to see their{" "}
+        {kind === "overview" ? "overview" : kind === "activity" ? "daily activity" : "analytics"} — or
+        pick a single mailbox in the header to view it on its own.
       </p>
 
       {mailboxes.map((mailbox) => (
@@ -70,18 +72,22 @@ export function PersonBoardsPage({ kind }: { kind: "overview" | "activity" }) {
           key={mailbox.mailboxEmail ?? "unattributed"}
           mailbox={mailbox}
           accountName={nameFor(mailbox.mailboxEmail)}
+          // Analytics reads its own endpoint, so it is handed the scope and left to fetch; the
+          // other two are rendered over the stats the panel loads.
+          body={kind === "analytics" ? <AnalyticsPage mailbox={mailbox.mailboxEmail} /> : undefined}
         >
-          {(data) =>
-            kind === "overview" ? (
-              <OverviewPage
-                data={data}
-                mailboxLabel={mailbox.mailboxEmail ?? "Unattributed"}
-                showMailbox={false}
-              />
-            ) : (
-              <ActivityPage data={data} />
-            )
-          }
+          {kind === "analytics"
+            ? undefined
+            : (data) =>
+                kind === "overview" ? (
+                  <OverviewPage
+                    data={data}
+                    mailboxLabel={mailbox.mailboxEmail ?? "Unattributed"}
+                    showMailbox={false}
+                  />
+                ) : (
+                  <ActivityPage data={data} />
+                )}
         </PersonPanel>
       ))}
     </div>
