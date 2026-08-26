@@ -182,7 +182,11 @@ TRANSCRIBE_INGEST_KEY=<matches the backend>
 POLL_INTERVAL_SECONDS=300
 ```
 
-**`SHEET_RANGE` needs the tab to exist.** The sheet ID alone isn't enough.
+**`SHEET_RANGE` needs the tab to exist**, spelled exactly as the tab is — the sheet ID alone isn't
+enough, and Sheets matches the name character for character. A tab name containing a space has to
+be quoted: `SHEET_RANGE='Voicemail 2026'!A1`. Get it wrong and the first real run dies with
+`Unable to parse range: <tab>!A1:A1`; `verify_sheets.py` catches it first and prints the tab names
+the sheet actually has.
 
 ## 4. Check each connection separately
 
@@ -190,7 +194,7 @@ Three scripts, each isolating one failure:
 
 ```bash
 python scripts/checks/verify_imap.py                      # login works, and how many voicemails are visible
-python scripts/checks/verify_sheets.py                    # credentials + sharing + sheet id (read-only)
+python scripts/checks/verify_sheets.py                    # credentials + sharing + sheet id + tab (read-only)
 python scripts/checks/verify_extract.py sample.wav        # transcription quality, needs only GEMINI_API_KEY
 ```
 
@@ -272,6 +276,7 @@ Re-running costs a Gemini call per voicemail and only reaches back as far as `IM
 | --- | --- |
 | Sheet stays empty, no errors | `IMAP_SINCE_DAYS`; the `VOICEMAIL_FROM`/`SUBJECT` filters; that the recording is an attachment |
 | 403 from Sheets | The sheet isn't shared with the service account's `client_email` as **Editor** |
+| `Unable to parse range: <tab>!A1:A1` | No tab by that name. `verify_sheets.py` now lists the real ones |
 | Customer signs in to an empty dashboard | Account email ≠ polled mailbox. **Per person** names it |
 | Dashboard rows say "Unattributed" | The poller is running an older build that doesn't send `mailboxEmail` |
 | Every `Received` is the same timestamp | An old build — it used to record transcription time, not arrival |

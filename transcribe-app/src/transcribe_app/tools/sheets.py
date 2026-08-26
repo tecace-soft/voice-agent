@@ -54,10 +54,38 @@ class SheetWriter:
             self._service = build("sheets", "v4", credentials=creds, cache_discovery=False)
         return self._service
 
-    def _tab(self) -> str:
-        """The sheet/tab name from SHEET_RANGE ("Voicemails!A1" -> "Voicemails")."""
+    def tab_name(self) -> str:
+        """The sheet/tab name from SHEET_RANGE ("Voicemails!A1" -> "Voicemails").
+
+        Surrounding quotes are dropped: a tab whose name has a space has to be written
+        `'Voicemail 2026'!A1` in the range, but the bare name is what the tab list holds.
+        """
         rng = self._cfg.sheet_range
-        return rng.split("!", 1)[0] if "!" in rng else rng
+        tab = (rng.split("!", 1)[0] if "!" in rng else rng).strip()
+        if len(tab) >= 2 and tab.startswith("'") and tab.endswith("'"):
+            # Quoted form: drop the wrapper and undo A1 notation's doubled inner quotes, so a tab
+            # really called "Bob's" comes back as Bob's rather than Bob''s.
+            tab = tab[1:-1].replace("''", "'")
+        return tab
+
+    def _tab(self) -> str:
+        """The tab name quoted for use in an A1 range.
+
+        Always quoted, not just when the name has a space: quoting is harmless for a plain name
+        and required for anything with a space or punctuation, so there is no case worth
+        distinguishing. Internal single quotes double, per A1 notation.
+        """
+        return "'" + self.tab_name().replace("'", "''") + "'"
+
+    def tabs(self) -> list[str]:
+        """Every tab name in the spreadsheet, in sheet order."""
+        meta = (
+            self._sheets()
+            .spreadsheets()
+            .get(spreadsheetId=self._cfg.google_sheet_id, fields="sheets.properties.title")
+            .execute()
+        )
+        return [s["properties"]["title"] for s in meta.get("sheets", [])]
 
     def _header(self) -> list[str]:
         """HEADER with the timezone named on the Received column, e.g. "Received (Pacific)"."""
@@ -84,7 +112,7 @@ class SheetWriter:
                 valueInputOption="USER_ENTERED",
                 body={"values": [self._header()]},
             ).execute()
-            log.info("wrote header row to %s", tab)
+            log.info("wrote header row to %s", self.tab_name())
 
     def check(self) -> str:
         """Read-only reachability check: returns the spreadsheet's title. Confirms in one call
