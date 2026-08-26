@@ -115,6 +115,9 @@ class Config:
     # ---- Poller (scripts/run_poller.py — the always-on mode) ----
     # How often the poller runs a pass, in seconds. Default 5 minutes; floored to 30s in the poller.
     poll_interval_seconds: float
+    # Timezone the sheet's "Received" column is written in — the customer's local time, so the
+    # column reads the way they think about their day. Same name as the backend's setting.
+    business_timezone: str
     # ---- Runtime ----
     # Where we remember which (message, attachment) pairs are already done, so re-runs are
     # idempotent without mutating the mailbox.
@@ -154,6 +157,7 @@ class Config:
             transcribe_ingest_key=_optional("TRANSCRIBE_INGEST_KEY"),
             mailbox_email_override=_optional("VOICEMAIL_MAILBOX_EMAIL"),
             poll_interval_seconds=float(_optional("POLL_INTERVAL_SECONDS", "300")),
+            business_timezone=_optional("BUSINESS_TIMEZONE") or "America/Los_Angeles",
             state_file=_optional("STATE_FILE") or str(PROJECT_ROOT / ".processed.json"),
             request_timeout=float(_optional("REQUEST_TIMEOUT_SECONDS", "60")),
         )

@@ -27,6 +27,17 @@ Two consequences worth planning for: every voicemail still within `IMAP_SINCE_DA
 again, so each **appends a fresh row to the sheet** (clear the sheet, or point `SHEET_RANGE` at a
 test tab, if you want a clean result), and each re-transcription is another Gemini call.
 
+## The sheet's "Received" column
+
+It carries **when the voicemail arrived** — read from the email's own `Date` header — converted to
+`BUSINESS_TIMEZONE` (default `America/Los_Angeles`) and written as `2026-08-25 11:22:16`. The header
+names the zone, e.g. `Received (Pacific)`.
+
+Two deliberate choices: it is the arrival time rather than the time we transcribed it (otherwise a
+backfill stamps every row with the moment the backfill ran), and the format is one Google Sheets
+parses as a real datetime, so the column sorts and filters. A friendlier "Aug 25, 2026 11:22 AM PDT"
+would land in the cell as text and sort alphabetically.
+
 ## Reporting
 
 Each finished pass POSTs its counts to `<BACKEND_URL>/transcribe/runs` together with **the mailbox

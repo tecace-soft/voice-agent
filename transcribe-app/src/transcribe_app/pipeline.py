@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import Config
+from .timefmt import format_received
 from .tools import (
     AudioAttachment,
     EmailSource,
@@ -62,7 +63,11 @@ def _key(vm: VoicemailEmail, att: AudioAttachment) -> str:
 
 
 def build_row(
-    vm: VoicemailEmail, att: AudioAttachment, info: VoicemailInfo, email_link: str = ""
+    vm: VoicemailEmail,
+    att: AudioAttachment,
+    info: VoicemailInfo,
+    email_link: str = "",
+    tz: str = "America/Los_Angeles",
 ) -> list[str]:
     """One spreadsheet row — column order must match sheets.HEADER."""
     # A HYPERLINK formula renders as a clickable cell (valueInputOption is USER_ENTERED). "Open
@@ -70,7 +75,9 @@ def build_row(
     # from the email — we never store or serve a copy.
     open_email = f'=HYPERLINK("{email_link}","Open email")' if email_link else ""
     return [
-        datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        # When the voicemail ARRIVED (from the email's own Date header), in local time — not when
+        # we happened to transcribe it. See timefmt.format_received.
+        format_received(vm.date, tz),
         vm.from_addr,
         info.caller_name or "",
         info.phone_number or "",
@@ -126,5 +133,5 @@ class Pipeline:
             mailbox=self._cfg.imap_mailbox,
             gm_msgid=vm.gm_msgid,
         )
-        self._sheet.append_row(build_row(vm, att, info, email_link))
+        self._sheet.append_row(build_row(vm, att, info, email_link, self._cfg.business_timezone))
         log.info("uploaded voicemail from %s (%s)", info.caller_name or vm.from_addr, att.filename)

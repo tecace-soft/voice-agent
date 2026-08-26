@@ -14,13 +14,15 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
 from ..config import Config
+from ..timefmt import timezone_label
 from .google_auth import load_service_credentials
 
 log = logging.getLogger(__name__)
 
 _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-# Column order for every appended row — keep in sync with pipeline.build_row().
+# Column order for every appended row — keep in sync with pipeline.build_row(). The first column's
+# label gets the timezone appended (see _header), so nobody has to guess what "11:22" means.
 HEADER = [
     "Received",
     "From",
@@ -57,6 +59,11 @@ class SheetWriter:
         rng = self._cfg.sheet_range
         return rng.split("!", 1)[0] if "!" in rng else rng
 
+    def _header(self) -> list[str]:
+        """HEADER with the timezone named on the Received column, e.g. "Received (Pacific)"."""
+        label = timezone_label(self._cfg.business_timezone)
+        return [f"{HEADER[0]} ({label})", *HEADER[1:]]
+
     def _ensure_header(self) -> None:
         if self._header_checked:
             return
@@ -75,7 +82,7 @@ class SheetWriter:
                 spreadsheetId=self._cfg.google_sheet_id,
                 range=f"{tab}!A1",
                 valueInputOption="USER_ENTERED",
-                body={"values": [HEADER]},
+                body={"values": [self._header()]},
             ).execute()
             log.info("wrote header row to %s", tab)
 
