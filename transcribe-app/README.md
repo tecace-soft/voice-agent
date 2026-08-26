@@ -4,8 +4,15 @@ Reads **voicemail audio attachments from email** (`.wav`, `.mp3`, `.m4a`, and ot
 transcribes each one, extracts the important details, and appends a row per voicemail to a
 **Google Sheet**.
 
+It reads the mailbox over **IMAP** — the customer's voicemail system delivers mail in over SMTP,
+which is a separate direction and needs nothing enabled; IMAP is how we fetch those messages back
+out again.
+
 It's a batch job: run it by hand or on a schedule. It's idempotent — voicemails it has already
 handled are skipped — and it never modifies the mailbox.
+
+**Setting this up for a customer? Follow [docs/onboarding.md](docs/onboarding.md)** — the
+ordered checklist, with a verification step after each stage.
 
 ## Starting a fresh pass
 
