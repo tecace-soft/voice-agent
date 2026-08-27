@@ -182,16 +182,59 @@ class SheetWriter:
         # start at the anchor column and push whatever is there to the right.
         found = [col for col in mapping.values() if col]
         last_ours = max(found) if found else _col_index(self._anchor_column()) - 1
+
+        inserted, filled = [], []
         for name in missing:
             at = last_ours + 1
-            self._insert_column(at, name)
+            # Prefer empty space over an insert. Inserting shifts every column to the right by one,
+            # so doing it when the next column is already blank moves the client's section for no
+            # reason — and doing it once per new field moves it once per field. A column that is
+            # genuinely empty is just claimed, and nothing downstream of it moves at all.
+            if self._column_free(at):
+                self._sheets().spreadsheets().values().update(
+                    spreadsheetId=self._cfg.google_sheet_id,
+                    range=f"{self._tab()}!{_col_letter(at)}1",
+                    valueInputOption="USER_ENTERED",
+                    body={"values": [[name]]},
+                ).execute()
+                filled.append(f"{name} -> {_col_letter(at)}")
+            else:
+                self._insert_column(at, name)
+                inserted.append(f"{name} -> {_col_letter(at)}")
             mapping[name] = at
             last_ours = at
-        log.info(
-            "inserted %d column(s) into %s after column %s: %s",
-            len(missing), self.tab_name(), _col_letter(last_ours - len(missing)), ", ".join(missing),
-        )
+
+        if filled:
+            log.info("filled empty column(s) in %s: %s", self.tab_name(), ", ".join(filled))
+        if inserted:
+            log.info(
+                "inserted column(s) into %s, shifting later columns right: %s",
+                self.tab_name(), ", ".join(inserted),
+            )
         return mapping
+
+    def _column_free(self, index: int) -> bool:
+        """True when column `index` holds nothing at all — no heading and no data below it.
+
+        The heading row alone isn't enough to judge by: a client column can carry values with no
+        title (and the API trims trailing empties, so it may not even appear in the header row).
+        Claiming such a column would write our values straight into their data.
+        """
+        letter = _col_letter(index)
+        got = (
+            self._sheets()
+            .spreadsheets()
+            .values()
+            .get(
+                spreadsheetId=self._cfg.google_sheet_id,
+                range=f"{self._tab()}!{letter}:{letter}",
+                majorDimension="COLUMNS",
+            )
+            .execute()
+            .get("values", [])
+        )
+        cells = got[0] if got else []
+        return not any(str(c).strip() for c in cells)
 
     def _sheet_id(self) -> int:
         """The tab's numeric id. insertDimension addresses sheets by id, not by name."""
