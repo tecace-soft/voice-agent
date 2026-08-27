@@ -18,6 +18,9 @@ export interface FeedbackRecord {
   authorEmail: string;
   category: FeedbackCategory;
   message: string;
+  // A data URL of an image the author attached, or null. Rendered as-is in an <img>, so the route
+  // that accepts it is responsible for proving it really is an image (see routes/feedback.ts).
+  screenshot: string | null;
   status: FeedbackStatus;
   createdAt: string;
   resolvedAt: string | null;
@@ -31,6 +34,7 @@ const COLUMNS = sql`
   author_email AS "authorEmail",
   category,
   message,
+  screenshot,
   status,
   created_at   AS "createdAt",
   resolved_at  AS "resolvedAt",
@@ -43,15 +47,17 @@ export async function insertFeedback(input: {
   authorEmail: string;
   category: FeedbackCategory;
   message: string;
+  screenshot: string | null;
 }): Promise<FeedbackRecord> {
   const [row] = await sql`
-    INSERT INTO feedback (user_id, author_name, author_email, category, message)
+    INSERT INTO feedback (user_id, author_name, author_email, category, message, screenshot)
     VALUES (
       ${input.userId},
       ${input.authorName},
       ${input.authorEmail},
       ${input.category},
-      ${input.message.trim()}
+      ${input.message.trim()},
+      ${input.screenshot}
     )
     RETURNING ${COLUMNS}
   `;

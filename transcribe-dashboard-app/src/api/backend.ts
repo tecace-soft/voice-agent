@@ -197,9 +197,16 @@ export function removeAccount(id: string): Promise<void> {
 // ---- feedback ----
 
 // Send a note. The backend takes the author from the session, so there's nothing to pass but the
-// note itself.
-export function sendFeedback(category: FeedbackCategory, message: string): Promise<{ feedback: Feedback }> {
-  return request<{ feedback: Feedback }>("POST", "/feedback", { body: { category, message } });
+// note itself. `screenshot` is a data URL the client has already downscaled (see screenshot.ts);
+// it is left out of the body entirely when there isn't one, rather than sent as null.
+export function sendFeedback(
+  category: FeedbackCategory,
+  message: string,
+  screenshot?: string | null,
+): Promise<{ feedback: Feedback }> {
+  return request<{ feedback: Feedback }>("POST", "/feedback", {
+    body: screenshot ? { category, message, screenshot } : { category, message },
+  });
 }
 
 // Your own notes.

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { listAllFeedback, setFeedbackStatus } from "../api/backend";
 import type { Feedback } from "../api/types";
 import { accountErrorMessage } from "../auth";
-import { CategoryBadge, StatusBadge } from "../components/feedbackBits";
+import { CategoryBadge, ScreenshotThumb, StatusBadge } from "../components/feedbackBits";
 import { TabBar, type TabDef } from "../components/TabBar";
 import { IconCheck, IconSignOut } from "../icons";
 import { formatDateTime } from "../lib";
@@ -118,6 +118,9 @@ export function AllFeedbackPage({ onCountChange }: { onCountChange?: (open: numb
                 </div>
 
                 <p className="feedback-message ta-body-2">{note.message}</p>
+                {note.screenshot && (
+                  <ScreenshotThumb src={note.screenshot} author={note.authorName} />
+                )}
 
                 <div className="feedback-actions">
                   {note.status === "resolved" && note.resolvedBy && (

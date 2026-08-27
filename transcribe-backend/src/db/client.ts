@@ -85,6 +85,11 @@ export async function initDb(): Promise<void> {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback (created_at DESC)`;
+  // A pasted screenshot, stored inline as a data URL. Kept in the row rather than in object storage
+  // because feedback is low-volume and this needs no bucket, no signed URLs and no orphan cleanup —
+  // the image is deleted exactly when the note is. The client downscales before upload and the
+  // route caps the length, so a row stays well inside what a TEXT column handles comfortably.
+  await sql`ALTER TABLE feedback ADD COLUMN IF NOT EXISTS screenshot TEXT`;
   await sql`ALTER TABLE feedback DROP CONSTRAINT IF EXISTS feedback_category_check`;
   await sql`
     ALTER TABLE feedback ADD CONSTRAINT feedback_category_check
@@ -118,7 +123,7 @@ async function migrateIfNeeded(): Promise<void> {
     // older version of this schema still gets migrated.
     await sql`SELECT mailbox_email FROM voicemail_runs LIMIT 1`;
     await sql`SELECT role FROM users LIMIT 1`;
-    await sql`SELECT 1 FROM feedback LIMIT 1`;
+    await sql`SELECT screenshot FROM feedback LIMIT 1`;
     return;
   } catch {
     await initDb();

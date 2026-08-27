@@ -80,6 +80,9 @@ export interface Feedback {
   authorEmail: string;
   category: FeedbackCategory;
   message: string;
+  // A data URL for an image the author attached, or null. The backend only ever stores one it has
+  // proved is a raster image, so it is safe to put straight into an <img src>.
+  screenshot: string | null;
   status: FeedbackStatus;
   createdAt: string;
   resolvedAt: string | null;

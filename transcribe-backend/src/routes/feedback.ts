@@ -16,6 +16,20 @@ import {
 // Reading everyone's notes is the admin-only half of this controller; sending one is not.
 const READ_ALL = "Only an admin can read everyone's feedback.";
 
+// A screenshot arrives as a data URL and is written straight into an <img src> by the dashboard,
+// so what counts as acceptable has to be decided here rather than trusted from the client.
+//
+// The allow-list is raster formats only. SVG is deliberately absent: it is a document, not a
+// bitmap — it can carry <script> and external references, and "it's inside an <img> so it can't
+// execute" is a property of today's browsers, not a guarantee worth resting on. Nothing a person
+// screenshots is an SVG anyway, so there is no cost to refusing it.
+const SCREENSHOT_PATTERN = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
+
+// ~2.5 MB of base64 ≈ 1.85 MB of image. The dashboard downscales before it ever gets here, so
+// anything near this ceiling means the client-side resize didn't run — worth rejecting loudly
+// rather than storing. Vercel caps a request body at 4.5 MB, so this stays clear of that too.
+const SCREENSHOT_MAX = 2_500_000;
+
 const categoryField = t.Union([
   t.Literal("bug"),
   t.Literal("idea"),
@@ -32,12 +46,21 @@ export const feedback = new Elysia({ prefix: "/feedback" })
       const user = await authenticate(headers.authorization);
       if (!user) return status(401, UNAUTHORIZED);
 
+      const screenshot = body.screenshot?.trim() || null;
+      if (screenshot && !SCREENSHOT_PATTERN.test(screenshot)) {
+        return status(400, {
+          error: "bad_screenshot",
+          message: "That attachment isn't a PNG, JPEG, WebP or GIF image.",
+        });
+      }
+
       const record = await insertFeedback({
         userId: user.id,
         authorName: user.name,
         authorEmail: user.email,
         category: body.category,
         message: body.message,
+        screenshot,
       });
       return status(201, { feedback: record });
     },
@@ -45,6 +68,7 @@ export const feedback = new Elysia({ prefix: "/feedback" })
       body: t.Object({
         category: categoryField,
         message: t.String({ minLength: 1, maxLength: 4000 }),
+        screenshot: t.Optional(t.String({ maxLength: SCREENSHOT_MAX })),
       }),
     },
   )

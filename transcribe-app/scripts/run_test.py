@@ -1,7 +1,10 @@
 """Run the pipeline against a SCRATCH Google Sheet, without touching the client's setup.
 
-    python scripts/run_test.py --dry-run   # show what it would use, contact nothing
+    python scripts/run_test.py --dry-run   # show what it would use; no mail, no Gemini calls
     python scripts/run_test.py             # one real pass into the test sheet
+
+Every pass re-transcribes every voicemail in the window, so each run costs a Gemini call per
+voicemail and appends a fresh set of rows. Keep IMAP_SINCE_DAYS small in `.env.test`.
 
 The poller is live for a client now, so changes have to be provable before they're deployed. This
 runs the same `Pipeline` the poller runs — same IMAP fetch, same Gemini call, same row builder — but
@@ -25,6 +28,10 @@ FOUR THINGS ARE ISOLATED, and most of them are not obvious:
      production state file is how the poller remembers what it has already transcribed. A test run
      sharing it would mark the client's voicemails as done, and their poller would then skip them
      forever. Those voicemails would never reach their sheet and nothing would look broken.
+
+     Test runs ALWAYS re-transcribe everything they find — there is no flag to turn that off. A
+     test that skipped work because a previous test had done it would be testing the state file
+     rather than the change you just made. The file still gets written; nothing ever reads it.
 
   4. Dashboard reporting, off unless you pass --report. Otherwise test passes would land in the
      client's Transcriptions tab as their own traffic.
@@ -71,13 +78,8 @@ def main() -> int:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Print the resolved settings and stop. Contacts nothing, spends no Gemini calls.",
-    )
-    parser.add_argument(
-        "--skip-seen",
-        action="store_true",
-        help="Skip voicemails this test run already handled. Off by default: re-running the same "
-        "voicemails is the point of a test sheet, and each pass appends fresh rows.",
+        help="Print the resolved settings, confirm the test sheet opens, then stop. No mailbox is "
+        "read and no Gemini calls are made.",
     )
     parser.add_argument(
         "--report",
@@ -160,9 +162,9 @@ def main() -> int:
     print(f"  filters     : {filters}")
     print(f"  sheet       : {cfg.google_sheet_id}")
     print(f"  range       : {cfg.sheet_range}")
-    print(f"  state file  : {cfg.state_file}")
+    print(f"  state file  : {cfg.state_file} (written, never read)")
     print(f"  reporting   : {'ON — ' + cfg.backend_url if cfg.backend_url else 'off'}")
-    print(f"  re-process  : {'no (--skip-seen)' if args.skip_seen else 'yes, every voicemail found'}")
+    print("  re-process  : ALWAYS - every voicemail in the window, every pass")
     print("  client's    : "
           f"mailbox {production.imap_username or '(unset)'} · "
           f"sheet {production.google_sheet_id or '(unset)'}")
@@ -192,10 +194,10 @@ def main() -> int:
     print(f"sheet: ok — '{title}', tab {want!r}\n")
 
     if args.dry_run:
-        print("--dry-run: stopping here. Nothing was fetched, transcribed or written.")
+        print("--dry-run: stopping here. No voicemails fetched, nothing transcribed or written.")
         return 0
 
-    summary = Pipeline(cfg, reprocess=not args.skip_seen).run()
+    summary = Pipeline(cfg, reprocess=True).run()
     print(
         f"\nDone: {summary.processed} written, {summary.skipped} skipped, {summary.failed} failed, "
         f"across {summary.voicemails} voicemail email(s)."

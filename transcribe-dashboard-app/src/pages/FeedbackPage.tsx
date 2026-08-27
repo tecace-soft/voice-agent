@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { listMyFeedback, sendFeedback } from "../api/backend";
 import type { Feedback, FeedbackCategory } from "../api/types";
 import { accountErrorMessage } from "../auth";
-import { CategoryBadge, CATEGORIES, StatusBadge } from "../components/feedbackBits";
+import { CategoryBadge, CATEGORIES, ScreenshotThumb, StatusBadge } from "../components/feedbackBits";
+import { ScreenshotField, useScreenshot } from "../components/ScreenshotField";
 import { IconMessage } from "../icons";
 import { formatDateTime } from "../lib";
+import { imageFromClipboard } from "../screenshot";
 
 // Where anyone signed in writes to the team — a bug, an idea, a question about the numbers. Below
 // the form is what you've already sent, so you can see it landed and whether it's been dealt with.
@@ -16,6 +18,7 @@ export function FeedbackPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const shot = useScreenshot();
 
   const [mine, setMine] = useState<Feedback[] | null>(null);
 
@@ -35,8 +38,9 @@ export function FeedbackPage() {
     setSending(true);
     setError(null);
     try {
-      await sendFeedback(category, message.trim());
+      await sendFeedback(category, message.trim(), shot.value);
       setMessage("");
+      shot.clear();
       setSent(true);
       load();
     } catch (e) {
@@ -60,7 +64,16 @@ export function FeedbackPage() {
           </div>
         </div>
 
-        <form className="feedback-form" onSubmit={onSubmit}>
+        <form
+          className="feedback-form"
+          onSubmit={onSubmit}
+          onPaste={(e) => {
+            const image = imageFromClipboard(e.clipboardData?.items ?? null);
+            if (!image) return; // a normal text paste — leave it to the textarea
+            e.preventDefault();
+            void shot.accept(image);
+          }}
+        >
           {error && (
             <p className="error ta-label-1" role="alert">
               {error}
@@ -104,6 +117,8 @@ export function FeedbackPage() {
             </span>
           </label>
 
+          <ScreenshotField shot={shot} busy={sending} />
+
           <div className="inline-form-actions">
             <button type="submit" className="btn btn-primary" disabled={sending || !message.trim()}>
               {sending ? "Sending…" : "Send feedback"}
@@ -138,6 +153,7 @@ export function FeedbackPage() {
                   <span className="ta-caption-1 muted">{formatDateTime(note.createdAt)}</span>
                 </div>
                 <p className="feedback-message ta-body-2">{note.message}</p>
+                {note.screenshot && <ScreenshotThumb src={note.screenshot} />}
                 {note.status === "resolved" && note.resolvedBy && (
                   <p className="ta-caption-1 muted feedback-resolved">
                     Marked resolved by {note.resolvedBy}

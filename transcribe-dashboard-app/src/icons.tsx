@@ -245,3 +245,27 @@ export const IconAnalytics = (p: IconProps) => (
     <rect x="17" y="14" width="4" height="4" rx="1" />
   </Icon>
 );
+
+export const IconImage = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <circle cx="9" cy="9" r="2" />
+    <path d="m21 15-4.35-4.35a2 2 0 0 0-2.83 0L3 21" />
+  </Icon>
+);
+
+export const IconX = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M18 6 6 18" />
+    <path d="m6 6 12 12" />
+  </Icon>
+);
+
+export const IconExpand = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M15 3h6v6" />
+    <path d="M9 21H3v-6" />
+    <path d="M21 3l-7 7" />
+    <path d="M3 21l7-7" />
+  </Icon>
+);
