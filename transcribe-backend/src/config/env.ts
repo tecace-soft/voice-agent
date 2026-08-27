@@ -32,6 +32,30 @@ const transcribeIngestKey = process.env.TRANSCRIBE_INGEST_KEY?.trim() ?? "";
 
 const nodeEnv = process.env.NODE_ENV ?? "development";
 
+// Monthly transcription allowance, above which the account is billed extra. 0 (the default) means
+// no cap is tracked and the dashboard never mentions one — the app itself is unaffected either way,
+// this is purely so nobody is surprised by a bill.
+const monthlyCap = Number(process.env.TRANSCRIBE_MONTHLY_CAP ?? 0);
+if (!Number.isFinite(monthlyCap) || monthlyCap < 0) {
+  throw new Error("TRANSCRIBE_MONTHLY_CAP must be a non-negative number.");
+}
+
+// What each transcript beyond the allowance costs, in USD. Shown alongside the cap so the number
+// people are approaching has a price attached rather than being an abstract limit. 0 = don't
+// mention money at all. Update this if the rate changes — it is quoted verbatim to the customer.
+const overageRate = Number(process.env.TRANSCRIBE_OVERAGE_RATE ?? 0.15);
+if (!Number.isFinite(overageRate) || overageRate < 0) {
+  throw new Error("TRANSCRIBE_OVERAGE_RATE must be a non-negative number of dollars.");
+}
+
+// How far through the allowance the warning appears. 0.8 = at 80%, which leaves a fifth of the
+// month's headroom to react in. Below this the dashboard shows nothing about the cap at all:
+// a limit displayed permanently is noise, and noise gets ignored on the day it matters.
+const capWarnAt = Number(process.env.TRANSCRIBE_CAP_WARN_AT ?? 0.8);
+if (!Number.isFinite(capWarnAt) || capWarnAt <= 0 || capWarnAt > 1) {
+  throw new Error("TRANSCRIBE_CAP_WARN_AT must be a fraction between 0 and 1 (e.g. 0.8).");
+}
+
 // Secret that signs dashboard session tokens. Required in production — without it nobody could be
 // kept signed in across deploys, and a predictable secret would let anyone mint a valid token.
 // In development an ephemeral one is generated so `bun run dev` works with no setup; it changes on
@@ -77,6 +101,9 @@ export const env = {
   // Day boundaries for the "today"/daily stats follow this timezone.
   timezone: assertTimeZone(process.env.BUSINESS_TIMEZONE ?? "America/Los_Angeles"),
   transcribeIngestKey,
+  monthlyCap,
+  capWarnAt,
+  overageRate,
   authSecret: resolveAuthSecret(),
   authTokenTtlHours: ttlHours,
   seedAdminEmail,

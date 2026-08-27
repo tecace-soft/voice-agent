@@ -26,6 +26,10 @@ export interface VoicemailStats {
   lastRunAt: string | null;
   today: number; // processed today (business timezone)
   last7Days: number; // processed in the last 7 days
+  // Calendar-month totals, business timezone. The monthly figure is the one the cap is measured
+  // against, so it has to reset on the 1st rather than roll over a trailing 30 days.
+  thisMonth: number;
+  prevMonth: number;
   daily: { day: string; processed: number }[]; // per-day trend, last 14 days
   recent: VoicemailRunRecord[]; // the most recent runs (newest first) — feeds the table
   runSeries: VoicemailRunRecord[]; // the last runs in chronological order — feeds the per-run line chart
@@ -136,7 +140,15 @@ export async function getVoicemailStats(mailbox?: MailboxScope): Promise<Voicema
         ), 0)::int AS today,
         coalesce(sum(processed) FILTER (
           WHERE created_at >= now() - interval '7 days'
-        ), 0)::int AS "last7Days"
+        ), 0)::int AS "last7Days",
+        coalesce(sum(processed) FILTER (
+          WHERE created_at AT TIME ZONE ${TZ} >= date_trunc('month', now() AT TIME ZONE ${TZ})
+        ), 0)::int AS "thisMonth",
+        coalesce(sum(processed) FILTER (
+          WHERE created_at AT TIME ZONE ${TZ}
+                  >= date_trunc('month', now() AT TIME ZONE ${TZ}) - interval '1 month'
+            AND created_at AT TIME ZONE ${TZ} < date_trunc('month', now() AT TIME ZONE ${TZ})
+        ), 0)::int AS "prevMonth"
       FROM voicemail_runs
       WHERE ${scope}
     `,
@@ -169,6 +181,8 @@ export async function getVoicemailStats(mailbox?: MailboxScope): Promise<Voicema
     lastRunAt: string | null;
     today: number;
     last7Days: number;
+    thisMonth: number;
+    prevMonth: number;
   };
   return {
     ...t,

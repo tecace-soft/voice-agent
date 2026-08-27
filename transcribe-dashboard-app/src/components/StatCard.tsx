@@ -27,6 +27,7 @@ export function StatCard({
   leadTrend,
   sub,
   tone,
+  extra,
 }: {
   label: string;
   value: string;
@@ -35,6 +36,9 @@ export function StatCard({
   leadTrend?: Trend;
   sub: string;
   tone?: "danger";
+  // Rendered below the footer. Used for the cap meter, which is absent on most cards and on all
+  // cards most of the time — so it is a slot rather than another prop the card has to understand.
+  extra?: ReactNode;
 }) {
   const LeadIcon = leadTrend ? TREND_ICON[leadTrend] : null;
   return (
@@ -52,6 +56,7 @@ export function StatCard({
           {LeadIcon ? <LeadIcon size={14} className={`icon trend-${leadTrend}`} /> : null}
         </div>
         <div className="stat-foot-sub ta-caption-1">{sub}</div>
+        {extra}
       </footer>
     </article>
   );

@@ -1766,3 +1766,55 @@ button.person-primary:hover {
     transition: none;
   }
 }
+
+/* ---- monthly cap meter ---- */
+
+/* Only rendered once usage passes the warn threshold, so this is a state the card wears rarely.
+   Kept inside the card's footer — a thin rule, a bar and one line — rather than a banner: going
+   over costs money, it doesn't break anything, and the tone should match. */
+.cap-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.cap-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--fill-normal);
+  overflow: hidden;
+}
+.cap-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--warning);
+  transition: width 0.15s ease;
+}
+.cap-over .cap-fill {
+  background: var(--danger);
+}
+.cap-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted);
+}
+.cap-note strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+.cap-near .cap-note .icon {
+  color: var(--warning);
+}
+.cap-over .cap-note,
+.cap-over .cap-note strong {
+  color: var(--danger);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cap-fill {
+    transition: none;
+  }
+}

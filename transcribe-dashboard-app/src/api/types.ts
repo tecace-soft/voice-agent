@@ -122,6 +122,15 @@ export interface TranscribeStats {
   lastRunAt: string | null;
   today: number;
   last7Days: number;
+  // Calendar-month totals in the business timezone. The cap is monthly, so this is what it is
+  // measured against — it resets on the 1st rather than trailing 30 days.
+  thisMonth: number;
+  prevMonth: number;
+  // The monthly allowance, from the backend rather than hardcoded here. `limit: 0` means no cap is
+  // tracked and nothing about it is shown; `warnAt` is the fraction (0.8 = 80%) past which it
+  // becomes visible. Below that the dashboard says nothing, so the warning stays a signal.
+  // `overageRate` is dollars per transcript beyond the limit; 0 = don't mention cost.
+  cap: { limit: number; warnAt: number; overageRate: number };
   daily: { day: string; processed: number }[]; // last 14 days
   recent: VoicemailRun[]; // newest first — the "Recent runs" table
   runSeries: VoicemailRun[]; // oldest→newest — one point per run for the line chart

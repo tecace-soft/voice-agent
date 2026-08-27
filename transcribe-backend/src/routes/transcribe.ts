@@ -65,7 +65,10 @@ export const transcribe = new Elysia({ prefix: "/transcribe" })
     async ({ headers, query, status }) => {
       const user = await authenticate(headers.authorization);
       if (!user) return status(401, UNAUTHORIZED);
-      return getVoicemailStats(scopeFor(user, query.mailbox));
+      const stats = await getVoicemailStats(scopeFor(user, query.mailbox));
+      // The cap travels with the stats so the dashboard never hardcodes a number: changing the
+      // allowance is an env var on this service, not a frontend deploy. limit 0 = not tracked.
+      return { ...stats, cap: { limit: env.monthlyCap, warnAt: env.capWarnAt, overageRate: env.overageRate } };
     },
     { query: t.Object({ mailbox: t.Optional(t.String({ maxLength: 320 })) }) },
   )

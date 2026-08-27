@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { TranscribeStats } from "../api/types";
 import { AreaChart, type ChartPoint } from "../components/AreaChart";
 import { RunsTable } from "../components/RunsTable";
+import { CapMeter, capState } from "../components/CapMeter";
 import { StatCard, TrendBadge, type Trend } from "../components/StatCard";
 import { TabBar, type TabDef } from "../components/TabBar";
 import { deltaPct, formatDayShort, formatPct, formatShort } from "../lib";
@@ -53,7 +54,9 @@ export function OverviewPage({
   }));
 
   const todayDelta = delta(d.today, d.yesterday);
-  const weekDelta = delta(d.curr7, d.prev7);
+  const monthDelta = delta(data.thisMonth, data.prevMonth);
+  // Only the month matters for billing, so the cap is measured against that figure.
+  const cap = capState(data.thisMonth, data.cap);
 
   const tabs: TabDef<TabId>[] = [
     { id: "recent", label: "Recent runs" },
@@ -133,18 +136,20 @@ export function OverviewPage({
           sub="Since midnight, Pacific time"
         />
         <StatCard
-          label="Last 7 days"
-          value={d.curr7.toLocaleString()}
-          badge={<TrendBadge trend={weekDelta.trend}>{weekDelta.text}</TrendBadge>}
+          label="This month"
+          value={data.thisMonth.toLocaleString()}
+          badge={<TrendBadge trend={monthDelta.trend}>{monthDelta.text}</TrendBadge>}
           lead={
-            weekDelta.trend === "up"
-              ? "Trending up this week"
-              : weekDelta.trend === "down"
-                ? "Down this week"
-                : "Steady this week"
+            monthDelta.trend === "up"
+              ? "Ahead of last month"
+              : monthDelta.trend === "down"
+                ? "Behind last month"
+                : "Level with last month"
           }
-          leadTrend={weekDelta.trend}
-          sub={`${d.prev7.toLocaleString()} in the 7 days before`}
+          leadTrend={monthDelta.trend}
+          sub={`${data.prevMonth.toLocaleString()} last month · ${d.curr7.toLocaleString()} in the last 7 days`}
+          tone={cap === "over" ? "danger" : undefined}
+          extra={<CapMeter used={data.thisMonth} cap={data.cap} />}
         />
         <StatCard
           label="Success rate"
