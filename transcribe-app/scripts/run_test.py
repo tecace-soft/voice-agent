@@ -102,30 +102,43 @@ def diagnose_empty(cfg: Config) -> None:
     print(f"  VOICEMAIL_FROM : {cfg.voicemail_from or '(empty - not filtering)'}")
     print(f"  VOICEMAIL_SUBJ : {cfg.voicemail_subject or '(empty - not filtering)'}")
 
-    wide = dataclasses.replace(cfg, voicemail_from="", voicemail_subject="", imap_since_days=60)
-    try:
-        found = EmailSource(wide).fetch_voicemails()
-    except Exception as exc:  # noqa: BLE001 — this is already the failure path
-        print()
-        print(f"  (couldn't re-check with the filters off: {exc})")
-        return
+    # Vary ONE thing at a time. Widening the window and dropping the filters together tells you
+    # only that *something* excluded the mail — and then you guess, which is worse than not asking.
+    def probe(label: str, **overrides) -> list:
+        try:
+            return EmailSource(dataclasses.replace(cfg, **overrides)).fetch_voicemails()
+        except Exception as exc:  # noqa: BLE001 — already the failure path
+            print(f"  ({label} check failed: {exc})")
+            return []
+
+    wider_window = probe("wider window", imap_since_days=60)
+    no_filters = probe("no filters", voicemail_from="", voicemail_subject="")
 
     print()
-    if found:
-        print(f"  -> With no filters and a 60-day window there ARE {len(found)} message(s) with")
-        print("     audio. The mail is there; something above is excluding it.")
-        if cfg.voicemail_from or cfg.voicemail_subject:
-            print("     Clear VOICEMAIL_FROM / VOICEMAIL_SUBJECT in .env.test — those are the")
-            print("     client's filters, inherited from .env, and they don't match your mailbox.")
-        else:
-            print(f"     Raise IMAP_SINCE_DAYS in .env.test (currently {cfg.imap_since_days}).")
-        for vm in found[:3]:
-            print(f"       - {vm.from_addr}: {vm.subject or '(no subject)'} [{vm.date}]")
+    if wider_window:
+        print(f"  -> The WINDOW is too narrow. With the same filters but 60 days, there are")
+        print(f"     {len(wider_window)} message(s) with audio. Raise IMAP_SINCE_DAYS in .env.test")
+        print(f"     (currently {cfg.imap_since_days}).")
+        for vm in wider_window[:3]:
+            print(f"       - {vm.subject or '(no subject)'} [{vm.date}]")
         return
 
-    print("  -> Even with no filters and a 60-day window, no message in this mailbox carries an")
-    print("     audio attachment. The mailbox is the problem, not the settings — put a voicemail")
-    print("     in it (see 'Seeding the test mailbox' in this script's docstring).")
+    if no_filters:
+        print(f"  -> A FILTER is excluding it. With the filters cleared but the same")
+        print(f"     {cfg.imap_since_days}-day window, there are {len(no_filters)} message(s) with audio.")
+        if cfg.voicemail_from:
+            print(f"     VOICEMAIL_FROM={cfg.voicemail_from} — clear it in .env.test; that is the")
+            print("     client's sender address and nothing in your mailbox will match it.")
+        if cfg.voicemail_subject:
+            print(f"     VOICEMAIL_SUBJECT={cfg.voicemail_subject} — your test messages need that")
+            print("     word in the subject, or clear it here.")
+        for vm in no_filters[:3]:
+            print(f"       - {vm.subject or '(no subject)'} [{vm.date}]")
+        return
+
+    print("  -> Neither the window nor the filters explain it: no message in this mailbox carries")
+    print("     an audio attachment at all. Put a voicemail in it (see 'Seeding the test mailbox'")
+    print("     in this script's docstring).")
 
 
 def main() -> int:
