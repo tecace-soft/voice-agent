@@ -125,13 +125,55 @@ class SheetWriter:
         )
         return meta.get("properties", {}).get("title", "")
 
+    def _anchor_column(self) -> str:
+        """The column SHEET_RANGE starts at — "Voicemails!C1" -> "C". Defaults to A.
+
+        Our first column is Received, which is never blank, so this column is what tells us how far
+        the data actually goes.
+        """
+        rng = self._cfg.sheet_range
+        cell = rng.split("!", 1)[1] if "!" in rng else ""
+        letters = "".join(c for c in cell if c.isalpha()).upper()
+        return letters or "A"
+
+    def _next_row(self) -> int:
+        """The first row after the last one we've written, read from our own anchor column.
+
+        Why not let `values.append` decide: it looks for a "table" around the given range and adds
+        after the last row of it, and its idea of the table grows to take in any adjacent filled
+        cell. So a note typed in a spare column, or a total parked at the bottom, pushes every
+        subsequent row down past it and leaves a block of blank rows in the middle of the data.
+
+        Reading the anchor column and writing at the row after its last value puts each row exactly
+        where it belongs, regardless of what else is on the sheet. The API trims trailing empties,
+        so the length of that column IS the last used row.
+        """
+        col = self._anchor_column()
+        values = (
+            self._sheets()
+            .spreadsheets()
+            .values()
+            .get(
+                spreadsheetId=self._cfg.google_sheet_id,
+                range=f"{self._tab()}!{col}:{col}",
+                majorDimension="COLUMNS",
+            )
+            .execute()
+            .get("values", [])
+        )
+        return len((values[0] if values else [])) + 1
+
     def append_row(self, values: list[str]) -> None:
-        """Append a single row under the configured range."""
+        """Write one row immediately after the last row of data, leaving no gaps."""
         self._ensure_header()
-        self._sheets().spreadsheets().values().append(
+        row = self._next_row()
+        col = self._anchor_column()
+        self._sheets().spreadsheets().values().update(
             spreadsheetId=self._cfg.google_sheet_id,
-            range=self._cfg.sheet_range,
+            # An explicit single-row range, so the write lands where we decided rather than where
+            # Sheets guesses. USER_ENTERED is kept so the "Open email" HYPERLINK stays a formula.
+            range=f"{self._tab()}!{col}{row}",
             valueInputOption="USER_ENTERED",
-            insertDataOption="INSERT_ROWS",
             body={"values": [values]},
         ).execute()
+        log.debug("wrote row %d", row)
