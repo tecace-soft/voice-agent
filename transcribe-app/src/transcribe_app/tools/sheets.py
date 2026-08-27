@@ -25,9 +25,9 @@ _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 # label gets the timezone appended (see _header), so nobody has to guess what "11:22" means.
 HEADER = [
     "Received",
-    "From",
     "Caller name",
-    "Phone",
+    "Caller ID",
+    "Callback number",
     "Requested time",
     "Callback requested",
     "Summary",
