@@ -36,9 +36,25 @@ FOUR THINGS ARE ISOLATED, and most of them are not obvious:
   4. Dashboard reporting, off unless you pass --report. Otherwise test passes would land in the
      client's Transcriptions tab as their own traffic.
 
-To put audio in your test mailbox, just email a .wav to it — the pipeline only cares that a message
-carries an audio attachment. Forward one of the client's own voicemail emails to seed it with
-realistic audio, or use `scripts/ingest_file.py` to skip email entirely.
+SEEDING THE TEST MAILBOX
+
+The pipeline only requires that a message carries an audio attachment — the sender and subject are
+irrelevant once VOICEMAIL_FROM / VOICEMAIL_SUBJECT are cleared. Options, best first:
+
+  1. Add the test address as a SECOND destination on the client's voicemail-to-email, so real
+     voicemails arrive in both mailboxes independently. Nothing is forwarded, so the message is
+     byte-identical to what production sees, including its Date header. Best fidelity.
+
+  2. Forward a real voicemail email to the test address. Use a PLAIN forward, not "forward as
+     attachment": a plain forward keeps the original audio as an attachment, while forward-as-
+     attachment nests the whole message and stamps a new Date, which becomes the sheet's Received
+     time. Note this puts a real caller's details in your test sheet.
+
+  3. Email yourself any .wav. Exercises the whole path end to end and involves nobody's data. The
+     transcript will be whatever you recorded, so it proves the plumbing rather than the output.
+
+  4. `scripts/ingest_file.py <file.wav>` — skips IMAP entirely. Use when the mail side is already
+     proven and you only want to re-check extraction or the sheet columns.
 """
 
 from __future__ import annotations
@@ -57,7 +73,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from transcribe_app.config import Config  # noqa: E402 — importing loads .env
 from transcribe_app.pipeline import Pipeline  # noqa: E402
 from transcribe_app.reporter import report_run  # noqa: E402
-from transcribe_app.tools import SheetWriter  # noqa: E402
+from transcribe_app.tools import EmailSource, SheetWriter  # noqa: E402
 
 ENV_TEST = ROOT / ".env.test"
 TEST_STATE = ROOT / ".processed.test.json"
@@ -69,6 +85,47 @@ def _load_test_config() -> tuple[Config, Config]:
     production = Config.load()
     load_dotenv(ENV_TEST, override=True)
     return production, Config.load()
+
+
+def diagnose_empty(cfg: Config) -> None:
+    """Say why a pass found nothing, instead of leaving "0 voicemails" to be interpreted.
+
+    Three causes look identical from the outside — the filters excluded everything, the date window
+    was too narrow, or the mailbox genuinely holds no audio. Re-running the search with the filters
+    off and the window wide tells them apart, which is worth one extra IMAP round trip on what is
+    already a failed run.
+    """
+    print()
+    print("Nothing was found. Working out why:")
+    print(f"  mailbox        : {cfg.imap_username} / {cfg.imap_mailbox}")
+    print(f"  window         : last {cfg.imap_since_days} day(s)")
+    print(f"  VOICEMAIL_FROM : {cfg.voicemail_from or '(empty - not filtering)'}")
+    print(f"  VOICEMAIL_SUBJ : {cfg.voicemail_subject or '(empty - not filtering)'}")
+
+    wide = dataclasses.replace(cfg, voicemail_from="", voicemail_subject="", imap_since_days=60)
+    try:
+        found = EmailSource(wide).fetch_voicemails()
+    except Exception as exc:  # noqa: BLE001 — this is already the failure path
+        print()
+        print(f"  (couldn't re-check with the filters off: {exc})")
+        return
+
+    print()
+    if found:
+        print(f"  -> With no filters and a 60-day window there ARE {len(found)} message(s) with")
+        print("     audio. The mail is there; something above is excluding it.")
+        if cfg.voicemail_from or cfg.voicemail_subject:
+            print("     Clear VOICEMAIL_FROM / VOICEMAIL_SUBJECT in .env.test — those are the")
+            print("     client's filters, inherited from .env, and they don't match your mailbox.")
+        else:
+            print(f"     Raise IMAP_SINCE_DAYS in .env.test (currently {cfg.imap_since_days}).")
+        for vm in found[:3]:
+            print(f"       - {vm.from_addr}: {vm.subject or '(no subject)'} [{vm.date}]")
+        return
+
+    print("  -> Even with no filters and a 60-day window, no message in this mailbox carries an")
+    print("     audio attachment. The mailbox is the problem, not the settings — put a voicemail")
+    print("     in it (see 'Seeding the test mailbox' in this script's docstring).")
 
 
 def main() -> int:
@@ -202,7 +259,10 @@ def main() -> int:
         f"\nDone: {summary.processed} written, {summary.skipped} skipped, {summary.failed} failed, "
         f"across {summary.voicemails} voicemail email(s)."
     )
-    print(f"Check the rows: https://docs.google.com/spreadsheets/d/{cfg.google_sheet_id}/edit")
+    if summary.voicemails == 0:
+        diagnose_empty(cfg)
+    else:
+        print(f"Check the rows: https://docs.google.com/spreadsheets/d/{cfg.google_sheet_id}/edit")
 
     if args.report:
         report_run(

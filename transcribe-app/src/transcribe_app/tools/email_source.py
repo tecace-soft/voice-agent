@@ -160,6 +160,12 @@ def _login(conn: imaplib.IMAP4, user: str, password: str) -> None:
         norm = unicodedata.normalize(form, password)
         if norm not in candidates:
             candidates.append(norm)
+    # Google shows an app password as four spaced groups ("abcd efgh ijkl mnop") and people paste it
+    # that way. Tried last, never instead of the password as given, so a password that genuinely
+    # contains a space is unaffected — this can only turn a failure into a success.
+    unspaced = "".join(password.split())
+    if unspaced and unspaced not in candidates:
+        candidates.append(unspaced)
     last_exc: Exception | None = None
     for candidate in candidates:
         try:
