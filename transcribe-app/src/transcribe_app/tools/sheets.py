@@ -154,34 +154,87 @@ class SheetWriter:
         """
         expected = self._header()
         header = self._read_header()
-        mapping: dict[str, int] = {}
-        additions: list[tuple[int, str]] = []
-        next_free = len(header) + 1
 
-        for name in expected:
-            found = self._match(name, header)
-            if not found:
-                found = next_free
-                next_free += 1
-                additions.append((found, name))
-            mapping[name] = found
-
-        if additions:
-            self._sheets().spreadsheets().values().batchUpdate(
+        if not header:
+            self._sheets().spreadsheets().values().update(
                 spreadsheetId=self._cfg.google_sheet_id,
-                body={
-                    "valueInputOption": "USER_ENTERED",
-                    "data": [
-                        {"range": f"{self._tab()}!{_col_letter(col)}1", "values": [[name]]}
-                        for col, name in additions
-                    ],
-                },
+                range=f"{self._tab()}!{self._anchor_column()}1",
+                valueInputOption="USER_ENTERED",
+                body={"values": [expected]},
             ).execute()
-            log.info(
-                "added %d heading(s) to %s: %s",
-                len(additions), self.tab_name(), ", ".join(n for _, n in additions),
-            )
+            log.info("wrote header row to %s", self.tab_name())
+            start = _col_index(self._anchor_column())
+            return {name: start + i for i, name in enumerate(expected)}
+
+        mapping = {name: self._match(name, header) for name in expected}
+        missing = [name for name in expected if not mapping[name]]
+        if not missing:
+            return mapping
+
+        # A new field of ours goes IMMEDIATELY AFTER our existing columns, by inserting a column
+        # rather than claiming the next free one at the far right. The client keeps their own
+        # section at the end of the sheet — "booked", notes, whatever they work from — and appending
+        # there would both split our block across theirs and, if any of their columns has data but
+        # no heading, write our values straight into it. Inserting shifts their section one to the
+        # right with its contents intact, which is what Sheets' insertDimension is for.
+        last_ours = max(mapping.values()) or _col_index(self._anchor_column()) - 1
+        for name in missing:
+            at = last_ours + 1
+            self._insert_column(at, name)
+            mapping[name] = at
+            last_ours = at
+        log.info(
+            "inserted %d column(s) into %s after column %s: %s",
+            len(missing), self.tab_name(), _col_letter(last_ours - len(missing)), ", ".join(missing),
+        )
         return mapping
+
+    def _sheet_id(self) -> int:
+        """The tab's numeric id. insertDimension addresses sheets by id, not by name."""
+        meta = (
+            self._sheets()
+            .spreadsheets()
+            .get(spreadsheetId=self._cfg.google_sheet_id, fields="sheets.properties(sheetId,title)")
+            .execute()
+        )
+        wanted = self.tab_name()
+        for sheet in meta.get("sheets", []):
+            props = sheet.get("properties", {})
+            if props.get("title") == wanted:
+                return int(props["sheetId"])
+        raise SheetLayoutError(f"No tab named {wanted!r} in this spreadsheet.")
+
+    def _insert_column(self, index: int, name: str) -> None:
+        """Insert a blank column at 1-based `index`, shifting the rest right, and title it.
+
+        Everything from `index` onward moves right one column, values and formatting intact, and
+        Sheets rewrites any formula references to match. Nothing is overwritten.
+        """
+        self._sheets().spreadsheets().batchUpdate(
+            spreadsheetId=self._cfg.google_sheet_id,
+            body={
+                "requests": [
+                    {
+                        "insertDimension": {
+                            "range": {
+                                "sheetId": self._sheet_id(),
+                                "dimension": "COLUMNS",
+                                # The API is 0-based and end-exclusive: one column at `index`.
+                                "startIndex": index - 1,
+                                "endIndex": index,
+                            },
+                            "inheritFromBefore": True,
+                        }
+                    }
+                ]
+            },
+        ).execute()
+        self._sheets().spreadsheets().values().update(
+            spreadsheetId=self._cfg.google_sheet_id,
+            range=f"{self._tab()}!{_col_letter(index)}1",
+            valueInputOption="USER_ENTERED",
+            body={"values": [[name]]},
+        ).execute()
 
     def check(self) -> str:
         """Read-only reachability check: returns the spreadsheet's title. Confirms in one call
