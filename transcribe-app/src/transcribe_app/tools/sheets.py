@@ -19,6 +19,27 @@ from .google_auth import load_service_credentials
 
 log = logging.getLogger(__name__)
 
+
+class SheetLayoutError(RuntimeError):
+    """The tab's header row doesn't match the columns this build writes."""
+
+
+def _col_index(letters: str) -> int:
+    """"A" -> 1, "C" -> 3, "AA" -> 27."""
+    n = 0
+    for ch in letters.upper():
+        n = n * 26 + (ord(ch) - 64)
+    return n
+
+
+def _col_letter(index: int) -> str:
+    """1 -> "A", 27 -> "AA". The inverse of _col_index."""
+    letters = ""
+    while index > 0:
+        index, rem = divmod(index - 1, 26)
+        letters = chr(65 + rem) + letters
+    return letters
+
 _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 # Column order for every appended row — keep in sync with pipeline.build_row(). The first column's
@@ -91,27 +112,76 @@ class SheetWriter:
         label = timezone_label(self._cfg.business_timezone)
         return [f"{HEADER[0]} ({label})", *HEADER[1:]]
 
-    def _ensure_header(self) -> None:
-        if self._header_checked:
-            return
-        self._header_checked = True
-        tab = self._tab()
-        values = (
+    def _read_header(self) -> list[str]:
+        """The tab's whole first row, as written."""
+        got = (
             self._sheets()
             .spreadsheets()
             .values()
-            .get(spreadsheetId=self._cfg.google_sheet_id, range=f"{tab}!A1:A1")
+            .get(spreadsheetId=self._cfg.google_sheet_id, range=f"{self._tab()}!1:1")
             .execute()
             .get("values", [])
         )
-        if not values:
-            self._sheets().spreadsheets().values().update(
+        return [str(c).strip() for c in (got[0] if got else [])]
+
+    def _match(self, wanted: str, header: list[str]) -> int:
+        """1-based column index of `wanted` in `header`, or 0 if it isn't there.
+
+        Matching is case-insensitive, and the first column is matched on the part before "(" so a
+        change of BUSINESS_TIMEZONE — "Received (Pacific)" becoming "Received (Eastern)" — finds
+        the existing column rather than adding a second one beside it.
+        """
+        target = wanted.casefold()
+        for i, name in enumerate(header, 1):
+            if name.casefold() == target:
+                return i
+        stem = wanted.split(" (")[0].casefold()
+        for i, name in enumerate(header, 1):
+            if name.split(" (")[0].casefold() == stem:
+                return i
+        return 0
+
+    def _columns(self) -> dict[str, int]:
+        """Which column each of our fields belongs in, adding any that the sheet doesn't have yet.
+
+        Written by NAME rather than by position, so the sheet belongs to the client: they can add
+        their own columns, reorder ours, or leave a gap between them, and each value still lands
+        under its own heading. Anything we don't recognise is simply never touched — a "Follow-up"
+        or "Assigned to" column they maintain by hand keeps whatever they put in it.
+
+        Columns of ours that are missing are appended after the last used one, so introducing a new
+        field (Caller ID, say) adds a heading rather than silently shifting everything right of it.
+        """
+        expected = self._header()
+        header = self._read_header()
+        mapping: dict[str, int] = {}
+        additions: list[tuple[int, str]] = []
+        next_free = len(header) + 1
+
+        for name in expected:
+            found = self._match(name, header)
+            if not found:
+                found = next_free
+                next_free += 1
+                additions.append((found, name))
+            mapping[name] = found
+
+        if additions:
+            self._sheets().spreadsheets().values().batchUpdate(
                 spreadsheetId=self._cfg.google_sheet_id,
-                range=f"{tab}!A1",
-                valueInputOption="USER_ENTERED",
-                body={"values": [self._header()]},
+                body={
+                    "valueInputOption": "USER_ENTERED",
+                    "data": [
+                        {"range": f"{self._tab()}!{_col_letter(col)}1", "values": [[name]]}
+                        for col, name in additions
+                    ],
+                },
             ).execute()
-            log.info("wrote header row to %s", self.tab_name())
+            log.info(
+                "added %d heading(s) to %s: %s",
+                len(additions), self.tab_name(), ", ".join(n for _, n in additions),
+            )
+        return mapping
 
     def check(self) -> str:
         """Read-only reachability check: returns the spreadsheet's title. Confirms in one call
@@ -136,7 +206,7 @@ class SheetWriter:
         letters = "".join(c for c in cell if c.isalpha()).upper()
         return letters or "A"
 
-    def _next_row(self) -> int:
+    def _next_row(self, column: int | None = None) -> int:
         """The first row after the last one we've written, read from our own anchor column.
 
         Why not let `values.append` decide: it looks for a "table" around the given range and adds
@@ -148,7 +218,7 @@ class SheetWriter:
         where it belongs, regardless of what else is on the sheet. The API trims trailing empties,
         so the length of that column IS the last used row.
         """
-        col = self._anchor_column()
+        col = _col_letter(column) if column else self._anchor_column()
         values = (
             self._sheets()
             .spreadsheets()
@@ -164,16 +234,30 @@ class SheetWriter:
         return len((values[0] if values else [])) + 1
 
     def append_row(self, values: list[str]) -> None:
-        """Write one row immediately after the last row of data, leaving no gaps."""
-        self._ensure_header()
-        row = self._next_row()
-        col = self._anchor_column()
-        self._sheets().spreadsheets().values().update(
+        """Write one row, each value under its own heading, touching no other column."""
+        columns = self._columns()
+        names = self._header()
+        row = self._next_row(columns[names[0]])
+
+        # Group our columns into contiguous runs, so columns the client owns that sit BETWEEN ours
+        # are not included in any range we write. Writing one wide block would overwrite them.
+        cells = sorted((columns[name], value) for name, value in zip(names, values))
+        runs: list[tuple[int, list[str]]] = []
+        for col, value in cells:
+            if runs and col == runs[-1][0] + len(runs[-1][1]):
+                runs[-1][1].append(value)
+            else:
+                runs.append((col, [value]))
+
+        self._sheets().spreadsheets().values().batchUpdate(
             spreadsheetId=self._cfg.google_sheet_id,
-            # An explicit single-row range, so the write lands where we decided rather than where
-            # Sheets guesses. USER_ENTERED is kept so the "Open email" HYPERLINK stays a formula.
-            range=f"{self._tab()}!{col}{row}",
-            valueInputOption="USER_ENTERED",
-            body={"values": [values]},
+            body={
+                # USER_ENTERED so the "Open email" HYPERLINK stays a formula rather than text.
+                "valueInputOption": "USER_ENTERED",
+                "data": [
+                    {"range": f"{self._tab()}!{_col_letter(start)}{row}", "values": [run]}
+                    for start, run in runs
+                ],
+            },
         ).execute()
-        log.debug("wrote row %d", row)
+        log.debug("wrote row %d across %d range(s)", row, len(runs))
