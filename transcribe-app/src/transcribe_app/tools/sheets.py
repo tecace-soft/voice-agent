@@ -177,7 +177,11 @@ class SheetWriter:
         # there would both split our block across theirs and, if any of their columns has data but
         # no heading, write our values straight into it. Inserting shifts their section one to the
         # right with its contents intact, which is what Sheets' insertDimension is for.
-        last_ours = max(mapping.values()) or _col_index(self._anchor_column()) - 1
+        # Where our block ends today. When NONE of our headings are present — a tab holding only
+        # the client's own columns, or a stray value left in row 1 — there is no block yet, so we
+        # start at the anchor column and push whatever is there to the right.
+        found = [col for col in mapping.values() if col]
+        last_ours = max(found) if found else _col_index(self._anchor_column()) - 1
         for name in missing:
             at = last_ours + 1
             self._insert_column(at, name)
@@ -223,7 +227,9 @@ class SheetWriter:
                                 "startIndex": index - 1,
                                 "endIndex": index,
                             },
-                            "inheritFromBefore": True,
+                            # Only meaningful when there IS a column before to inherit from; the
+                            # API rejects the request outright at index 0 rather than ignoring it.
+                            "inheritFromBefore": index > 1,
                         }
                     }
                 ]
