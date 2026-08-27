@@ -21,6 +21,17 @@ from transcribe_app.config import Config
 from transcribe_app.tools import SheetWriter
 
 
+def _norm(name: str) -> str:
+    """A tab name reduced to what a person thinks they typed.
+
+    Runs of whitespace collapse to one because a doubled space is invisible in an editor and in
+    the error Sheets returns — it cost a real setup a debugging round. Case folds for the same
+    reason. Only used to *suggest* a near match; nothing is silently rewritten, since a tab name
+    with two spaces in it is unusual but legal.
+    """
+    return " ".join(name.split()).casefold()
+
+
 def main() -> int:
     cfg = Config.load()
     if not cfg.google_sheet_id:
@@ -52,9 +63,10 @@ def main() -> int:
         print(f"sheets: FAIL — opened '{title}', but it has no tab named {want!r}.")
         print(f"  SHEET_RANGE = {cfg.sheet_range}")
         print("  tabs in this sheet: " + (", ".join(repr(t) for t in tabs) or "(none)"))
-        near = [t for t in tabs if t.strip().lower() == want.strip().lower()]
+        near = [t for t in tabs if _norm(t) == _norm(want)]
         if near:
-            print(f"  -> {near[0]!r} differs only by case or spacing. Match it exactly.")
+            print(f"  -> {near[0]!r} differs only by case or whitespace. Match it exactly.")
+            print(f"     SHEET_RANGE='{near[0]}'!A1")
         else:
             print("  -> rename the tab, or point SHEET_RANGE at one of the names above.")
         print("     A tab name with a space needs quotes: SHEET_RANGE='Voicemail 2026'!A1")

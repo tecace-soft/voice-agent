@@ -95,6 +95,7 @@ transcribe-app/
   scripts/
     run_transcribe.py      # primary entry point — one full pass over the mailbox
     ingest_file.py         # manually ingest local audio files (no email/IMAP needed)
+    run_test.py            # same pipeline, aimed at YOUR scratch sheet — safe while a client is live
     checks/                # connectivity checks (run these first when something's off)
       verify_imap.py       #   confirms the mailbox login + counts visible voicemails
       verify_sheets.py     #   confirms the service account can open the sheet (read-only)
@@ -177,6 +178,7 @@ If something's off, run the connectivity checks first — they isolate the two u
 (mailbox login and the sheet share) without touching any data:
 
 ```bash
+python scripts/run_test.py --dry-run             # what a test pass would use, contacting nothing
 python scripts/checks/verify_imap.py             # mailbox login + how many voicemails are visible
 python scripts/checks/verify_sheets.py           # service account can open the sheet (read-only)
 python scripts/checks/verify_extract.py foo.wav  # Gemini transcript + fields on a local .wav (no email/sheet)

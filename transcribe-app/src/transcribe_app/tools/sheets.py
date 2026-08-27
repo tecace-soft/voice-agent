@@ -28,7 +28,6 @@ HEADER = [
     "From",
     "Caller name",
     "Phone",
-    "Email",
     "Requested time",
     "Callback requested",
     "Summary",

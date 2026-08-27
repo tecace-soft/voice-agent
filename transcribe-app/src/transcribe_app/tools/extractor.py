@@ -39,7 +39,6 @@ _SCHEMA = {
             "nullable": True,
             "description": "A callback phone number the caller gives, digits as spoken.",
         },
-        "email": {"type": "string", "nullable": True, "description": "An email address if the caller gives one."},
         "requested_time": {
             "type": "string",
             "nullable": True,
@@ -55,11 +54,11 @@ _SCHEMA = {
         },
     },
     "required": [
-        "transcript", "caller_name", "phone_number", "email", "requested_time",
+        "transcript", "caller_name", "phone_number", "requested_time",
         "callback_requested", "summary",
     ],
     "propertyOrdering": [
-        "transcript", "caller_name", "phone_number", "email", "requested_time",
+        "transcript", "caller_name", "phone_number", "requested_time",
         "callback_requested", "summary",
     ],
 }
@@ -76,7 +75,6 @@ _SYSTEM = (
 class VoicemailInfo:
     caller_name: str | None
     phone_number: str | None
-    email: str | None
     requested_time: str | None
     callback_requested: bool
     summary: str
@@ -88,7 +86,6 @@ class VoicemailInfo:
         return cls(
             caller_name=d.get("caller_name"),
             phone_number=d.get("phone_number"),
-            email=d.get("email"),
             requested_time=d.get("requested_time"),
             callback_requested=bool(d.get("callback_requested", False)),
             summary=str(d.get("summary") or ""),

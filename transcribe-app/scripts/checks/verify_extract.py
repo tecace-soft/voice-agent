@@ -49,7 +49,6 @@ def main() -> int:
     print(f"  transcript      : {info.transcript or '(empty)'}")
     print(f"  caller_name     : {info.caller_name}")
     print(f"  phone_number    : {info.phone_number}")
-    print(f"  email           : {info.email}")
     print(f"  requested_time  : {info.requested_time}")
     print(f"  callback_wanted : {info.callback_requested}")
     print(f"  summary         : {info.summary}")

@@ -81,7 +81,6 @@ def build_row(
         vm.from_addr,
         info.caller_name or "",
         info.phone_number or "",
-        info.email or "",
         info.requested_time or "",
         "yes" if info.callback_requested else "no",
         info.summary,
