@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { countOpenFeedback, getTranscribeStats } from "./api/backend";
+import { countOpenFeedback, countUnseenFailures, getTranscribeStats } from "./api/backend";
 import type { AuthUser, MailboxScope, TranscribeStats } from "./api/types";
 import { useAuth } from "./auth";
 import { Sidebar, type ViewId } from "./components/Sidebar";
@@ -19,7 +19,6 @@ import { RunsPage } from "./pages/RunsPage";
 import { SetupPage } from "./pages/SetupPage";
 import { useAccountNames } from "./people";
 import { useRoute } from "./routing";
-import { derive } from "./stats";
 import { ThemeToggle } from "./theme";
 import { DashboardSkeleton } from "./ui";
 
@@ -44,7 +43,7 @@ const VIEW_TITLES: Record<ViewId, string> = {
   people: "Per person",
   activity: "Daily activity",
   runs: "All runs",
-  failed: "Failures",
+  failed: "Failed runs",
   feedback: "Send feedback",
   allFeedback: "All feedback",
   accounts: "Accounts",
@@ -96,6 +95,22 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // How many notes are waiting on the team, for the sidebar badge. Admins only — it's the one
   // number a `user` isn't allowed to see, and it's cheap enough to refresh with everything else.
   const [openFeedback, setOpenFeedback] = useState(0);
+
+  // The sidebar's failed-runs badge. This counts failures NOBODY HAS LOOKED AT, not failed runs:
+  // a count of failed runs can only ever grow, so it could never clear and stopped meaning
+  // "something needs attention" the first time anything went wrong.
+  const [unseenFailures, setUnseenFailures] = useState(0);
+  useEffect(() => {
+    let active = true;
+    countUnseenFailures(mailbox)
+      .then((n) => active && setUnseenFailures(n))
+      .catch(() => {
+        /* a badge is a nicety; a failure here shouldn't surface as an error */
+      });
+    return () => {
+      active = false;
+    };
+  }, [mailbox]);
   useEffect(() => {
     if (!isAdmin) return;
     let active = true;
@@ -130,7 +145,6 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // scoped to one, it would be the same address repeated down the page.
   const showMailbox = isAdmin && mailbox === undefined;
 
-  const failedCount = data ? derive(data).failedRuns.length : 0;
   const openView = (id: ViewId) => {
     navigate({ view: id });
     if (window.innerWidth < 900) setNavOpen(false);
@@ -141,7 +155,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
       <Sidebar
         active={view}
         onSelect={openView}
-        failedCount={failedCount}
+        failedCount={unseenFailures}
         openFeedback={openFeedback}
         lastRunAt={data?.lastRunAt ?? null}
         mailboxLabel={mailboxLabel}
@@ -210,7 +224,12 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             (showMailbox ? <PersonBoardsPage kind="activity" /> : data && <ActivityPage data={data} />)}
           {data && view === "runs" && <RunsPage data={data} showMailbox={showMailbox} />}
           {view === "failed" && (
-            <FailuresPage mailbox={mailbox} data={data} showMailbox={showMailbox} />
+            <FailuresPage
+              mailbox={mailbox}
+              data={data}
+              showMailbox={showMailbox}
+              onUnseenChange={setUnseenFailures}
+            />
           )}
           {view === "feedback" && <FeedbackPage />}
           {view === "allFeedback" &&

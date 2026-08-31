@@ -26,11 +26,14 @@ export function FailuresPage({
   mailbox,
   data,
   showMailbox,
+  onUnseenChange,
 }: {
   mailbox?: MailboxScope;
   /** Stats, for the failed-runs table below. Null while they load — the reasons don't wait on it. */
   data: TranscribeStats | null;
   showMailbox?: boolean;
+  /** Reports the sidebar badge count: what's outstanding on arrival, then 0 once acknowledged. */
+  onUnseenChange?: (unseen: number) => void;
 }) {
   const [failures, setFailures] = useState<TranscribeFailure[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,14 +48,18 @@ export function FailuresPage({
       .then(async ({ failures: rows, unacknowledged }) => {
         setFailures(rows);
         setError(null);
+        onUnseenChange?.(unacknowledged);
         if (unacknowledged > 0 && acked.current !== key) {
           acked.current = key;
           const { cleared: n } = await acknowledgeFailures(mailbox);
           setCleared(n);
+          // Clear the sidebar badge as soon as the server has confirmed it, so the number doesn't
+          // linger until the next page load and read as "still unread".
+          onUnseenChange?.(0);
         }
       })
       .catch((e) => setError(accountErrorMessage(e, "Couldn't load failures.")));
-  }, [mailbox]);
+  }, [mailbox, onUnseenChange]);
 
   useEffect(() => {
     load();

@@ -269,3 +269,9 @@ export function listFailures(
 export function acknowledgeFailures(mailbox?: MailboxScope): Promise<{ cleared: number }> {
   return request<{ cleared: number }>("POST", `/transcribe/failures/acknowledge${mailboxQuery(mailbox)}`);
 }
+
+// Just the badge number, without pulling the whole list.
+export async function countUnseenFailures(mailbox?: MailboxScope): Promise<number> {
+  return (await get<{ unacknowledged: number }>(`/transcribe/failures/count${mailboxQuery(mailbox)}`))
+    .unacknowledged;
+}

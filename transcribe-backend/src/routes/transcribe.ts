@@ -117,6 +117,17 @@ export const transcribe = new Elysia({ prefix: "/transcribe" })
     { query: t.Object({ mailbox: t.Optional(t.String({ maxLength: 320 })) }) },
   )
 
+  // Just the badge number — cheap enough to ask for on every dashboard load, like the feedback one.
+  .get(
+    "/failures/count",
+    async ({ headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      return { unacknowledged: await countUnacknowledged(scopeFor(user, query.mailbox)) };
+    },
+    { query: t.Object({ mailbox: t.Optional(t.String({ maxLength: 320 })) }) },
+  )
+
   // "I've looked at these" — clears the badge without deleting the history.
   .post(
     "/failures/acknowledge",
