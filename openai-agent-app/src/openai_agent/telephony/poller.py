@@ -88,7 +88,7 @@ class LeadPoller:
     MAX_CALL_ATTEMPTS, after which a lead is marked `unreachable` and leaves the queue.
     """
 
-    def __init__(self, cfg: Config, *, interval: float = 10.0) -> None:
+    def __init__(self, cfg: Config, *, interval: float = 300.0) -> None:
         self._cfg = cfg
         self._interval = interval
         self._client = BackendClient(cfg)

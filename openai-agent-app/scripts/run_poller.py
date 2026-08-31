@@ -28,10 +28,16 @@ def main() -> int:
         print("Fill these in .env (see .env.example) and re-run.")
         return 1
 
-    # One call at a time, oldest to newest. Poll every 10s so the queue advances promptly once a
-    # call resolves (and a fresh lead is picked up within ~10s of becoming due).
-    poller = LeadPoller(cfg, interval=10.0)
-    print("Lead poller running — leads are called one at a time, oldest first. Ctrl+C to stop.")
+    # One call at a time, oldest to newest, checking every 5 minutes by default
+    # (POLL_INTERVAL_SECONDS). Note the interval also paces the QUEUE: at most one call is placed
+    # per cycle, so a backlog of N leads takes at least N intervals to work through — at the
+    # 5-minute default, ten queued leads take the best part of an hour. Lower it if leads ever
+    # arrive faster than that.
+    poller = LeadPoller(cfg, interval=cfg.poll_interval)
+    print(
+        f"Lead poller running — leads are called one at a time, oldest first, "
+        f"checked every {cfg.poll_interval:.0f}s. Ctrl+C to stop."
+    )
     try:
         poller.run()
     except KeyboardInterrupt:

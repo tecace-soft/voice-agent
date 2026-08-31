@@ -75,6 +75,8 @@ class Config:
     open_hour: int
     close_hour: int
     # ---- Runtime ----
+    # How often the poller looks for leads that are due a call, in seconds.
+    poll_interval: float
     timezone: str  # business timezone for spoken dates (matches the backend's SCHEDULE_TIMEZONE)
     request_timeout: float
 
@@ -105,6 +107,7 @@ class Config:
             business_facts=_optional("BUSINESS_FACTS"),
             open_hour=int(_optional("BUSINESS_OPEN_HOUR", "9")),
             close_hour=int(_optional("BUSINESS_CLOSE_HOUR", "18")),
+            poll_interval=float(_optional("POLL_INTERVAL_SECONDS", "300")),
             timezone=_optional("TIMEZONE", "America/Los_Angeles"),
             request_timeout=float(_optional("REQUEST_TIMEOUT_SECONDS", "30")),
         )
