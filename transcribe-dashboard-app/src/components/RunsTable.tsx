@@ -112,14 +112,21 @@ export function RunsTable({
   emptyMessage,
   tabs,
   showMailbox = false,
+  detailsFor,
 }: {
   runs: VoicemailRun[];
   emptyMessage: string;
   tabs?: ReactNode;
+  /** Extra detail for a run, revealed by clicking its row. Returning null leaves that row plain and
+   *  unclickable — so a table with nothing to expand behaves exactly as it did before. */
+  detailsFor?: (run: VoicemailRun) => ReactNode | null;
   /** Whose data each row is. Only worth a column when the view mixes mailboxes — when everything
    *  on screen is one mailbox the column is the same value repeated. */
   showMailbox?: boolean;
 }) {
+  // Which run's detail is open. One at a time: these rows are read to answer "what happened here",
+  // and several open at once turns the table back into the wall of text it is meant to summarise.
+  const [openRun, setOpenRun] = useState<string | null>(null);
   const [hidden, setHidden] = useState<Set<ColumnKey>>(() =>
     showMailbox ? new Set() : new Set<ColumnKey>(["mailbox"]),
   );
@@ -189,20 +196,56 @@ export function RunsTable({
                 </td>
               </tr>
             ) : (
-              rows.map((run) => (
-                <tr key={run.id}>
-                  {visible.map((c) => (
-                    <td
-                      key={c.key}
-                      className={`${c.numeric ? "num" : ""}${
-                        c.key === "failed" && run.failed > 0 ? " is-danger" : ""
-                      }`.trim() || undefined}
-                    >
-                      {cell(run, c.key)}
-                    </td>
-                  ))}
-                </tr>
-              ))
+              rows.flatMap((run) => {
+                const detail = detailsFor?.(run) ?? null;
+                const open = openRun === run.id;
+                return [
+                  <tr
+                    key={run.id}
+                    className={detail ? `row-expandable${open ? " is-open" : ""}` : undefined}
+                    onClick={detail ? () => setOpenRun(open ? null : run.id) : undefined}
+                    // Keyboard parity with the click, since the row is the control here.
+                    tabIndex={detail ? 0 : undefined}
+                    role={detail ? "button" : undefined}
+                    aria-expanded={detail ? open : undefined}
+                    onKeyDown={
+                      detail
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setOpenRun(open ? null : run.id);
+                            }
+                          }
+                        : undefined
+                    }
+                  >
+                    {visible.map((c) => (
+                      <td
+                        key={c.key}
+                        className={`${c.numeric ? "num" : ""}${
+                          c.key === "failed" && run.failed > 0 ? " is-danger" : ""
+                        }`.trim() || undefined}
+                      >
+                        {c.key === "when" && detail ? (
+                          <span className="row-toggle">
+                            <IconChevronDown size={14} className={`icon chevron${open ? " is-open" : ""}`} />
+                            {cell(run, c.key)}
+                          </span>
+                        ) : (
+                          cell(run, c.key)
+                        )}
+                      </td>
+                    ))}
+                  </tr>,
+                  ...(open && detail
+                    ? [
+                        <tr key={`${run.id}-detail`} className="row-detail">
+                          <td colSpan={visible.length}>{detail}</td>
+                        </tr>,
+                      ]
+                    : []),
+                ];
+              })
             )}
           </tbody>
         </table>

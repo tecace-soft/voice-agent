@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { acknowledgeFailures, listFailures } from "../api/backend";
-import type { MailboxScope, TranscribeFailure } from "../api/types";
+import type { MailboxScope, TranscribeFailure, TranscribeStats, VoicemailRun } from "../api/types";
+import { RunsPage } from "./RunsPage";
 import { accountErrorMessage } from "../auth";
 import { IconAlert, IconCheck } from "../icons";
 import { formatDateTime, formatMailbox } from "../lib";
@@ -21,7 +22,16 @@ function groupKey(f: TranscribeFailure): string {
   return f.error.replace(/\d+/g, "#").slice(0, 160);
 }
 
-export function FailuresPage({ mailbox }: { mailbox?: MailboxScope }) {
+export function FailuresPage({
+  mailbox,
+  data,
+  showMailbox,
+}: {
+  mailbox?: MailboxScope;
+  /** Stats, for the failed-runs table below. Null while they load — the reasons don't wait on it. */
+  data: TranscribeStats | null;
+  showMailbox?: boolean;
+}) {
   const [failures, setFailures] = useState<TranscribeFailure[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cleared, setCleared] = useState(0);
@@ -47,6 +57,26 @@ export function FailuresPage({ mailbox }: { mailbox?: MailboxScope }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // What to reveal when a run's row is clicked. Returns null for a run we have no stored reasons
+  // for — runs that failed before this feature existed — so those rows stay plain rather than
+  // expanding to an empty box that looks broken.
+  const detailsFor = (run: VoicemailRun) => {
+    const mine = (failures ?? []).filter((f) => f.runId === run.id);
+    if (!mine.length) return null;
+    return (
+      <ul className="run-detail-list">
+        {mine.map((f) => (
+          <li key={f.id}>
+            <p className="failure-error ta-body-2">{f.error}</p>
+            <p className="failure-files ta-caption-2 muted">
+              {f.filename} · from {f.fromAddr}
+            </p>
+          </li>
+        ))}
+      </ul>
+    );
+  };
 
   if (error) return <p className="error ta-body-2">{error}</p>;
 
@@ -115,6 +145,8 @@ export function FailuresPage({ mailbox }: { mailbox?: MailboxScope }) {
           </ul>
         )}
       </section>
+
+      {data && <RunsPage data={data} onlyFailed showMailbox={showMailbox} detailsFor={detailsFor} />}
     </div>
   );
 }

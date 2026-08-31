@@ -210,10 +210,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             (showMailbox ? <PersonBoardsPage kind="activity" /> : data && <ActivityPage data={data} />)}
           {data && view === "runs" && <RunsPage data={data} showMailbox={showMailbox} />}
           {view === "failed" && (
-            <>
-              <FailuresPage mailbox={mailbox} />
-              {data && <RunsPage data={data} onlyFailed showMailbox={showMailbox} />}
-            </>
+            <FailuresPage mailbox={mailbox} data={data} showMailbox={showMailbox} />
           )}
           {view === "feedback" && <FeedbackPage />}
           {view === "allFeedback" &&

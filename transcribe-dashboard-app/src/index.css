@@ -1861,3 +1861,51 @@ button.person-primary:hover {
 .failure-files {
   margin: 0;
 }
+
+/* ---- expandable run rows ---- */
+
+.row-expandable {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.row-expandable:hover,
+.row-expandable.is-open {
+  background: var(--accent-soft);
+}
+.row-expandable:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.row-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.row-toggle .chevron {
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+.row-toggle .chevron.is-open {
+  transform: rotate(180deg);
+}
+.row-detail > td {
+  padding: 0 20px 16px;
+  background: var(--accent-soft);
+}
+.run-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.run-detail-list .failure-error {
+  background: var(--surface);
+}
+@media (prefers-reduced-motion: reduce) {
+  .row-expandable,
+  .row-toggle .chevron {
+    transition: none;
+  }
+}
