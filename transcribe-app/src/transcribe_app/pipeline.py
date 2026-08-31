@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import Config
-from .callerid import parse_caller_id
+from .callerid import normalize_phone, parse_caller_id
 from .timefmt import format_received
 from .tools import (
     AudioAttachment,
@@ -98,7 +98,7 @@ def build_row(
         # Two different facts, kept apart on purpose: where they rang FROM (the phone system's
         # caller ID) and where they asked to be rung BACK (what they said in the recording).
         parse_caller_id(att.filename, vm.subject),
-        info.phone_number or "",
+        normalize_phone(info.phone_number or ""),
         info.requested_time or "",
         "yes" if info.callback_requested else "no",
         info.summary,

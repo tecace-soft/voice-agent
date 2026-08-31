@@ -55,3 +55,38 @@ def parse_caller_id(filename: str = "", subject: str = "") -> str:
     than an empty one, because nobody checks a field that looks filled in.
     """
     return _search(filename) or _search(subject)
+
+
+def normalize_phone(raw: str) -> str:
+    """A number a caller spoke, tidied to "(206) 929-8767".
+
+    What Gemini returns is whatever the caller said, which is rarely a formatted number: "two oh
+    six nine two nine..." comes back as a run of digits, sometimes with a country code, sometimes
+    with the digits spaced apart. Written straight into the sheet that reads as a number too long
+    to be one, and nobody can dial it at a glance.
+
+    Anything that isn't recognisable as a North American number is returned as given rather than
+    discarded — an international number or an extension is still worth having, and silently dropping
+    what the caller actually said would be the worse failure. Text after the number (an extension,
+    say) is kept.
+    """
+    value = (raw or "").strip()
+    if not value:
+        return ""
+    match = _PHONE.search(_STAMP.sub(" ", value))
+    if not match:
+        # Dictated digits come back spaced one by one - "2 0 6 9 2 9 8 7 6 7" - which the pattern
+        # can't see because it needs three together. Collapsing to digits alone catches that, but
+        # ONLY when there are no letters: "call the office 206" must stay as the caller said it
+        # rather than be mined for something that looks like a number.
+        if not any(c.isalpha() for c in value):
+            digits = re.sub(r"\D", "", value)
+            if len(digits) == 11 and digits.startswith("1"):
+                digits = digits[1:]
+            if len(digits) == 10:
+                return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+        return value
+    area, prefix, line = match.groups()
+    formatted = f"({area}) {prefix}-{line}"
+    trailing = (value[match.end():]).strip(" .,-")
+    return f"{formatted} {trailing}" if trailing else formatted

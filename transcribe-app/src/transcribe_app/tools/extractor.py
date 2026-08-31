@@ -37,7 +37,7 @@ _SCHEMA = {
         "phone_number": {
             "type": "string",
             "nullable": True,
-            "description": "A callback phone number the caller gives, digits as spoken.",
+            "description": "A callback phone number the caller gives, as digits only, e.g. 2069298767. Omit any words.",
         },
         "requested_time": {
             "type": "string",
