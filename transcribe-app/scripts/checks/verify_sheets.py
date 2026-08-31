@@ -59,7 +59,9 @@ def main() -> int:
         return 1
 
     want = writer.tab_name()
-    if want not in tabs:
+    # Case-insensitive for the same reason the app is: Sheets resolves a range against a tab whose
+    # capitalisation differs, so failing here on case alone would report a problem that isn't one.
+    if not any(t.strip().casefold() == want.strip().casefold() for t in tabs):
         print(f"sheets: FAIL — opened '{title}', but it has no tab named {want!r}.")
         print(f"  SHEET_RANGE = {cfg.sheet_range}")
         print("  tabs in this sheet: " + (", ".join(repr(t) for t in tabs) or "(none)"))

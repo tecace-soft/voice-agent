@@ -245,11 +245,22 @@ class SheetWriter:
             .execute()
         )
         wanted = self.tab_name()
+        titles = [s.get("properties", {}).get("title", "") for s in meta.get("sheets", [])]
+
+        # Case-insensitive, because Sheets itself is: `'Voicemails'!A1` resolves happily against a
+        # tab called VOICEMAILS, so every read here worked while an exact comparison on the title
+        # did not. Matching exactly meant SHEET_RANGE had to agree with the tab's capitalisation
+        # even though nothing else in the API cares — a difference invisible to the person who
+        # named the tab.
         for sheet in meta.get("sheets", []):
             props = sheet.get("properties", {})
-            if props.get("title") == wanted:
+            if str(props.get("title", "")).strip().casefold() == wanted.strip().casefold():
                 return int(props["sheetId"])
-        raise SheetLayoutError(f"No tab named {wanted!r} in this spreadsheet.")
+
+        raise SheetLayoutError(
+            f"No tab named {wanted!r} in this spreadsheet. It has: "
+            + (", ".join(repr(t) for t in titles) or "(none)")
+        )
 
     def _insert_column(self, index: int, name: str) -> None:
         """Insert a blank column at 1-based `index`, shifting the rest right, and title it.
