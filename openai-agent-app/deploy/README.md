@@ -110,21 +110,32 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"     # -> STREAM_SE
 VALIDATE_TWILIO_SIGNATURE=true
 ```
 
-Both change the running configuration, so recreate the container (a plain restart does not re-read
-`env_file`):
+Both change the running configuration, so recreate the containers (a plain restart does not re-read
+`env_file`). **Recreate BOTH services, not just the server:**
 
 ```bash
-docker compose up -d --force-recreate server
+docker compose up -d --force-recreate server poller
 ```
+
+This matters most for `STREAM_SECRET`. The poller is a separate container that builds the outbound
+call's stream URL itself (`place_call` -> `build_twiml` -> `cfg.stream_url`). Recreate only the
+server and the poller keeps dialing with the OLD, secret-less URL while the server now requires the
+secret — so every OUTBOUND call would connect and be dropped immediately with a 1008 close. The
+symptom is `rejected a media-stream connection with a missing or wrong path secret` in the server
+log, once per outbound call.
 
 After setting `STREAM_SECRET`, the stream URL becomes `wss://<host>/media-stream/<secret>`. Nothing
 external needs updating — the app builds that URL itself in all three places it is used — but the
-bare `/media-stream` path stops being accepted, so **restart the server before placing a call**, not
-during one.
+bare `/media-stream` path stops being accepted, so recreate **between** calls, not during one.
 
 After turning on `VALIDATE_TWILIO_SIGNATURE`, place one test call immediately and watch for
 `bad Twilio signature` in the logs: that means `PUBLIC_HOST` disagrees with the URL configured in
 the Twilio console.
+
+Note this one touches **outbound** too, via `/amd`: answering-machine detection is an outbound-only
+callback, and it is signature-verified like the rest. If validation is misconfigured, outbound calls
+still run but the agent stops leaving voicemails (the log shows `unsigned request to /amd` or
+`bad Twilio signature for /amd` instead of `AMD: call=... answered_by=...`).
 
 ## Notes
 
