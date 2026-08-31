@@ -20,10 +20,12 @@ import websockets
 from fastapi import WebSocket, WebSocketDisconnect
 
 from ..config import Config
+from ..telephony import transfer
 from ..telephony.outbound import is_machine
-from ..tools.agent_tools import ToolExecutor
+from ..tools.agent_tools import INBOUND_TOOL_SCHEMAS, ToolExecutor
 from . import amd
 from .instructions import build_instructions
+from .instructions_inbound import build_instructions as build_instructions_inbound
 from .instructions_mini import build_instructions as build_instructions_mini
 from .session import build_session_update
 
@@ -48,23 +50,54 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     stream_sid, call_sid, params = await _await_start(twilio_ws)
     if not stream_sid:
         return
-    log.info("call started for lead_name=%r intake_id=%r", params.get("lead_name"), params.get("intake_id"))
-
-    # 2. Render instructions + tools for this specific lead. The smaller "mini" model uses its own
-    #    shorter, more prescriptive prompt (instructions_mini.py); the full model uses instructions.py.
+    # Which KIND of call is this? Outbound (we dialed a lead we already know) and inbound (a
+    # stranger dialed the company's main line) are different jobs, so they get different rules and
+    # different tools. The parameter is set by the /incoming webhook; anything without it — every
+    # outbound call, unchanged — falls through to the outbound path below.
+    is_inbound = str(params.get("direction", "")).strip().lower() == "inbound"
+    caller = str(params.get("caller", ""))
     is_mini = "mini" in cfg.openai_model.lower()
-    build = build_instructions_mini if is_mini else build_instructions
-    instructions = build(
-        lead_name=params.get("lead_name", ""),
-        purpose=params.get("purpose", ""),
-        requested_date=params.get("requested_date", ""),
-        requested_date_iso=params.get("requested_date_iso", ""),
-        desired_time=params.get("desired_time", ""),
-        desired_time_iso=params.get("dateTime", ""),
-        email=params.get("email", ""),
-        timezone=cfg.timezone,
-        is_callback=str(params.get("is_callback", "")).lower() in ("yes", "true", "1"),
-    )
+
+    if is_inbound:
+        log.info(
+            "inbound call started from %r (transfer_failed=%r)",
+            caller or "unknown",
+            params.get("transfer_failed"),
+        )
+        instructions = build_instructions_inbound(
+            caller=caller,
+            business_name=cfg.business_name,
+            agent_name=cfg.agent_name,
+            business_hours=cfg.business_hours,
+            business_facts=cfg.business_facts,
+            open_hour=cfg.open_hour,
+            close_hour=cfg.close_hour,
+            timezone=cfg.timezone,
+            transfer_failed=str(params.get("transfer_failed", "")).lower() in ("yes", "true", "1"),
+        )
+        tools = INBOUND_TOOL_SCHEMAS
+    else:
+        log.info(
+            "call started for lead_name=%r intake_id=%r",
+            params.get("lead_name"),
+            params.get("intake_id"),
+        )
+        # 2. Render instructions + tools for this specific lead. The smaller "mini" model uses its
+        #    own shorter, more prescriptive prompt (instructions_mini.py); the full model uses
+        #    instructions.py.
+        build = build_instructions_mini if is_mini else build_instructions
+        instructions = build(
+            lead_name=params.get("lead_name", ""),
+            purpose=params.get("purpose", ""),
+            requested_date=params.get("requested_date", ""),
+            requested_date_iso=params.get("requested_date_iso", ""),
+            desired_time=params.get("desired_time", ""),
+            desired_time_iso=params.get("dateTime", ""),
+            email=params.get("email", ""),
+            timezone=cfg.timezone,
+            is_callback=str(params.get("is_callback", "")).lower() in ("yes", "true", "1"),
+        )
+        tools = None  # the outbound default set
     executor = ToolExecutor(cfg, intake_id=params.get("intake_id", ""))
 
     # 3. Open the Realtime session and configure it.
@@ -95,23 +128,45 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "outcome": None,
         # Monotonic start time, for the call duration in the summary.
         "started": time.monotonic(),
+        # ---- inbound-only (all inert on an outbound call) ----
+        "is_inbound": is_inbound,
+        "caller": caller,
+        "call_sid": call_sid,
+        # The reason string for a transfer the agent asked for, held while its hold line plays
+        # out; the redirect fires on the mark echo. None when no transfer is in flight.
+        "transfer_pending": None,
+        # Messages taken from callers we could not transfer; appended to the call log at end.
+        "messages": [],
     }
     # Register for this call's answering-machine-detection result (delivered by the /amd webhook).
-    amd_queue = amd.register(call_sid)
+    # Outbound only: AMD answers "did a machine pick up the call WE placed?", which is
+    # meaningless inbound — a human already dialed us — so we neither arm it nor watch it there.
+    amd_queue = amd.register(call_sid) if not is_inbound else None
     try:
         async with websockets.connect(url, additional_headers=headers) as openai_ws:
-            await openai_ws.send(json.dumps(build_session_update(cfg, instructions)))
+            await openai_ws.send(json.dumps(build_session_update(cfg, instructions, tools)))
+            # INBOUND ONLY: we are answering a ringing phone, so the agent has to speak first. The
+            # outbound agent deliberately stays silent until the lead says "hello", so this is
+            # gated — without the gate an outbound lead would be talked over on pickup, and without
+            # the call an inbound caller would hear dead air until they spoke first.
+            if is_inbound:
+                await openai_ws.send(json.dumps({"type": "response.create"}))
             # Watch for the AMD result in the background: if it's a machine, have the agent leave a
             # voicemail and end the call. Does nothing for a live person.
-            watcher = asyncio.create_task(_watch_amd(amd_queue, openai_ws, twilio_ws, state))
+            watcher = (
+                asyncio.create_task(_watch_amd(amd_queue, openai_ws, twilio_ws, state))
+                if amd_queue is not None
+                else None
+            )
             try:
                 # 4. Relay both directions until either side ends.
                 await asyncio.gather(
-                    _caller_to_model(twilio_ws, openai_ws),
-                    _model_to_caller(twilio_ws, openai_ws, state, executor),
+                    _caller_to_model(twilio_ws, openai_ws, cfg, state),
+                    _model_to_caller(twilio_ws, openai_ws, state, executor, cfg),
                 )
             finally:
-                watcher.cancel()
+                if watcher is not None:
+                    watcher.cancel()
     except Exception as exc:  # noqa: BLE001 — surface, don't crash the server
         log.warning("bridge ended: %s", exc)
     finally:
@@ -142,10 +197,19 @@ def _note_outcome(state: dict, name: str, args: dict, result: str) -> None:
         outcome = (args.get("outcome") or "").strip()
         if outcome:
             state["outcome"] = outcome  # wrong_number / declined / unreachable
+    elif name == "take_message" and data.get("recorded"):
+        # Inbound only. There is no intake row to hang this on (a stranger called us), so keep it
+        # on the call and let _finalize_call write it out with the transcript.
+        state["messages"].append(args)
+        state["outcome"] = "message"
 
 
 _OUTCOME_SUMMARY = {
     "booked": "Booked a consultation.",
+    # Inbound screening outcomes.
+    "transferred": "Transferred the caller to a person.",
+    "transfer_failed": "Tried to transfer but nobody was available.",
+    "message": "Took a message for the team.",
     "callback": "Asked to be called back later.",
     "declined": "Not interested — declined.",
     "wrong_number": "Wrong number.",
@@ -183,6 +247,13 @@ async def _finalize_call(state: dict, params: dict, executor: ToolExecutor) -> N
     if not turns:
         return
     transcript_text = "\n".join(f"{who.upper()}: {text}" for who, text in turns)
+    for msg in state.get("messages", []):
+        transcript_text += (
+            "\n\n--- MESSAGE TAKEN ---"
+            f"\nName: {msg.get('caller_name') or '(not given)'}"
+            f"\nCallback: {msg.get('callback_number') or state.get('caller') or '(not given)'}"
+            f"\nRegarding: {msg.get('message') or '(not given)'}"
+        )
     await executor.record_call_log(transcript_text, _summary(state))
 
 
@@ -251,7 +322,7 @@ async def _watch_amd(queue: asyncio.Queue, openai_ws, twilio_ws: WebSocket, stat
     state["hangup_backstop"] = asyncio.create_task(_backstop())
 
 
-async def _caller_to_model(twilio_ws: WebSocket, openai_ws) -> None:
+async def _caller_to_model(twilio_ws: WebSocket, openai_ws, cfg: Config, state: dict) -> None:
     """Forward the caller's audio to the model."""
     try:
         while True:
@@ -262,12 +333,22 @@ async def _caller_to_model(twilio_ws: WebSocket, openai_ws) -> None:
                     json.dumps({"type": "input_audio_buffer.append", "audio": evt["media"]["payload"]})
                 )
             elif e == "mark":
+                mark_name = (evt.get("mark") or {}).get("name")
                 # The agent asked to hang up; Twilio echoes our "endcall" mark once it has played
                 # all the audio queued before it (i.e. the goodbye finished). Now close the stream,
                 # which ends the <Connect><Stream> and hangs up the call.
-                if (evt.get("mark") or {}).get("name") == "endcall":
+                if mark_name == "endcall":
                     await twilio_ws.close()
                     break
+                # INBOUND ONLY: the same drain trick, but for a handoff instead of a hang-up. We
+                # wait for the echo so the caller actually HEARS "let me put you through" before
+                # the audio path is torn out from under them. Then redirect — and do NOT close the
+                # socket: closing would end the <Connect> and drop the call we are trying to save.
+                # Twilio tears the stream down itself once the redirect lands, and the "stop" event
+                # below ends this loop cleanly.
+                if mark_name == "transfer":
+                    await _do_transfer(cfg, openai_ws, state)
+                    continue
             elif e == "stop":
                 break
     except WebSocketDisconnect:
@@ -276,7 +357,9 @@ async def _caller_to_model(twilio_ws: WebSocket, openai_ws) -> None:
         await openai_ws.close()
 
 
-async def _model_to_caller(twilio_ws: WebSocket, openai_ws, state: dict, executor: ToolExecutor) -> None:
+async def _model_to_caller(
+    twilio_ws: WebSocket, openai_ws, state: dict, executor: ToolExecutor, cfg: Config
+) -> None:
     """Forward the model's audio to the caller and handle tool calls + barge-in."""
     try:
         async for raw in openai_ws:
@@ -292,9 +375,14 @@ async def _model_to_caller(twilio_ws: WebSocket, openai_ws, state: dict, executo
                 state["response_active"] = True
             elif t == "response.done":
                 state["response_active"] = False
+                # INBOUND ONLY: the hold line ("let me put you through") has finished — drain it to
+                # the caller, then hand off. Outbound never sets transfer_pending, so this branch is
+                # unreachable there and the hang-up path below is untouched.
+                if state.get("transfer_pending") and state.get("spoke_since_user"):
+                    await _drain_and_transfer(twilio_ws, openai_ws, cfg, state)
                 # If a hang-up is pending and the agent just spoke (its farewell / voicemail),
                 # close now — we don't wait for the model to call end_call a second time.
-                if state.get("hangup_pending") and state.get("spoke_since_user"):
+                elif state.get("hangup_pending") and state.get("spoke_since_user"):
                     await _drain_and_close(twilio_ws, state)
             elif t == "input_audio_buffer.speech_started":
                 # While leaving a voicemail there's no live person to yield to — the machine's own
@@ -319,6 +407,10 @@ async def _model_to_caller(twilio_ws: WebSocket, openai_ws, state: dict, executo
             elif t == "response.function_call_arguments.done":
                 if evt.get("name") == "end_call":
                     await _handle_end_call(twilio_ws, openai_ws, evt, state)
+                elif evt.get("name") == "transfer_to_human":
+                    # Handled by the bridge, not the executor: a transfer is call plumbing (it
+                    # replaces the running TwiML), exactly like end_call is.
+                    await _handle_transfer(twilio_ws, openai_ws, evt, state, cfg)
                 else:
                     # Run the tool WITHOUT blocking this receive loop: while the backend request is
                     # in flight, events that arrive (the response finishing, or the lead saying
@@ -342,6 +434,18 @@ def _farewell_instruction(state: dict) -> str:
     out of the model's own composition on purpose: left to itself it narrates ("let me wrap this
     up…") or skips the farewell. Tailored to the outcome so a booked call looks forward to the
     consultation while a wrong number / decline just signs off warmly."""
+    # INBOUND ONLY: the outbound farewells talk about "your consultation" and speak for a team
+    # that called YOU — both wrong for a stranger who rang the main line. Checked first so neither
+    # outbound branch below is reachable on an inbound call.
+    if state.get("is_inbound"):
+        return (
+            "The call is over. Speak a short, warm sign-off to the caller, in the language they "
+            "last spoke to you (translate the example if that language is not English). Thank them "
+            'for calling and wish them a good day — for example: "Thanks for calling. Have a great '
+            'day — goodbye!" Output ONLY the spoken words: do NOT announce or describe it, and do '
+            "NOT say things like 'let me wrap this up'."
+        )
+
     booked = state.get("outcome") == "booked"
 
     # MINI ONLY: the mini model won't reliably compose the farewell (it narrates "let me wrap this
@@ -443,6 +547,138 @@ async def _drain_and_close(twilio_ws: WebSocket, state: dict) -> None:
 
     # Keep a reference on state so the task isn't garbage-collected before it fires.
     state["hangup_fallback"] = asyncio.create_task(_fallback())
+
+
+# ---------------------------------------------------------------------------
+# INBOUND ONLY — warm transfer to a human.
+#
+# Everything below is unreachable on an outbound call: nothing sets `transfer_pending` there, and
+# `transfer_to_human` is not in the outbound tool set at all.
+# ---------------------------------------------------------------------------
+
+# If the hold line never finishes (the caller talked over it and the response was cancelled), hand
+# off anyway rather than leaving them listening to nothing.
+_TRANSFER_FALLBACK_SECONDS = 12
+
+# Spoken to the caller immediately before the handoff, when the model called transfer_to_human
+# without saying anything first. Same reasoning as the farewell: left to itself the model either
+# narrates the transfer or says nothing, and silence right before the audio path is torn out reads
+# as a dropped call.
+_TRANSFER_HOLD_INSTRUCTION = (
+    "You are about to put this caller through to a colleague. Say ONE short line telling them so, "
+    "in the language they last spoke to you, and NOTHING else — no question, no recap of what they "
+    'said. For example: "Of course — let me put you through to someone who can help. One moment." '
+    "Then stop."
+)
+
+# The caller is still on the line and the handoff never happened. Recover in-conversation instead
+# of leaving them in silence.
+_TRANSFER_FAILED_INSTRUCTION = (
+    "The transfer did not go through, and the caller is still on the line with you. Apologize once "
+    "in ONE short sentence, then offer to take a message and ask for their name — in the language "
+    "they last spoke to you. For example: \"Sorry about that — nobody's free right now. Can I take "
+    'a message? May I start with your name?"'
+)
+
+
+async def _handle_transfer(
+    twilio_ws: WebSocket, openai_ws, evt: dict, state: dict, cfg: Config
+) -> None:
+    """The agent asked to hand the caller to a person.
+
+    Mirrors _handle_end_call: ack the tool, make sure the caller HEARS a hold line, and let the
+    drain do the rest. What differs is the ending — a hang-up closes the socket, a transfer must
+    emphatically not (see _caller_to_model).
+    """
+    call_id = evt.get("call_id", "")
+    try:
+        args = json.loads(evt.get("arguments") or "{}")
+    except json.JSONDecodeError:
+        args = {}
+    await openai_ws.send(
+        json.dumps(
+            {
+                "type": "conversation.item.create",
+                "item": {"type": "function_call_output", "call_id": call_id, "output": '{"ok": true}'},
+            }
+        )
+    )
+    # One handoff attempt per call: a second is either the model repeating itself, or a retry after
+    # a failure the caller has already been apologized to for.
+    if state.get("transfer_pending") or state.get("transfer_done") or state.get("closing"):
+        return
+
+    reason = (args.get("reason") or "").strip() or "Caller would like to book something."
+    log.info("transfer_to_human — %s", reason)
+    state["transfer_pending"] = reason
+
+    # If the model already spoke this turn, that WAS the hold line (the prompt asks for it before
+    # the tool call) — just drain it. Otherwise force one, and hand off when it lands.
+    if state.get("spoke_since_user"):
+        await _drain_and_transfer(twilio_ws, openai_ws, cfg, state)
+        return
+
+    await openai_ws.send(
+        json.dumps({"type": "response.create", "response": {"instructions": _TRANSFER_HOLD_INSTRUCTION}})
+    )
+
+    async def _backstop() -> None:
+        await asyncio.sleep(_TRANSFER_FALLBACK_SECONDS)
+        if state.get("transfer_pending") and not state.get("transfer_marked"):
+            await _drain_and_transfer(twilio_ws, openai_ws, cfg, state)
+
+    state["transfer_backstop"] = asyncio.create_task(_backstop())
+
+
+async def _drain_and_transfer(
+    twilio_ws: WebSocket, openai_ws, cfg: Config, state: dict
+) -> None:
+    """Play out the buffered hold line, then hand off. Idempotent (guarded by 'transfer_marked').
+
+    Same mark-and-echo trick as _drain_and_close: Twilio finishes playing everything queued and
+    echoes the mark back, and _caller_to_model performs the redirect on the echo.
+    """
+    if state.get("closing") or state.get("transfer_marked"):
+        return
+    state["transfer_marked"] = True
+    await twilio_ws.send_json(
+        {"event": "mark", "streamSid": state["stream_sid"], "mark": {"name": "transfer"}}
+    )
+
+    async def _fallback() -> None:
+        # The echo normally lands in about a second. If it never does, transfer anyway — the
+        # alternative is a caller holding on a line nobody is going to pick up.
+        await asyncio.sleep(_TRANSFER_FALLBACK_SECONDS)
+        await _do_transfer(cfg, openai_ws, state)
+
+    state["transfer_fallback"] = asyncio.create_task(_fallback())
+
+
+async def _do_transfer(cfg: Config, openai_ws, state: dict) -> None:
+    """Redirect the live call to the human. Idempotent (guarded by 'transfer_done')."""
+    if state.get("transfer_done"):
+        return
+    state["transfer_done"] = True
+    ok = await transfer.redirect_to_human(
+        cfg,
+        call_sid=state.get("call_sid", ""),
+        reason=state.get("transfer_pending") or "",
+        caller=state.get("caller", ""),
+    )
+    if ok:
+        state["outcome"] = "transferred"
+        return
+    # The redirect never went out (no SID, no configured number, Twilio refused). The caller is
+    # still connected to us, so recover in conversation rather than dropping them.
+    log.warning("transfer failed — falling back to taking a message")
+    state["transfer_pending"] = None
+    state["outcome"] = "transfer_failed"
+    state["spoke_since_user"] = False
+    await openai_ws.send(
+        json.dumps(
+            {"type": "response.create", "response": {"instructions": _TRANSFER_FAILED_INSTRUCTION}}
+        )
+    )
 
 
 # MINI ONLY: mini won't reliably confirm a scheduled callback and then call end_call on its own,

@@ -22,6 +22,8 @@ def main() -> None:
     if gaps:
         print("WARNING — missing settings the server needs: " + ", ".join(gaps))
         print("The server will start, but calls will fail until these are set (see .env.example).")
+    for gap in cfg.insecure_endpoints():
+        print("WARNING — unauthenticated: " + gap)
     print(f"media-stream server on :{cfg.port} — WebSocket path /media-stream")
     uvicorn.run("openai_agent.telephony.server:app", host="0.0.0.0", port=cfg.port)
 

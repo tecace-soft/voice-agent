@@ -1,6 +1,7 @@
 """Place an outbound call via Twilio and hand its audio to our media-stream server.
 
-The call's TwiML connects a <Stream> to wss://<public_host>/media-stream and passes the lead's
+The call's TwiML connects a <Stream> to cfg.stream_url (wss://<public_host>/media-stream, plus
+the shared path secret when one is configured) and passes the lead's
 details as <Parameter> elements — the bridge reads them from Twilio's "start" event to render
 the instructions and key the tools to this lead (the same details the Retell poller passes as
 dynamic variables).
@@ -34,11 +35,11 @@ def to_e164(number: str, default_country_code: str = "1") -> str:
     return f"+{digits}" if digits else s
 
 
-def build_twiml(public_host: str, lead: dict) -> str:
+def build_twiml(cfg: Config, lead: dict) -> str:
     """TwiML that streams the call to our server, passing the lead's details as parameters."""
     response = VoiceResponse()
     connect = Connect()
-    stream = Stream(url=f"wss://{public_host}/media-stream")
+    stream = Stream(url=cfg.stream_url)
     for key in (
         "intake_id", "lead_name", "purpose", "email",
         "requested_date", "requested_date_iso",
@@ -54,7 +55,7 @@ def build_twiml(public_host: str, lead: dict) -> str:
 
 def place_call(cfg: Config, *, to_number: str, lead: dict) -> str:
     """Dial `to_number` and connect it to the realtime agent. Returns the Twilio call SID."""
-    twiml = build_twiml(cfg.public_host, lead)
+    twiml = build_twiml(cfg, lead)
     client = Client(cfg.twilio_account_sid, cfg.twilio_auth_token)
     dest = to_e164(to_number)
     call = client.calls.create(

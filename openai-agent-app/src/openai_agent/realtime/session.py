@@ -12,7 +12,10 @@ from ..config import Config
 from ..tools.agent_tools import TOOL_SCHEMAS
 
 
-def build_session_update(cfg: Config, instructions: str) -> dict:
+def build_session_update(cfg: Config, instructions: str, tools: list[dict] | None = None) -> dict:
+    """Build the session config. `tools` defaults to the outbound set, so the outbound call path
+    behaves exactly as it did before inbound screening existed; the inbound bridge passes its own
+    (INBOUND_TOOL_SCHEMAS)."""
     return {
         "type": "session.update",
         "session": {
@@ -33,7 +36,7 @@ def build_session_update(cfg: Config, instructions: str) -> dict:
                 },
             },
             "instructions": instructions,
-            "tools": TOOL_SCHEMAS,
+            "tools": TOOL_SCHEMAS if tools is None else tools,
             "tool_choice": "auto",
         },
     }

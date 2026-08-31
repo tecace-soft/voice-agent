@@ -117,6 +117,64 @@ TOOL_SCHEMAS: list[dict] = [
 ]
 
 
+# The INBOUND screening agent gets a different tool set, not a superset. A receptionist answering a
+# stranger has no lead to book against, no callback to schedule and no lead status to mark — it
+# hands off, takes a message, or hangs up. Sharing one list would offer the model five tools it can
+# never legitimately use on an inbound call, which is how agents end up booking phantom leads.
+INBOUND_TOOL_SCHEMAS: list[dict] = [
+    {
+        "type": "function",
+        "name": "transfer_to_human",
+        "description": "Hand this caller to a real person. Use ONLY for a genuine request to "
+        "book, schedule, or meet with someone, or when the caller directly asks for a human. "
+        "Never for a general question, a complaint, or a sales call.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "description": "One sentence, in ENGLISH, describing what the caller wants. "
+                    "It is read aloud to the colleague before they accept the call, so make it "
+                    "specific — e.g. 'Wants to book a consultation about a logistics AI project.'",
+                }
+            },
+            "required": ["reason"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "take_message",
+        "description": "Record a message for the team when the caller wants a callback, or when "
+        "you could not help them and no transfer is appropriate.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "caller_name": {"type": "string", "description": "The caller's name, as given."},
+                "callback_number": {
+                    "type": "string",
+                    "description": "The number to call back, digits only. Read it back to the "
+                    "caller to confirm before recording it.",
+                },
+                "message": {
+                    "type": "string",
+                    "description": "What the call is regarding, in one or two sentences.",
+                },
+            },
+            "required": ["message"],
+        },
+    },
+    # Same contract as the outbound agent: the bridge speaks the farewell and closes the line.
+    {
+        "type": "function",
+        "name": "end_call",
+        "description": "Hang up the phone. Call this once the conversation is genuinely over — "
+        "the caller is done, it was a wrong number, or it was a sales call you declined. A warm "
+        "farewell is spoken automatically, so do not say goodbye yourself first.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+]
+
+
 class ToolExecutor:
     """Runs a tool call for one lead against the shared backend."""
 
@@ -147,9 +205,22 @@ class ToolExecutor:
                     "/agent/mark-outcome",
                     {"intakeId": self._intake_id, "outcome": args.get("outcome", "unreachable")},
                 )
-            if name == "end_call":
-                # Hang-up is handled by the bridge (it drains audio then closes the stream); this
-                # is only a safety net so the tool never looks "unknown".
+            if name == "take_message":
+                # Inbound only. There is no intake to attach this to (a stranger called us), so the
+                # message rides out on the call log the bridge already persists at call end — see
+                # `messages` in the bridge state. Returning it lets the model read the confirmation
+                # back rather than inventing one.
+                return json.dumps(
+                    {
+                        "recorded": True,
+                        "message": "Message recorded — the team will follow up.",
+                    }
+                )
+            if name in ("end_call", "transfer_to_human"):
+                # Both are handled by the bridge, which owns the call's plumbing: end_call drains
+                # the audio and closes the stream; transfer_to_human redirects the live call out of
+                # the stream entirely (a `<Connect>` cannot be escaped from in-band). This branch is
+                # only a safety net so neither tool ever looks "unknown" to the model.
                 return json.dumps({"ok": True})
             return json.dumps({"error": f"unknown tool {name}"})
         except Exception as exc:  # noqa: BLE001 — a tool failure must not drop the call

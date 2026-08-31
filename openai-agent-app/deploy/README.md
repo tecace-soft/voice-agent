@@ -96,6 +96,36 @@ cd /root/voice-agent/openai-agent-app && git pull
 sudo systemctl restart openai-agent-server openai-agent-poller
 ```
 
+## Securing the public endpoints
+
+The server exposes webhooks and a WebSocket on a public host. Two env settings close them (see
+`.env.example`); neither is on by default, and `run_server.py` warns at startup about whichever is
+still open.
+
+```bash
+# 1. a secret for the media-stream WebSocket (the more urgent of the two)
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"     # -> STREAM_SECRET=...
+
+# 2. then, as a separate step, signature validation
+VALIDATE_TWILIO_SIGNATURE=true
+```
+
+Both change the running configuration, so recreate the container (a plain restart does not re-read
+`env_file`):
+
+```bash
+docker compose up -d --force-recreate server
+```
+
+After setting `STREAM_SECRET`, the stream URL becomes `wss://<host>/media-stream/<secret>`. Nothing
+external needs updating — the app builds that URL itself in all three places it is used — but the
+bare `/media-stream` path stops being accepted, so **restart the server before placing a call**, not
+during one.
+
+After turning on `VALIDATE_TWILIO_SIGNATURE`, place one test call immediately and watch for
+`bad Twilio signature` in the logs: that means `PUBLIC_HOST` disagrees with the URL configured in
+the Twilio console.
+
 ## Notes
 
 - The poller reads leads and places calls continuously whenever it's running — stop it with
