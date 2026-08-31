@@ -52,6 +52,7 @@ def main() -> int:
         processed=summary.processed,
         skipped=summary.skipped,
         failed=summary.failed,
+        failures=summary.failures,
     )
     return 1 if summary.failed else 0
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,11 +31,26 @@ log = logging.getLogger(__name__)
 
 
 @dataclass
+class Failure:
+    """One voicemail that couldn't be transcribed, and why.
+
+    The reason was previously only ever a log line, which meant it survived exactly as long as the
+    journal did and was invisible to anyone not on the box. Carrying it with the run makes the
+    difference between "5 failed" and "Sheets returned 503 five times" visible where people look.
+    """
+
+    filename: str
+    fromAddr: str
+    error: str
+
+
+@dataclass
 class RunSummary:
     voicemails: int = 0  # messages with at least one .wav
     processed: int = 0  # attachments transcribed + uploaded this run
     skipped: int = 0  # attachments already in the state file
     failed: int = 0  # attachments that errored (left unprocessed for a retry)
+    failures: list[Failure] = field(default_factory=list)  # one per failed attachment, with reason
 
 
 class ProcessedStore:
@@ -120,6 +135,12 @@ class Pipeline:
                     self._handle(vm, att)
                 except Exception as exc:  # noqa: BLE001 — one bad file shouldn't stop the batch
                     summary.failed += 1
+                    # Truncated: an exception's str() can be a full HTTP body, and this ends up in
+                    # a database column and on a dashboard card. The first 500 characters carry the
+                    # status and message, which is what anyone actually reads.
+                    summary.failures.append(
+                        Failure(att.filename, vm.from_addr, str(exc)[:500] or exc.__class__.__name__)
+                    )
                     log.error("failed on %s from %s: %s", att.filename, vm.from_addr, exc)
                     continue
                 self._store.add(key)  # only mark done after the row is safely in the sheet

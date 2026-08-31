@@ -135,3 +135,16 @@ export interface TranscribeStats {
   recent: VoicemailRun[]; // newest first — the "Recent runs" table
   runSeries: VoicemailRun[]; // oldest→newest — one point per run for the line chart
 }
+
+// One voicemail that couldn't be transcribed, and why. `acknowledgedAt` is what clears the badge —
+// the row is kept either way, so looking at a problem never erases the record of it.
+export interface TranscribeFailure {
+  id: string;
+  runId: string | null;
+  mailboxEmail: string | null;
+  filename: string;
+  fromAddr: string;
+  error: string;
+  createdAt: string;
+  acknowledgedAt: string | null;
+}

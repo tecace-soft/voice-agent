@@ -16,7 +16,13 @@ log = logging.getLogger(__name__)
 
 
 def report_run(
-    cfg: Config, *, voicemails: int, processed: int, skipped: int, failed: int
+    cfg: Config,
+    *,
+    voicemails: int,
+    processed: int,
+    skipped: int,
+    failed: int,
+    failures: list | None = None,
 ) -> None:
     """POST the run counts to <BACKEND_URL>/transcribe/runs, if BACKEND_URL is configured.
 
@@ -32,6 +38,12 @@ def report_run(
         "skipped": skipped,
         "failed": failed,
     }
+    # Sent only when there are any, so a healthy run's payload is unchanged and an older backend
+    # that doesn't know the field still accepts every normal report.
+    if failures:
+        payload["failures"] = [
+            {"filename": f.filename, "fromAddr": f.fromAddr, "error": f.error} for f in failures
+        ]
     mailbox = cfg.mailbox_email()
     if mailbox:
         payload["mailboxEmail"] = mailbox

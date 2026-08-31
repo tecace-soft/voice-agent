@@ -9,6 +9,7 @@ import { AccountsPage } from "./pages/AccountsPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AllFeedbackPage } from "./pages/AllFeedbackPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
+import { FailuresPage } from "./pages/FailuresPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -30,6 +31,7 @@ const STANDALONE_VIEWS = new Set<ViewId>([
   "allFeedback",
   "analytics",
   "people",
+  "failed",
 ]);
 
 // Overview and Daily activity fetch per person when an admin is looking at everyone, so they don't
@@ -42,7 +44,7 @@ const VIEW_TITLES: Record<ViewId, string> = {
   people: "Per person",
   activity: "Daily activity",
   runs: "All runs",
-  failed: "Failed runs",
+  failed: "Failures",
   feedback: "Send feedback",
   allFeedback: "All feedback",
   accounts: "Accounts",
@@ -207,7 +209,12 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           {view === "activity" &&
             (showMailbox ? <PersonBoardsPage kind="activity" /> : data && <ActivityPage data={data} />)}
           {data && view === "runs" && <RunsPage data={data} showMailbox={showMailbox} />}
-          {data && view === "failed" && <RunsPage data={data} onlyFailed showMailbox={showMailbox} />}
+          {view === "failed" && (
+            <>
+              <FailuresPage mailbox={mailbox} />
+              {data && <RunsPage data={data} onlyFailed showMailbox={showMailbox} />}
+            </>
+          )}
           {view === "feedback" && <FeedbackPage />}
           {view === "allFeedback" &&
             (isAdmin ? (

@@ -89,6 +89,7 @@ def main() -> int:
                     processed=summary.processed,
                     skipped=summary.skipped,
                     failed=summary.failed,
+                    failures=summary.failures,
                 )
         except Exception as exc:  # noqa: BLE001 — a bad cycle must not kill the poller
             log.warning("cycle error (continuing): %s", exc)

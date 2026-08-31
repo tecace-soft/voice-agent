@@ -27,6 +27,28 @@ export async function initDb(): Promise<void> {
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_voicemail_runs_created_at ON voicemail_runs (created_at)`;
 
+  // Why individual voicemails failed. One row per failed attachment, kept after acknowledgement so
+  // the history survives — clearing the notification is not the same as forgetting the problem.
+  await sql`
+    CREATE TABLE IF NOT EXISTS voicemail_failures (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      run_id          UUID REFERENCES voicemail_runs(id) ON DELETE CASCADE,
+      mailbox_email   TEXT,
+      filename        TEXT NOT NULL,
+      from_addr       TEXT NOT NULL,
+      error           TEXT NOT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+      acknowledged_at TIMESTAMPTZ
+    )
+  `;
+  // The badge query is "unacknowledged, for this mailbox" — a partial index so it stays cheap as
+  // acknowledged rows accumulate and are never read by it again.
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_voicemail_failures_unack
+    ON voicemail_failures (mailbox_email, created_at DESC)
+    WHERE acknowledged_at IS NULL
+  `;
+
   // Which mailbox the run fetched from — the address the transcribe-app polls. Everything the
   // dashboard shows is scoped by it: a `user` sees only the mailbox matching their own account
   // email. Nullable because runs reported before this existed have no mailbox to attribute them
@@ -124,6 +146,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT mailbox_email FROM voicemail_runs LIMIT 1`;
     await sql`SELECT role FROM users LIMIT 1`;
     await sql`SELECT screenshot FROM feedback LIMIT 1`;
+    await sql`SELECT 1 FROM voicemail_failures LIMIT 1`;
     return;
   } catch {
     await initDb();

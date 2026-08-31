@@ -1,4 +1,5 @@
 import type {
+  TranscribeFailure,
   AuthUser,
   MailboxScope,
   MailboxSummary,
@@ -251,4 +252,20 @@ export async function listMailboxes(): Promise<MailboxSummary[]> {
 // weekday patterns, and how regularly the app has been running.
 export function getTranscribeAnalytics(mailbox?: MailboxScope): Promise<TranscribeAnalytics> {
   return get<TranscribeAnalytics>(`/transcribe/analytics${mailboxQuery(mailbox)}`);
+}
+
+// ---- failures ----
+
+// Why voicemails failed, newest first, with how many nobody has looked at yet.
+export function listFailures(
+  mailbox?: MailboxScope,
+): Promise<{ failures: TranscribeFailure[]; unacknowledged: number }> {
+  return get<{ failures: TranscribeFailure[]; unacknowledged: number }>(
+    `/transcribe/failures${mailboxQuery(mailbox)}`,
+  );
+}
+
+// "I've seen these." Clears the badge for the scope being viewed; the entries stay in the list.
+export function acknowledgeFailures(mailbox?: MailboxScope): Promise<{ cleared: number }> {
+  return request<{ cleared: number }>("POST", `/transcribe/failures/acknowledge${mailboxQuery(mailbox)}`);
 }

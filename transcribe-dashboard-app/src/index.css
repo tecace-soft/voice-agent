@@ -1818,3 +1818,46 @@ button.person-primary:hover {
     transition: none;
   }
 }
+
+/* ---- transcription failures ---- */
+
+.failure-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.failure-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+.failure-item:first-child {
+  border-top: none;
+}
+.failure-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+/* The reason itself. Monospace because these are API responses and status codes — the thing that
+   distinguishes one from another is often a number, and a proportional face hides that. */
+.failure-error {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.failure-files {
+  margin: 0;
+}
