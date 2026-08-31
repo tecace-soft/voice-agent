@@ -1909,3 +1909,17 @@ button.person-primary:hover {
     transition: none;
   }
 }
+.run-detail-empty {
+  margin: 0;
+  padding: 12px 0 0;
+}
+.run-detail-empty code {
+  display: block;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--surface);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}

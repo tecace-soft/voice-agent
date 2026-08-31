@@ -12,6 +12,7 @@ from __future__ import annotations
 import sys
 
 from transcribe_app.config import Config
+from transcribe_app.callerid import parse_caller_id
 from transcribe_app.tools import EmailSource
 
 
@@ -29,9 +30,22 @@ def main() -> int:
         return 1
     total_audio = sum(len(v.attachments) for v in voicemails)
     print(f"imap: ok — {len(voicemails)} voicemail email(s), {total_audio} audio attachment(s).")
+    # Show what the sheet's Caller ID column would get, and from where. The number comes from the
+    # attachment filename when the phone system puts it there and the subject otherwise; when
+    # neither carries one the column is blank, and this is how you find out which case you are in.
+    print()
     for v in voicemails[:5]:
         kinds = ", ".join(a.content_type for a in v.attachments) or "no audio"
-        print(f"  - {v.from_addr}: {v.subject or '(no subject)'} [{kinds}]")
+        print(f"  - from    : {v.from_addr}")
+        print(f"    subject : {v.subject or '(no subject)'}")
+        print(f"    audio   : {', '.join(a.filename for a in v.attachments) or '(none)'} [{kinds}]")
+        for a in v.attachments:
+            from_name = parse_caller_id(a.filename, "")
+            from_subj = parse_caller_id("", v.subject or "")
+            got = parse_caller_id(a.filename, v.subject or "")
+            where = "filename" if from_name else "subject" if from_subj else "NOWHERE"
+            print(f"    callerID: {got or '(blank)'}  <- {where}")
+        print()
     return 0
 
 

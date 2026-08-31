@@ -65,12 +65,24 @@ export function FailuresPage({
     load();
   }, [load]);
 
-  // What to reveal when a run's row is clicked. Returns null for a run we have no stored reasons
-  // for — runs that failed before this feature existed — so those rows stay plain rather than
-  // expanding to an empty box that looks broken.
+  // What to reveal when a run's row is clicked.
+  //
+  // EVERY failed run is expandable, including ones we have no stored reason for. Making those rows
+  // silently inert was worse than useless: from the outside a row that does nothing on click is
+  // indistinguishable from a broken feature, and "we didn't record this one" is itself the answer
+  // to why nothing is shown.
   const detailsFor = (run: VoicemailRun) => {
+    if (run.failed === 0) return null;
     const mine = (failures ?? []).filter((f) => f.runId === run.id);
-    if (!mine.length) return null;
+    if (!mine.length) {
+      return (
+        <p className="ta-body-2 muted run-detail-empty">
+          No reason was recorded for this run. Reasons are only stored for runs reported after
+          failure logging was added — before that the error existed solely in the poller's log:
+          <code> journalctl -u transcribe-poller --since "{formatDateTime(run.createdAt)}"</code>
+        </p>
+      );
+    }
     return (
       <ul className="run-detail-list">
         {mine.map((f) => (
@@ -84,8 +96,6 @@ export function FailuresPage({
       </ul>
     );
   };
-
-  if (error) return <p className="error ta-body-2">{error}</p>;
 
   const groups = new Map<string, TranscribeFailure[]>();
   for (const f of failures ?? []) {
@@ -112,7 +122,13 @@ export function FailuresPage({
           )}
         </div>
 
-        {failures === null ? (
+        {error ? (
+          // Shown in place of the list, not instead of the page: the failed-runs table below reads
+          // from the stats endpoint and is still worth seeing when this one is unavailable.
+          <p className="error ta-body-2" role="alert">
+            {error}
+          </p>
+        ) : failures === null ? (
           <p className="feedback-empty muted ta-body-2">Loading…</p>
         ) : failures.length === 0 ? (
           <p className="feedback-empty muted ta-body-2">

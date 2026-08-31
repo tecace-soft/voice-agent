@@ -23,8 +23,12 @@ from urllib.parse import unquote_plus
 
 # A North American number, tolerating the separators these filenames use: "(206)_929 - 8767",
 # "206-929-8767", "206.929.8767". A leading country code is allowed and discarded.
+# The final separator is OPTIONAL: a phone system may write "2069298767" with no punctuation at
+# all, and requiring one silently produced a blank Caller ID for exactly those messages. What keeps
+# this from matching any long digit run is the pair of lookarounds — the match must be bounded by
+# non-digits, so a 14-digit reference number contains no valid 10-digit match.
 _PHONE = re.compile(
-    r"(?<!\d)(?:\+?1[\s._-]*)?\(?(\d{3})\)?[\s._-]*(\d{3})[\s._-]+(\d{4})(?!\d)"
+    r"(?<!\d)(?:\+?1[\s._-]*)?\(?(\d{3})\)?[\s._-]*(\d{3})[\s._-]*(\d{4})(?!\d)"
 )
 
 # The trailing "_2026-07-20_18:08:46" stamp. Removed before the phone search: a run of digits and
