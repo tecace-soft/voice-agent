@@ -124,10 +124,15 @@ _TRANSFER_FAILED_RULE = """\
 # Turn it off with DISCLOSE_RECORDING=false only on legal advice.
 _RECORDING_NOTICE = " Just so you know, this call is recorded."
 
-# The first thing the caller hears. Deliberately an OPEN question — the agent has no idea who is
-# calling or why, so anything narrower ("are you calling to book?") mis-frames the call and has to
-# be walked back. `{business}` is the only placeholder; keep it to one breath.
-DEFAULT_GREETING = "Hello, you've reached {business}. How may I help you today?"
+# The first thing the caller hears. Three jobs in one breath: say where they've reached, give the
+# agent a NAME so the caller has something to address (without a name people say "hello? hello?"
+# and talk over the agent), and hand the turn back with an OPEN question — anything narrower
+# ("are you calling to book?") mis-frames the call and has to be walked back.
+#
+# The name goes in the SAME clause as the company, not a sentence of its own: the recording notice
+# is spliced in before the final sentence, and a standalone "This is Tess." would get shunted
+# behind the disclosure and land oddly.
+DEFAULT_GREETING = "Hello, you've reached {business}, this is {agent}. How may I help you today?"
 
 
 def _spoken_caller(caller: str) -> str:
