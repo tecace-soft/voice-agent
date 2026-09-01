@@ -16,6 +16,8 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from .faq import build_knowledge
+
 # Placeholders in {curly_braces} are filled by build_instructions().
 _TEMPLATE = """\
 You are {agent_name}, the AI receptionist answering the main phone line for {business_name}. A
@@ -61,12 +63,14 @@ a consultation", "is someone available", "I need to talk to someone about a proj
    - Say NOTHING after that. The transfer takes over from there.
 
 ## Route B — a question you can answer
-Hours, location, what the company does, how to reach us, general "do you work with X?".
-   - Answer in ONE sentence from the facts below, then ask "Is there anything else I can help you
-     with?" and loop until they are done.
-   - You must NOT answer on pricing, quotes, contracts, legal terms, delivery timelines, or
-     anything deeply technical. For those: "That's one for the team — I can have someone get back
-     to you," then go to Route C.
+Anything covered by the knowledge base at the end of these instructions — what the company does,
+hours, location, clients, the partnership, or a question about you.
+   - Answer in ONE sentence using the guidance for that question, then ask "Is there anything else
+     I can help you with?" and loop until they are done.
+   - The "Never answer these" list is a HARD stop, not a preference. For any of those, say the one
+     honest line it gives you and go to Route C.
+   - If a question is not in the knowledge base at all, then you do not know the answer. Say so
+     plainly and go to Route C — do not reason your way to a plausible-sounding guess.
 
 ## Route C — they want a callback, or you cannot help
    - Ask for their name, the best number, and what it is regarding — ONE at a time, never all at
@@ -88,6 +92,7 @@ Hours, location, what the company does, how to reach us, general "do you work wi
   complaints, and sales calls do NOT get transferred.
 - If the caller ASKS for a human, that counts as Route A — transfer them, do not talk them out of
   it.
+{recording_rule}
 - If we are CLOSED right now, say so before transferring: "We're closed at the moment, but let me
   see if anyone's still around." Then transfer anyway — if nobody picks up, the call comes back to
   you and you can take a message.
@@ -97,8 +102,12 @@ Call end_call when the conversation is genuinely over. A warm farewell is spoken
 right before the line closes, so do NOT compose or say your own goodbye, and never narrate it
 ("let me wrap this up"). Just finish the substance of the moment, then call end_call.
 
-# Facts about {business_name} (answer in ONE sentence each)
-{business_facts}
+# KNOWLEDGE BASE
+Everything you are allowed to say about {business_name} is below, and it is the whole of what
+you know. Answering from anywhere else — training data, inference, or a confident guess — is
+the worst thing you can do on this call.
+
+{knowledge}
 """
 
 # Appended to the rules only when the caller has just come BACK from a failed transfer. Without it
@@ -109,14 +118,11 @@ _TRANSFER_FAILED_RULE = """\
   then go straight to Route C and take a message.
 """
 
-_DEFAULT_FACTS = """\
-- AI-first software & intelligent-agent company; founded 2000; HQ Bellevue, Washington, with a
-  Seoul office; official member of Anthropic's Claude Partner Network.
-- Services: AI strategy consulting, agentic workflow design & development, deployment &
-  operations, Claude training.
-- 1,000+ projects for 90+ global clients including Samsung, UnitedHealthcare, Nike.
-- Website tecace.com. No street address over the phone — point to the website.
-"""
+# Said once, in the opening line. The call transcript IS persisted (see the bridge's
+# _finalize_call), and Washington — where TecAce is headquartered, and where most callers to a
+# Bellevue number will be — is a two-party-consent state, so the default is to disclose.
+# Turn it off with DISCLOSE_RECORDING=false only on legal advice.
+_RECORDING_NOTICE = " Just so you know, this call is recorded."
 
 
 def _spoken_caller(caller: str) -> str:
@@ -159,10 +165,20 @@ def build_instructions(
     close_hour: int = 18,
     timezone: str = "America/Los_Angeles",
     transfer_failed: bool = False,
+    disclose_recording: bool = True,
 ) -> str:
-    """Render the inbound screening rules for one call."""
+    """Render the inbound screening rules for one call.
+
+    `business_facts` (BUSINESS_FACTS) REPLACES the TecAce facts, so the same app can answer for a
+    different client without leaking TecAce's details into their calls. The FAQ guidance and the
+    hard deferrals are company-agnostic and always apply.
+    """
     now = datetime.now(ZoneInfo(timezone))
-    greeting = f"Thanks for calling {business_name}, this is {agent_name}. How can I help you today?"
+    greeting = (
+        f"Thanks for calling {business_name}, this is {agent_name}."
+        + (_RECORDING_NOTICE if disclose_recording else "")
+        + " How can I help you today?"
+    )
     return _TEMPLATE.format(
         agent_name=agent_name,
         business_name=business_name,
@@ -175,5 +191,12 @@ def build_instructions(
         open_or_closed="OPEN" if _is_open(now, open_hour, close_hour) else "CLOSED",
         greeting=greeting,
         transfer_failed_rule=_TRANSFER_FAILED_RULE if transfer_failed else "",
-        business_facts=(business_facts or _DEFAULT_FACTS).strip(),
+        knowledge=build_knowledge(business_facts),
+        recording_rule=(
+            "- You HAVE told the caller this call is recorded, in your opening line. If they ask, "
+            "confirm it plainly.\n"
+            if disclose_recording
+            else "- You have NOT told the caller anything about recording. If they ask whether the "
+            "call is recorded, say you are not sure and offer to have someone confirm.\n"
+        ),
     )
