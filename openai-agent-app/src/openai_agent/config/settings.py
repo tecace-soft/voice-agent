@@ -77,6 +77,8 @@ class Config:
     # Say "this call is recorded" in the inbound greeting. Default ON: the transcript IS persisted,
     # and Washington is a two-party-consent state. Turn off only on legal advice.
     disclose_recording: bool
+    # The inbound agent's opening line. `{business}` and `{agent}` are substituted.
+    greeting: str
     # ---- Runtime ----
     # How often the poller looks for leads that are due a call, in seconds.
     poll_interval: float
@@ -112,6 +114,7 @@ class Config:
             close_hour=int(_optional("BUSINESS_CLOSE_HOUR", "18")),
             disclose_recording=_optional("DISCLOSE_RECORDING", "true").lower()
             in ("1", "true", "yes", "on"),
+            greeting=_optional("INBOUND_GREETING"),
             poll_interval=float(_optional("POLL_INTERVAL_SECONDS", "300")),
             timezone=_optional("TIMEZONE", "America/Los_Angeles"),
             request_timeout=float(_optional("REQUEST_TIMEOUT_SECONDS", "30")),

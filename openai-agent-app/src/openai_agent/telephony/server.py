@@ -97,9 +97,17 @@ def _signed_by_twilio(request: Request, fields: dict) -> bool:
 
 async def _form(request: Request) -> dict:
     """Twilio posts application/x-www-form-urlencoded. Parse the raw body ourselves so we don't
-    depend on python-multipart (which request.form() requires) — the same reason /amd does."""
+    depend on python-multipart (which request.form() requires) — the same reason /amd does.
+
+    `keep_blank_values=True` is NOT optional. Twilio sends a pile of empty-valued fields on every
+    voice webhook (CallerCity, CallerName, FromZip, ForwardedFrom, ...), and its signature is
+    computed over ALL of them. parse_qs drops blank values by default, so without this we hash a
+    strict subset of what Twilio hashed, every real signature fails, and /incoming 403s — which
+    Twilio then treats as a failure and falls through to the fallback handler. It reproduces only
+    against real Twilio traffic, never against a hand-made test payload.
+    """
     body = (await request.body()).decode("utf-8", "ignore")
-    return {k: (v[0] if v else "") for k, v in parse_qs(body).items()}
+    return {k: (v[0] if v else "") for k, v in parse_qs(body, keep_blank_values=True).items()}
 
 
 @app.get("/health")
@@ -208,7 +216,7 @@ async def amd_callback(request: Request) -> dict:
         # Twilio posts application/x-www-form-urlencoded. Parse the raw body ourselves so we don't
         # depend on python-multipart (which request.form() requires).
         body = (await request.body()).decode("utf-8", "ignore")
-        fields = parse_qs(body)
+        fields = parse_qs(body, keep_blank_values=True)  # see _form: blanks are signed too
         # This is the only webhook that reaches into a call already in progress: a forged
         # AnsweredBy=machine would make the agent abandon a live human mid-sentence to leave a
         # voicemail. Verify before delivering it.

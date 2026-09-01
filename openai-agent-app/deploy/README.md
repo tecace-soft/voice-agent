@@ -25,7 +25,10 @@ Poller  ────────────────────────
 ## 1. Get the code + a virtualenv
 
 ```bash
-cd /root/voice-agent && git fetch && git checkout michael/open-ai && git pull
+# NOTE: the inbound-screening work lives on michael/inbound_call, NOT michael/open-ai.
+# `git pull` on the wrong branch is a silent no-op — you get no error, just old code.
+cd /root/voice-agent && git fetch && git checkout michael/inbound_call && git pull
+git log --oneline -1        # confirm you have the commit you expect
 cd openai-agent-app
 python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
@@ -90,6 +93,29 @@ journalctl -u openai-agent-poller -f
 
 ## Updating after a code change
 
+On this VPS the app runs as **Docker containers**, so a code change needs a REBUILD — not a
+restart. `docker compose restart` and `--force-recreate` both reuse the existing image and will
+silently run your old code; only `--build` picks up new source.
+
+```bash
+cd /root/voice-agent && git checkout michael/inbound_call && git pull
+git log --oneline -1                              # confirm the commit
+
+cd openai-agent-app
+docker compose up -d --build server               # server only (poller stays off)
+docker compose --profile poller up -d --build     # server AND poller (resumes outbound dialling)
+```
+
+Verify:
+
+```bash
+curl https://31-97-214-59.sslip.io/health
+docker compose ps
+docker compose logs -f server
+```
+
+The systemd form below is the non-Docker fallback only:
+
 ```bash
 cd /root/voice-agent/openai-agent-app && git pull
 .venv/bin/pip install -e .            # only if deps changed
@@ -141,5 +167,5 @@ still run but the agent stops leaving voicemails (the log shows `unsigned reques
 
 - The poller reads leads and places calls continuously whenever it's running — stop it with
   `sudo systemctl stop openai-agent-poller` if you need calling to pause.
-- Editing Retell prompts does **not** touch this app; this is a fully separate path on `michael/open-ai`.
+- Editing Retell prompts does **not** touch this app; this is a fully separate path (started on `michael/open-ai`, inbound work continues on `michael/inbound_call`).
 - Costs run while the services are up: Realtime audio (~$0.30/min) + Twilio per-minute + the VPS.

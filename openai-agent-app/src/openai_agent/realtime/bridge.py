@@ -75,6 +75,7 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             timezone=cfg.timezone,
             transfer_failed=str(params.get("transfer_failed", "")).lower() in ("yes", "true", "1"),
             disclose_recording=cfg.disclose_recording,
+            greeting=cfg.greeting,
         )
         tools = INBOUND_TOOL_SCHEMAS
     else:

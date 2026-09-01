@@ -124,6 +124,11 @@ _TRANSFER_FAILED_RULE = """\
 # Turn it off with DISCLOSE_RECORDING=false only on legal advice.
 _RECORDING_NOTICE = " Just so you know, this call is recorded."
 
+# The first thing the caller hears. Deliberately an OPEN question — the agent has no idea who is
+# calling or why, so anything narrower ("are you calling to book?") mis-frames the call and has to
+# be walked back. `{business}` is the only placeholder; keep it to one breath.
+DEFAULT_GREETING = "Hello, you've reached {business}. How may I help you today?"
+
 
 def _spoken_caller(caller: str) -> str:
     """The caller's number as something the model can read back, or an honest 'unknown'.
@@ -166,6 +171,7 @@ def build_instructions(
     timezone: str = "America/Los_Angeles",
     transfer_failed: bool = False,
     disclose_recording: bool = True,
+    greeting: str = "",
 ) -> str:
     """Render the inbound screening rules for one call.
 
@@ -174,11 +180,14 @@ def build_instructions(
     hard deferrals are company-agnostic and always apply.
     """
     now = datetime.now(ZoneInfo(timezone))
-    greeting = (
-        f"Thanks for calling {business_name}, this is {agent_name}."
-        + (_RECORDING_NOTICE if disclose_recording else "")
-        + " How can I help you today?"
-    )
+    # The recording notice is spliced in BEFORE the closing question, so the caller is told and
+    # then invited to speak, rather than being asked a question and interrupted by a disclosure.
+    spoken = (greeting or DEFAULT_GREETING).format(business=business_name, agent=agent_name)
+    if disclose_recording:
+        head, sep, tail = spoken.rpartition(". ")
+        spoken = f"{head}.{sep and ' '}{_RECORDING_NOTICE.strip()} {tail}" if sep else (
+            spoken + _RECORDING_NOTICE
+        )
     return _TEMPLATE.format(
         agent_name=agent_name,
         business_name=business_name,
@@ -189,7 +198,7 @@ def build_instructions(
         timezone=timezone,
         business_hours=business_hours,
         open_or_closed="OPEN" if _is_open(now, open_hour, close_hour) else "CLOSED",
-        greeting=greeting,
+        greeting=spoken,
         transfer_failed_rule=_TRANSFER_FAILED_RULE if transfer_failed else "",
         knowledge=build_knowledge(business_facts),
         recording_rule=(
