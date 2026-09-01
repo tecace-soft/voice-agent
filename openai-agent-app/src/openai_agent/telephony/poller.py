@@ -106,25 +106,52 @@ class LeadPoller:
         self._timers: dict[str, threading.Timer] = {}
         self._timers_lock = threading.Lock()
 
-    def _call_due(self, intake: dict) -> bool:
-        """True once it's time to (re)call this lead — a requested callback time if set, else
-        CALL_DELAY_SECONDS after the lead came in."""
+    @staticmethod
+    def _due_at(intake: dict) -> datetime.datetime | None:
+        """When this lead becomes callable — its requested callback time, else CALL_DELAY_SECONDS
+        after it came in. None means "callable now", which is also how every unparseable timestamp
+        is treated: calling a lead early is recoverable, never calling one is not."""
         callback_after = str(intake.get("callbackAfter", "") or "")
         if callback_after:
             try:
-                ts = datetime.datetime.fromisoformat(callback_after.replace("Z", "+00:00"))
+                return datetime.datetime.fromisoformat(callback_after.replace("Z", "+00:00"))
             except ValueError:
-                return True
-            return datetime.datetime.now(datetime.timezone.utc) >= ts
+                return None
         created = str(intake.get("createdAt", ""))
         if not created:
-            return True
+            return None
         try:
             ts = datetime.datetime.fromisoformat(created.replace("Z", "+00:00"))
         except ValueError:
-            return True
-        age = datetime.datetime.now(datetime.timezone.utc) - ts
-        return age.total_seconds() >= CALL_DELAY_SECONDS
+            return None
+        return ts + datetime.timedelta(seconds=CALL_DELAY_SECONDS)
+
+    def _call_due(self, intake: dict) -> bool:
+        """True once it's time to (re)call this lead."""
+        due_at = self._due_at(intake)
+        return due_at is None or datetime.datetime.now(datetime.timezone.utc) >= due_at
+
+    def _schedule_next_due(self, intakes: list[dict]) -> None:
+        """Nothing is callable yet — wake again exactly when the soonest lead becomes callable.
+
+        Without this the push design has a hole that makes it WORSE than polling: a notification
+        arrives the instant a lead is created, but a fresh lead is held for CALL_DELAY_SECONDS, so
+        the wake finds nothing due and the loop settles back onto the long safety interval. The
+        lead then waits up to half an hour instead of half a minute. Re-arming here is what turns
+        "there is work soon" into "call at the right moment".
+        """
+        now = datetime.datetime.now(datetime.timezone.utc)
+        soonest: datetime.datetime | None = None
+        soonest_id = ""
+        for intake in intakes:
+            due_at = self._due_at(intake)
+            if due_at is None or due_at <= now:
+                continue  # already callable; not our problem here
+            if soonest is None or due_at < soonest:
+                soonest, soonest_id = due_at, str(intake.get("id", ""))
+        # Only worth a timer if it lands before the safety poll would have caught it anyway.
+        if soonest is not None and (soonest - now).total_seconds() < self._interval:
+            self.schedule_wake(soonest_id or "next", soonest, reason="lead becoming due")
 
     def poll_once(self) -> int:
         """Advance the queue by at most one call. Returns the number placed (0 or 1)."""
@@ -167,7 +194,10 @@ class LeadPoller:
                 self._tried.clear()
                 pending = due
             else:
-                return 0  # nothing due
+                # Nothing callable yet. Re-arm for the moment the soonest lead becomes callable,
+                # rather than sleeping through it until the next safety poll.
+                self._schedule_next_due(intakes)
+                return 0
 
         # 3. Place ONE call: the oldest pending lead we can actually dial.
         for intake in pending:  # already oldest-first
