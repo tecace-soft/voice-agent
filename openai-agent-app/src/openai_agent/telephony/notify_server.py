@@ -70,7 +70,10 @@ def build_app(cfg: Config, poller: LeadPoller) -> FastAPI:
 
     @app.get("/poller/health")
     async def health() -> dict:
-        return {"ok": True, "safety_interval_seconds": cfg.poll_interval}
+        # `wakes` is the number that matters when checking whether push works: submit the form,
+        # re-read this, and see whether it moved. The lead gets called either way thanks to the
+        # safety poll, so receiving the call proves nothing on its own.
+        return {"ok": True, "notifications_enabled": bool(cfg.agent_tools_secret), **poller.stats()}
 
     # response_model=None: the handler returns either a plain dict or a Response (403), and
     # FastAPI cannot build a response model from that union — without this it raises at import

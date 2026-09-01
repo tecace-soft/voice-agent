@@ -105,6 +105,11 @@ class LeadPoller:
         # callback replaces its predecessor instead of firing twice.
         self._timers: dict[str, threading.Timer] = {}
         self._timers_lock = threading.Lock()
+        # Observability for the push path. Without this there is no way to tell from outside
+        # whether a notification ever arrived — and the safety poll means the lead still gets
+        # called either way, so "I got the call" is NOT evidence that push works.
+        self._wake_count = 0
+        self._last_wake: tuple[datetime.datetime, str] | None = None
 
     @staticmethod
     def _due_at(intake: dict) -> datetime.datetime | None:
@@ -235,7 +240,23 @@ class LeadPoller:
         """Cut the current wait short and poll now. Thread-safe — called from the notification
         server's thread and from callback timers, never from the poll loop itself."""
         log.info("poller woken (%s)", reason)
+        self._wake_count += 1
+        self._last_wake = (datetime.datetime.now(datetime.timezone.utc), reason)
         self._woken.set()
+
+    def stats(self) -> dict:
+        """A snapshot for /poller/health, so the push path can be verified without shell access to
+        the container: submit the form, re-read this, and see whether `wakes` moved."""
+        with self._timers_lock:
+            armed = sorted(self._timers)
+        last_at, last_reason = self._last_wake or (None, None)
+        return {
+            "wakes": self._wake_count,
+            "last_wake_at": last_at.isoformat() if last_at else None,
+            "last_wake_reason": last_reason,
+            "armed_timers": armed,
+            "safety_interval_seconds": self._interval,
+        }
 
     def schedule_wake(self, intake_id: str, when: datetime.datetime, *, reason: str = "callback") -> None:
         """Wake the loop at `when` so a deferred callback fires on time.
