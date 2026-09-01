@@ -6,12 +6,13 @@ call it sends Twilio a "mark", waits for the echo, and closes the WebSocket — 
 transfer has to come from outside the stream entirely: we redirect the live call with the Twilio
 REST API (`calls(sid).update(twiml=...)`), which replaces the running `<Connect>` with a `<Dial>`.
 
-The handoff is deliberately WARM, in three parts:
+The handoff is WARM but deliberately FRICTIONLESS — the caller should reach a person as fast as
+possible, so nothing is asked of the colleague:
 
   1. `<Number url=...>` points at /whisper, whose TwiML is played to the COLLEAGUE only, before the
-     two legs are bridged. They hear who is calling and why, and press 1 to accept. Without that
-     keypress the colleague's own voicemail would happily "answer" the transfer and swallow the
-     caller.
+     two legs are bridged. They hear who is calling and why, and then the call connects on its own
+     — no keypress. Keep that announcement SHORT: while it plays, the caller is sitting in silence
+     waiting to be bridged.
   2. `<Dial action=...>` points at /after-transfer, which runs when the dial ends for ANY reason.
      On no-answer/busy/declined the caller is still on the line and still ours — we put them back
      on the agent (with `transfer_failed=yes`, so its rules switch to taking a message) instead of
@@ -19,6 +20,14 @@ The handoff is deliberately WARM, in three parts:
   3. `callerId` is the company's own main line, not the caller's number, so the transfer doesn't
      land on the colleague's phone as an unknown, spam-scored number. The caller's identity is
      carried by the whisper instead.
+
+KNOWN TRADE-OFF of dropping the keypress. If the colleague's phone rolls to voicemail, Twilio
+counts the call as ANSWERED: the caller is bridged into a voicemail greeting believing they reached
+a person, and `DialCallStatus` comes back `completed`, so the recovery below never fires. A keypress
+used to prevent this (a voicemail box cannot press 1). The mitigation now is RING_SECONDS — give up
+BEFORE the phone rolls over, so the leg ends as a no-answer and the caller comes back to the agent.
+That is why the ring time is short and configurable: it must stay under the voicemail rollover of
+whichever phone is on the other end.
 """
 
 from __future__ import annotations
@@ -35,8 +44,11 @@ from ..config import Config
 log = logging.getLogger(__name__)
 
 # How long the colleague's phone rings before we give up and hand the caller back to the agent.
-# Long enough to reach a phone in a pocket, short enough that the caller doesn't feel abandoned.
-RING_SECONDS = 20
+# This is now load-bearing, not just a comfort setting: with no keypress to stop it, a phone that
+# rolls to voicemail will SWALLOW the caller, so we must give up first. Most mobiles roll over
+# around 20-25s, so the default is deliberately under that. Tune it per phone with
+# TRANSFER_RING_SECONDS — longer if people miss calls, shorter if callers reach voicemail.
+DEFAULT_RING_SECONDS = 15
 
 
 def build_transfer_twiml(cfg: Config, *, reason: str, caller: str) -> str:
@@ -46,7 +58,7 @@ def build_transfer_twiml(cfg: Config, *, reason: str, caller: str) -> str:
     dial = Dial(
         # The company's main line — NOT the caller's number. See the module docstring.
         caller_id=cfg.main_line or cfg.twilio_from_number,
-        timeout=RING_SECONDS,
+        timeout=cfg.transfer_ring_seconds,
         action=f"https://{cfg.public_host}/after-transfer?{urlencode({'caller': caller or ''})}",
         method="POST",
     )
@@ -62,30 +74,17 @@ def build_transfer_twiml(cfg: Config, *, reason: str, caller: str) -> str:
 
 
 def build_whisper_twiml(cfg: Config, *, reason: str, caller: str) -> str:
-    """Played to the COLLEAGUE only, before the legs bridge. They press 1 to accept.
+    """Played to the COLLEAGUE only, then the legs bridge automatically.
 
-    Falling off the end of the `<Gather>` (no keypress — a voicemail box, or a phone nobody picked
-    up properly) hits the `<Hangup/>`, which ends this leg and sends the caller to /after-transfer.
+    Running off the end of this TwiML with no further verbs is what connects the two parties, so
+    there is deliberately nothing after the announcement — no Gather, no keypress, no decision to
+    make. Keep it to roughly one breath: the caller hears SILENCE for however long this takes.
     """
     response = VoiceResponse()
-    spoken_caller = _spoken_digits(caller)
-    gather = response.gather(num_digits=1, timeout=8, action=f"https://{cfg.public_host}/whisper-accept", method="POST")
-    gather.say(
-        f"Call from {spoken_caller}. {reason or 'They would like to book something.'} "
-        "Press 1 to take the call.",
+    response.say(
+        f"Call from {_spoken_digits(caller)}. {reason or 'They would like to book something.'}",
         voice="Polly.Joanna",
     )
-    # No keypress: drop this leg so the caller falls through to /after-transfer and gets the agent
-    # back, rather than being connected to a voicemail box that answered on the colleague's behalf.
-    response.hangup()
-    return str(response)
-
-
-def build_whisper_accept_twiml(digits: str) -> str:
-    """Empty TwiML bridges the two legs; anything else drops the colleague's leg."""
-    response = VoiceResponse()
-    if digits.strip() != "1":
-        response.hangup()
     return str(response)
 
 
@@ -148,10 +147,9 @@ def _spoken_digits(number: str) -> str:
 
 
 __all__ = [
-    "RING_SECONDS",
+    "DEFAULT_RING_SECONDS",
     "build_after_transfer_twiml",
     "build_transfer_twiml",
-    "build_whisper_accept_twiml",
     "build_whisper_twiml",
     "redirect_to_human",
 ]

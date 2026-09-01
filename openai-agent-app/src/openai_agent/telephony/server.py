@@ -11,8 +11,8 @@ screening path is a small set of TwiML endpoints around the same bridge.
       -> POST /incoming            -> <Connect><Stream direction=inbound> -> the agent screens
       -> agent calls transfer_to_human
       -> the call is REDIRECTED (Twilio REST) to <Dial> the colleague
-           -> POST /whisper        -> played to the COLLEAGUE only: who is calling, press 1
-           -> POST /whisper-accept -> 1 bridges the legs; anything else drops that leg
+           -> POST /whisper        -> played to the COLLEAGUE only: who is calling and why, then
+                                      the legs bridge automatically (no keypress, by design)
       -> POST /after-transfer      -> answered and finished? hang up.
                                       nobody there? put the caller BACK on the agent.
 
@@ -182,16 +182,6 @@ async def whisper(request: Request) -> Response:
     caller = request.query_params.get("caller", "")
     return _xml(transfer.build_whisper_twiml(cfg, reason=reason, caller=caller))
 
-
-@app.post("/whisper-accept")
-async def whisper_accept(request: Request) -> Response:
-    """The colleague pressed a key (or didn't). 1 accepts; anything else drops their leg."""
-    fields = await _form(request)
-    if not _signed_by_twilio(request, fields):
-        return _FORBIDDEN
-    digits = fields.get("Digits", "")
-    log.info("whisper: colleague pressed %r", digits)
-    return _xml(transfer.build_whisper_accept_twiml(digits))
 
 
 @app.post("/after-transfer")

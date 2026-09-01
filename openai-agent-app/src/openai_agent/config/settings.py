@@ -77,6 +77,10 @@ class Config:
     # Say "this call is recorded" in the inbound greeting. Default ON: the transcript IS persisted,
     # and Washington is a two-party-consent state. Turn off only on legal advice.
     disclose_recording: bool
+    # How long a transferred call rings the colleague before the caller is handed back to the
+    # agent. Load-bearing: with no keypress on the whisper, a phone that rolls to voicemail will
+    # swallow the caller, so this must stay UNDER that phone's rollover time.
+    transfer_ring_seconds: int
     # The inbound agent's opening line. `{business}` and `{agent}` are substituted.
     greeting: str
     # ---- Runtime ----
@@ -120,6 +124,7 @@ class Config:
             close_hour=int(_optional("BUSINESS_CLOSE_HOUR", "18")),
             disclose_recording=_optional("DISCLOSE_RECORDING", "true").lower()
             in ("1", "true", "yes", "on"),
+            transfer_ring_seconds=int(_optional("TRANSFER_RING_SECONDS", "15")),
             greeting=_optional("INBOUND_GREETING"),
             poll_interval=float(_optional("POLL_INTERVAL_SECONDS", "1800")),
             poller_port=int(_optional("POLLER_PORT", "5060")),
