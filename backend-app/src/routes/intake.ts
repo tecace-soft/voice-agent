@@ -12,6 +12,7 @@ import {
   setIntakeNotes,
   updateIntakeStatus,
 } from "../db/intakes.js";
+import { notifyAgent } from "../services/agentNotify.js";
 import { bookExisting } from "../services/booking.js";
 
 // Statuses the agent may set directly via PATCH. `canceled` is intentionally NOT here —
@@ -44,6 +45,10 @@ export const intake = new Elysia()
       // The form now submits only a date (the day the lead wants); the specific time is captured
       // by the agent on the call. purpose is optional on the wire but non-null in storage.
       const record = await insertIntake({ ...body, purpose: body.purpose ?? "" });
+      // Tell the poller there is work, rather than making it ask us every few minutes. NOT
+      // awaited: the form's response must not wait on (or fail because of) the agent host, and
+      // the poller's safety poll reconciles anything this drops.
+      void notifyAgent({ intakeId: record.id });
       return status(201, { status: "created", intake: record });
     },
     {

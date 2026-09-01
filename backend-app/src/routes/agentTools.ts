@@ -8,6 +8,7 @@ import {
   updateIntakeStatus,
 } from "../db/intakes.js";
 import { formatSpoken, joinSpoken } from "../lib/spoken.js";
+import { notifyAgent } from "../services/agentNotify.js";
 import {
   checkAvailability,
   localDateOf,
@@ -243,6 +244,10 @@ export const agentTools = new Elysia({ prefix: "/agent" })
     if (!record) {
       return { scheduled: false, message: "I couldn't find your record to schedule a callback." };
     }
+    // A deferred callback is the one thing notify-on-create cannot cover: "call me back in ten
+    // minutes" needs something to happen ten minutes from now, and the safety poll is far too
+    // coarse for that. Hand the poller the time and it arms a timer.
+    void notifyAgent({ intakeId, notBefore: callbackAfter });
     return {
       scheduled: true,
       when,

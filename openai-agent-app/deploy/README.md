@@ -163,6 +163,63 @@ callback, and it is signature-verified like the rest. If validation is misconfig
 still run but the agent stops leaving voicemails (the log shows `unsigned request to /amd` or
 `bad Twilio signature for /amd` instead of `AMD: call=... answered_by=...`).
 
+## Push notifications (the poller no longer polls on a drumbeat)
+
+The poller used to ask the backend "anything new?" every few minutes forever. Every request woke
+the Neon compute, so an idle night still billed a full night of compute for SELECTs that found
+nothing. Now the backend tells the poller when a lead is due, riding on the database wake the
+insert had to do anyway.
+
+```
+form submit            -> backend POST /intake      --(fire & forget)--> https://<host>/poller/lead-due
+agent books a callback -> backend /agent/callback   --(with notBefore)-> same endpoint
+```
+
+Backend (Vercel):
+
+```
+AGENT_NOTIFY_URL=https://31-97-214-59.sslip.io/poller/lead-due
+AGENT_TOOLS_SECRET=<the same secret the agent already uses>
+```
+
+VPS (`openai-agent-app/.env`):
+
+```
+POLL_INTERVAL_SECONDS=1800    # now only a SAFETY net, not the schedule
+POLLER_PORT=5060
+```
+
+Leave `AGENT_NOTIFY_URL` blank and everything falls back to polling alone, exactly as before.
+
+### It only saves money if Neon actually suspends
+
+Push creates the idle gaps; **Neon's autosuspend is what monetizes them**. If autosuspend is longer
+than the gaps the compute never suspends and this saves nothing. Set autosuspend well below
+`POLL_INTERVAL_SECONDS` (60s is reasonable), and check the autoscaling **minimum** compute size
+while you are there - this workload does not need more than 0.25 CU, and the minimum multiplies
+every awake hour.
+
+### The safety poll is not optional
+
+A notification can be lost - the poller restarting, a deploy, a network blip. A lead nobody ever
+calls is far worse than one called a bit late, so the periodic poll stays as the backstop. Both
+sides fail toward "call the lead", never toward silence: a missing or unparseable `notBefore` is
+treated as *due now* rather than dropped.
+
+### Ingress
+
+The poller now receives HTTP, so it has Traefik labels routing `/poller/*` to it on the same
+hostname as the server, with an explicit `priority` (both routers match the same Host). Dialing
+stays in the poller container on purpose: `place_call` uses the blocking Twilio SDK, and running it
+on the server's event loop would stall live call audio.
+
+Verify after deploy:
+
+```bash
+curl https://31-97-214-59.sslip.io/poller/health
+curl -X POST https://31-97-214-59.sslip.io/poller/lead-due      -H "x-agent-secret: $AGENT_TOOLS_SECRET" -H 'Content-Type: application/json'      -d '{"intakeId":"smoke-test"}'
+```
+
 ## Notes
 
 - The poller reads leads and places calls continuously whenever it's running — stop it with

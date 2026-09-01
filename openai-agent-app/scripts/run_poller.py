@@ -11,8 +11,12 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
+
+import uvicorn
 
 from openai_agent.config import Config
+from openai_agent.telephony.notify_server import build_app
 from openai_agent.telephony.poller import LeadPoller
 
 
@@ -28,21 +32,29 @@ def main() -> int:
         print("Fill these in .env (see .env.example) and re-run.")
         return 1
 
-    # One call at a time, oldest to newest, checking every 5 minutes by default
-    # (POLL_INTERVAL_SECONDS). Note the interval also paces the QUEUE: at most one call is placed
-    # per cycle, so a backlog of N leads takes at least N intervals to work through — at the
-    # 5-minute default, ten queued leads take the best part of an hour. Lower it if leads ever
-    # arrive faster than that.
+    # One call at a time, oldest to newest. The queue is driven by NOTIFICATIONS from the
+    # backend; POLL_INTERVAL_SECONDS is only the safety net for a notification that never arrived.
+    # Note the pacing: at most one call is placed per cycle, but a notification wakes the loop
+    # immediately, so a backlog drains as fast as calls complete rather than one per interval.
     poller = LeadPoller(cfg, interval=cfg.poll_interval)
-    print(
-        f"Lead poller running — leads are called one at a time, oldest first, "
-        f"checked every {cfg.poll_interval:.0f}s. Ctrl+C to stop."
-    )
+
+    # The poll loop is synchronous and blocking (it dials with the Twilio SDK), so it runs in its
+    # own thread and the notification server owns the main thread. Daemon: the loop has no cleanup
+    # to do, and this way Ctrl+C on the server ends the process rather than hanging on the thread.
+    loop = threading.Thread(target=poller.run, name="lead-poll-loop", daemon=True)
+    loop.start()
+
+    print("Lead poller running - dialing one lead at a time, oldest first.")
+    print(f"  notifications : POST http://0.0.0.0:{cfg.poller_port}/poller/lead-due")
+    print(f"  safety poll   : every {cfg.poll_interval:.0f}s")
+    print("Ctrl+C to stop.")
+    if not cfg.agent_tools_secret:
+        print("WARNING — AGENT_TOOLS_SECRET is unset: notifications will be REJECTED.")
     try:
-        poller.run()
+        uvicorn.run(build_app(cfg, poller), host="0.0.0.0", port=cfg.poller_port, log_level="warning")
     except KeyboardInterrupt:
         print()
-        return 0
+    return 0
 
 
 if __name__ == "__main__":

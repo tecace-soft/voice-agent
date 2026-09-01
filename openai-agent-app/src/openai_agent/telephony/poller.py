@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import threading
 import time
 from zoneinfo import ZoneInfo
 
@@ -97,6 +98,13 @@ class LeadPoller:
         # Leads already dialed in the current pass (so we advance through the list instead of
         # re-dialing the oldest); cleared when a new pass begins.
         self._tried: set[str] = set()
+        # Set by wake() to cut the wait short. With push notifications the periodic interval is
+        # only a safety net, and nearly every cycle starts because something actually happened.
+        self._woken = threading.Event()
+        # Timers for deferred callbacks ("call me back at 3"), keyed by intake id so a rescheduled
+        # callback replaces its predecessor instead of firing twice.
+        self._timers: dict[str, threading.Timer] = {}
+        self._timers_lock = threading.Lock()
 
     def _call_due(self, intake: dict) -> bool:
         """True once it's time to (re)call this lead — a requested callback time if set, else
@@ -193,8 +201,40 @@ class LeadPoller:
             return 1  # placed one; wait for it to resolve before the next
         return 0
 
+    def wake(self, reason: str = "notification") -> None:
+        """Cut the current wait short and poll now. Thread-safe — called from the notification
+        server's thread and from callback timers, never from the poll loop itself."""
+        log.info("poller woken (%s)", reason)
+        self._woken.set()
+
+    def schedule_wake(self, intake_id: str, when: datetime.datetime, *, reason: str = "callback") -> None:
+        """Wake the loop at `when` so a deferred callback fires on time.
+
+        This is the half of the queue that push notifications alone cannot cover: "call me back in
+        ten minutes" needs something to happen ten minutes from now, and with a long safety
+        interval the periodic poll would be far too late. Re-scheduling the same lead replaces its
+        timer, so moving a callback does not leave the old one armed.
+        """
+        delay = (when - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
+        if delay <= 0:
+            self.wake(f"{reason} already due")
+            return
+        timer = threading.Timer(delay, self.wake, args=(f"{reason} for {intake_id}",))
+        timer.daemon = True
+        with self._timers_lock:
+            old = self._timers.pop(intake_id, None)
+            if old is not None:
+                old.cancel()
+            self._timers[intake_id] = timer
+        timer.start()
+        log.info("callback for intake %s scheduled in %.0fs", intake_id, delay)
+
     def run(self) -> None:
-        log.info("lead poller started (one call at a time, oldest first; every %.0fs)", self._interval)
+        log.info(
+            "lead poller started (one call at a time, oldest first; safety interval %.0fs, "
+            "plus immediate wake-ups on notification)",
+            self._interval,
+        )
         while True:
             try:
                 self.poll_once()
@@ -202,4 +242,8 @@ class LeadPoller:
                 log.warning("poll error: %s", exc)
             except Exception as exc:  # noqa: BLE001
                 log.warning("unexpected poll error: %s", exc)
-            time.sleep(self._interval)
+            # Wait for the safety interval OR until something wakes us, whichever comes first.
+            # This is the whole point of the push design: with nothing happening we sit here and
+            # the database stays suspended, instead of waking it on a fixed drumbeat.
+            if self._woken.wait(timeout=self._interval):
+                self._woken.clear()

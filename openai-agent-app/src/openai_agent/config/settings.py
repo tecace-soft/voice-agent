@@ -80,8 +80,14 @@ class Config:
     # The inbound agent's opening line. `{business}` and `{agent}` are substituted.
     greeting: str
     # ---- Runtime ----
-    # How often the poller looks for leads that are due a call, in seconds.
+    # How often the poller re-reads the queue WITHOUT being told to. With push notifications this
+    # is only a safety net (a lost notification, a restart mid-deploy), so it is deliberately long:
+    # every cycle wakes the Neon compute, and an idle drumbeat is what used to keep it billing 24
+    # hours a day. Immediate work arrives by notification, not by polling.
     poll_interval: float
+    # Port the poller's notification endpoint listens on (separate process from the media-stream
+    # server, so a separate port).
+    poller_port: int
     timezone: str  # business timezone for spoken dates (matches the backend's SCHEDULE_TIMEZONE)
     request_timeout: float
 
@@ -115,7 +121,8 @@ class Config:
             disclose_recording=_optional("DISCLOSE_RECORDING", "true").lower()
             in ("1", "true", "yes", "on"),
             greeting=_optional("INBOUND_GREETING"),
-            poll_interval=float(_optional("POLL_INTERVAL_SECONDS", "300")),
+            poll_interval=float(_optional("POLL_INTERVAL_SECONDS", "1800")),
+            poller_port=int(_optional("POLLER_PORT", "5060")),
             timezone=_optional("TIMEZONE", "America/Los_Angeles"),
             request_timeout=float(_optional("REQUEST_TIMEOUT_SECONDS", "30")),
         )

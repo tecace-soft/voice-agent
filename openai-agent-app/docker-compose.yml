@@ -31,6 +31,22 @@ services:
     restart: unless-stopped
     env_file: .env
     command: ["python", "scripts/run_poller.py"]
+    # The poller now RECEIVES notifications from the backend ("this lead is due"), so unlike
+    # before it needs ingress. It shares the server's hostname and is separated by PATH: Traefik
+    # sends /poller/* here and everything else to the server. `priority` is set explicitly because
+    # both routers match the same Host and rule-length tie-breaking is not something to rely on.
+    #
+    # Dialing deliberately stays in THIS container, not the server: `place_call` uses the blocking
+    # Twilio SDK, and running it on the server's event loop would stall live call audio.
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.openai-poller.rule=Host(`31-97-214-59.sslip.io`) && PathPrefix(`/poller`)"
+      - "traefik.http.routers.openai-poller.priority=100"
+      - "traefik.http.routers.openai-poller.entrypoints=websecure"
+      - "traefik.http.routers.openai-poller.tls.certresolver=mytlschallenge"
+      - "traefik.http.services.openai-poller.loadbalancer.server.port=5060"
 
 networks:
   # Traefik's existing network, attached as external so we don't recreate it.
