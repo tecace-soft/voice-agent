@@ -31,7 +31,7 @@ Your job is to TRIAGE the call, not to sell and not to book:
 # What you know
 - The call came from: {caller}
 - Today is {current_date} ({current_date_iso}), {timezone}.
-- Business hours: {business_hours}. Right now it is {current_time}, so we are {open_or_closed}.
+{hours_line}
 - You do NOT know this caller's name, why they're calling, or whether they've dealt with us
   before. Never assume, and never use a name they haven't given you.
 
@@ -158,6 +158,31 @@ def _clock(now: datetime) -> str:
     return f"{hour12}:{now.minute:02d} {ampm}"
 
 
+def _hours_line(now: datetime, business_hours: str, open_hour: int | None, close_hour: int | None) -> str:
+    """The hours line, which has THREE cases rather than open/closed.
+
+    A customer may not have told us their hours, and the agent must not assert one either way when
+    it doesn't know — "we're open" spoken to someone standing outside a locked door is exactly the
+    kind of confidently-wrong answer this whole design avoids. Unknown hours become an instruction
+    to say so, not a coin flip.
+    """
+    if business_hours and open_hour is not None and close_hour is not None:
+        state = "OPEN" if _is_open(now, open_hour, close_hour) else "CLOSED"
+        return (
+            f"- Business hours: {business_hours}. Right now it is {_clock(now)}, so we are {state}."
+        )
+    if business_hours:
+        # Hours in words but no usable clock boundary: safe to state, not safe to reason from.
+        return (
+            f"- Business hours: {business_hours}. You have NOT been told whether that means we are "
+            "open at this moment — give the hours and let the caller judge; never say open or closed."
+        )
+    return (
+        "- You have NOT been told the business hours. If asked what they are, or whether we are open "
+        "right now, say you don't have that in front of you and offer to take a message. Never guess."
+    )
+
+
 def _is_open(now: datetime, open_hour: int, close_hour: int) -> bool:
     """True during business hours, Monday-Friday. Deliberately simple: it only colors one sentence
     of the prompt, and the transfer's own no-answer path is the real safety net."""
@@ -171,8 +196,8 @@ def build_instructions(
     agent_name: str = "Tess",
     business_hours: str = "Monday to Friday, 9 AM to 6 PM Pacific",
     business_facts: str = "",
-    open_hour: int = 9,
-    close_hour: int = 18,
+    open_hour: int | None = 9,
+    close_hour: int | None = 18,
     timezone: str = "America/Los_Angeles",
     transfer_failed: bool = False,
     disclose_recording: bool = True,
@@ -199,10 +224,8 @@ def build_instructions(
         caller=_spoken_caller(caller),
         current_date=now.strftime("%A, %B %d, %Y"),
         current_date_iso=now.strftime("%Y-%m-%d"),
-        current_time=_clock(now),
         timezone=timezone,
-        business_hours=business_hours,
-        open_or_closed="OPEN" if _is_open(now, open_hour, close_hour) else "CLOSED",
+        hours_line=_hours_line(now, business_hours, open_hour, close_hour),
         greeting=spoken,
         transfer_failed_rule=_TRANSFER_FAILED_RULE if transfer_failed else "",
         knowledge=build_knowledge(business_facts),

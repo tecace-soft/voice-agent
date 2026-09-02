@@ -83,14 +83,19 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 disclose_recording=cfg.disclose_recording,
             )
         else:
+            # Every business-specific value comes from the LOOKUP, not from cfg. The .env
+            # business settings are now only the outbound agent's and a local-dev convenience —
+            # reading them here is what would put one customer's facts in another's call.
             instructions = build_instructions_inbound(
                 caller=caller,
-                business_name=cfg.business_name,
+                business_name=business.business_name,
+                # Ours, not the customer's: the assistant has one name across every business it
+                # answers for, and nothing in the profile sets it.
                 agent_name=cfg.agent_name,
-                business_hours=cfg.business_hours,
-                business_facts=cfg.business_facts,
-                open_hour=cfg.open_hour,
-                close_hour=cfg.close_hour,
+                business_hours=business.hours_text,
+                business_facts=business.facts,
+                open_hour=business.open_hour,
+                close_hour=business.close_hour,
                 timezone=cfg.timezone,
                 transfer_failed=str(params.get("transfer_failed", "")).lower() in ("yes", "true", "1"),
                 disclose_recording=cfg.disclose_recording,

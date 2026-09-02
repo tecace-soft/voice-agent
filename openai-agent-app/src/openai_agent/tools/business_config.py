@@ -30,12 +30,24 @@ log = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class BusinessConfig:
-    """Who a dialled number belongs to. Only ever built when the backend says `assigned: true`."""
+    """Whose business a dialled number is, and what may be said about it.
+
+    Only ever built when the backend says `assigned: true`, which it only does when there is a live
+    profile behind the number. Fields the customer didn't give us stay None and are NEVER filled in
+    from this app's .env — substituting one company's hours for another's is the leak the whole
+    mechanism exists to prevent, and it would happen precisely where nobody is watching.
+    """
 
     to: str
     user_id: str
     user_email: str
     user_name: str
+    business_name: str
+    hours_text: str
+    open_hour: int | None
+    close_hour: int | None
+    website: str
+    facts: str
 
 
 async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | None:
@@ -79,10 +91,27 @@ async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | N
         return None
 
     user = data.get("user") or {}
-    log.info("call to %s is for %s <%s>", data.get("to"), user.get("name"), user.get("email"))
+    biz = data.get("business") or {}
+    name = str(biz.get("name") or "")
+    log.info(
+        "call to %s is for %r (%s <%s>)",
+        data.get("to"), name, user.get("name"), user.get("email"),
+    )
+
+    def _hour(value: object) -> int | None:
+        return value if isinstance(value, int) and 0 <= value <= 23 else None
+
     return BusinessConfig(
         to=str(data.get("to") or dialled),
         user_id=str(user.get("id") or ""),
         user_email=str(user.get("email") or ""),
         user_name=str(user.get("name") or ""),
+        business_name=name,
+        # "" rather than None for the strings the prompt interpolates, so a missing value renders as
+        # nothing rather than the word "None" being read aloud to a caller.
+        hours_text=str(biz.get("hoursText") or ""),
+        open_hour=_hour(biz.get("openHour")),
+        close_hour=_hour(biz.get("closeHour")),
+        website=str(biz.get("website") or ""),
+        facts=str(biz.get("facts") or ""),
     )

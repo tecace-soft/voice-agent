@@ -10,6 +10,7 @@ import { ActivityPage } from "./pages/ActivityPage";
 import { AllFeedbackPage } from "./pages/AllFeedbackPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { FailuresPage } from "./pages/FailuresPage";
+import { BusinessPage } from "./pages/BusinessPage";
 import { NumbersPage } from "./pages/NumbersPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -29,6 +30,7 @@ const STANDALONE_VIEWS = new Set<ViewId>([
   "accounts",
   "feedback",
   "allFeedback",
+  "business",
   "numbers",
   "analytics",
   "people",
@@ -48,6 +50,7 @@ const VIEW_TITLES: Record<ViewId, string> = {
   failed: "Failed runs",
   feedback: "Send feedback",
   allFeedback: "All feedback",
+  business: "Business information",
   numbers: "Agent numbers",
   accounts: "Accounts",
 };
@@ -246,6 +249,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             ) : (
               <p className="muted ta-body-2">Only an admin can see transcription failures.</p>
             ))}
+          {view === "business" && <BusinessPage />}
           {view === "numbers" &&
             (isAdmin ? (
               <NumbersPage />

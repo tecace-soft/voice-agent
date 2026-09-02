@@ -128,3 +128,26 @@ describe("renderFacts", () => {
     );
   });
 });
+
+// --- source hashing: what decides whether a save re-runs the model at all -----------------------
+
+import { hashSource } from "../db/businessProfiles.js";
+
+describe("hashSource", () => {
+  it("is stable for identical text, so a no-op save skips extraction", () => {
+    const text = "Acme Dental is a family practice in Tacoma. Open 8 to 5 weekdays.";
+    expect(hashSource(text)).toBe(hashSource(text));
+  });
+
+  it("ignores surrounding whitespace — a stray newline is not an edit", () => {
+    expect(hashSource("  Acme Dental.  \n")).toBe(hashSource("Acme Dental."));
+  });
+
+  it("changes when the text changes, so a real edit does re-extract", () => {
+    expect(hashSource("Open 8 to 5.")).not.toBe(hashSource("Open 8 to 6."));
+  });
+
+  it("notices a change in the middle, not just at the ends", () => {
+    expect(hashSource("A cleaning is $149.")).not.toBe(hashSource("A cleaning is $150."));
+  });
+});

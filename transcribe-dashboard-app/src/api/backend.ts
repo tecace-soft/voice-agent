@@ -1,5 +1,7 @@
 import type {
   AgentNumber,
+  BusinessProfile,
+  BusinessProfileResponse,
   PollerHeartbeat,
   TranscribeFailure,
   AuthUser,
@@ -309,4 +311,28 @@ export function assignAgentNumber(id: string, userId: string | null): Promise<{ 
 
 export function deleteAgentNumber(id: string): Promise<{ status: string }> {
   return request<{ status: string }>("DELETE", `/business/numbers/${id}`);
+}
+
+// ---- a customer's business details ----
+
+/** Their own details, plus the number they're used for. Admins may pass a userId to act for someone. */
+export function getBusinessProfile(userId?: string): Promise<BusinessProfileResponse> {
+  return get<BusinessProfileResponse>(`/business/profile${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`);
+}
+
+/**
+ * Save the pasted text. The backend re-reads it into facts unless it is unchanged.
+ *
+ * A 422 means the text couldn't be read into anything usable — nothing was written, and whatever
+ * was live before is still live. The message says what to do about it.
+ */
+export function saveBusinessProfile(
+  sourceText: string,
+  userId?: string,
+): Promise<{ profile: BusinessProfile; extracted: boolean }> {
+  return request<{ profile: BusinessProfile; extracted: boolean }>(
+    "PUT",
+    `/business/profile${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
+    { body: { sourceText } },
+  );
 }

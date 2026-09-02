@@ -8,9 +8,13 @@ import { sql } from "./client.js";
 // than a check in a handler — application logic can be raced, forgotten, or bypassed by the next
 // endpoint somebody adds, and a constraint cannot.
 //
-// A user MAY hold several numbers (a business with more than one line). Only the reverse is
-// forbidden. Assignment is an admin act: a customer editing their own business details is low
-// risk, but claiming a phone line decides whose facts a stranger hears.
+// One number per customer, and one customer per number — both are indexes, not conventions. The
+// second direction is the dangerous one, but the first matters too: with a customer's details held
+// once and used for their number, a second number would silently answer with the same details, and
+// nothing in the UI would say so. Relax it when there is a reason to, deliberately.
+//
+// Assignment is an admin act: a customer editing their own business details is low risk, but
+// claiming a phone line decides whose facts a stranger hears.
 //
 // Nothing here touches the voicemail tables. This is a separate concern that happens to live in
 // the same database because it is the same dashboard's users being assigned.
@@ -95,6 +99,12 @@ export async function assignAgentNumber(
 export async function deleteAgentNumber(id: string): Promise<boolean> {
   const rows = await sql`DELETE FROM agent_numbers WHERE id = ${id} RETURNING id`;
   return rows.length > 0;
+}
+
+/** The number assigned to this user, or null. At most one, per agent_numbers_one_per_user. */
+export async function findNumberForUser(userId: string): Promise<AgentNumber | null> {
+  const [row] = await sql`SELECT ${COLUMNS} ${FROM} WHERE n.user_id = ${userId}`;
+  return (row as AgentNumber | undefined) ?? null;
 }
 
 export async function findById(id: string): Promise<AgentNumber | null> {

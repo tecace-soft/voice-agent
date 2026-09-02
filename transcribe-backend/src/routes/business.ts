@@ -1,11 +1,25 @@
 import { Elysia, t } from "elysia";
-import { authenticateAdmin } from "../auth/guard.js";
+import { authenticate, authenticateAdmin, UNAUTHORIZED } from "../auth/guard.js";
 import { env } from "../config/env.js";
+import {
+  currentHash,
+  findLiveProfileByPhone,
+  findProfile,
+  hashSource,
+  saveProfile,
+} from "../db/businessProfiles.js";
+import {
+  ExtractionError,
+  extractBusiness,
+  MAX_SOURCE_CHARS,
+  renderFacts,
+} from "../tools/extractBusiness.js";
 import {
   assignAgentNumber,
   createAgentNumber,
   deleteAgentNumber,
   findByPhone,
+  findNumberForUser,
   listAgentNumbers,
   toE164,
 } from "../db/agentNumbers.js";
@@ -20,6 +34,14 @@ import {
 // shared key, since it has no session — see AGENT_CONFIG_KEY.
 
 const NUMBERS_ARE_ADMIN = "Only an admin can manage the agent's phone numbers.";
+
+// Whose profile is being read or written. A customer only ever gets their own; an admin may act on
+// someone else's by naming them, which is what onboarding looks like. The parameter is a filter for
+// an admin and never a way in for anyone else — the same rule as scopeFor in the transcribe routes.
+function profileTargetFor(user: { id: string; role: string }, requested?: string): string {
+  if (user.role !== "admin") return user.id;
+  return requested?.trim() || user.id;
+}
 
 export const business = new Elysia({ prefix: "/business" })
   // The agent's lookup: whose business is this dialled number?
@@ -39,15 +61,97 @@ export const business = new Elysia({ prefix: "/business" })
         // Not an error. An unknown or unassigned number is a normal state — a line that rings
         // before an admin has assigned it — and the agent's correct response is the neutral
         // prompt, not a retry. `assigned:false` says so without making the agent read a status code.
-        return { assigned: false, to: toE164(query.to) };
+        return { assigned: false, to: toE164(query.to), reason: "no_number" };
       }
+
+      const profile = await findLiveProfileByPhone(number.phoneE164);
+      if (!profile) {
+        // Assigned, but there is nothing to say as them: no details saved, or too thin to speak
+        // from. Same answer as an unassigned number, because the agent's response is the same —
+        // `reason` exists only so the log says which, since the two need different fixing.
+        return { assigned: false, to: number.phoneE164, reason: "no_business_details" };
+      }
+
       return {
         assigned: true,
         to: number.phoneE164,
         user: { id: number.userId, email: number.userEmail, name: number.userName },
+        // Nulls are sent as nulls, never filled in from this service's own defaults. A missing
+        // value means the agent must not claim to know it — substituting TecAce's hours for a
+        // customer who didn't give us theirs is the exact leak this whole mechanism prevents.
+        business: {
+          name: profile.businessName,
+          hoursText: profile.hoursText,
+          openHour: profile.openHour,
+          closeHour: profile.closeHour,
+          website: profile.website,
+          facts: profile.facts,
+        },
       };
     },
     { query: t.Object({ to: t.String({ minLength: 1, maxLength: 40 }) }) },
+  )
+
+  // A customer's own business details, plus the number they're used for. Both together, because
+  // the page needs to say "not in use yet" when someone has filled everything in but has no number
+  // — a state that is otherwise silent and looks exactly like a bug.
+  .get(
+    "/profile",
+    async ({ headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      const target = profileTargetFor(user, query.userId);
+      const [profile, number] = await Promise.all([
+        findProfile(target),
+        findNumberForUser(target),
+      ]);
+      return { profile, number, maxSourceChars: MAX_SOURCE_CHARS };
+    },
+    { query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }) },
+  )
+
+  // Save what they pasted. This is where the extraction happens — once, here, never on a call.
+  .put(
+    "/profile",
+    async ({ body, headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      const target = profileTargetFor(user, query.userId);
+      const sourceText = body.sourceText.trim();
+
+      // Unchanged text must not be re-extracted. The model is not deterministic enough to guarantee
+      // the same facts twice, so a save with no edits could otherwise quietly reword what the agent
+      // says about a business that changed nothing.
+      const [existingHash, existing] = await Promise.all([
+        currentHash(target),
+        findProfile(target),
+      ]);
+      if (existing && existingHash === hashSource(sourceText)) {
+        return { profile: existing, extracted: false };
+      }
+
+      let fields;
+      try {
+        const extract = await extractBusiness(sourceText);
+        fields = { ...extract, facts: renderFacts(extract) };
+      } catch (err) {
+        if (err instanceof ExtractionError) {
+          // Nothing is written. Whatever was live stays live and stays being spoken to callers —
+          // losing a working profile to a model outage would be worse than the save not taking.
+          return status(422, {
+            error: "extraction_failed",
+            message: err.message,
+            stillLive: Boolean(existing),
+          });
+        }
+        throw err;
+      }
+      return { profile: await saveProfile(target, sourceText, fields), extracted: true };
+    },
+    {
+      query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }),
+      body: t.Object({ sourceText: t.String({ minLength: 1, maxLength: MAX_SOURCE_CHARS }) }),
+    },
   )
 
   // Every number we've registered, with its assignee.
@@ -101,9 +205,21 @@ export const business = new Elysia({ prefix: "/business" })
     async ({ body, headers, params, status }) => {
       const caller = await authenticateAdmin(headers.authorization, NUMBERS_ARE_ADMIN);
       if ("denied" in caller) return status(caller.denied, caller.body);
-      const number = await assignAgentNumber(params.id, body.userId ?? null);
-      if (!number) return status(404, { error: "not_found", message: "No such number." });
-      return { number };
+      try {
+        const number = await assignAgentNumber(params.id, body.userId ?? null);
+        if (!number) return status(404, { error: "not_found", message: "No such number." });
+        return { number };
+      } catch (err) {
+        // 23505 on the one-per-user index. Told, not silently swapped: moving a customer's line
+        // out from under them is not something an admin should be able to do by accident.
+        if ((err as { code?: string }).code === "23505") {
+          return status(409, {
+            error: "already_has_number",
+            message: "That person already has a number. Un-assign it first.",
+          });
+        }
+        throw err;
+      }
     },
     {
       params: t.Object({ id: t.String() }),

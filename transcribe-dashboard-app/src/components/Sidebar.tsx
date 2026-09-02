@@ -8,6 +8,7 @@ import {
   IconOverview,
   IconRuns,
   IconSignOut,
+  IconIdea,
   IconPhone,
   IconUsers,
   IconVoicemail,
@@ -24,6 +25,7 @@ export type ViewId =
   | "feedback"
   | "allFeedback"
   | "numbers"
+  | "business"
   | "accounts";
 
 const NAV: {
@@ -56,6 +58,7 @@ const NAV: {
   {
     group: "Settings",
     items: [
+      { id: "business", label: "Business information", icon: IconIdea },
       { id: "numbers", label: "Agent numbers", icon: IconPhone, adminOnly: true },
       { id: "accounts", label: "Accounts", icon: IconUsers, adminOnly: true },
     ],

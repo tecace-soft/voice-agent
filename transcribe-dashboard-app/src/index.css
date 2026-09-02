@@ -2106,3 +2106,60 @@ button.person-primary:hover {
   margin-left: 8px;
   vertical-align: middle;
 }
+
+/* ---- business information ---- */
+
+.business-source {
+  min-height: 320px;
+  line-height: 1.6;
+  resize: vertical;
+}
+.business-status {
+  padding: 0 20px 20px;
+}
+.business-status p {
+  margin: 0;
+  max-width: 68ch;
+}
+.business-live {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--success);
+}
+
+/* The facts, as sentences rather than as a form. A customer reads these to check we have them
+   right — a wrong closing time has to be noticeable at a glance, which a field grid isn't. */
+.business-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0 20px 8px;
+  list-style: none;
+}
+.business-facts li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.business-facts li:first-child {
+  border-top: none;
+}
+.business-facts .icon {
+  color: var(--success);
+  flex: none;
+  margin-top: 3px;
+}
+
+/* Their own words, shown back verbatim — whitespace preserved so the shape they wrote survives. */
+.business-source-read {
+  margin: 0;
+  padding: 0 20px 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  max-width: 78ch;
+}

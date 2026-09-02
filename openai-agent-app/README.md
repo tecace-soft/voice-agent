@@ -56,6 +56,7 @@ openai-agent-app/
       transfer.py            #   INBOUND: warm-transfer a live call to a human (+ recover it)
       poller.py              #   finds due leads and places a call for each (attempt cap, callbacks)
   scripts/
+    checks/verify_faq.py    # FAQ/DEFERRALS name no company (run after editing faq.py)
     run_server.py            # run the media-stream server (handles call audio)
     run_poller.py            # run the lead poller (always-on: decides who to call and when)
     place_call.py            # place a single test outbound call by hand

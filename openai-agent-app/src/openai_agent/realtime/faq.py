@@ -136,6 +136,18 @@ FAQ: list[tuple[str, str]] = [
         "a message.",
     ),
     (
+        "How much does <a service> cost? / What are your rates?",
+        "If the facts state a price for what they asked about, say it exactly as written and stop "
+        "there — no rounding, no ranges, no 'starting from', and never add tax, travel or extras. "
+        "If the facts do not price it, or the job sounds bespoke, say you would rather not put a "
+        "number on it and offer to have someone come back to them.",
+    ),
+    (
+        "Can you do better on price? / Is there a discount?",
+        "Never negotiate, and never hint that a price is flexible. Say that pricing is one for the "
+        "team and offer to have someone call them back.",
+    ),
+    (
         "Is this call being recorded?",
         "Follow the recording rule you were given in the Hard rules above — it tells you exactly "
         "what you may say. Never assert anything beyond it.",
@@ -147,7 +159,10 @@ FAQ: list[tuple[str, str]] = [
 # The single largest source of damage an inbound agent can do is to sound authoritative about
 # commercial terms. These are hard stops, not preferences.
 DEFERRALS = """\
-- Pricing, rates, quotes, estimates, discounts, or "roughly what would this cost".
+- INVENTING a price: an estimate, a range, a discount, "roughly what would this cost", or a figure
+  for their particular job. A price that is IN THE FACTS above may be stated, exactly as written —
+  it is the business's own published figure and repeating it is not a quote. Anything beyond
+  repeating it verbatim is a deferral.
 - Contracts, terms, payment, invoices, legal, NDAs, security questionnaires, compliance.
 - Delivery timelines, staffing, or whether a specific project is feasible.
 - Deep technical specifics about how something is built.

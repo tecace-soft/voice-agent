@@ -174,3 +174,30 @@ export interface AgentNumber {
   createdAt: string;
   updatedAt: string;
 }
+
+// What a customer told us about their business, and what the agent says because of it.
+//
+// `sourceText` is the only part anyone edits. Everything else is produced from it by the backend
+// at save time — never hand-edited, so improving the extractor later can regenerate them all.
+export interface BusinessProfile {
+  userId: string;
+  sourceText: string;
+  businessName: string | null;
+  hoursText: string | null;
+  openHour: number | null;
+  closeHour: number | null;
+  website: string | null;
+  /** The bullet block the agent answers from, one fact per line. */
+  facts: string | null;
+  /** Enough here for the agent to answer AS this business rather than neutrally. */
+  isLive: boolean;
+  extractedAt: string | null;
+  updatedAt: string;
+}
+
+export interface BusinessProfileResponse {
+  profile: BusinessProfile | null;
+  /** Their assigned number, or null — a profile with no number is saved but not in use. */
+  number: AgentNumber | null;
+  maxSourceChars: number;
+}

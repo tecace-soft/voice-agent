@@ -138,6 +138,33 @@ export async function initDb(): Promise<void> {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  // One Twilio number per customer, for now. Unassigned numbers stay unconstrained so a pool can be
+  // held ready. Enforced here rather than in the UI: a rule the agent's correctness depends on
+  // should not be something a future endpoint can forget to check.
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS agent_numbers_one_per_user
+    ON agent_numbers (user_id) WHERE user_id IS NOT NULL
+  `;
+
+  // What a customer told us about their business. source_text is theirs and is the only editable
+  // part; every other column is derived from it by the extractor and is safe to regenerate.
+  // CASCADE here, unlike agent_numbers: a profile means nothing without the account that wrote it,
+  // whereas a phone number outlives its owner because we keep paying for it.
+  await sql`
+    CREATE TABLE IF NOT EXISTS business_profiles (
+      user_id       UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      source_text   TEXT NOT NULL,
+      source_hash   TEXT NOT NULL,
+      business_name TEXT,
+      hours_text    TEXT,
+      open_hour     INTEGER,
+      close_hour    INTEGER,
+      website       TEXT,
+      facts         TEXT,
+      extracted_at  TIMESTAMPTZ,
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
   // A pasted screenshot, stored inline as a data URL. Kept in the row rather than in object storage
   // because feedback is low-volume and this needs no bucket, no signed URLs and no orphan cleanup —
   // the image is deleted exactly when the note is. The client downscales before upload and the
@@ -180,6 +207,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM voicemail_failures LIMIT 1`;
     await sql`SELECT 1 FROM poller_heartbeats LIMIT 1`;
     await sql`SELECT 1 FROM agent_numbers LIMIT 1`;
+    await sql`SELECT 1 FROM business_profiles LIMIT 1`;
     return;
   } catch {
     await initDb();
