@@ -143,6 +143,11 @@ async def incoming(request: Request) -> Response:
     # treats a call as outbound, which is what keeps the existing path untouched.
     stream.parameter(name="direction", value="inbound")
     stream.parameter(name="caller", value=caller)
+    # WHICH of our numbers was dialled. This is how the bridge knows whose business to answer for:
+    # one agent serves several customers, and `To` is the only field Twilio always sets to the
+    # number that actually rang. (ForwardedFrom would be the alternative, but carriers disagree
+    # about it — see the docstring above.) It was previously logged and discarded.
+    stream.parameter(name="dialled", value=fields.get("To", ""))
     stream.parameter(name="forwarded_from", value=fields.get("ForwardedFrom", ""))
     connect.append(stream)
     response.append(connect)

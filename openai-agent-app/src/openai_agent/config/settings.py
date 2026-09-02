@@ -72,6 +72,12 @@ class Config:
     # Optional override for the spoken facts in the inbound prompt, so a different client can be
     # served without a code change.
     business_facts: str
+    # Where to ask which customer a dialled number belongs to (transcribe-backend). A DIFFERENT
+    # service from backend_url, which is backend-app and serves the booking tools — two URLs and
+    # two keys because they are two services, and one credential should not open the other.
+    # Unset = every inbound call is answered neutrally.
+    business_config_url: str
+    agent_config_key: str
     open_hour: int
     close_hour: int
     # Say "this call is recorded" in the inbound greeting. Default ON: the transcript IS persisted,
@@ -120,6 +126,8 @@ class Config:
             agent_name=_optional("AGENT_NAME", "Tess"),
             business_hours=_optional("BUSINESS_HOURS", "Monday to Friday, 9 AM to 6 PM Pacific"),
             business_facts=_optional("BUSINESS_FACTS"),
+            business_config_url=_optional("BUSINESS_CONFIG_URL").rstrip("/"),
+            agent_config_key=_optional("AGENT_CONFIG_KEY"),
             open_hour=int(_optional("BUSINESS_OPEN_HOUR", "9")),
             close_hour=int(_optional("BUSINESS_CLOSE_HOUR", "18")),
             disclose_recording=_optional("DISCLOSE_RECORDING", "true").lower()

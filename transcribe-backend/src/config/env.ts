@@ -36,6 +36,12 @@ const transcribeIngestKey = process.env.TRANSCRIBE_INGEST_KEY?.trim() ?? "";
 // Unset = the lookup is closed entirely, which fails safe (the agent answers neutrally).
 const agentConfigKey = process.env.AGENT_CONFIG_KEY?.trim() ?? "";
 
+// Reading a customer's pasted business description into speakable facts (src/tools/extractBusiness).
+// Same provider the voicemail pipeline already uses, called over plain REST — one request, no SDK.
+// Unset = business details can't be saved; anything already saved keeps working.
+const geminiApiKey = process.env.GEMINI_API_KEY?.trim() ?? "";
+const businessExtractModel = process.env.BUSINESS_EXTRACT_MODEL?.trim() || "gemini-2.5-flash-lite";
+
 const nodeEnv = process.env.NODE_ENV ?? "development";
 
 // Monthly transcription allowance, above which the account is billed extra. 0 (the default) means
@@ -108,6 +114,8 @@ export const env = {
   timezone: assertTimeZone(process.env.BUSINESS_TIMEZONE ?? "America/Los_Angeles"),
   transcribeIngestKey,
   agentConfigKey,
+  geminiApiKey,
+  businessExtractModel,
   monthlyCap,
   capWarnAt,
   overageRate,

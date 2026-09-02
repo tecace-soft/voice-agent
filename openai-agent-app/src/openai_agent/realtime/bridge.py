@@ -22,10 +22,12 @@ from fastapi import WebSocket, WebSocketDisconnect
 from ..config import Config
 from ..telephony import transfer
 from ..telephony.outbound import is_machine
+from ..tools.business_config import fetch_business_config
 from ..tools.agent_tools import INBOUND_TOOL_SCHEMAS, ToolExecutor
 from . import amd
 from .instructions import build_instructions
 from .instructions_inbound import build_instructions as build_instructions_inbound
+from .instructions_neutral import build_instructions_neutral
 from .instructions_mini import build_instructions as build_instructions_mini
 from .session import build_session_update
 
@@ -59,24 +61,43 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     is_mini = "mini" in cfg.openai_model.lower()
 
     if is_inbound:
+        dialled = str(params.get("dialled", ""))
         log.info(
-            "inbound call started from %r (transfer_failed=%r)",
+            "inbound call started from %r to %r (transfer_failed=%r)",
             caller or "unknown",
+            dialled or "unknown",
             params.get("transfer_failed"),
         )
-        instructions = build_instructions_inbound(
-            caller=caller,
-            business_name=cfg.business_name,
-            agent_name=cfg.agent_name,
-            business_hours=cfg.business_hours,
-            business_facts=cfg.business_facts,
-            open_hour=cfg.open_hour,
-            close_hour=cfg.close_hour,
-            timezone=cfg.timezone,
-            transfer_failed=str(params.get("transfer_failed", "")).lower() in ("yes", "true", "1"),
-            disclose_recording=cfg.disclose_recording,
-            greeting=cfg.greeting,
-        )
+
+        # Whose business is this? One agent answers for several customers, so the number that was
+        # dialled decides which one. None means we could not tell — unassigned number, or the
+        # dashboard is unreachable — and then the agent must NOT fall back to the .env business,
+        # because that would read one customer's facts to another customer's caller. It answers
+        # neutrally instead: helpful, honest, and incapable of saying anything false about a company.
+        business = await fetch_business_config(cfg, dialled)
+        if business is None:
+            log.warning("answering %r neutrally — no business identified", dialled or "unknown")
+            instructions = build_instructions_neutral(
+                caller=caller,
+                timezone=cfg.timezone,
+                disclose_recording=cfg.disclose_recording,
+            )
+        else:
+            instructions = build_instructions_inbound(
+                caller=caller,
+                business_name=cfg.business_name,
+                agent_name=cfg.agent_name,
+                business_hours=cfg.business_hours,
+                business_facts=cfg.business_facts,
+                open_hour=cfg.open_hour,
+                close_hour=cfg.close_hour,
+                timezone=cfg.timezone,
+                transfer_failed=str(params.get("transfer_failed", "")).lower() in ("yes", "true", "1"),
+                disclose_recording=cfg.disclose_recording,
+                greeting=cfg.greeting,
+            )
+        # Same tools either way: the neutral agent can still take a message and put someone
+        # through, which is the whole point of it being a real call rather than a dead end.
         tools = INBOUND_TOOL_SCHEMAS
     else:
         log.info(
