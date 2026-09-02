@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { authenticate, authenticateAdmin, UNAUTHORIZED } from "../auth/guard.js";
 import { env } from "../config/env.js";
+import { findUserById } from "../db/users.js";
 import {
   currentHash,
   findLiveProfileByPhone,
@@ -233,6 +234,23 @@ export const business = new Elysia({ prefix: "/business" })
     async ({ body, headers, params, status }) => {
       const caller = await authenticateAdmin(headers.authorization, NUMBERS_ARE_ADMIN);
       if ("denied" in caller) return status(caller.denied, caller.body);
+      // Numbers belong to CUSTOMERS. An admin is TecAce staff, not a business the agent answers
+      // for — assigning one a line would mean the agent introducing itself as their "business",
+      // which has no meaning and no details behind it. Checked here rather than only hidden in the
+      // dropdown, because a hidden option is a UI convention and this is a rule.
+      if (body.userId) {
+        const target = await findUserById(body.userId);
+        if (!target) {
+          return status(404, { error: "not_found", message: "No such account." });
+        }
+        if (target.role === "admin") {
+          return status(400, {
+            error: "admin_cannot_hold_number",
+            message: `${target.name} is an admin. Numbers are assigned to customer accounts — an admin has no business for the agent to answer as.`,
+          });
+        }
+      }
+
       try {
         const number = await assignAgentNumber(params.id, body.userId ?? null);
         if (!number) return status(404, { error: "not_found", message: "No such number." });

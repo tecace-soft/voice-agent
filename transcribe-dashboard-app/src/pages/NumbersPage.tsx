@@ -34,9 +34,10 @@ export function NumbersPage() {
     Promise.all([listAgentNumbers(), listAccounts()])
       .then(([n, u]) => {
         setNumbers(n);
-        // Admins are offered as assignees too — nothing stops an admin owning a line — but users
-        // come first, since that is who a customer number normally belongs to.
-        setUsers([...u].sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name)));
+        // Customers only. An admin is TecAce staff, not a business the agent answers for, so there
+        // is nothing for it to say if a call came in on their line. The backend refuses it too —
+        // this list is the convenience, that is the rule.
+        setUsers(u.filter((x) => x.role !== "admin").sort((a, b) => a.name.localeCompare(b.name)));
         setError(null);
       })
       .catch((e) => setError(accountErrorMessage(e, "Couldn't load the agent's numbers.")));
@@ -94,8 +95,9 @@ export function NumbersPage() {
             <div className="card-title ta-headline-2">Agent phone numbers</div>
             <div className="card-sub ta-caption-1">
               When one of these rings, the agent answers as the person it's assigned to. A number
-              can belong to only one person — one customer per line is what keeps the agent from
-              reading the wrong company's details to a caller.
+              can belong to only one customer — one line per business is what keeps the agent from
+              reading the wrong company's details to a caller. Admin accounts can't hold a number:
+              there'd be no business for the agent to answer as.
             </div>
           </div>
         </div>
@@ -197,9 +199,18 @@ export function NumbersPage() {
                         aria-label={`Who ${n.phoneE164} answers as`}
                       >
                         <option value="">— Not assigned —</option>
+                        {/* A number assigned to an admin before this rule existed still has to
+                            render, or the row would silently show as unassigned and nobody could
+                            see what to fix. Shown, labelled, and re-assignable — just not
+                            re-selectable once changed. */}
+                        {n.userId && !users.some((u) => u.id === n.userId) && (
+                          <option value={n.userId}>
+                            {n.userName ?? n.userEmail} · admin — reassign to a customer
+                          </option>
+                        )}
                         {users.map((u) => (
                           <option key={u.id} value={u.id}>
-                            {u.name} ({u.email}){u.role === "admin" ? " · admin" : ""}
+                            {u.name} ({u.email})
                           </option>
                         ))}
                       </select>
