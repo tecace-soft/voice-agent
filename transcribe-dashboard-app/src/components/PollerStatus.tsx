@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { listPollers } from "../api/backend";
 import type { MailboxScope, PollerHeartbeat } from "../api/types";
-import { IconAlert, IconCheck } from "../icons";
+import { IconAlert, IconRefresh } from "../icons";
 import { formatDateTime, formatMailbox } from "../lib";
 
 // Is the poller still running?
@@ -10,99 +10,117 @@ import { formatDateTime, formatMailbox } from "../lib";
 // a poller that died at 3am produces no rows, no errors and no failures — it looks exactly like a
 // quiet night, and the first anyone hears is a customer asking where their voicemails went.
 //
-// Loud when something is wrong, nearly silent otherwise. A permanent green "all systems normal"
-// panel is read once and then never again, which is the wrong reflex for the one indicator that
-// matters only on the day it changes.
+// This is ALWAYS on screen, in all four states. The first version hid itself while healthy, on the
+// theory that a permanent green panel gets ignored. That was wrong for a different reason: with
+// nothing rendered, "everything is fine" and "this was never deployed" looked identical, so the one
+// question it exists to answer — is it running? — had no visible answer either way.
+
+type State = "unknown" | "online" | "erroring" | "offline";
 
 function ago(seconds: number): string {
-  if (seconds < 90) return `${Math.max(0, seconds)}s ago`;
+  if (seconds < 90) return `${Math.max(0, seconds)} seconds ago`;
   const mins = Math.round(seconds / 60);
-  if (mins < 90) return `${mins} min ago`;
+  if (mins < 90) return `${mins} minutes ago`;
   const hours = Math.round(mins / 60);
-  return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)} days ago`;
+  return hours < 48 ? `${hours} hours ago` : `${Math.round(hours / 24)} days ago`;
 }
+
+const LABEL: Record<State, string> = {
+  unknown: "No poller has reported yet",
+  online: "Poller running",
+  erroring: "Poller running, last pass failed",
+  offline: "Poller has stopped reporting",
+};
 
 export function PollerStatus({ mailbox }: { mailbox?: MailboxScope }) {
   const [pollers, setPollers] = useState<PollerHeartbeat[] | null>(null);
+  const [checkedAt, setCheckedAt] = useState<Date | null>(null);
 
-  useEffect(() => {
-    let active = true;
+  const load = useCallback(() => {
     listPollers(mailbox)
-      .then((r) => active && setPollers(r.pollers))
-      .catch(() => {
-        /* the backend being unreachable is its own visible failure elsewhere; don't double-report */
-      });
-    // Re-check on the poller's own timescale rather than once per page load, so a dashboard left
-    // open on a wall display notices a poller going quiet.
-    const timer = setInterval(() => {
-      listPollers(mailbox)
-        .then((r) => active && setPollers(r.pollers))
-        .catch(() => {});
-    }, 60_000);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
+      .then((r) => {
+        setPollers(r.pollers);
+        setCheckedAt(new Date());
+      })
+      .catch(() => setPollers([])); // treated as "nothing has reported" — see the unknown state
   }, [mailbox]);
 
-  if (!pollers || pollers.length === 0) return null;
+  useEffect(() => {
+    load();
+    // Re-check on the poller's own timescale, so a dashboard left open on a screen notices a
+    // poller going quiet without anyone refreshing the page.
+    const timer = setInterval(load, 60_000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  if (pollers === null) return null; // first load only; a flash of "unknown" would be a lie
 
   const offline = pollers.filter((p) => !p.online);
   const erroring = pollers.filter((p) => p.online && !p.lastCycleOk);
+  const state: State =
+    pollers.length === 0
+      ? "unknown"
+      : offline.length > 0
+        ? "offline"
+        : erroring.length > 0
+          ? "erroring"
+          : "online";
 
-  // Healthy and quiet: one unobtrusive line, not a panel.
-  if (offline.length === 0 && erroring.length === 0) {
-    const newest = pollers[0]!;
-    return (
-      <p className="poller-ok ta-caption-1 muted">
-        <IconCheck size={12} />
-        {pollers.length === 1 ? "Poller running" : `${pollers.length} pollers running`} · last check{" "}
-        {ago(newest.secondsSinceSeen)}
-      </p>
-    );
-  }
+  const newest = [...pollers].sort((a, b) => a.secondsSinceSeen - b.secondsSinceSeen)[0];
+  const problems = [...offline, ...erroring];
 
   return (
-    <section className={`card poller-card${offline.length ? " is-offline" : " is-warning"}`}>
-      <div className="card-head">
-        <div>
-          <div className="card-title ta-headline-2">
-            {offline.length > 0
-              ? offline.length === 1
-                ? "A poller has stopped reporting"
-                : `${offline.length} pollers have stopped reporting`
-              : "A poller is erroring"}
-          </div>
-          <div className="card-sub ta-caption-1">
-            {offline.length > 0
-              ? "No voicemails are being transcribed for the mailboxes below until it is running again."
-              : "The poller is alive but its last pass failed. See Failed runs for the reason."}
-          </div>
+    <section className={`card poller-card poller-${state}`}>
+      <div className="poller-bar">
+        <span className={`poller-dot poller-dot-${state}`} aria-hidden="true" />
+        <div className="poller-headline">
+          <span className="ta-label-1">
+            {LABEL[state]}
+            {pollers.length > 1 && state === "online" ? ` (${pollers.length})` : ""}
+          </span>
+          <span className="ta-caption-2 muted">
+            {state === "unknown"
+              ? "Deploy the backend, then restart the poller. It reports in every cycle."
+              : `Last check-in ${ago(newest!.secondsSinceSeen)} · expects one every ${Math.round(
+                  newest!.intervalSeconds / 60,
+                )} min`}
+          </span>
         </div>
+        <button
+          type="button"
+          className="btn btn-quiet poller-refresh"
+          onClick={load}
+          title="Check again now"
+        >
+          <IconRefresh size={14} />
+          {checkedAt ? checkedAt.toLocaleTimeString() : "Check"}
+        </button>
       </div>
 
-      <ul className="poller-list">
-        {[...offline, ...erroring].map((p) => (
-          <li key={p.mailboxEmail ?? "unattributed"} className="poller-item">
-            <span className={`dot-mark ${p.online ? "is-warning" : "is-danger"}`} />
-            <span className="poller-who">
-              <span className="ta-label-1">{formatMailbox(p.mailboxEmail)}</span>
-              <span className="ta-caption-2 muted">
-                {p.online ? "Last pass failed" : "Silent"} · last seen {ago(p.secondsSinceSeen)} (
-                {formatDateTime(p.lastSeenAt)})
-                {p.host ? ` · ${p.host}` : ""}
+      {problems.length > 0 && (
+        <ul className="poller-list">
+          {problems.map((p) => (
+            <li key={p.mailboxEmail ?? "unattributed"} className="poller-item">
+              <span className={`dot-mark ${p.online ? "is-warning" : "is-danger"}`} />
+              <span className="poller-who">
+                <span className="ta-label-1">{formatMailbox(p.mailboxEmail)}</span>
+                <span className="ta-caption-2 muted">
+                  {p.online ? "Last pass failed" : "Silent"} · last seen{" "}
+                  {formatDateTime(p.lastSeenAt)}
+                  {p.host ? ` · ${p.host}` : ""}
+                </span>
               </span>
-            </span>
-            {p.detail && <code className="poller-detail ta-caption-2">{p.detail}</code>}
-          </li>
-        ))}
-      </ul>
+              {p.detail && <code className="poller-detail ta-caption-2">{p.detail}</code>}
+            </li>
+          ))}
+        </ul>
+      )}
 
-      {offline.length > 0 && (
+      {state === "offline" && (
         <p className="poller-foot ta-caption-1 muted">
           <IconAlert size={12} />
-          Expected a check-in every {Math.round((pollers[0]?.intervalSeconds ?? 300) / 60)} min. On
-          the server: <code>sudo systemctl status transcribe-poller</code>
+          No voicemails are being transcribed until it is running again.
+          <code>sudo systemctl status transcribe-poller</code>
         </p>
       )}
     </section>

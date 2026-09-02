@@ -1926,6 +1926,163 @@ button.person-primary:hover {
 
 /* ---- poller liveness ---- */
 
+/* Always on screen, in every state. A left colour rail carries the state so it reads at a glance
+   from across a room, while the card itself stays the standard outlined card. */
+.poller-card {
+  padding: 0;
+  border-left: 3px solid var(--border-strong);
+}
+.poller-online {
+  border-left-color: var(--success);
+}
+.poller-erroring {
+  border-left-color: var(--warning);
+}
+.poller-offline {
+  border-left-color: var(--danger);
+}
+.poller-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+}
+.poller-headline {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.poller-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--label-assistive);
+}
+.poller-dot-online {
+  background: var(--success);
+  /* A soft ring rather than a pulse: motion here is .15s fades only, and a blinking dot on a
+     dashboard someone leaves open all day is an irritation, not information. */
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 22%, transparent);
+}
+.poller-dot-erroring {
+  background: var(--warning);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 22%, transparent);
+}
+.poller-dot-offline {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 22%, transparent);
+}
+.poller-refresh {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.poller-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0 20px;
+  list-style: none;
+}
+.poller-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.poller-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.poller-detail,
+.poller-foot code {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.poller-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* ---- expandable run rows ---- */
+
+.row-expandable {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.row-expandable:hover,
+.row-expandable.is-open {
+  background: var(--accent-soft);
+}
+.row-expandable:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.row-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.row-toggle .chevron {
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+.row-toggle .chevron.is-open {
+  transform: rotate(180deg);
+}
+.row-detail > td {
+  padding: 0 20px 16px;
+  background: var(--accent-soft);
+}
+.run-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.run-detail-list .failure-error {
+  background: var(--surface);
+}
+@media (prefers-reduced-motion: reduce) {
+  .row-expandable,
+  .row-toggle .chevron {
+    transition: none;
+  }
+}
+.run-detail-empty {
+  margin: 0;
+  padding: 12px 0 0;
+}
+.run-detail-empty code {
+  display: block;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--surface);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* ---- poller liveness ---- */
+
 /* Healthy: one quiet line, not a panel. A permanent green "all normal" box gets read once and
    then never again, which is the wrong reflex for the indicator that only matters when it flips. */
 .poller-ok {
