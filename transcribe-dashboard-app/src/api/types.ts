@@ -148,3 +148,16 @@ export interface TranscribeFailure {
   createdAt: string;
   acknowledgedAt: string | null;
 }
+
+// A poller checking in. `online` is derived by the backend from the poller's OWN reported interval,
+// so retuning POLL_INTERVAL_SECONDS can't leave the dashboard calling a healthy poller dead.
+export interface PollerHeartbeat {
+  mailboxEmail: string | null;
+  lastSeenAt: string;
+  intervalSeconds: number;
+  lastCycleOk: boolean;
+  detail: string | null;
+  host: string | null;
+  online: boolean;
+  secondsSinceSeen: number;
+}

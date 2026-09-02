@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import type { TranscribeStats } from "../api/types";
+import type { MailboxScope, TranscribeStats } from "../api/types";
 import { AreaChart, type ChartPoint } from "../components/AreaChart";
 import { RunsTable } from "../components/RunsTable";
 import { CapMeter, capState } from "../components/CapMeter";
+import { PollerStatus } from "../components/PollerStatus";
 import { StatCard, TrendBadge, type Trend } from "../components/StatCard";
 import { TabBar, type TabDef } from "../components/TabBar";
 import { deltaPct, formatDayShort, formatPct, formatShort } from "../lib";
@@ -32,10 +33,17 @@ export function OverviewPage({
   data,
   mailboxLabel,
   showMailbox,
+  mailbox,
+  isAdmin,
 }: {
   data: TranscribeStats;
   mailboxLabel: string;
   showMailbox?: boolean;
+  /** Scope for the poller-liveness check. Omitted inside a per-person panel, which already shows
+   *  one person and would otherwise repeat the same warning under every name. */
+  mailbox?: MailboxScope;
+  /** Poller health is admin-only: it is our infrastructure, not the customer's data. */
+  isAdmin?: boolean;
 }) {
   const [range, setRange] = useState<RangeId>("all");
   const [tab, setTab] = useState<TabId>("recent");
@@ -109,6 +117,8 @@ export function OverviewPage({
 
   return (
     <div className="view">
+      {/* Admin only, and only where one poller is in view — see the props' notes. */}
+      {isAdmin && (mailbox !== undefined || !showMailbox) ? <PollerStatus mailbox={mailbox} /> : null}
       <section className="kpi-grid">
         <StatCard
           label="Total transcribed"

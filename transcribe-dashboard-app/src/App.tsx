@@ -101,6 +101,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // "something needs attention" the first time anything went wrong.
   const [unseenFailures, setUnseenFailures] = useState(0);
   useEffect(() => {
+    if (!isAdmin) return; // the endpoint is admin-only; asking as a user is a guaranteed 403
     let active = true;
     countUnseenFailures(mailbox)
       .then((n) => active && setUnseenFailures(n))
@@ -110,7 +111,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
     return () => {
       active = false;
     };
-  }, [mailbox]);
+  }, [mailbox, isAdmin]);
   useEffect(() => {
     if (!isAdmin) return;
     let active = true;
@@ -210,7 +211,15 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             (showMailbox ? (
               <PersonBoardsPage kind="overview" />
             ) : (
-              data && <OverviewPage data={data} mailboxLabel={mailboxLabel} showMailbox={false} />
+              data && (
+                <OverviewPage
+                  data={data}
+                  mailboxLabel={mailboxLabel}
+                  showMailbox={false}
+                  mailbox={mailbox}
+                  isAdmin={isAdmin}
+                />
+              )
             ))}
           {view === "people" &&
             (isAdmin ? (
@@ -223,14 +232,17 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           {view === "activity" &&
             (showMailbox ? <PersonBoardsPage kind="activity" /> : data && <ActivityPage data={data} />)}
           {data && view === "runs" && <RunsPage data={data} showMailbox={showMailbox} />}
-          {view === "failed" && (
-            <FailuresPage
+          {view === "failed" &&
+            (isAdmin ? (
+              <FailuresPage
               mailbox={mailbox}
               data={data}
               showMailbox={showMailbox}
-              onUnseenChange={setUnseenFailures}
-            />
-          )}
+                onUnseenChange={setUnseenFailures}
+              />
+            ) : (
+              <p className="muted ta-body-2">Only an admin can see transcription failures.</p>
+            ))}
           {view === "feedback" && <FeedbackPage />}
           {view === "allFeedback" &&
             (isAdmin ? (

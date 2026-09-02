@@ -27,6 +27,20 @@ export async function initDb(): Promise<void> {
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_voicemail_runs_created_at ON voicemail_runs (created_at)`;
 
+  // One row per poller, UPSERTed every cycle — proof it is still running. mailbox_key is the
+  // conflict target and never null (NULL never equals NULL, so a nullable column can't be one).
+  await sql`
+    CREATE TABLE IF NOT EXISTS poller_heartbeats (
+      mailbox_key      TEXT PRIMARY KEY,
+      mailbox_email    TEXT,
+      last_seen_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+      interval_seconds INTEGER NOT NULL DEFAULT 300,
+      last_cycle_ok    BOOLEAN NOT NULL DEFAULT true,
+      detail           TEXT,
+      host             TEXT
+    )
+  `;
+
   // Why individual voicemails failed. One row per failed attachment, kept after acknowledgement so
   // the history survives — clearing the notification is not the same as forgetting the problem.
   await sql`
@@ -147,6 +161,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT role FROM users LIMIT 1`;
     await sql`SELECT screenshot FROM feedback LIMIT 1`;
     await sql`SELECT 1 FROM voicemail_failures LIMIT 1`;
+    await sql`SELECT 1 FROM poller_heartbeats LIMIT 1`;
     return;
   } catch {
     await initDb();

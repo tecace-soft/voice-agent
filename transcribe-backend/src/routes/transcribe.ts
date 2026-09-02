@@ -8,6 +8,7 @@ import {
   insertFailures,
   listFailures,
 } from "../db/failures.js";
+import { listHeartbeats, recordHeartbeat } from "../db/heartbeats.js";
 import { getTranscribeAnalytics } from "../db/analytics.js";
 import {
   getVoicemailStats,
@@ -27,6 +28,11 @@ import {
 // email can never equal it (no "@"), so a `user` can't reach those rows by asking for it.
 const UNATTRIBUTED = "unattributed";
 
+// Failures are an operations signal, not customer data: the reasons are raw API errors carrying
+// our sheet ids and hostnames, and they describe something only we can act on. A customer seeing
+// "503 from Sheets" learns nothing they can use and calls to ask about it.
+const FAILURES_ARE_ADMIN = "Only an admin can see transcription failures.";
+
 // Which mailbox this caller may read. A non-admin is pinned to their own address no matter what
 // they ask for — the query parameter is only ever a filter for an admin, never a way in.
 function scopeFor(user: PublicUser, requested: string | undefined): MailboxScope {
@@ -44,7 +50,8 @@ export const transcribe = new Elysia({ prefix: "/transcribe" })
     // key, so a blanket rule would reject the very calls it is not meant to guard. Matching the
     // path keeps /runs exactly as protected as it was, and nothing else inherits that credential.
     const path = new URL(request.url).pathname;
-    if (request.method !== "POST" || !path.endsWith("/transcribe/runs")) return;
+    const ingest = path.endsWith("/transcribe/runs") || path.endsWith("/transcribe/heartbeat");
+    if (request.method !== "POST" || !ingest) return;
     if (env.transcribeIngestKey && headers["x-transcribe-key"] !== env.transcribeIngestKey) {
       return status(401, { error: "unauthorized" });
     }
@@ -101,13 +108,55 @@ export const transcribe = new Elysia({ prefix: "/transcribe" })
     { query: t.Object({ mailbox: t.Optional(t.String({ maxLength: 320 })) }) },
   )
 
+  // "I'm still here." Sent every cycle whether or not there was anything to do — that is the whole
+  // point, since a poller with nothing to report is indistinguishable from a dead one otherwise.
+  .post(
+    "/heartbeat",
+    async ({ body }) => {
+      await recordHeartbeat({
+        mailboxEmail: body.mailboxEmail ?? null,
+        intervalSeconds: body.intervalSeconds,
+        lastCycleOk: body.lastCycleOk,
+        detail: body.detail ?? null,
+        host: body.host ?? null,
+      });
+      return { status: "ok" };
+    },
+    {
+      body: t.Object({
+        mailboxEmail: t.Optional(t.String({ maxLength: 320 })),
+        intervalSeconds: t.Integer({ minimum: 1, maximum: 86400 }),
+        lastCycleOk: t.Boolean(),
+        detail: t.Optional(t.String({ maxLength: 500 })),
+        host: t.Optional(t.String({ maxLength: 200 })),
+      }),
+    },
+  )
+
+  // Which pollers are alive. ADMIN ONLY — this is infrastructure health, not the customer's data.
+  // Telling a customer their poller is down invites a support call about something they can neither
+  // see the cause of nor fix, and it exposes hostnames and internal error text that are ours.
+  .get(
+    "/heartbeats",
+    async ({ headers, query, status }) => {
+      const caller = await authenticateAdmin(
+        headers.authorization,
+        "Only an admin can see poller status.",
+      );
+      if ("denied" in caller) return status(caller.denied, caller.body);
+      const pollers = await listHeartbeats(scopeFor(caller.user, query.mailbox));
+      return { pollers, offline: pollers.filter((p) => !p.online).length };
+    },
+    { query: t.Object({ mailbox: t.Optional(t.String({ maxLength: 320 })) }) },
+  )
+
   // Why voicemails failed, newest first, plus how many nobody has looked at yet.
   .get(
     "/failures",
     async ({ headers, query, status }) => {
-      const user = await authenticate(headers.authorization);
-      if (!user) return status(401, UNAUTHORIZED);
-      const scope = scopeFor(user, query.mailbox);
+      const caller = await authenticateAdmin(headers.authorization, FAILURES_ARE_ADMIN);
+      if ("denied" in caller) return status(caller.denied, caller.body);
+      const scope = scopeFor(caller.user, query.mailbox);
       const [failures, unacknowledged] = await Promise.all([
         listFailures(scope),
         countUnacknowledged(scope),
@@ -121,9 +170,9 @@ export const transcribe = new Elysia({ prefix: "/transcribe" })
   .get(
     "/failures/count",
     async ({ headers, query, status }) => {
-      const user = await authenticate(headers.authorization);
-      if (!user) return status(401, UNAUTHORIZED);
-      return { unacknowledged: await countUnacknowledged(scopeFor(user, query.mailbox)) };
+      const caller = await authenticateAdmin(headers.authorization, FAILURES_ARE_ADMIN);
+      if ("denied" in caller) return status(caller.denied, caller.body);
+      return { unacknowledged: await countUnacknowledged(scopeFor(caller.user, query.mailbox)) };
     },
     { query: t.Object({ mailbox: t.Optional(t.String({ maxLength: 320 })) }) },
   )
@@ -132,9 +181,9 @@ export const transcribe = new Elysia({ prefix: "/transcribe" })
   .post(
     "/failures/acknowledge",
     async ({ headers, query, status }) => {
-      const user = await authenticate(headers.authorization);
-      if (!user) return status(401, UNAUTHORIZED);
-      const cleared = await acknowledgeFailures(scopeFor(user, query.mailbox));
+      const caller = await authenticateAdmin(headers.authorization, FAILURES_ARE_ADMIN);
+      if ("denied" in caller) return status(caller.denied, caller.body);
+      const cleared = await acknowledgeFailures(scopeFor(caller.user, query.mailbox));
       return { cleared };
     },
     { query: t.Object({ mailbox: t.Optional(t.String({ maxLength: 320 })) }) },

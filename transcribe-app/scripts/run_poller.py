@@ -22,7 +22,7 @@ from types import FrameType
 
 from transcribe_app.config import Config
 from transcribe_app.pipeline import Pipeline
-from transcribe_app.reporter import report_run
+from transcribe_app.reporter import report_run, send_heartbeat
 
 log = logging.getLogger(__name__)
 
@@ -91,8 +91,16 @@ def main() -> int:
                     failed=summary.failed,
                     failures=summary.failures,
                 )
+            send_heartbeat(cfg, ok=True, detail=(
+                f"{summary.processed} processed, {summary.failed} failed, "
+                f"{summary.voicemails} voicemail email(s)"
+            ))
         except Exception as exc:  # noqa: BLE001 — a bad cycle must not kill the poller
             log.warning("cycle error (continuing): %s", exc)
+            # Still a heartbeat: the process is alive and that is worth knowing separately from
+            # whether the cycle worked. A cycle failing and the poller being dead need different
+            # responses, so the dashboard has to be able to tell them apart.
+            send_heartbeat(cfg, ok=False, detail=str(exc)[:500])
 
         _sleep(interval)
 

@@ -1,4 +1,5 @@
 import type {
+  PollerHeartbeat,
   TranscribeFailure,
   AuthUser,
   MailboxScope,
@@ -274,4 +275,14 @@ export function acknowledgeFailures(mailbox?: MailboxScope): Promise<{ cleared: 
 export async function countUnseenFailures(mailbox?: MailboxScope): Promise<number> {
   return (await get<{ unacknowledged: number }>(`/transcribe/failures/count${mailboxQuery(mailbox)}`))
     .unacknowledged;
+}
+
+// ---- poller liveness ----
+
+export function listPollers(
+  mailbox?: MailboxScope,
+): Promise<{ pollers: PollerHeartbeat[]; offline: number }> {
+  return get<{ pollers: PollerHeartbeat[]; offline: number }>(
+    `/transcribe/heartbeats${mailboxQuery(mailbox)}`,
+  );
 }

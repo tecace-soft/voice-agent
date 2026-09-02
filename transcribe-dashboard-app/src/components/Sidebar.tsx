@@ -41,7 +41,7 @@ const NAV: {
     group: "Runs",
     items: [
       { id: "runs", label: "All runs", icon: IconRuns },
-      { id: "failed", label: "Failed runs", icon: IconAlert },
+      { id: "failed", label: "Failed runs", icon: IconAlert, adminOnly: true },
     ],
   },
   {

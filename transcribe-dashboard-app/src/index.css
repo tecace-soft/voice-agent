@@ -1923,3 +1923,61 @@ button.person-primary:hover {
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+
+/* ---- poller liveness ---- */
+
+/* Healthy: one quiet line, not a panel. A permanent green "all normal" box gets read once and
+   then never again, which is the wrong reflex for the indicator that only matters when it flips. */
+.poller-ok {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.poller-card {
+  border-color: var(--warning);
+}
+.poller-card.is-offline {
+  border-color: var(--danger);
+}
+.poller-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0 20px;
+  list-style: none;
+}
+.poller-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.poller-item:first-child {
+  border-top: none;
+}
+.poller-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.poller-detail,
+.poller-foot code {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.poller-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 12px 20px 20px;
+}
