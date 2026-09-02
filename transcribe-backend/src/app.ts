@@ -6,6 +6,7 @@ import { ensureSeedAdmin } from "./auth/seed.js";
 import { auth } from "./routes/auth.js";
 import { feedback } from "./routes/feedback.js";
 import { health } from "./routes/health.js";
+import { business } from "./routes/business.js";
 import { transcribe } from "./routes/transcribe.js";
 
 // Compose the application from controllers. Exported WITHOUT `.listen()` so tests can call it
@@ -32,7 +33,8 @@ export const app = new Elysia()
   .use(health)
   .use(auth)
   .use(feedback)
-  .use(transcribe);
+  .use(transcribe)
+  .use(business);
 
 export type App = typeof app;
 

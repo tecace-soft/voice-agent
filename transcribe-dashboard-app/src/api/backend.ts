@@ -1,4 +1,5 @@
 import type {
+  AgentNumber,
   PollerHeartbeat,
   TranscribeFailure,
   AuthUser,
@@ -285,4 +286,27 @@ export function listPollers(
   return get<{ pollers: PollerHeartbeat[]; offline: number }>(
     `/transcribe/heartbeats${mailboxQuery(mailbox)}`,
   );
+}
+
+// ---- the voice agent's phone numbers (admin) ----
+
+export async function listAgentNumbers(): Promise<AgentNumber[]> {
+  return (await get<{ numbers: AgentNumber[] }>("/business/numbers")).numbers;
+}
+
+export function registerAgentNumber(phone: string, label: string): Promise<{ number: AgentNumber }> {
+  return request<{ number: AgentNumber }>("POST", "/business/numbers", {
+    body: label.trim() ? { phone, label: label.trim() } : { phone },
+  });
+}
+
+/** `userId: null` un-assigns, leaving the number registered but unowned. */
+export function assignAgentNumber(id: string, userId: string | null): Promise<{ number: AgentNumber }> {
+  return request<{ number: AgentNumber }>("POST", `/business/numbers/${id}/assign`, {
+    body: { userId },
+  });
+}
+
+export function deleteAgentNumber(id: string): Promise<{ status: string }> {
+  return request<{ status: string }>("DELETE", `/business/numbers/${id}`);
 }

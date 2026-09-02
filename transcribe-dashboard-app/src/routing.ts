@@ -22,6 +22,7 @@ const VIEWS: ViewId[] = [
   "failed",
   "feedback",
   "allFeedback",
+  "numbers",
   "accounts",
 ];
 

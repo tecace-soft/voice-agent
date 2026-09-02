@@ -30,6 +30,12 @@ const corsOrigins = (process.env.CORS_ORIGIN ?? "")
 // `x-transcribe-key` header (the transcribe-app sends it). Unset = open (dev only).
 const transcribeIngestKey = process.env.TRANSCRIBE_INGEST_KEY?.trim() ?? "";
 
+// The voice agent's credential for reading which customer a dialled number belongs to. Separate
+// from TRANSCRIBE_INGEST_KEY on purpose: the voice agent and the voicemail poller are different
+// services on different machines, and one being rotated or compromised should not touch the other.
+// Unset = the lookup is closed entirely, which fails safe (the agent answers neutrally).
+const agentConfigKey = process.env.AGENT_CONFIG_KEY?.trim() ?? "";
+
 const nodeEnv = process.env.NODE_ENV ?? "development";
 
 // Monthly transcription allowance, above which the account is billed extra. 0 (the default) means
@@ -101,6 +107,7 @@ export const env = {
   // Day boundaries for the "today"/daily stats follow this timezone.
   timezone: assertTimeZone(process.env.BUSINESS_TIMEZONE ?? "America/Los_Angeles"),
   transcribeIngestKey,
+  agentConfigKey,
   monthlyCap,
   capWarnAt,
   overageRate,

@@ -161,3 +161,16 @@ export interface PollerHeartbeat {
   online: boolean;
   secondsSinceSeen: number;
 }
+
+// A phone number the voice agent answers, and who it belongs to. `userId` null = registered but
+// unassigned; the agent answers such a call neutrally rather than guessing whose business it is.
+export interface AgentNumber {
+  id: string;
+  phoneE164: string;
+  label: string | null;
+  userId: string | null;
+  userEmail: string | null;
+  userName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -121,6 +121,23 @@ export async function initDb(): Promise<void> {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback (created_at DESC)`;
+
+  // Which phone number the voice agent answers for which customer. Unrelated to voicemail — it
+  // lives here because these are the same dashboard accounts being assigned. The UNIQUE on
+  // phone_e164 is the whole point: two customers sharing a number would mean one company's facts
+  // being read aloud to the other's caller.
+  await sql`
+    CREATE TABLE IF NOT EXISTS agent_numbers (
+      id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      phone_e164 TEXT NOT NULL UNIQUE,
+      label      TEXT,
+      -- SET NULL, not CASCADE: deleting an account must not delete a number we still pay Twilio
+      -- for. It goes back to unassigned, and the agent answers neutrally until it is reassigned.
+      user_id    UUID REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
   // A pasted screenshot, stored inline as a data URL. Kept in the row rather than in object storage
   // because feedback is low-volume and this needs no bucket, no signed URLs and no orphan cleanup —
   // the image is deleted exactly when the note is. The client downscales before upload and the
@@ -162,6 +179,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT screenshot FROM feedback LIMIT 1`;
     await sql`SELECT 1 FROM voicemail_failures LIMIT 1`;
     await sql`SELECT 1 FROM poller_heartbeats LIMIT 1`;
+    await sql`SELECT 1 FROM agent_numbers LIMIT 1`;
     return;
   } catch {
     await initDb();

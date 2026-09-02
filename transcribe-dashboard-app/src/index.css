@@ -2074,3 +2074,35 @@ button.person-primary:hover {
   overflow-wrap: anywhere;
 }
 
+
+/* ---- agent phone numbers ---- */
+
+.number-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+@media (max-width: 720px) {
+  .number-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.number-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+/* The assignee picker is the control this page exists for, so it sits inline in the row rather
+   than behind an edit mode — reassigning a line is one click, and the current owner is readable
+   without opening anything. */
+.number-assign {
+  width: 100%;
+  min-width: 220px;
+  height: 34px;
+}
+.number-unassigned {
+  margin-left: 8px;
+  vertical-align: middle;
+}
