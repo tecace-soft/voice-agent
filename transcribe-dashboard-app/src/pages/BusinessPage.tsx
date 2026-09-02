@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { getBusinessProfile, saveBusinessProfile } from "../api/backend";
-import type { AgentNumber, BusinessProfile } from "../api/types";
+import { getBusinessProfile, listAccounts, saveBusinessProfile } from "../api/backend";
+import type { AgentNumber, AuthUser, BusinessProfile, MailboxScope } from "../api/types";
 import { accountErrorMessage } from "../auth";
-import { IconAlert, IconCheck, IconPhone } from "../icons";
+import { IconAlert, IconCheck, IconChevronLeft, IconChevronRight, IconPhone } from "../icons";
 import { formatDateTime } from "../lib";
 
 // What the voice agent says about a customer's business, and where they change it.
@@ -35,7 +35,20 @@ function stateOf(profile: BusinessProfile | null, number: AgentNumber | null): S
   return number ? "live" : "no-number";
 }
 
-export function BusinessPage() {
+export function BusinessPage({
+  isAdmin = false,
+  scope,
+  onScope,
+}: {
+  isAdmin?: boolean;
+  /** Which customer an admin is looking at, held in the URL so a refresh stays put. */
+  scope?: MailboxScope;
+  onScope?: (next: MailboxScope) => void;
+} = {}) {
+  // An admin has no business of their own — they are TecAce staff, not a customer. So for them this
+  // page is a way IN to somebody else's details, and it opens on the list rather than on an empty
+  // profile that could never become live.
+  const [customers, setCustomers] = useState<AuthUser[] | null>(null);
   const [profile, setProfile] = useState<BusinessProfile | null>(null);
   const [number, setNumber] = useState<AgentNumber | null>(null);
   const [maxChars, setMaxChars] = useState(20_000);
@@ -49,17 +62,36 @@ export function BusinessPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
 
+  // Who we're actually reading and writing. Undefined = the signed-in user's own.
+  const viewing = isAdmin
+    ? (customers ?? []).find((c) => c.email === scope) ?? null
+    : null;
+  const targetId = isAdmin ? viewing?.id : undefined;
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    listAccounts()
+      .then((all) => setCustomers(all.filter((u) => u.role !== "admin")))
+      .catch(() => setCustomers([]));
+  }, [isAdmin]);
+
   const load = useCallback(() => {
-    getBusinessProfile()
+    // An admin who hasn't picked anyone yet has nothing to load.
+    if (isAdmin && !targetId) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    getBusinessProfile(targetId)
       .then((r) => {
         setProfile(r.profile);
         setNumber(r.number);
         setMaxChars(r.maxSourceChars);
         setError(null);
       })
-      .catch((e) => setError(accountErrorMessage(e, "Couldn't load your business details.")))
+      .catch((e) => setError(accountErrorMessage(e, "Couldn't load these business details.")))
       .finally(() => setLoading(false));
-  }, []);
+  }, [isAdmin, targetId]);
 
   useEffect(() => {
     load();
@@ -79,7 +111,11 @@ export function BusinessPage() {
     setSaving(true);
     setSaveError(null);
     try {
-      const { profile: saved } = await saveBusinessProfile(draft.trim(), transferNumber.trim());
+      const { profile: saved } = await saveBusinessProfile(
+        draft.trim(),
+        transferNumber.trim(),
+        targetId,
+      );
       setProfile(saved);
       setEditing(false);
       setJustSaved(true);
@@ -94,6 +130,52 @@ export function BusinessPage() {
     }
   }
 
+  // An admin with nobody selected: choose a customer. Shown instead of the profile, not above it,
+  // because there is no profile to show until they pick — and an admin's own would always be empty.
+  if (isAdmin && !viewing) {
+    return (
+      <div className="view">
+        <section className="card">
+          <div className="card-head">
+            <div>
+              <div className="card-title ta-headline-2">Whose business information?</div>
+              <div className="card-sub ta-caption-1">
+                Pick a customer to see what the assistant says about them, and to edit it on their
+                behalf. You don't have business details of your own — an admin account isn't a
+                business the assistant answers for.
+              </div>
+            </div>
+          </div>
+          {customers === null ? (
+            <p className="feedback-empty muted ta-body-2">Loading…</p>
+          ) : customers.length === 0 ? (
+            <p className="feedback-empty muted ta-body-2">
+              No customer accounts yet. Add one under Accounts first.
+            </p>
+          ) : (
+            <ul className="customer-list">
+              {customers.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    className="customer-row"
+                    onClick={() => onScope?.(c.email)}
+                  >
+                    <span className="person-identity">
+                      <span className="person-primary ta-label-1">{c.name}</span>
+                      <span className="person-secondary ta-caption-1 muted">{c.email}</span>
+                    </span>
+                    <IconChevronRight size={16} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    );
+  }
+
   if (loading) return <p className="muted ta-body-2">Loading…</p>;
   if (error) return <p className="error ta-body-2">{error}</p>;
 
@@ -103,6 +185,18 @@ export function BusinessPage() {
   if (editing) {
     return (
       <div className="view">
+      {isAdmin && viewing && (
+        <div className="viewing-as" role="status">
+          <button type="button" className="btn btn-quiet" onClick={() => onScope?.(undefined)}>
+            <IconChevronLeft size={14} />
+            All customers
+          </button>
+          <span className="ta-label-1">
+            Editing <strong>{viewing.name}</strong>'s business information
+          </span>
+          <span className="ta-caption-2 muted">{viewing.email}</span>
+        </div>
+      )}
         <section className="card">
           <div className="card-head">
             <div>
@@ -173,6 +267,18 @@ export function BusinessPage() {
 
   return (
     <div className="view">
+      {isAdmin && viewing && (
+        <div className="viewing-as" role="status">
+          <button type="button" className="btn btn-quiet" onClick={() => onScope?.(undefined)}>
+            <IconChevronLeft size={14} />
+            All customers
+          </button>
+          <span className="ta-label-1">
+            Editing <strong>{viewing.name}</strong>'s business information
+          </span>
+          <span className="ta-caption-2 muted">{viewing.email}</span>
+        </div>
+      )}
       <section className="card">
         <div className="card-toolbar">
           <div>
@@ -196,6 +302,12 @@ export function BusinessPage() {
               through, it just doesn't say who it's answering for.
             </p>
           )}
+          {state === "empty" && (
+            <p className="ta-caption-1 muted business-transfer">
+              You'll also be able to set a number for the assistant to forward callers to when they
+              ask for a person.
+            </p>
+          )}
           {state === "not-live" && (
             <p className="notice notice-slim" role="status">
               <IconAlert size={14} />
@@ -211,21 +323,42 @@ export function BusinessPage() {
             </p>
           )}
           {state === "live" && number && (
-            <>
-              <p className="business-live ta-label-1">
-                <IconPhone size={14} />
-                Answering calls to {number.phoneE164}
-                {justSaved && <span className="badge badge-success">Updated</span>}
-              </p>
-              <p className="ta-caption-1 muted business-transfer">
-                {profile?.transferNumber
-                  ? `Callers who ask for a person are put through to ${profile.transferNumber}.`
-                  : "Nobody to put callers through to — the assistant takes a message instead."}
-              </p>
-            </>
+            <p className="business-live ta-label-1">
+              <IconPhone size={14} />
+              Answering calls to {number.phoneE164}
+              {justSaved && <span className="badge badge-success">Updated</span>}
+            </p>
           )}
         </div>
       </section>
+
+      {profile && (
+        <section className="card">
+          <div className="card-toolbar">
+            <div>
+              <div className="card-title ta-headline-2">When someone asks for a person</div>
+              <div className="card-sub ta-caption-1">
+                {profile.transferNumber
+                  ? "The assistant offers to put them through, and this is the phone that rings."
+                  : "No number set, so the assistant doesn't offer to put anyone through — it takes a message and passes it on instead."}
+              </div>
+            </div>
+            <button type="button" className="btn btn-quiet" onClick={startEditing}>
+              {profile.transferNumber ? "Change" : "Add a number"}
+            </button>
+          </div>
+          <p className="business-transfer">
+            {profile.transferNumber ? (
+              <span className="number-cell ta-headline-2">
+                <IconPhone size={16} />
+                {profile.transferNumber}
+              </span>
+            ) : (
+              <span className="muted ta-body-2">Not set — calls are never forwarded.</span>
+            )}
+          </p>
+        </section>
+      )}
 
       {profile && facts.length > 0 && (
         <section className="card">

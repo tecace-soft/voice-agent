@@ -2164,5 +2164,61 @@ button.person-primary:hover {
   max-width: 78ch;
 }
 .business-transfer {
-  margin: 6px 0 0;
+  margin: 0;
+  padding: 0 20px 20px;
+}
+
+/* ---- admin viewing a customer's business ---- */
+
+/* Never ambiguous whose details are on screen. Sits above the cards rather than inside one: it
+   describes the whole page, and an admin editing the wrong customer's details by mistake is the
+   failure this exists to prevent. */
+.viewing-as {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  background: var(--accent);
+}
+.customer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0 20px 8px;
+  list-style: none;
+}
+.customer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 0;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.customer-list li:first-child .customer-row {
+  border-top: none;
+}
+.customer-row:hover {
+  color: var(--primary);
+}
+.customer-row .icon {
+  color: var(--muted);
+  flex: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .customer-row {
+    transition: none;
+  }
 }

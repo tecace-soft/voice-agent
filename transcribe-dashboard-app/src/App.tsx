@@ -249,7 +249,9 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             ) : (
               <p className="muted ta-body-2">Only an admin can see transcription failures.</p>
             ))}
-          {view === "business" && <BusinessPage />}
+          {view === "business" && (
+            <BusinessPage isAdmin={isAdmin} scope={mailbox} onScope={setMailbox} />
+          )}
           {view === "numbers" &&
             (isAdmin ? (
               <NumbersPage />
