@@ -1938,7 +1938,8 @@ button.person-primary:hover {
 .poller-erroring {
   border-left-color: var(--warning);
 }
-.poller-offline {
+.poller-offline,
+.poller-unreachable {
   border-left-color: var(--danger);
 }
 .poller-bar {
@@ -1971,7 +1972,8 @@ button.person-primary:hover {
   background: var(--warning);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 22%, transparent);
 }
-.poller-dot-offline {
+.poller-dot-offline,
+.poller-dot-unreachable {
   background: var(--danger);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 22%, transparent);
 }

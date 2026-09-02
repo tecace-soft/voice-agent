@@ -15,7 +15,7 @@ import { formatDateTime, formatMailbox } from "../lib";
 // nothing rendered, "everything is fine" and "this was never deployed" looked identical, so the one
 // question it exists to answer — is it running? — had no visible answer either way.
 
-type State = "unknown" | "online" | "erroring" | "offline";
+type State = "unknown" | "online" | "erroring" | "offline" | "unreachable";
 
 function ago(seconds: number): string {
   if (seconds < 90) return `${Math.max(0, seconds)} seconds ago`;
@@ -30,19 +30,29 @@ const LABEL: Record<State, string> = {
   online: "Poller running",
   erroring: "Poller running, last pass failed",
   offline: "Poller has stopped reporting",
+  unreachable: "Can't read poller status",
 };
 
 export function PollerStatus({ mailbox }: { mailbox?: MailboxScope }) {
   const [pollers, setPollers] = useState<PollerHeartbeat[] | null>(null);
   const [checkedAt, setCheckedAt] = useState<Date | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
 
   const load = useCallback(() => {
     listPollers(mailbox)
       .then((r) => {
         setPollers(r.pollers);
+        setFailed(null);
         setCheckedAt(new Date());
       })
-      .catch(() => setPollers([])); // treated as "nothing has reported" — see the unknown state
+      .catch((e) => {
+        // A failed REQUEST is not "no poller has reported" — mapping it to the empty state is
+        // exactly how a broken read looked identical to a poller that had never run, and cost a
+        // deploy cycle chasing the wrong end of the system. Say which it is.
+        setPollers([]);
+        setFailed(e instanceof Error ? e.message : "Request failed");
+        setCheckedAt(new Date());
+      });
   }, [mailbox]);
 
   useEffect(() => {
@@ -57,8 +67,9 @@ export function PollerStatus({ mailbox }: { mailbox?: MailboxScope }) {
 
   const offline = pollers.filter((p) => !p.online);
   const erroring = pollers.filter((p) => p.online && !p.lastCycleOk);
-  const state: State =
-    pollers.length === 0
+  const state: State = failed
+    ? "unreachable"
+    : pollers.length === 0
       ? "unknown"
       : offline.length > 0
         ? "offline"
@@ -79,11 +90,13 @@ export function PollerStatus({ mailbox }: { mailbox?: MailboxScope }) {
             {pollers.length > 1 && state === "online" ? ` (${pollers.length})` : ""}
           </span>
           <span className="ta-caption-2 muted">
-            {state === "unknown"
-              ? "Deploy the backend, then restart the poller. It reports in every cycle."
-              : `Last check-in ${ago(newest!.secondsSinceSeen)} · expects one every ${Math.round(
+            {state === "unreachable"
+              ? failed
+              : state === "unknown"
+                ? "Deploy the backend, then restart the poller. It reports in every cycle."
+                : `Last check-in ${ago(newest!.secondsSinceSeen)} · expects one every ${Math.round(
                   newest!.intervalSeconds / 60,
-                )} min`}
+                  )} min`}
           </span>
         </div>
         <button

@@ -71,8 +71,13 @@ export async function listHeartbeats(mailbox?: MailboxScope): Promise<HeartbeatR
            detail,
            host,
            extract(epoch FROM now() - last_seen_at)::int AS "secondsSinceSeen",
+           -- The ::float8 casts are load-bearing. Parameters go over untyped, so Postgres infers
+           -- them from context: next to the INTEGER interval_seconds it infers integer, and then
+           -- rejects 2.5 outright with "invalid input syntax for type integer". Casting states the
+           -- type rather than leaving it to be guessed from a neighbouring column.
            (extract(epoch FROM now() - last_seen_at)
-              <= greatest(interval_seconds * ${STALE_AFTER_CYCLES}, ${MIN_STALE_SECONDS})) AS online
+              <= greatest(interval_seconds::float8 * ${STALE_AFTER_CYCLES}::float8,
+                          ${MIN_STALE_SECONDS}::float8)) AS online
     FROM poller_heartbeats
     WHERE ${scope}
     ORDER BY last_seen_at DESC
