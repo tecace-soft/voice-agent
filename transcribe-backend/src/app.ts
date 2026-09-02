@@ -19,7 +19,11 @@ export const app = new Elysia()
   .use(
     cors({
       ...(env.corsOrigins.length ? { origin: env.corsOrigins } : {}),
-      methods: ["GET", "POST", "DELETE", "OPTIONS"],
+      // PUT is here for the business-profile save. Every method a route uses has to be
+      // listed: the browser preflights anything outside the simple set, and a missing one
+      // fails at the preflight — which surfaces as "couldn't reach the server" rather than
+      // as an HTTP error, so it looks like the backend is down instead of picky.
+      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       allowedHeaders: ["content-type", "authorization", "x-transcribe-key"],
     }),
   )
