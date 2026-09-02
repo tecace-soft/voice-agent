@@ -47,8 +47,7 @@ _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 HEADER = [
     "Received",
     "Caller name",
-    "Caller ID",
-    "Callback number",
+    "Phone",
     "Requested time",
     "Callback requested",
     "Summary",

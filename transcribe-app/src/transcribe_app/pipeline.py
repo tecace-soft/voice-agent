@@ -95,10 +95,11 @@ def build_row(
         # we happened to transcribe it. See timefmt.format_received.
         format_received(vm.date, tz),
         info.caller_name or "",
-        # Two different facts, kept apart on purpose: where they rang FROM (the phone system's
-        # caller ID) and where they asked to be rung BACK (what they said in the recording).
-        parse_caller_id(att.filename, vm.subject),
-        normalize_phone(info.phone_number or ""),
+        # The caller's number. Caller ID first — the phone system knows who rang, and it is right
+        # even when nobody says a number, which is most calls. What the caller SPOKE is the
+        # fallback, for the systems that don't put a number in the subject or the filename: it is
+        # still their number, just less reliably captured.
+        parse_caller_id(att.filename, vm.subject) or normalize_phone(info.phone_number or ""),
         info.requested_time or "",
         "yes" if info.callback_requested else "no",
         info.summary,
