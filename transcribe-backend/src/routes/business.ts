@@ -7,6 +7,7 @@ import {
   findProfile,
   hashSource,
   saveProfile,
+  saveTransferNumber,
 } from "../db/businessProfiles.js";
 import {
   ExtractionError,
@@ -86,6 +87,9 @@ export const business = new Elysia({ prefix: "/business" })
           closeHour: profile.closeHour,
           website: profile.website,
           facts: profile.facts,
+          // null means this customer has nobody to put callers through to, and the agent must not
+          // offer to — a transfer it cannot perform is worse than never mentioning one.
+          transferNumber: profile.transferNumber,
         },
       };
     },
@@ -119,6 +123,19 @@ export const business = new Elysia({ prefix: "/business" })
       const target = profileTargetFor(user, query.userId);
       const sourceText = body.sourceText.trim();
 
+      // Where "put me through to a person" goes. Blank clears it, which is meaningful: with no
+      // number the agent stops offering a transfer at all rather than promising one that fails.
+      let transferNumber: string | null = null;
+      if (body.transferNumber?.trim()) {
+        transferNumber = toE164(body.transferNumber);
+        if (!/^\+[1-9]\d{7,14}$/.test(transferNumber)) {
+          return status(400, {
+            error: "bad_transfer_number",
+            message: `"${body.transferNumber}" isn't a phone number we can dial. Use the full number, e.g. +12065551234.`,
+          });
+        }
+      }
+
       // Unchanged text must not be re-extracted. The model is not deterministic enough to guarantee
       // the same facts twice, so a save with no edits could otherwise quietly reword what the agent
       // says about a business that changed nothing.
@@ -127,6 +144,11 @@ export const business = new Elysia({ prefix: "/business" })
         findProfile(target),
       ]);
       if (existing && existingHash === hashSource(sourceText)) {
+        // The description is unchanged, so nothing is re-read — but the transfer number is not part
+        // of that hash, and skipping the write entirely would silently discard an edit to it.
+        if ((existing.transferNumber ?? null) !== transferNumber) {
+          return { profile: await saveTransferNumber(target, transferNumber), extracted: false };
+        }
         return { profile: existing, extracted: false };
       }
 
@@ -146,11 +168,17 @@ export const business = new Elysia({ prefix: "/business" })
         }
         throw err;
       }
-      return { profile: await saveProfile(target, sourceText, fields), extracted: true };
+      return {
+        profile: await saveProfile(target, sourceText, fields, transferNumber),
+        extracted: true,
+      };
     },
     {
       query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }),
-      body: t.Object({ sourceText: t.String({ minLength: 1, maxLength: MAX_SOURCE_CHARS }) }),
+      body: t.Object({
+        sourceText: t.String({ minLength: 1, maxLength: MAX_SOURCE_CHARS }),
+        transferNumber: t.Optional(t.String({ maxLength: 40 })),
+      }),
     },
   )
 

@@ -158,6 +158,17 @@ def _clock(now: datetime) -> str:
     return f"{hour12}:{now.minute:02d} {ampm}"
 
 
+# When the business has given us nobody to put callers through to. Offering a transfer and then
+# failing is worse than never offering: the caller has been told help is coming, waited for it, and
+# then been handed back to the same assistant.
+_NO_TRANSFER_RULE = """
+## You cannot put anyone through on this call
+There is no one to transfer to. NEVER offer to put a caller through, connect them, or "get someone
+for them" — not even if they ask directly. Say you can't put calls through but you can take a
+message and have someone get back to them, then take it. Do not explain why.
+"""
+
+
 def _hours_line(now: datetime, business_hours: str, open_hour: int | None, close_hour: int | None) -> str:
     """The hours line, which has THREE cases rather than open/closed.
 
@@ -202,6 +213,7 @@ def build_instructions(
     transfer_failed: bool = False,
     disclose_recording: bool = True,
     greeting: str = "",
+    can_transfer: bool = True,
 ) -> str:
     """Render the inbound screening rules for one call.
 
@@ -227,7 +239,9 @@ def build_instructions(
         timezone=timezone,
         hours_line=_hours_line(now, business_hours, open_hour, close_hour),
         greeting=spoken,
-        transfer_failed_rule=_TRANSFER_FAILED_RULE if transfer_failed else "",
+        transfer_failed_rule=(
+            _TRANSFER_FAILED_RULE if transfer_failed else "" if can_transfer else _NO_TRANSFER_RULE
+        ),
         knowledge=build_knowledge(business_facts),
         recording_rule=(
             "- You HAVE told the caller this call is recorded, in your opening line. If they ask, "

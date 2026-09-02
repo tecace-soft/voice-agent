@@ -328,11 +328,12 @@ export function getBusinessProfile(userId?: string): Promise<BusinessProfileResp
  */
 export function saveBusinessProfile(
   sourceText: string,
+  transferNumber: string,
   userId?: string,
 ): Promise<{ profile: BusinessProfile; extracted: boolean }> {
   return request<{ profile: BusinessProfile; extracted: boolean }>(
     "PUT",
     `/business/profile${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
-    { body: { sourceText } },
+    { body: { sourceText, transferNumber } },
   );
 }

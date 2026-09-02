@@ -22,6 +22,8 @@ export interface BusinessProfile {
   closeHour: number | null;
   website: string | null;
   facts: string | null;
+  /** Where 'put me through to a person' goes. Typed in, not extracted. */
+  transferNumber: string | null;
   /** True when there's enough here for the agent to answer AS this business rather than neutrally. */
   isLive: boolean;
   extractedAt: string | null;
@@ -58,6 +60,7 @@ const COLUMNS = sql`
   p.close_hour    AS "closeHour",
   p.website,
   p.facts,
+  p.transfer_number AS "transferNumber",
   ${IS_LIVE}      AS "isLive",
   p.extracted_at  AS "extractedAt",
   p.updated_at    AS "updatedAt"
@@ -90,15 +93,16 @@ export async function saveProfile(
   userId: string,
   sourceText: string,
   fields: ExtractedFields,
+  transferNumber: string | null,
 ): Promise<BusinessProfile> {
   await sql`
     INSERT INTO business_profiles (
       user_id, source_text, source_hash, business_name, hours_text,
-      open_hour, close_hour, website, facts, extracted_at, updated_at
+      open_hour, close_hour, website, facts, transfer_number, extracted_at, updated_at
     ) VALUES (
       ${userId}, ${sourceText}, ${hashSource(sourceText)}, ${fields.businessName},
       ${fields.hoursText}, ${fields.openHour}, ${fields.closeHour}, ${fields.website},
-      ${fields.facts}, now(), now()
+      ${fields.facts}, ${transferNumber}, now(), now()
     )
     ON CONFLICT (user_id) DO UPDATE SET
       source_text   = EXCLUDED.source_text,
@@ -108,11 +112,26 @@ export async function saveProfile(
       open_hour     = EXCLUDED.open_hour,
       close_hour    = EXCLUDED.close_hour,
       website       = EXCLUDED.website,
-      facts         = EXCLUDED.facts,
-      extracted_at  = now(),
+      facts           = EXCLUDED.facts,
+      transfer_number = EXCLUDED.transfer_number,
+      extracted_at    = now(),
       updated_at    = now()
   `;
   return (await findProfile(userId))!;
+}
+
+/** Update just the transfer number, leaving the source and everything derived from it alone. */
+export async function saveTransferNumber(
+  userId: string,
+  transferNumber: string | null,
+): Promise<BusinessProfile | null> {
+  const rows = await sql`
+    UPDATE business_profiles
+    SET transfer_number = ${transferNumber}, updated_at = now()
+    WHERE user_id = ${userId}
+    RETURNING user_id
+  `;
+  return rows.length ? findProfile(userId) : null;
 }
 
 export async function deleteProfile(userId: string): Promise<boolean> {

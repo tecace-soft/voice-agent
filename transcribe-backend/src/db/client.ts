@@ -165,6 +165,10 @@ export async function initDb(): Promise<void> {
       updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  // Where callers go when they ask for a person. NOT derived from source_text like the columns
+  // above: a phone number is not prose, and a model that picks the fax line or drops it entirely
+  // routes a real caller to the wrong person. This one is typed in and validated.
+  await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS transfer_number TEXT`;
   // A pasted screenshot, stored inline as a data URL. Kept in the row rather than in object storage
   // because feedback is low-volume and this needs no bucket, no signed URLs and no orphan cleanup —
   // the image is deleted exactly when the note is. The client downscales before upload and the
@@ -207,7 +211,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM voicemail_failures LIMIT 1`;
     await sql`SELECT 1 FROM poller_heartbeats LIMIT 1`;
     await sql`SELECT 1 FROM agent_numbers LIMIT 1`;
-    await sql`SELECT 1 FROM business_profiles LIMIT 1`;
+    await sql`SELECT transfer_number FROM business_profiles LIMIT 1`;
     return;
   } catch {
     await initDb();

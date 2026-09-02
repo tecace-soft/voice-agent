@@ -189,6 +189,8 @@ export interface BusinessProfile {
   website: string | null;
   /** The bullet block the agent answers from, one fact per line. */
   facts: string | null;
+  /** Where "put me through to a person" rings. Typed in, not read from the description. */
+  transferNumber: string | null;
   /** Enough here for the agent to answer AS this business rather than neutrally. */
   isLive: boolean;
   extractedAt: string | null;

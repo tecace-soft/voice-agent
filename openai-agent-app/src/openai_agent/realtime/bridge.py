@@ -57,6 +57,7 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     # different tools. The parameter is set by the /incoming webhook; anything without it — every
     # outbound call, unchanged — falls through to the outbound path below.
     is_inbound = str(params.get("direction", "")).strip().lower() == "inbound"
+    business = None  # set on the inbound path once we know whose call this is
     caller = str(params.get("caller", ""))
     is_mini = "mini" in cfg.openai_model.lower()
 
@@ -100,10 +101,14 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 transfer_failed=str(params.get("transfer_failed", "")).lower() in ("yes", "true", "1"),
                 disclose_recording=cfg.disclose_recording,
                 greeting=cfg.greeting,
+                can_transfer=bool(business.transfer_number),
             )
-        # Same tools either way: the neutral agent can still take a message and put someone
-        # through, which is the whole point of it being a real call rather than a dead end.
+        # A business with nobody to transfer to doesn't get the tool at all. Telling the model not
+        # to offer it is necessary but not sufficient — removing it means a model that tries anyway
+        # simply cannot, rather than reaching a dead end mid-call.
         tools = INBOUND_TOOL_SCHEMAS
+        if business is not None and not business.transfer_number:
+            tools = [t for t in INBOUND_TOOL_SCHEMAS if t.get("name") != "transfer_to_human"]
     else:
         log.info(
             "call started for lead_name=%r intake_id=%r",
@@ -160,6 +165,10 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "is_inbound": is_inbound,
         "caller": caller,
         "call_sid": call_sid,
+        # This customer's own person to put callers through to. Empty on an outbound call, and on
+        # an inbound one where the business hasn't given us a number — the agent is then told it
+        # cannot transfer, rather than offering something that would fail.
+        "human_number": business.transfer_number if business else "",
         # The reason string for a transfer the agent asked for, held while its hold line plays
         # out; the redirect fires on the mark echo. None when no transfer is in flight.
         "transfer_pending": None,
@@ -692,6 +701,7 @@ async def _do_transfer(cfg: Config, openai_ws, state: dict) -> None:
         call_sid=state.get("call_sid", ""),
         reason=state.get("transfer_pending") or "",
         caller=state.get("caller", ""),
+        human_number=state.get("human_number", ""),
     )
     if ok:
         state["outcome"] = "transferred"

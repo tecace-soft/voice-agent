@@ -2163,3 +2163,6 @@ button.person-primary:hover {
   color: var(--muted);
   max-width: 78ch;
 }
+.business-transfer {
+  margin: 6px 0 0;
+}

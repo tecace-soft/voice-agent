@@ -44,6 +44,7 @@ export function BusinessPage() {
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const [transferNumber, setTransferNumber] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
@@ -66,6 +67,7 @@ export function BusinessPage() {
 
   function startEditing() {
     setDraft(profile?.sourceText ?? "");
+    setTransferNumber(profile?.transferNumber ?? "");
     setSaveError(null);
     setJustSaved(false);
     setEditing(true);
@@ -77,7 +79,7 @@ export function BusinessPage() {
     setSaving(true);
     setSaveError(null);
     try {
-      const { profile: saved } = await saveBusinessProfile(draft.trim());
+      const { profile: saved } = await saveBusinessProfile(draft.trim(), transferNumber.trim());
       setProfile(saved);
       setEditing(false);
       setJustSaved(true);
@@ -130,6 +132,23 @@ export function BusinessPage() {
               />
               <span className="field-hint ta-caption-2 muted">
                 {draft.length.toLocaleString()} of {maxChars.toLocaleString()} characters
+              </span>
+            </label>
+
+            <label className="field">
+              <span className="field-label ta-caption-1">
+                Put callers through to (optional)
+              </span>
+              <input
+                className="input"
+                value={transferNumber}
+                onChange={(e) => setTransferNumber(e.target.value)}
+                placeholder="+1 206 555 1234"
+                inputMode="tel"
+              />
+              <span className="field-hint ta-caption-2 muted">
+                When someone asks to speak to a person, this is the phone that rings. Leave it empty
+                and the assistant won't offer to put anyone through — it takes a message instead.
               </span>
             </label>
 
@@ -192,11 +211,18 @@ export function BusinessPage() {
             </p>
           )}
           {state === "live" && number && (
-            <p className="business-live ta-label-1">
-              <IconPhone size={14} />
-              Answering calls to {number.phoneE164}
-              {justSaved && <span className="badge badge-success">Updated</span>}
-            </p>
+            <>
+              <p className="business-live ta-label-1">
+                <IconPhone size={14} />
+                Answering calls to {number.phoneE164}
+                {justSaved && <span className="badge badge-success">Updated</span>}
+              </p>
+              <p className="ta-caption-1 muted business-transfer">
+                {profile?.transferNumber
+                  ? `Callers who ask for a person are put through to ${profile.transferNumber}.`
+                  : "Nobody to put callers through to — the assistant takes a message instead."}
+              </p>
+            </>
           )}
         </div>
       </section>

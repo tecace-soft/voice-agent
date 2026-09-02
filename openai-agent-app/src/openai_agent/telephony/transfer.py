@@ -51,8 +51,16 @@ log = logging.getLogger(__name__)
 DEFAULT_RING_SECONDS = 15
 
 
-def build_transfer_twiml(cfg: Config, *, reason: str, caller: str) -> str:
-    """The TwiML that replaces the live `<Connect><Stream>` with a whispered dial to a human."""
+def build_transfer_twiml(
+    cfg: Config, *, reason: str, caller: str, human_number: str = ""
+) -> str:
+    """The TwiML that replaces the live `<Connect><Stream>` with a whispered dial to a human.
+
+    `human_number` is the CUSTOMER's — one agent answers for several businesses, and each has its
+    own person to reach. The .env value remains only as a single-tenant default and as the last
+    resort in server.py's fallback handler, which runs when this app is down and cannot look
+    anything up.
+    """
     response = VoiceResponse()
     query = urlencode({"reason": reason or "", "caller": caller or ""})
     dial = Dial(
@@ -64,7 +72,7 @@ def build_transfer_twiml(cfg: Config, *, reason: str, caller: str) -> str:
     )
     dial.append(
         Number(
-            cfg.human_number,
+            human_number or cfg.human_number,
             url=f"https://{cfg.public_host}/whisper?{query}",
             method="POST",
         )
@@ -109,7 +117,9 @@ def build_after_transfer_twiml(cfg: Config, *, dial_status: str, caller: str) ->
     return str(response)
 
 
-async def redirect_to_human(cfg: Config, *, call_sid: str, reason: str, caller: str) -> bool:
+async def redirect_to_human(
+    cfg: Config, *, call_sid: str, reason: str, caller: str, human_number: str = ""
+) -> bool:
     """Redirect the live call out of the media stream and into the whispered dial.
 
     Runs the blocking Twilio SDK call off the event loop so the audio relay isn't stalled while the
@@ -119,10 +129,11 @@ async def redirect_to_human(cfg: Config, *, call_sid: str, reason: str, caller: 
     if not call_sid:
         log.warning("transfer requested but no call SID is known for this call")
         return False
-    if not cfg.human_number:
-        log.warning("transfer requested but HUMAN_TRANSFER_NUMBER is not configured")
+    target = human_number or cfg.human_number
+    if not target:
+        log.warning("transfer requested but no number is configured for this business")
         return False
-    twiml = build_transfer_twiml(cfg, reason=reason, caller=caller)
+    twiml = build_transfer_twiml(cfg, reason=reason, caller=caller, human_number=target)
 
     def _update() -> None:
         Client(cfg.twilio_account_sid, cfg.twilio_auth_token).calls(call_sid).update(twiml=twiml)
@@ -132,7 +143,7 @@ async def redirect_to_human(cfg: Config, *, call_sid: str, reason: str, caller: 
     except Exception as exc:  # noqa: BLE001 — a failed transfer must not drop the call
         log.warning("could not transfer call %s: %s", call_sid, exc)
         return False
-    log.info("transferred call %s to %s (%s)", call_sid, cfg.human_number, reason)
+    log.info("transferred call %s to %s (%s)", call_sid, target, reason)
     return True
 
 

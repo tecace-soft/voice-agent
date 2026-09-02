@@ -48,6 +48,9 @@ class BusinessConfig:
     close_hour: int | None
     website: str
     facts: str
+    # Where "put me through to a person" goes for THIS customer. Empty means they have nobody to
+    # transfer to, and the agent must not offer it — see the bridge.
+    transfer_number: str
 
 
 async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | None:
@@ -114,4 +117,5 @@ async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | N
         close_hour=_hour(biz.get("closeHour")),
         website=str(biz.get("website") or ""),
         facts=str(biz.get("facts") or ""),
+        transfer_number=str(biz.get("transferNumber") or ""),
     )
