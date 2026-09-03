@@ -7,6 +7,7 @@ import { auth } from "./routes/auth.js";
 import { feedback } from "./routes/feedback.js";
 import { health } from "./routes/health.js";
 import { business } from "./routes/business.js";
+import { calls } from "./routes/calls.js";
 import { transcribe } from "./routes/transcribe.js";
 
 // Compose the application from controllers. Exported WITHOUT `.listen()` so tests can call it
@@ -38,7 +39,8 @@ export const app = new Elysia()
   .use(auth)
   .use(feedback)
   .use(transcribe)
-  .use(business);
+  .use(business)
+  .use(calls);
 
 export type App = typeof app;
 

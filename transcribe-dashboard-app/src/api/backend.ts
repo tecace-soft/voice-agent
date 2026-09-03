@@ -1,5 +1,6 @@
 import type {
   AgentNumber,
+  InboundCall,
   BusinessProfile,
   BusinessProfileResponse,
   PollerHeartbeat,
@@ -336,4 +337,12 @@ export function saveBusinessProfile(
     `/business/profile${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
     { body: { sourceText, transferNumber } },
   );
+}
+
+// ---- calls the agent answered ----
+
+/** A customer's calls, or — for an admin — one customer's, or everyone's when no id is given. */
+export async function listInboundCalls(userId?: string): Promise<InboundCall[]> {
+  const q = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+  return (await get<{ calls: InboundCall[] }>(`/calls${q}`)).calls;
 }

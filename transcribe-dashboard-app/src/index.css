@@ -2222,3 +2222,111 @@ button.person-primary:hover {
     transition: none;
   }
 }
+
+/* ---- answered calls ---- */
+
+.call-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+.call-picker .input {
+  height: 34px;
+  min-width: 180px;
+}
+.call-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0 20px 8px;
+  list-style: none;
+}
+.call-item {
+  border-top: 1px solid var(--border);
+}
+.call-item:first-child {
+  border-top: none;
+}
+
+/* The row is the control: who rang, and when. Everything else waits behind a click, because the
+   usual reason to open this page is "did anyone call", not "read me every word". */
+.call-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.call-head:hover {
+  color: var(--primary);
+}
+.call-head .chevron {
+  color: var(--muted);
+  flex: none;
+  transition: transform 0.15s ease;
+}
+.call-head .chevron.is-open {
+  transform: rotate(180deg);
+}
+.call-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.call-when {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.call-detail {
+  padding: 4px 0 18px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.call-summary,
+.call-request,
+.call-meta {
+  margin: 0;
+}
+
+/* The conversation. Speakers are distinguished by an indented rail rather than chat bubbles —
+   this is a record to be read, not a messaging app. */
+.call-turns {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.call-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+}
+.call-turn-caller {
+  border-left-color: var(--primary);
+}
+.call-speaker {
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+@media (prefers-reduced-motion: reduce) {
+  .call-head,
+  .call-head .chevron {
+    transition: none;
+  }
+}

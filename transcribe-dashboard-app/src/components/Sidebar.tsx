@@ -26,6 +26,7 @@ export type ViewId =
   | "allFeedback"
   | "numbers"
   | "business"
+  | "calls"
   | "accounts";
 
 const NAV: {
@@ -58,6 +59,7 @@ const NAV: {
   {
     group: "Settings",
     items: [
+      { id: "calls", label: "Answered calls", icon: IconPhone },
       { id: "business", label: "Business information", icon: IconIdea },
       { id: "numbers", label: "Agent numbers", icon: IconPhone, adminOnly: true },
       { id: "accounts", label: "Accounts", icon: IconUsers, adminOnly: true },

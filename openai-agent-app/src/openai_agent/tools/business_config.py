@@ -119,3 +119,26 @@ async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | N
         facts=str(biz.get("facts") or ""),
         transfer_number=str(biz.get("transferNumber") or ""),
     )
+
+
+async def post_inbound_call(cfg: Config, payload: dict) -> None:
+    """Send a finished call to the dashboard, so the customer can read it back.
+
+    Best-effort and never raised: the call is already over and the caller already helped. Losing the
+    record to a network blip is bad, but taking down the next call to complain about it is worse.
+
+    Sent to the same service as the config lookup, with the same key — it is the same dashboard,
+    and one credential per service is easier to reason about than one per endpoint.
+    """
+    if not cfg.business_config_url or not cfg.agent_config_key:
+        return
+    url = f"{cfg.business_config_url.rstrip('/')}/calls"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(url, json=payload, headers={"x-agent-key": cfg.agent_config_key})
+        if resp.status_code >= 300:
+            log.warning("could not record the call for the dashboard: HTTP %s", resp.status_code)
+        else:
+            log.info("recorded the call for %s", payload.get("dialled"))
+    except Exception as exc:  # noqa: BLE001 — the call is over; this must not surface anywhere
+        log.warning("could not record the call for the dashboard: %s", exc)

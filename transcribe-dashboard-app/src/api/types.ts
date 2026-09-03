@@ -203,3 +203,29 @@ export interface BusinessProfileResponse {
   number: AgentNumber | null;
   maxSourceChars: number;
 }
+
+// One call the voice agent answered. Shaped to sit beside a transcribed voicemail — same questions
+// answered (who rang, when, what they wanted, the words), from a conversation instead of a recording.
+export interface CallTurn {
+  speaker: "agent" | "caller";
+  text: string;
+}
+
+export interface InboundCall {
+  id: string;
+  userId: string | null;
+  dialled: string;
+  /** What the network said. Null when the carrier didn't pass the caller's number through. */
+  caller: string | null;
+  /** What the caller gave when asked — confirmed, not guessed. */
+  callerName: string | null;
+  callbackNumber: string | null;
+  request: string | null;
+  summary: string | null;
+  outcome: string | null;
+  callbackRequested: boolean;
+  durationSeconds: number | null;
+  turns: CallTurn[];
+  startedAt: string;
+  createdAt: string;
+}

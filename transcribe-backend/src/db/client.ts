@@ -169,6 +169,33 @@ export async function initDb(): Promise<void> {
   // above: a phone number is not prose, and a model that picks the fax line or drops it entirely
   // routes a real caller to the wrong person. This one is typed in and validated.
   await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS transfer_number TEXT`;
+
+  // Calls the voice agent answered — the conversational counterpart to a transcribed voicemail.
+  // user_id is resolved at write time from the number that was dialled; nullable, because a call
+  // to an unassigned line still happened and the caller still deserves their message kept.
+  await sql`
+    CREATE TABLE IF NOT EXISTS inbound_calls (
+      id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id            UUID REFERENCES users(id) ON DELETE CASCADE,
+      dialled            TEXT NOT NULL,
+      caller             TEXT,
+      caller_name        TEXT,
+      callback_number    TEXT,
+      request            TEXT,
+      summary            TEXT,
+      outcome            TEXT,
+      callback_requested BOOLEAN NOT NULL DEFAULT false,
+      duration_seconds   INTEGER,
+      turns              JSONB NOT NULL DEFAULT '[]'::jsonb,
+      started_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+      created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  // The list is always "this customer's calls, newest first" — the one query the page makes.
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_inbound_calls_user_started
+    ON inbound_calls (user_id, started_at DESC)
+  `;
   // A pasted screenshot, stored inline as a data URL. Kept in the row rather than in object storage
   // because feedback is low-volume and this needs no bucket, no signed URLs and no orphan cleanup —
   // the image is deleted exactly when the note is. The client downscales before upload and the
@@ -212,6 +239,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM poller_heartbeats LIMIT 1`;
     await sql`SELECT 1 FROM agent_numbers LIMIT 1`;
     await sql`SELECT transfer_number FROM business_profiles LIMIT 1`;
+    await sql`SELECT 1 FROM inbound_calls LIMIT 1`;
     return;
   } catch {
     await initDb();

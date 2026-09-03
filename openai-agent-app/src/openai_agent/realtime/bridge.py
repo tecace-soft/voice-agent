@@ -22,7 +22,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from ..config import Config
 from ..telephony import transfer
 from ..telephony.outbound import is_machine
-from ..tools.business_config import fetch_business_config
+from ..tools.business_config import fetch_business_config, post_inbound_call
 from ..tools.agent_tools import INBOUND_TOOL_SCHEMAS, ToolExecutor
 from . import amd
 from . import dtmf
@@ -258,7 +258,7 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         log.warning("bridge ended: %s", exc)
     finally:
         amd.unregister(call_sid)
-        await _finalize_call(state, params, executor)
+        await _finalize_call(state, params, executor, cfg)
 
 
 def _record(state: dict, speaker: str, text: str | None) -> None:
@@ -327,7 +327,9 @@ def _log_call_end(state: dict, params: dict) -> None:
     log.info("call ended (lead %s) — %s — %d turns:\n%s", lead, _summary(state), len(turns), block)
 
 
-async def _finalize_call(state: dict, params: dict, executor: ToolExecutor) -> None:
+async def _finalize_call(
+    state: dict, params: dict, executor: ToolExecutor, cfg: Config | None = None
+) -> None:
     """At call end: log the transcript, then persist it (+ summary) to the backend per lead."""
     _log_call_end(state, params)
     turns = state.get("transcript", [])
@@ -342,6 +344,37 @@ async def _finalize_call(state: dict, params: dict, executor: ToolExecutor) -> N
             f"\nRegarding: {msg.get('message') or '(not given)'}"
         )
     await executor.record_call_log(transcript_text, _summary(state))
+
+    # INBOUND ONLY: also send the call to the dashboard, where the customer reads it the way they
+    # read a transcribed voicemail. An outbound lead callback belongs to an intake and already has
+    # a home; this is for the calls that arrive out of nowhere.
+    if cfg is not None and state.get("is_inbound") and params.get("dialled"):
+        # The first message the agent took, if any. take_message asks for the name and reads the
+        # callback number back to confirm it, so these are CONFIRMED rather than guessed — which
+        # is the thing a voicemail recording can never give us.
+        msg = (state.get("messages") or [{}])[0]
+        await post_inbound_call(
+            cfg,
+            {
+                "dialled": params.get("dialled", ""),
+                "caller": state.get("caller") or "",
+                # Sent so the backend can spot a carrier that presents the FORWARDING line as the
+                # caller — if the two match, the caller ID is not the caller's.
+                "forwardedFrom": params.get("forwarded_from", ""),
+                "callerName": msg.get("caller_name") or "",
+                "callbackNumber": msg.get("callback_number") or "",
+                "request": msg.get("message") or "",
+                "summary": _summary(state),
+                "outcome": state.get("outcome") or "",
+                "callbackRequested": bool(state.get("messages")),
+                "durationSeconds": int(time.monotonic() - state.get("started", time.monotonic())),
+                "turns": [
+                    # "lead" is the outbound word for the other party; the dashboard says "caller".
+                    {"speaker": "agent" if who == "agent" else "caller", "text": text}
+                    for who, text in turns
+                ],
+            },
+        )
 
 
 async def _await_start(twilio_ws: WebSocket) -> tuple[str, str, dict]:
