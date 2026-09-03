@@ -61,6 +61,16 @@ async def _accept_forwarded_call(twilio_ws: WebSocket, cfg: Config, state: dict)
     """
     digit = cfg.forward_accept_digit.strip()
     frames = dtmf.tone_frames(digit)
+    # Everything heard from now until the announcement stops belongs to the CARRIER, not the
+    # caller — who is still hearing ringing and has not been bridged. Held across the digit and
+    # for a beat after, because the prompt keeps talking until it registers the press.
+    state["forward_guard_until"] = (
+        time.monotonic()
+        + cfg.forward_accept_delay
+        + 1.5
+        + (len(frames) * dtmf.FRAME_MS / 1000) * 2
+        + cfg.forward_announcement_seconds
+    )
     for attempt in (1, 2):
         await asyncio.sleep(cfg.forward_accept_delay if attempt == 1 else 1.5)
         if state.get("closing"):
@@ -207,6 +217,9 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         # Never applied outbound: that agent deliberately stays SILENT until the lead speaks first,
         # so gating on "have we spoken" there would drop the lead's hello and hang the call.
         "greeted": False,
+        # Monotonic deadline before which nothing on the line is the caller: a forwarding carrier
+        # is still playing "press 1 to accept". 0.0 on every call that did not arrive forwarded.
+        "forward_guard_until": 0.0,
         "is_inbound": is_inbound,
         "caller": caller,
         "call_sid": call_sid,
@@ -252,6 +265,12 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             if is_inbound and forwarded_from and cfg.forward_accept_digit.strip():
                 log.info("call arrived forwarded from %s — sending the accept digit", forwarded_from)
                 await _accept_forwarded_call(twilio_ws, cfg, state)
+                # Wait out the rest of the announcement before speaking. A greeting delivered
+                # into "press 1 to accept" reaches nobody: the caller is not bridged until the
+                # press registers, so they would simply never hear it.
+                remaining = state.get("forward_guard_until", 0.0) - time.monotonic()
+                if remaining > 0:
+                    await asyncio.sleep(remaining)
                 # Whatever was buffered during the prompt is the announcement, not speech.
                 await openai_ws.send(json.dumps({"type": "input_audio_buffer.clear"}))
 
@@ -528,9 +547,13 @@ async def _caller_to_model(twilio_ws: WebSocket, openai_ws, cfg: Config, state: 
             evt = json.loads(await twilio_ws.receive_text())
             e = evt.get("event")
             if e == "media":
-                # Nothing the caller could say yet — they have not heard us. Covers the carrier's
-                # forwarding announcement and the silence Whisper turns into phantom speech.
+                # Nothing the caller could say yet — they have not heard us. Covers the silence a
+                # transcriber turns into phantom speech, and the carrier's forwarding
+                # announcement, which keeps playing AFTER the agent has greeted and so outlives
+                # the `greeted` gate on its own.
                 if state.get("is_inbound") and not state.get("greeted"):
+                    continue
+                if time.monotonic() < state.get("forward_guard_until", 0.0):
                     continue
                 await openai_ws.send(
                     json.dumps({"type": "input_audio_buffer.append", "audio": evt["media"]["payload"]})
@@ -592,6 +615,12 @@ async def _model_to_caller(
                 # While leaving a voicemail there's no live person to yield to — the machine's own
                 # audio must NOT cut our message or cancel the hang-up. Ignore it.
                 if state.get("leaving_voicemail"):
+                    continue
+                # The forwarding announcement is not a person interrupting. Worse, the "clear"
+                # below flushes Twilio's outbound buffer — which is where our accept digit is
+                # still queued. Barging in on the carrier's own prompt therefore DELETES the tone
+                # we are sending it, the press never registers, and the caller rings forever.
+                if time.monotonic() < state.get("forward_guard_until", 0.0):
                     continue
                 # The lead started talking. Reset the "agent has spoken" flag so a goodbye is
                 # required again before we'll hang up, and cancel any pending hang-up — they have

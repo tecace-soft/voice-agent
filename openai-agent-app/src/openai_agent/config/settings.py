@@ -90,6 +90,7 @@ class Config:
     # When to press, from the moment the media stream opens. The prompt starts a beat after the
     # stream does, so pressing instantly can land before anything is listening.
     forward_accept_delay: float
+    forward_announcement_seconds: float
     business_config_url: str
     agent_config_key: str
     open_hour: int
@@ -157,6 +158,11 @@ class Config:
             business_facts=_optional("BUSINESS_FACTS"),
             forward_accept_digit=_optional("FORWARD_ACCEPT_DIGIT", "1"),
             forward_accept_delay=float(_optional("FORWARD_ACCEPT_DELAY_SECONDS", "1.0")),
+            # How long after the accept digit the carrier's announcement may still be playing.
+            # Until it stops, everything on the line is the CARRIER talking to us, not the caller —
+            # the caller is not even bridged yet. Raise it if "This is a forwarded call" still
+            # reaches the transcript; lower it if the greeting feels slow on forwarded calls.
+            forward_announcement_seconds=float(_optional("FORWARD_ANNOUNCEMENT_SECONDS", "4.0")),
             business_config_url=_optional("BUSINESS_CONFIG_URL").rstrip("/"),
             agent_config_key=_optional("AGENT_CONFIG_KEY"),
             open_hour=int(_optional("BUSINESS_OPEN_HOUR", "9")),
