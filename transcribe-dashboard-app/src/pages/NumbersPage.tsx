@@ -9,7 +9,7 @@ import {
 import type { AgentNumber, AuthUser } from "../api/types";
 import { accountErrorMessage } from "../auth";
 import { IconAlert, IconPhone, IconTrash } from "../icons";
-import { formatDateTime } from "../lib";
+import { formatDateTime, formatPhone } from "../lib";
 
 // Which phone number the voice agent answers for which customer. Admin only.
 //
@@ -75,7 +75,7 @@ export function NumbersPage() {
   }
 
   async function onDelete(number: AgentNumber) {
-    if (!window.confirm(`Remove ${number.phoneE164}? The agent will stop answering for it.`)) return;
+    if (!window.confirm(`Remove ${formatPhone(number.phoneE164)}? The agent will stop answering for it.`)) return;
     setError(null);
     try {
       await deleteAgentNumber(number.id);
@@ -187,7 +187,7 @@ export function NumbersPage() {
                     <td>
                       <span className="number-cell">
                         <IconPhone size={14} />
-                        {n.phoneE164}
+                        {formatPhone(n.phoneE164)}
                       </span>
                     </td>
                     <td className="muted">{n.label || "—"}</td>
@@ -196,7 +196,7 @@ export function NumbersPage() {
                         className="input number-assign"
                         value={n.userId ?? ""}
                         onChange={(e) => onAssign(n.id, e.target.value)}
-                        aria-label={`Who ${n.phoneE164} answers as`}
+                        aria-label={`Who ${formatPhone(n.phoneE164)} answers as`}
                       >
                         <option value="">— Not assigned —</option>
                         {/* A number assigned to an admin before this rule existed still has to
@@ -221,8 +221,8 @@ export function NumbersPage() {
                         type="button"
                         className="btn btn-quiet"
                         onClick={() => onDelete(n)}
-                        title={`Delete ${n.phoneE164} from this list entirely`}
-                        aria-label={`Delete ${n.phoneE164}`}
+                        title={`Delete ${formatPhone(n.phoneE164)} from this list entirely`}
+                        aria-label={`Delete ${formatPhone(n.phoneE164)}`}
                       >
                         <IconTrash size={14} />
                       </button>

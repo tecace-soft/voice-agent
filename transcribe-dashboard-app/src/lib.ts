@@ -103,3 +103,31 @@ export function formatPct(pct: number): string {
   const sign = rounded > 0 ? "+" : "";
   return `${sign}${rounded}%`;
 }
+
+// A phone number as a person reads it: "+14254787534" -> "(425)-478-7534".
+//
+// E.164 is how the number is STORED — it has to be, it's what the phone network and Twilio agree
+// on, and it's what we match against. It is not how anyone reads a number out loud, so it is
+// formatted at the edge, on the way to the screen, and never on the way to the database.
+//
+// Only North American numbers take the grouping, because that grouping is only correct for them.
+// Anything else — a longer international number, an extension, something the caller garbled — is
+// passed through untouched: showing it plainly beats confidently splitting it in the wrong places.
+export function formatPhone(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const digits = raw.replace(/\D/g, "");
+
+  // An explicit "+" means the country code is stated, so it has to BE 1 followed by ten digits.
+  // Without this check "+1425478753" — a number a digit short — reads as ten digits and formats to
+  // "(142)-547-8753": a wrong number that looks perfectly valid. Showing a malformed number as-is
+  // lets someone see it's malformed; grouping it hides the fault behind correct-looking punctuation.
+  const nanp =
+    digits.length === 11 && digits.startsWith("1")
+      ? digits.slice(1)
+      : raw.trim().startsWith("+")
+        ? ""
+        : digits;
+
+  if (nanp.length !== 10) return raw;
+  return `(${nanp.slice(0, 3)})-${nanp.slice(3, 6)}-${nanp.slice(6)}`;
+}

@@ -3,7 +3,7 @@ import { getBusinessProfile, listAccounts, saveBusinessProfile } from "../api/ba
 import type { AgentNumber, AuthUser, BusinessProfile, MailboxScope } from "../api/types";
 import { accountErrorMessage } from "../auth";
 import { IconAlert, IconCheck, IconChevronLeft, IconChevronRight, IconPhone } from "../icons";
-import { formatDateTime } from "../lib";
+import { formatDateTime, formatPhone } from "../lib";
 
 // What the voice agent says about a customer's business, and where they change it.
 //
@@ -325,7 +325,7 @@ export function BusinessPage({
           {state === "live" && number && (
             <p className="business-live ta-label-1">
               <IconPhone size={14} />
-              Answering calls to {number.phoneE164}
+              Answering calls to {formatPhone(number.phoneE164)}
               {justSaved && <span className="badge badge-success">Updated</span>}
             </p>
           )}
@@ -351,7 +351,7 @@ export function BusinessPage({
             {profile.transferNumber ? (
               <span className="number-cell ta-headline-2">
                 <IconPhone size={16} />
-                {profile.transferNumber}
+                {formatPhone(profile.transferNumber)}
               </span>
             ) : (
               <span className="muted ta-body-2">Not set — calls are never forwarded.</span>

@@ -3,7 +3,7 @@ import { listAccounts, listInboundCalls } from "../api/backend";
 import type { AuthUser, InboundCall, MailboxScope } from "../api/types";
 import { accountErrorMessage } from "../auth";
 import { IconChevronDown, IconPhone, IconUsers } from "../icons";
-import { formatDateTime } from "../lib";
+import { formatDateTime, formatPhone } from "../lib";
 
 // Calls the assistant answered, read the way a transcribed voicemail is read.
 //
@@ -27,7 +27,7 @@ function duration(seconds: number | null): string {
 function CallRow({ call, showWho }: { call: InboundCall; showWho: boolean }) {
   const [open, setOpen] = useState(false);
   const name = call.callerName?.trim();
-  const number = call.callbackNumber || call.caller;
+  const number = formatPhone(call.callbackNumber || call.caller);
   // Belt and braces with the backend's own normalising: a value that isn't an array here would
   // throw inside the render and take the WHOLE dashboard blank, not just this row. One malformed
   // record must never be able to do that.
@@ -76,9 +76,9 @@ function CallRow({ call, showWho }: { call: InboundCall; showWho: boolean }) {
             )}
           </ul>
           <p className="call-meta ta-caption-2 muted">
-            Rang {call.dialled}
+            Rang {formatPhone(call.dialled)}
             {call.caller && call.callbackNumber && call.caller !== call.callbackNumber
-              ? ` from ${call.caller}`
+              ? ` from ${formatPhone(call.caller)}`
               : ""}
             {showWho && call.userId === null ? " · not assigned to a customer" : ""}
           </p>
