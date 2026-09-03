@@ -245,6 +245,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM poller_heartbeats LIMIT 1`;
     await sql`SELECT 1 FROM agent_numbers LIMIT 1`;
     await sql`SELECT transfer_number FROM business_profiles LIMIT 1`;
+    await sql`SELECT agent_name, greeting FROM business_profiles LIMIT 1`;
     await sql`SELECT 1 FROM inbound_calls LIMIT 1`;
     return;
   } catch {
