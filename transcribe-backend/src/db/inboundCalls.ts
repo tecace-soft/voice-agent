@@ -71,6 +71,27 @@ const COLUMNS = sql`
 `;
 
 /**
+ * Guarantee `turns` is an array before it leaves this module.
+ *
+ * A jsonb column can come back parsed or as a string depending on the driver's type handling, and a
+ * row written before the column existed has no value at all. The dashboard maps over this, so any
+ * of those crashes the render and blanks the page — a whole view lost to one malformed row.
+ */
+function withTurns<T extends { turns: unknown }>(row: T): T {
+  const raw = row.turns;
+  if (Array.isArray(raw)) return row;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return { ...row, turns: Array.isArray(parsed) ? parsed : [] };
+    } catch {
+      return { ...row, turns: [] };
+    }
+  }
+  return { ...row, turns: [] };
+}
+
+/**
  * Store one answered call, attributing it to whoever owns the number that was dialled.
  *
  * A call to a number nobody owns is stored with a null user rather than dropped. It means an admin
@@ -107,24 +128,26 @@ export async function insertInboundCall(input: InboundCallInput): Promise<Inboun
     )
     RETURNING ${COLUMNS}
   `;
-  return row as InboundCall;
+  return withTurns(row as InboundCall);
 }
 
 /** Calls for one customer, newest first. */
 export async function listInboundCalls(userId: string, limit = 200): Promise<InboundCall[]> {
-  return (await sql`
+  const rows = (await sql`
     SELECT ${COLUMNS} FROM inbound_calls
     WHERE user_id = ${userId}
     ORDER BY started_at DESC
     LIMIT ${limit}
   `) as unknown as InboundCall[];
+  return rows.map(withTurns);
 }
 
 /** Every call, for an admin looking across customers. Includes unattributed ones. */
 export async function listAllInboundCalls(limit = 200): Promise<InboundCall[]> {
-  return (await sql`
+  const rows = (await sql`
     SELECT ${COLUMNS} FROM inbound_calls
     ORDER BY started_at DESC
     LIMIT ${limit}
   `) as unknown as InboundCall[];
+  return rows.map(withTurns);
 }

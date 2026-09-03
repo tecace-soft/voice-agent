@@ -245,13 +245,33 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 if amd_queue is not None
                 else None
             )
+            relays = [
+                asyncio.create_task(_caller_to_model(twilio_ws, openai_ws, cfg, state)),
+                asyncio.create_task(_model_to_caller(twilio_ws, openai_ws, state, executor, cfg)),
+            ]
             try:
-                # 4. Relay both directions until either side ends.
-                await asyncio.gather(
-                    _caller_to_model(twilio_ws, openai_ws, cfg, state),
-                    _model_to_caller(twilio_ws, openai_ws, state, executor, cfg),
-                )
+                # 4. Relay both directions until EITHER side ends.
+                #
+                # asyncio.wait, not gather. gather waits for BOTH, and the two directions do not end
+                # together: when the caller hangs up, the Twilio side returns immediately while the
+                # model side is still blocked reading from OpenAI, which knows nothing about it. The
+                # bridge then sat there holding an open Realtime session until OpenAI timed it out —
+                # the call never finalized, the transcript was never written, and the stale session
+                # took the next call down with it.
+                done, pending = await asyncio.wait(relays, return_when=asyncio.FIRST_COMPLETED)
+                for task in pending:
+                    task.cancel()
+                # Let the cancellations settle before the `async with` closes the socket underneath
+                # them, and swallow the CancelledError we just caused.
+                await asyncio.gather(*pending, return_exceptions=True)
+                # A relay that ended by raising still has to surface, or a real failure would look
+                # exactly like a normal hang-up.
+                for task in done:
+                    if task.exception() is not None:
+                        raise task.exception()  # noqa: RSE102 — re-raise the original
             finally:
+                for task in relays:
+                    task.cancel()
                 if watcher is not None:
                     watcher.cancel()
     except Exception as exc:  # noqa: BLE001 — surface, don't crash the server

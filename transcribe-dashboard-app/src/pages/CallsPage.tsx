@@ -28,6 +28,10 @@ function CallRow({ call, showWho }: { call: InboundCall; showWho: boolean }) {
   const [open, setOpen] = useState(false);
   const name = call.callerName?.trim();
   const number = call.callbackNumber || call.caller;
+  // Belt and braces with the backend's own normalising: a value that isn't an array here would
+  // throw inside the render and take the WHOLE dashboard blank, not just this row. One malformed
+  // record must never be able to do that.
+  const turns = Array.isArray(call.turns) ? call.turns : [];
 
   return (
     <li className={`call-item${open ? " is-open" : ""}`}>
@@ -58,10 +62,10 @@ function CallRow({ call, showWho }: { call: InboundCall; showWho: boolean }) {
             <p className="ta-caption-1 muted call-request">Wanted: {call.request}</p>
           )}
           <ul className="call-turns">
-            {call.turns.length === 0 ? (
+            {turns.length === 0 ? (
               <li className="muted ta-caption-1">No conversation was captured for this call.</li>
             ) : (
-              call.turns.map((turn, i) => (
+              turns.map((turn, i) => (
                 <li key={i} className={`call-turn call-turn-${turn.speaker}`}>
                   <span className="call-speaker ta-caption-2">
                     {turn.speaker === "agent" ? "Assistant" : name || "Caller"}
