@@ -104,7 +104,12 @@ export function formatPct(pct: number): string {
   return `${sign}${rounded}%`;
 }
 
-// A phone number as a person reads it: "+14254787534" -> "(425)-478-7534".
+// A phone number as a person reads it: "+14254787534" -> "(425) 478-7534".
+//
+// This grouping deliberately matches what the voicemail poller writes into the customer's sheet
+// (callerid.py). The same customer reads both, often side by side, and one number wearing two
+// different formats invites the question "are these the same number?" — which is a question the
+// formatting should never make anyone ask.
 //
 // E.164 is how the number is STORED — it has to be, it's what the phone network and Twilio agree
 // on, and it's what we match against. It is not how anyone reads a number out loud, so it is
@@ -119,7 +124,7 @@ export function formatPhone(raw: string | null | undefined): string {
 
   // An explicit "+" means the country code is stated, so it has to BE 1 followed by ten digits.
   // Without this check "+1425478753" — a number a digit short — reads as ten digits and formats to
-  // "(142)-547-8753": a wrong number that looks perfectly valid. Showing a malformed number as-is
+  // "(142) 547-8753": a wrong number that looks perfectly valid. Showing a malformed number as-is
   // lets someone see it's malformed; grouping it hides the fault behind correct-looking punctuation.
   const nanp =
     digits.length === 11 && digits.startsWith("1")
@@ -129,5 +134,5 @@ export function formatPhone(raw: string | null | undefined): string {
         : digits;
 
   if (nanp.length !== 10) return raw;
-  return `(${nanp.slice(0, 3)})-${nanp.slice(3, 6)}-${nanp.slice(6)}`;
+  return `(${nanp.slice(0, 3)}) ${nanp.slice(3, 6)}-${nanp.slice(6)}`;
 }
