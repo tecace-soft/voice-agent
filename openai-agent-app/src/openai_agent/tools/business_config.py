@@ -51,6 +51,10 @@ class BusinessConfig:
     # Where "put me through to a person" goes for THIS customer. Empty means they have nobody to
     # transfer to, and the agent must not offer it — see the bridge.
     transfer_number: str
+    # What this customer wants the assistant called, and the exact line it opens with. Both empty
+    # when they haven't chosen, which the prompt builder reads as "use the default".
+    agent_name: str
+    greeting: str
 
 
 async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | None:
@@ -118,6 +122,8 @@ async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | N
         website=str(biz.get("website") or ""),
         facts=str(biz.get("facts") or ""),
         transfer_number=str(biz.get("transferNumber") or ""),
+        agent_name=str(biz.get("agentName") or ""),
+        greeting=str(biz.get("greeting") or ""),
     )
 
 

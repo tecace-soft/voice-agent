@@ -191,6 +191,10 @@ export interface BusinessProfile {
   facts: string | null;
   /** Where "put me through to a person" rings. Typed in, not read from the description. */
   transferNumber: string | null;
+  /** What the assistant calls itself. Null means the default name. */
+  agentName: string | null;
+  /** The exact first line a caller hears. Null means the standard greeting. */
+  greeting: string | null;
   /** Enough here for the agent to answer AS this business rather than neutrally. */
   isLive: boolean;
   extractedAt: string | null;

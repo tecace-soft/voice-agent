@@ -2163,6 +2163,16 @@ button.person-primary:hover {
   color: var(--muted);
   max-width: 78ch;
 }
+.business-greeting {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+.business-greeting q {
+  font-style: italic;
+}
+
 .business-transfer {
   margin: 0;
   padding: 0 20px 20px;

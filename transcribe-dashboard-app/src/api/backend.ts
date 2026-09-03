@@ -335,7 +335,22 @@ export function saveBusinessProfile(
   return request<{ profile: BusinessProfile; extracted: boolean }>(
     "PUT",
     `/business/profile${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
+    // agentName/greeting are deliberately NOT sent: they belong to their own section, and the
+    // backend leaves absent fields alone rather than clearing them.
     { body: { sourceText, transferNumber } },
+  );
+}
+
+/** How the assistant introduces itself. Its own endpoint — it never touches the description. */
+export function saveAgentIdentity(
+  agentName: string,
+  greeting: string,
+  userId?: string,
+): Promise<{ profile: BusinessProfile }> {
+  return request<{ profile: BusinessProfile }>(
+    "PUT",
+    `/business/identity${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
+    { body: { agentName, greeting } },
   );
 }
 

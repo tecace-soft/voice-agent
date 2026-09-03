@@ -13,6 +13,7 @@ reachable on an outbound call, and the outbound path is byte-for-byte unchanged.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -83,9 +84,20 @@ hours, location, clients, the partnership, or a question about you.
    - Wrong number: apologize briefly, then end_call.
    - Sales/spam/robocall pitching TO us: decline once — "Thanks, but we're not interested" — then
      end_call. Do not argue, and do not take their message.
-   - Silence or nobody there: ask "Hello? Is anyone there?" once, wait, then end_call.
+   - Silence or nobody there: ask "Hello? Is anyone there?" once, wait, then end_call. Background
+     talk is NOT silence and is NOT someone else's call — if you can hear a room, someone is there.
 
 # Hard rules
+- The phone carries the whole ROOM, not just the caller. You will hear other people talking near
+  them, a TV, a colleague asking them something, both sides of a conversation you are not part of.
+  Only respond to speech that is clearly addressed to YOU. If what you hear is someone talking to
+  another person, sounds like it is mid-conversation, or makes no sense as a reply to what you just
+  said, stay silent and wait — do not answer it, and do not treat it as the caller's turn.
+- NEVER end the call because of speech you are unsure was meant for you. Overheard talk is not the
+  caller saying goodbye, not a wrong number, and not proof nobody is there. Before ending a call
+  for any of those reasons, ask once, plainly — "Sorry, are you still with me?" — and end it only
+  if the answer is clearly yes-they've-gone. When in doubt, stay on the line: hanging up on a
+  caller who was briefly distracted is far worse than waiting a few seconds too long.
 - NEVER invent a fact, a price, a person's name, an availability, or a promise. If you do not know
   it, say the team will follow up and take a message.
 - NEVER transfer for anything except a genuine booking / meeting request (Route A). Questions,
@@ -133,6 +145,47 @@ _RECORDING_NOTICE = " Just so you know, this call is recorded."
 # is spliced in before the final sentence, and a standalone "This is Tess." would get shunted
 # behind the disclosure and land oddly.
 DEFAULT_GREETING = "Hello, you've reached {business}, this is {agent}. How may I help you today?"
+
+
+# The last sentence boundary of ANY kind. Matching only ". " was fine while the greeting was ours
+# and always contained one, but customers write their own: "Good afternoon, Acme! How can I help?"
+# has no ". " at all, and the notice would land after the closing question — the caller asked
+# something and then talked over. Greedy, so it finds the LAST boundary rather than the first.
+_SENTENCE_BREAK = re.compile(r"^(.*[.!?])\s+(\S.*)$", re.S)
+
+
+def _splice_notice(spoken: str) -> str:
+    """Put the recording notice before the greeting's final sentence.
+
+    The caller should be told, and THEN invited to speak. A greeting of one sentence has nothing to
+    splice into, so the notice goes on the end — the only remaining place for it.
+    """
+    spoken = spoken.strip()
+    match = _SENTENCE_BREAK.match(spoken)
+    if not match:
+        # One sentence, nothing to splice into. If it ENDS in a question — "Acme Dental, how may I
+        # direct your call?" is a perfectly ordinary thing to want — the notice cannot go after it:
+        # the caller starts answering and gets talked over by a legal disclosure. It goes first
+        # instead, which is a touch abrupt but never interrupts anyone.
+        if spoken.endswith("?"):
+            return f"{_RECORDING_NOTICE.strip()} {spoken}"
+        return spoken + _RECORDING_NOTICE
+    head, tail = match.group(1), match.group(2)
+    return f"{head} {_RECORDING_NOTICE.strip()} {tail}"
+
+
+def _render_greeting(greeting: str, business_name: str, agent_name: str) -> str:
+    """Fill {business} and {agent} into a greeting, and NOTHING else.
+
+    Deliberately str.replace rather than str.format. This text is typed by a customer, and format()
+    treats every brace in it as markup: a greeting like "Ask about our {new} menu" raises KeyError,
+    and a stray "{" raises ValueError. That exception would land mid-call, on the line the caller
+    hears first, for a customer who did nothing worse than use a brace in a sentence. Two literal
+    substitutions cannot fail, and any other braces are simply spoken as written.
+    """
+    return (greeting or DEFAULT_GREETING).replace("{business}", business_name).replace(
+        "{agent}", agent_name
+    )
 
 
 def _spoken_caller(caller: str) -> str:
@@ -224,12 +277,9 @@ def build_instructions(
     now = datetime.now(ZoneInfo(timezone))
     # The recording notice is spliced in BEFORE the closing question, so the caller is told and
     # then invited to speak, rather than being asked a question and interrupted by a disclosure.
-    spoken = (greeting or DEFAULT_GREETING).format(business=business_name, agent=agent_name)
+    spoken = _render_greeting(greeting, business_name, agent_name)
     if disclose_recording:
-        head, sep, tail = spoken.rpartition(". ")
-        spoken = f"{head}.{sep and ' '}{_RECORDING_NOTICE.strip()} {tail}" if sep else (
-            spoken + _RECORDING_NOTICE
-        )
+        spoken = _splice_notice(spoken)
     return _TEMPLATE.format(
         agent_name=agent_name,
         business_name=business_name,

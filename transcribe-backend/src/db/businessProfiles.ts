@@ -24,6 +24,10 @@ export interface BusinessProfile {
   facts: string | null;
   /** Where 'put me through to a person' goes. Typed in, not extracted. */
   transferNumber: string | null;
+  /** What the agent introduces itself as. Null falls back to the service default. */
+  agentName: string | null;
+  /** The exact first line spoken to a caller. Null falls back to the standard greeting. */
+  greeting: string | null;
   /** True when there's enough here for the agent to answer AS this business rather than neutrally. */
   isLive: boolean;
   extractedAt: string | null;
@@ -61,6 +65,8 @@ const COLUMNS = sql`
   p.website,
   p.facts,
   p.transfer_number AS "transferNumber",
+  p.agent_name      AS "agentName",
+  p.greeting,
   ${IS_LIVE}      AS "isLive",
   p.extracted_at  AS "extractedAt",
   p.updated_at    AS "updatedAt"
@@ -89,20 +95,28 @@ export async function currentHash(userId: string): Promise<string | null> {
  * row stays exactly as it was, still live, still being served to callers — losing a working profile
  * because a model call timed out would be a worse outcome than the save not taking.
  */
+export interface TypedFields {
+  transferNumber: string | null;
+  agentName: string | null;
+  greeting: string | null;
+}
+
 export async function saveProfile(
   userId: string,
   sourceText: string,
   fields: ExtractedFields,
-  transferNumber: string | null,
+  typed: TypedFields,
 ): Promise<BusinessProfile> {
   await sql`
     INSERT INTO business_profiles (
       user_id, source_text, source_hash, business_name, hours_text,
-      open_hour, close_hour, website, facts, transfer_number, extracted_at, updated_at
+      open_hour, close_hour, website, facts, transfer_number, agent_name, greeting,
+      extracted_at, updated_at
     ) VALUES (
       ${userId}, ${sourceText}, ${hashSource(sourceText)}, ${fields.businessName},
       ${fields.hoursText}, ${fields.openHour}, ${fields.closeHour}, ${fields.website},
-      ${fields.facts}, ${transferNumber}, now(), now()
+      ${fields.facts}, ${typed.transferNumber}, ${typed.agentName}, ${typed.greeting},
+      now(), now()
     )
     ON CONFLICT (user_id) DO UPDATE SET
       source_text   = EXCLUDED.source_text,
@@ -114,20 +128,52 @@ export async function saveProfile(
       website       = EXCLUDED.website,
       facts           = EXCLUDED.facts,
       transfer_number = EXCLUDED.transfer_number,
+      agent_name      = EXCLUDED.agent_name,
+      greeting        = EXCLUDED.greeting,
       extracted_at    = now(),
       updated_at    = now()
   `;
   return (await findProfile(userId))!;
 }
 
-/** Update just the transfer number, leaving the source and everything derived from it alone. */
-export async function saveTransferNumber(
+/**
+ * Update the typed-in fields only, leaving the source and everything derived from it alone.
+ *
+ * These are the fields a customer sets directly rather than having read out of their description,
+ * so editing one must never re-run the extractor — that would reword what the agent says about a
+ * business whose description did not change.
+ */
+export async function saveTypedFields(
   userId: string,
-  transferNumber: string | null,
+  typed: TypedFields,
 ): Promise<BusinessProfile | null> {
   const rows = await sql`
     UPDATE business_profiles
-    SET transfer_number = ${transferNumber}, updated_at = now()
+    SET transfer_number = ${typed.transferNumber},
+        agent_name      = ${typed.agentName},
+        greeting        = ${typed.greeting},
+        updated_at      = now()
+    WHERE user_id = ${userId}
+    RETURNING user_id
+  `;
+  return rows.length ? findProfile(userId) : null;
+}
+
+/**
+ * Update only how the assistant introduces itself.
+ *
+ * Separate from saveTypedFields because it is a separate decision, edited in its own place: how a
+ * business DESCRIBES itself and how its phone gets ANSWERED are different choices, and changing one
+ * should never be able to disturb the other. Returns null when there is no profile to attach it to.
+ */
+export async function saveAgentIdentity(
+  userId: string,
+  agentName: string | null,
+  greeting: string | null,
+): Promise<BusinessProfile | null> {
+  const rows = await sql`
+    UPDATE business_profiles
+    SET agent_name = ${agentName}, greeting = ${greeting}, updated_at = now()
     WHERE user_id = ${userId}
     RETURNING user_id
   `;

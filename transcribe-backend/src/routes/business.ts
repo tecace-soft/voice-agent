@@ -1,4 +1,5 @@
 import { Elysia, t } from "elysia";
+import { resolveIdentity } from "./identityFields.js";
 import { authenticate, authenticateAdmin, UNAUTHORIZED } from "../auth/guard.js";
 import { env } from "../config/env.js";
 import { findUserById } from "../db/users.js";
@@ -8,7 +9,8 @@ import {
   findProfile,
   hashSource,
   saveProfile,
-  saveTransferNumber,
+  saveAgentIdentity,
+  saveTypedFields,
 } from "../db/businessProfiles.js";
 import {
   ExtractionError,
@@ -83,6 +85,10 @@ export const business = new Elysia({ prefix: "/business" })
         // customer who didn't give us theirs is the exact leak this whole mechanism prevents.
         business: {
           name: profile.businessName,
+          // Null on both means the agent uses its own defaults. Sent as null rather than filled in
+          // here so that decision lives in one place — the agent — instead of two.
+          agentName: profile.agentName,
+          greeting: profile.greeting,
           hoursText: profile.hoursText,
           openHour: profile.openHour,
           closeHour: profile.closeHour,
@@ -144,11 +150,26 @@ export const business = new Elysia({ prefix: "/business" })
         currentHash(target),
         findProfile(target),
       ]);
+
+      // How the assistant introduces itself is edited in its OWN section, so this form does not
+      // send it. Absent therefore means "leave it as it is" — reading it as blank would wipe a
+      // customer's greeting every time they edited their description, silently and from a page
+      // that never mentioned the greeting.
+      const identity = resolveIdentity(body, existing);
+      if ("tooLong" in identity) {
+        return status(400, { error: identity.field, message: identity.tooLong });
+      }
+      const typed = { transferNumber, ...identity };
       if (existing && existingHash === hashSource(sourceText)) {
-        // The description is unchanged, so nothing is re-read — but the transfer number is not part
-        // of that hash, and skipping the write entirely would silently discard an edit to it.
-        if ((existing.transferNumber ?? null) !== transferNumber) {
-          return { profile: await saveTransferNumber(target, transferNumber), extracted: false };
+        // The description is unchanged, so nothing is re-read — but the typed-in fields are not
+        // part of that hash, and skipping the write entirely would silently discard an edit to any
+        // of them.
+        const typedChanged =
+          (existing.transferNumber ?? null) !== transferNumber ||
+          (existing.agentName ?? null) !== identity.agentName ||
+          (existing.greeting ?? null) !== identity.greeting;
+        if (typedChanged) {
+          return { profile: await saveTypedFields(target, typed), extracted: false };
         }
         return { profile: existing, extracted: false };
       }
@@ -170,7 +191,7 @@ export const business = new Elysia({ prefix: "/business" })
         throw err;
       }
       return {
-        profile: await saveProfile(target, sourceText, fields, transferNumber),
+        profile: await saveProfile(target, sourceText, fields, typed),
         extracted: true,
       };
     },
@@ -179,6 +200,10 @@ export const business = new Elysia({ prefix: "/business" })
       body: t.Object({
         sourceText: t.String({ minLength: 1, maxLength: MAX_SOURCE_CHARS }),
         transferNumber: t.Optional(t.String({ maxLength: 40 })),
+        // Generous outer bounds; the real limits are MAX_* above, which reject with a message
+        // saying what to do rather than a schema error saying only that it failed.
+        agentName: t.Optional(t.String({ maxLength: 200 })),
+        greeting: t.Optional(t.String({ maxLength: 1000 })),
       }),
     },
   )
@@ -283,4 +308,39 @@ export const business = new Elysia({ prefix: "/business" })
       return { status: "deleted" };
     },
     { params: t.Object({ id: t.String() }) },
+  )
+
+  // How the assistant introduces itself — its own section in the dashboard, so its own endpoint.
+  // Nothing here touches the description or anything derived from it, which is the point: editing
+  // a greeting must never risk rewording what the agent says about the business.
+  .put(
+    "/identity",
+    async ({ body, headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      const target = profileTargetFor(user, query.userId);
+
+      const identity = resolveIdentity(body, null);
+      if ("tooLong" in identity) {
+        return status(400, { error: identity.field, message: identity.tooLong });
+      }
+
+      const profile = await saveAgentIdentity(target, identity.agentName, identity.greeting);
+      if (!profile) {
+        // No profile row to attach it to. The agent answers neutrally without one and never reaches
+        // this greeting, so saying so is more useful than storing a setting that does nothing.
+        return status(409, {
+          error: "no_profile",
+          message: "Add your business information first — until then the assistant answers neutrally and won't use a greeting.",
+        });
+      }
+      return { profile };
+    },
+    {
+      query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }),
+      body: t.Object({
+        agentName: t.Optional(t.String({ maxLength: 200 })),
+        greeting: t.Optional(t.String({ maxLength: 1000 })),
+      }),
+    },
   );

@@ -56,7 +56,14 @@ def build_session_update(
             "audio": {
                 "input": {
                     "format": {"type": "audio/pcmu"},
-                    "turn_detection": {"type": "server_vad"},
+                    "turn_detection": {
+                        "type": "server_vad",
+                        # See the config for why these are not the API defaults: a phone call
+                        # carries the whole room, not just the person holding the phone.
+                        "threshold": cfg.vad_threshold,
+                        "prefix_padding_ms": cfg.vad_prefix_padding_ms,
+                        "silence_duration_ms": cfg.vad_silence_ms,
+                    },
                     # Transcribe the lead's speech too, so the bridge can log/track both sides of
                     # the conversation (the agent's side is transcribed automatically).
                     "transcription": transcription,

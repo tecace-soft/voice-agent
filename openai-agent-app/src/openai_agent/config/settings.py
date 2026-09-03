@@ -46,6 +46,12 @@ class Config:
     openai_model: str
     openai_voice: str
     openai_transcribe_model: str
+    # How loud speech must be before the model treats it as the caller talking, and how long a
+    # pause must run before it treats their turn as finished. Tunable because the right values
+    # depend on the room the caller is standing in, which we cannot know from here.
+    vad_threshold: float
+    vad_prefix_padding_ms: int
+    vad_silence_ms: int
     # ---- Twilio (telephony) ----
     twilio_account_sid: str
     twilio_auth_token: str
@@ -126,6 +132,17 @@ class Config:
             # whisper-1 is markedly worse on 8kHz phone audio, which is all we ever feed it.
             # Set OPENAI_TRANSCRIBE_MODEL=whisper-1 to go back if this model ever misbehaves.
             openai_transcribe_model=_optional("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe"),
+            # 0.5 is the API default and is tuned for someone speaking into a headset in a quiet
+            # room. On a speakerphone in an open office it also hears the room, so the agent gets
+            # interrupted by conversations that were never aimed at it. Raised — the caller's own
+            # voice is far louder at their handset than anyone else's in the room, so this
+            # separates them cleanly. Lower it if genuine quiet speech starts being missed.
+            vad_threshold=float(_optional("VAD_THRESHOLD", "0.7")),
+            vad_prefix_padding_ms=int(_optional("VAD_PREFIX_PADDING_MS", "300")),
+            # How long the caller must be silent before their turn is considered over. The API
+            # default (500ms) is shorter than an ordinary mid-sentence pause, so the agent answers
+            # a half-finished thought and talks over the rest of it.
+            vad_silence_ms=int(_optional("VAD_SILENCE_MS", "700")),
             twilio_account_sid=_optional("TWILIO_ACCOUNT_SID"),
             twilio_auth_token=_optional("TWILIO_AUTH_TOKEN"),
             twilio_from_number=_optional("TWILIO_FROM_NUMBER") or _optional("TWILIO_PHONE_NUMBER"),

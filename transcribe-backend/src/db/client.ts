@@ -169,6 +169,12 @@ export async function initDb(): Promise<void> {
   // above: a phone number is not prose, and a model that picks the fax line or drops it entirely
   // routes a real caller to the wrong person. This one is typed in and validated.
   await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS transfer_number TEXT`;
+  // What the agent calls itself, and the first line every caller hears. Typed in for the same
+  // reason as transfer_number: these are choices, not facts to be read out of a description.
+  // NULL means "use the service default", which is why neither has a DEFAULT here — an empty
+  // string and "not set" would otherwise be indistinguishable, and an empty greeting is silence.
+  await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS agent_name TEXT`;
+  await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS greeting TEXT`;
 
   // Calls the voice agent answered — the conversational counterpart to a transcribed voicemail.
   // user_id is resolved at write time from the number that was dialled; nullable, because a call

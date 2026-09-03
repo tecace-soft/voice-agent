@@ -121,9 +121,10 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             instructions = build_instructions_inbound(
                 caller=caller,
                 business_name=business.business_name,
-                # Ours, not the customer's: the assistant has one name across every business it
-                # answers for, and nothing in the profile sets it.
-                agent_name=cfg.agent_name,
+                # The customer's choice when they've made one, ours otherwise. It is their
+                # business the caller thinks they've reached, so the name answering for it is
+                # theirs to pick.
+                agent_name=business.agent_name or cfg.agent_name,
                 business_hours=business.hours_text,
                 business_facts=business.facts,
                 open_hour=business.open_hour,
@@ -131,7 +132,7 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 timezone=cfg.timezone,
                 transfer_failed=str(params.get("transfer_failed", "")).lower() in ("yes", "true", "1"),
                 disclose_recording=cfg.disclose_recording,
-                greeting=cfg.greeting,
+                greeting=business.greeting or cfg.greeting,
                 can_transfer=bool(business.transfer_number),
             )
         # A business with nobody to transfer to doesn't get the tool at all. Telling the model not
@@ -229,7 +230,14 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             # transcriber gets wrong most, because it is the one word it has never heard.
             vocabulary = [cfg.agent_name]
             if business:
-                vocabulary += [business.business_name, business.user_name, business.website]
+                # The chosen name too — an invented or unusual assistant name is exactly the kind
+                # of word the transcriber has never heard and will otherwise rewrite.
+                vocabulary += [
+                    business.agent_name,
+                    business.business_name,
+                    business.user_name,
+                    business.website,
+                ]
             await openai_ws.send(
                 json.dumps(build_session_update(cfg, instructions, tools, vocabulary))
             )
