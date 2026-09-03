@@ -193,9 +193,15 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         # Monotonic start time, for the call duration in the summary.
         "started": time.monotonic(),
         # ---- inbound-only (all inert on an outbound call) ----
-        # True only while a forwarding carrier's "press 1 to accept" prompt is playing: audio
-        # arriving then is the announcement, not the caller.
-        "accepting_forward": False,
+        # INBOUND ONLY: has the agent said anything yet? Until it has, the caller has heard
+        # nothing and therefore cannot have replied — so anything "heard" in that window is line
+        # noise, a carrier's forwarding announcement, or Whisper inventing a phrase from silence
+        # ("Bye-bye" and "Thank you" are its favourites). Both the audio and any transcript of it
+        # are dropped until the greeting starts.
+        #
+        # Never applied outbound: that agent deliberately stays SILENT until the lead speaks first,
+        # so gating on "have we spoken" there would drop the lead's hello and hang the call.
+        "greeted": False,
         "is_inbound": is_inbound,
         "caller": caller,
         "call_sid": call_sid,
@@ -226,11 +232,7 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             forwarded_from = str(params.get("forwarded_from", ""))
             if is_inbound and forwarded_from and cfg.forward_accept_digit.strip():
                 log.info("call arrived forwarded from %s — sending the accept digit", forwarded_from)
-                state["accepting_forward"] = True
-                try:
-                    await _accept_forwarded_call(twilio_ws, cfg, state)
-                finally:
-                    state["accepting_forward"] = False
+                await _accept_forwarded_call(twilio_ws, cfg, state)
                 # Whatever was buffered during the prompt is the announcement, not speech.
                 await openai_ws.send(json.dumps({"type": "input_audio_buffer.clear"}))
 
@@ -414,11 +416,9 @@ async def _caller_to_model(twilio_ws: WebSocket, openai_ws, cfg: Config, state: 
             evt = json.loads(await twilio_ws.receive_text())
             e = evt.get("event")
             if e == "media":
-                # While a forwarding carrier is still playing "press 1 to accept", the audio on this
-                # stream is the ANNOUNCEMENT, not the caller — they are not bridged yet. Feeding it
-                # to the model put "This is a forwarded call." into the transcript as if someone had
-                # said it, and had the agent answering a recording.
-                if state.get("accepting_forward"):
+                # Nothing the caller could say yet — they have not heard us. Covers the carrier's
+                # forwarding announcement and the silence Whisper turns into phantom speech.
+                if state.get("is_inbound") and not state.get("greeted"):
                     continue
                 await openai_ws.send(
                     json.dumps({"type": "input_audio_buffer.append", "audio": evt["media"]["payload"]})
@@ -459,6 +459,7 @@ async def _model_to_caller(
 
             if t == "response.output_audio.delta":
                 state["spoke_since_user"] = True
+                state["greeted"] = True
                 await twilio_ws.send_json(
                     {"event": "media", "streamSid": state["stream_sid"], "media": {"payload": evt["delta"]}}
                 )
@@ -493,8 +494,14 @@ async def _model_to_caller(
                 # What the AGENT just said (transcribed from its own audio).
                 _record(state, "agent", evt.get("transcript"))
             elif t == "conversation.item.input_audio_transcription.completed":
-                # What the LEAD just said (transcribed from their audio).
-                _record(state, "lead", evt.get("transcript"))
+                # What the LEAD just said (transcribed from their audio) — unless the agent has not
+                # spoken yet, in which case they cannot have said anything and this is a
+                # hallucination or the carrier's prompt. Logged, not silently binned, so a real
+                # mis-gate is visible rather than mysterious.
+                if state.get("is_inbound") and not state.get("greeted"):
+                    log.info("ignoring %r heard before the greeting", evt.get("transcript"))
+                else:
+                    _record(state, "lead", evt.get("transcript"))
             elif t == "response.function_call_arguments.done":
                 if evt.get("name") == "end_call":
                     await _handle_end_call(twilio_ws, openai_ws, evt, state)
