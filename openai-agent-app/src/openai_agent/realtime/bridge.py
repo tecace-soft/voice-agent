@@ -25,6 +25,7 @@ from ..telephony.outbound import is_machine
 from ..tools.business_config import fetch_business_config
 from ..tools.agent_tools import INBOUND_TOOL_SCHEMAS, ToolExecutor
 from . import amd
+from . import dtmf
 from .instructions import build_instructions
 from .instructions_inbound import build_instructions as build_instructions_inbound
 from .instructions_neutral import build_instructions_neutral
@@ -42,6 +43,36 @@ _HANGUP_FALLBACK_SECONDS = 12
 # A voicemail message can legitimately run 10–15s; give it plenty of room to finish before the
 # safety timer would force a hang-up (which would cut the message off mid-sentence).
 _VOICEMAIL_BACKSTOP_SECONDS = 30
+
+
+async def _accept_forwarded_call(twilio_ws: WebSocket, cfg: Config, state: dict) -> None:
+    """Press the digit a forwarding carrier is waiting for, then let the agent greet.
+
+    Some carriers answer OUR leg first and play "this is a forwarded call, press 1 to accept" —
+    the real caller is not bridged until a digit arrives, and they hear ringing until it does. The
+    agent has no fingers, so it presses for them.
+
+    Sent TWICE. The prompt may not be listening for the first one (it starts a beat after the
+    stream opens, and cut-through varies by carrier), and a second press on a call that is already
+    bridged is a short beep rather than a problem. Better a stray beep than a caller left ringing.
+
+    Only ever runs on a call that arrived forwarded — `forwarded_from` set by /incoming — so a
+    direct caller never hears a tone.
+    """
+    digit = cfg.forward_accept_digit.strip()
+    frames = dtmf.tone_frames(digit)
+    for attempt in (1, 2):
+        await asyncio.sleep(cfg.forward_accept_delay if attempt == 1 else 1.5)
+        if state.get("closing"):
+            return
+        for frame in frames:
+            await twilio_ws.send_json(
+                {"event": "media", "streamSid": state["stream_sid"], "media": {"payload": frame}}
+            )
+            # Paced at real time: a DTMF detector expects the tone to arrive as it would be spoken,
+            # and some reject a burst that lands all at once.
+            await asyncio.sleep(dtmf.FRAME_MS / 1000)
+        log.info("sent DTMF %r to accept the forwarded call (attempt %d)", digit, attempt)
 
 
 async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
@@ -162,6 +193,9 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         # Monotonic start time, for the call duration in the summary.
         "started": time.monotonic(),
         # ---- inbound-only (all inert on an outbound call) ----
+        # True only while a forwarding carrier's "press 1 to accept" prompt is playing: audio
+        # arriving then is the announcement, not the caller.
+        "accepting_forward": False,
         "is_inbound": is_inbound,
         "caller": caller,
         "call_sid": call_sid,
@@ -186,6 +220,20 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             # outbound agent deliberately stays silent until the lead says "hello", so this is
             # gated — without the gate an outbound lead would be talked over on pickup, and without
             # the call an inbound caller would hear dead air until they spoke first.
+            # A forwarding carrier may be holding the caller behind "press 1 to accept". Press it
+            # and wait BEFORE greeting: a greeting spoken into that prompt reaches nobody, and the
+            # caller hears ringing throughout. Direct calls skip this entirely.
+            forwarded_from = str(params.get("forwarded_from", ""))
+            if is_inbound and forwarded_from and cfg.forward_accept_digit.strip():
+                log.info("call arrived forwarded from %s — sending the accept digit", forwarded_from)
+                state["accepting_forward"] = True
+                try:
+                    await _accept_forwarded_call(twilio_ws, cfg, state)
+                finally:
+                    state["accepting_forward"] = False
+                # Whatever was buffered during the prompt is the announcement, not speech.
+                await openai_ws.send(json.dumps({"type": "input_audio_buffer.clear"}))
+
             if is_inbound:
                 await openai_ws.send(json.dumps({"type": "response.create"}))
             # Watch for the AMD result in the background: if it's a machine, have the agent leave a
@@ -366,6 +414,12 @@ async def _caller_to_model(twilio_ws: WebSocket, openai_ws, cfg: Config, state: 
             evt = json.loads(await twilio_ws.receive_text())
             e = evt.get("event")
             if e == "media":
+                # While a forwarding carrier is still playing "press 1 to accept", the audio on this
+                # stream is the ANNOUNCEMENT, not the caller — they are not bridged yet. Feeding it
+                # to the model put "This is a forwarded call." into the transcript as if someone had
+                # said it, and had the agent answering a recording.
+                if state.get("accepting_forward"):
+                    continue
                 await openai_ws.send(
                     json.dumps({"type": "input_audio_buffer.append", "audio": evt["media"]["payload"]})
                 )

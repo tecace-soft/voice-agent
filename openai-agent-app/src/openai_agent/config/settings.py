@@ -76,6 +76,13 @@ class Config:
     # service from backend_url, which is backend-app and serves the booking tools — two URLs and
     # two keys because they are two services, and one credential should not open the other.
     # Unset = every inbound call is answered neutrally.
+    # A carrier forwarding a landline to us can demand a keypress before it bridges the caller
+    # ("press 1 to accept"). Sent only on calls that ARRIVED FORWARDED, so a direct call never
+    # hears a tone. Blank = never send one.
+    forward_accept_digit: str
+    # When to press, from the moment the media stream opens. The prompt starts a beat after the
+    # stream does, so pressing instantly can land before anything is listening.
+    forward_accept_delay: float
     business_config_url: str
     agent_config_key: str
     open_hour: int
@@ -126,6 +133,8 @@ class Config:
             agent_name=_optional("AGENT_NAME", "Tess"),
             business_hours=_optional("BUSINESS_HOURS", "Monday to Friday, 9 AM to 6 PM Pacific"),
             business_facts=_optional("BUSINESS_FACTS"),
+            forward_accept_digit=_optional("FORWARD_ACCEPT_DIGIT", "1"),
+            forward_accept_delay=float(_optional("FORWARD_ACCEPT_DELAY_SECONDS", "1.0")),
             business_config_url=_optional("BUSINESS_CONFIG_URL").rstrip("/"),
             agent_config_key=_optional("AGENT_CONFIG_KEY"),
             open_hour=int(_optional("BUSINESS_OPEN_HOUR", "9")),
