@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import hmac
 import logging
+import os
 from urllib.parse import parse_qs
 
 from fastapi import FastAPI, Request, Response, WebSocket
@@ -46,6 +47,20 @@ from ..config import Config
 from ..realtime import amd
 from ..realtime.bridge import run_bridge
 from . import transfer
+
+# Logging is configured HERE, at import, rather than only in scripts/run_server.py — because the
+# container's CMD runs `uvicorn openai_agent.telephony.server:app` directly and never executes that
+# script. Without this, every log.info in the app is dropped on the floor (Python's fallback handler
+# only emits WARNING and above), so a call could be answered, mis-handled or refused and leave no
+# trace at all. That cost a long debugging session: the WebSocket showed [accepted] from uvicorn's
+# own logger and nothing else, which looked like the bridge never ran.
+#
+# basicConfig is a no-op when a handler already exists, so launching via run_server.py — which calls
+# it first — is unaffected.
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 
 log = logging.getLogger(__name__)
 
