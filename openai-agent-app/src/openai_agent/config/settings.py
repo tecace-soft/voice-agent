@@ -45,6 +45,7 @@ class Config:
     openai_api_key: str
     openai_model: str
     openai_voice: str
+    openai_transcribe_model: str
     # ---- Twilio (telephony) ----
     twilio_account_sid: str
     twilio_auth_token: str
@@ -121,6 +122,10 @@ class Config:
             openai_model=_optional("OPENAI_MODEL", "gpt-realtime-2.1"),
             # gpt-realtime voices include natural ones like "marin" and "cedar"; "alloy" always works.
             openai_voice=_optional("OPENAI_VOICE", "alloy"),
+            # Transcribes the CALLER only (the agent's own words come back with its audio).
+            # whisper-1 is markedly worse on 8kHz phone audio, which is all we ever feed it.
+            # Set OPENAI_TRANSCRIBE_MODEL=whisper-1 to go back if this model ever misbehaves.
+            openai_transcribe_model=_optional("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe"),
             twilio_account_sid=_optional("TWILIO_ACCOUNT_SID"),
             twilio_auth_token=_optional("TWILIO_AUTH_TOKEN"),
             twilio_from_number=_optional("TWILIO_FROM_NUMBER") or _optional("TWILIO_PHONE_NUMBER"),

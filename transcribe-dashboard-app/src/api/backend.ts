@@ -346,3 +346,8 @@ export async function listInboundCalls(userId?: string): Promise<InboundCall[]> 
   const q = userId ? `?userId=${encodeURIComponent(userId)}` : "";
   return (await get<{ calls: InboundCall[] }>(`/calls${q}`)).calls;
 }
+
+/** Permanently remove one call. A customer may only delete their own; an admin, any. */
+export function deleteInboundCall(id: string): Promise<{ status: string }> {
+  return request<{ status: string }>("DELETE", `/calls/${encodeURIComponent(id)}`);
+}

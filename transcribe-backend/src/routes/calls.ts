@@ -2,6 +2,7 @@ import { Elysia, t } from "elysia";
 import { authenticate, UNAUTHORIZED } from "../auth/guard.js";
 import { env } from "../config/env.js";
 import {
+  deleteInboundCall,
   insertInboundCall,
   listAllInboundCalls,
   listInboundCalls,
@@ -65,4 +66,20 @@ export const calls = new Elysia({ prefix: "/calls" })
       return { calls: wanted ? await listInboundCalls(wanted) : await listAllInboundCalls() };
     },
     { query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }) },
+  )
+
+  // Remove a call for good. A customer may delete their own; an admin may delete any, including
+  // the unattributed ones no customer can see. There is no undo and no soft-delete tombstone —
+  // "delete" on a record of what someone said should mean it is gone.
+  .delete(
+    "/:id",
+    async ({ headers, params, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+
+      const removed = await deleteInboundCall(params.id, user.role === "admin" ? null : user.id);
+      if (!removed) return status(404, { error: "not_found", message: "No such call." });
+      return { status: "deleted" };
+    },
+    { params: t.Object({ id: t.String({ maxLength: 64 }) }) },
   );

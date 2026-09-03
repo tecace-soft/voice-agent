@@ -151,3 +151,23 @@ export async function listAllInboundCalls(limit = 200): Promise<InboundCall[]> {
   `) as unknown as InboundCall[];
   return rows.map(withTurns);
 }
+
+/**
+ * Delete one call. `ownerId` null means an admin, who may delete any of them.
+ *
+ * Ownership is a WHERE clause rather than a read-then-check, so there is no window between the two
+ * in which the row could change hands, and no code path where forgetting the check still deletes.
+ * A customer aiming at someone else's call deletes nothing and is told the call doesn't exist —
+ * which is both true from where they stand and better than confirming it exists.
+ *
+ * Returns false for an id that isn't a UUID: Postgres would otherwise raise a type error and turn
+ * a mistyped id into a 500. Nothing matches, which is the honest answer.
+ */
+export async function deleteInboundCall(id: string, ownerId: string | null): Promise<boolean> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return false;
+  const rows =
+    ownerId === null
+      ? await sql`DELETE FROM inbound_calls WHERE id = ${id} RETURNING id`
+      : await sql`DELETE FROM inbound_calls WHERE id = ${id} AND user_id = ${ownerId} RETURNING id`;
+  return rows.length > 0;
+}

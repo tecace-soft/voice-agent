@@ -2300,6 +2300,25 @@ button.person-primary:hover {
   margin: 0;
 }
 
+/* The parent .call-detail is a 12px flex column, so this needs no margin of its own. */
+.call-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Destructive, so it reads that way on hover — quiet until you reach for it. Beats .btn-quiet:hover
+   on specificity; disabled styling comes from .btn:disabled and isn't repeated here. */
+.call-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+.call-delete:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 /* The conversation. Speakers are distinguished by an indented rail rather than chat bubbles —
    this is a record to be read, not a messaging app. */
 .call-turns {

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { listAccounts, listInboundCalls } from "../api/backend";
+import { deleteInboundCall, listAccounts, listInboundCalls } from "../api/backend";
 import type { AuthUser, InboundCall, MailboxScope } from "../api/types";
 import { accountErrorMessage } from "../auth";
-import { IconChevronDown, IconPhone, IconUsers } from "../icons";
+import { IconChevronDown, IconPhone, IconTrash, IconUsers } from "../icons";
 import { formatDateTime, formatPhone } from "../lib";
 
 // Calls the assistant answered, read the way a transcribed voicemail is read.
@@ -24,14 +24,45 @@ function duration(seconds: number | null): string {
   return m ? `${m}m ${s}s` : `${s}s`;
 }
 
-function CallRow({ call, showWho }: { call: InboundCall; showWho: boolean }) {
+function CallRow({
+  call,
+  showWho,
+  onDeleted,
+}: {
+  call: InboundCall;
+  showWho: boolean;
+  onDeleted: () => void;
+}) {
   const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   const name = call.callerName?.trim();
   const number = formatPhone(call.callbackNumber || call.caller);
   // Belt and braces with the backend's own normalising: a value that isn't an array here would
   // throw inside the render and take the WHOLE dashboard blank, not just this row. One malformed
   // record must never be able to do that.
   const turns = Array.isArray(call.turns) ? call.turns : [];
+
+  // Deliberately only reachable once the call is OPEN. A trash icon on every collapsed row makes
+  // it a mis-click to destroy a conversation nobody has read yet, and unlike a phone number a call
+  // cannot be added back. Opening it first costs one click and means you see what you're deleting.
+  async function onDelete() {
+    const who = name || number || "this caller";
+    if (!window.confirm(`Delete the call from ${who} on ${formatDateTime(call.startedAt)}?
+
+The conversation is removed permanently — this can't be undone.`)) return;
+    setFailed(null);
+    setDeleting(true);
+    try {
+      await deleteInboundCall(call.id);
+      onDeleted();
+    } catch (e) {
+      // Left on screen: a call that failed to delete is still there, and saying so beats a row
+      // that silently stays put and looks like a bug.
+      setFailed(accountErrorMessage(e, "Couldn't delete that call."));
+      setDeleting(false);
+    }
+  }
 
   return (
     <li className={`call-item${open ? " is-open" : ""}`}>
@@ -82,6 +113,18 @@ function CallRow({ call, showWho }: { call: InboundCall; showWho: boolean }) {
               : ""}
             {showWho && call.userId === null ? " · not assigned to a customer" : ""}
           </p>
+          {failed && <p className="error ta-caption-1">{failed}</p>}
+          <div className="call-actions">
+            <button
+              type="button"
+              className="btn btn-quiet call-delete"
+              onClick={onDelete}
+              disabled={deleting}
+            >
+              <IconTrash size={14} />
+              {deleting ? "Deleting…" : "Delete this call"}
+            </button>
+          </div>
         </div>
       )}
     </li>
@@ -169,7 +212,7 @@ export function CallsPage({
         ) : (
           <ul className="call-list">
             {calls.map((call) => (
-              <CallRow key={call.id} call={call} showWho={isAdmin} />
+              <CallRow key={call.id} call={call} showWho={isAdmin} onDeleted={load} />
             ))}
           </ul>
         )}

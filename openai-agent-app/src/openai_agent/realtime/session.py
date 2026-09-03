@@ -12,10 +12,41 @@ from ..config import Config
 from ..tools.agent_tools import TOOL_SCHEMAS
 
 
-def build_session_update(cfg: Config, instructions: str, tools: list[dict] | None = None) -> dict:
+def _transcription_prompt(terms: list[str] | None) -> str:
+    """Bias the transcriber toward names it will otherwise mangle.
+
+    The transcription pass hears 8kHz phone audio with no idea what the business is called, so a
+    company name gets rewritten into whatever common words it sounds like — "TecAce" comes back as
+    "that case", and the saved transcript reads as though the caller asked about something else
+    entirely. The model driving the conversation is unaffected (it works from the audio and answers
+    correctly); it is only the written record that goes wrong, which is precisely the record the
+    customer reads afterwards.
+
+    Naming the handful of proper nouns a call will actually contain fixes this. Only names go in —
+    a prompt describing the conversation would invite the transcriber to write down what it expects
+    to hear rather than what was said, which is the failure we are trying to remove.
+    """
+    named = list(dict.fromkeys(t.strip() for t in (terms or []) if t and t.strip()))
+    if not named:
+        return ""
+    return "The speakers may say these names: " + ", ".join(named) + "."
+
+
+def build_session_update(
+    cfg: Config,
+    instructions: str,
+    tools: list[dict] | None = None,
+    vocabulary: list[str] | None = None,
+) -> dict:
     """Build the session config. `tools` defaults to the outbound set, so the outbound call path
     behaves exactly as it did before inbound screening existed; the inbound bridge passes its own
-    (INBOUND_TOOL_SCHEMAS)."""
+    (INBOUND_TOOL_SCHEMAS). `vocabulary` names this call's proper nouns for the transcriber."""
+    transcription: dict = {"model": cfg.openai_transcribe_model}
+    prompt = _transcription_prompt(vocabulary)
+    if prompt:
+        transcription["prompt"] = prompt
+    # `language` is deliberately NOT set: the agent works out the caller's language from how they
+    # answer the phone, and pinning the transcriber to English would corrupt every call that isn't.
     return {
         "type": "session.update",
         "session": {
@@ -28,7 +59,7 @@ def build_session_update(cfg: Config, instructions: str, tools: list[dict] | Non
                     "turn_detection": {"type": "server_vad"},
                     # Transcribe the lead's speech too, so the bridge can log/track both sides of
                     # the conversation (the agent's side is transcribed automatically).
-                    "transcription": {"model": "whisper-1"},
+                    "transcription": transcription,
                 },
                 "output": {
                     "format": {"type": "audio/pcmu"},

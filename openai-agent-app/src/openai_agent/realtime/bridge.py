@@ -182,8 +182,12 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "leaving_voicemail": False,
         # In-flight tool tasks, kept referenced so they aren't garbage-collected.
         "_tool_tasks": set(),
-        # Running transcript of the call: list of (speaker, text) as each turn completes.
+        # Running transcript of the call: [speaker, text] slots, in the order the words were
+        # SPOKEN. A caller slot is reserved when they stop speaking and filled when their
+        # transcription arrives, which is why these are mutable lists rather than tuples.
         "transcript": [],
+        # item_id -> index of the transcript slot awaiting that caller turn's words.
+        "pending_lead_turns": {},
         # Whether this call is on the mini model — used to apply mini-only tweaks (e.g. a verbatim
         # farewell) WITHOUT changing anything for the full realtime model.
         "is_mini": is_mini,
@@ -221,7 +225,14 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     amd_queue = amd.register(call_sid) if not is_inbound else None
     try:
         async with websockets.connect(url, additional_headers=headers) as openai_ws:
-            await openai_ws.send(json.dumps(build_session_update(cfg, instructions, tools)))
+            # The names this particular call will contain. The business's own name is the one the
+            # transcriber gets wrong most, because it is the one word it has never heard.
+            vocabulary = [cfg.agent_name]
+            if business:
+                vocabulary += [business.business_name, business.user_name, business.website]
+            await openai_ws.send(
+                json.dumps(build_session_update(cfg, instructions, tools, vocabulary))
+            )
             # INBOUND ONLY: we are answering a ringing phone, so the agent has to speak first. The
             # outbound agent deliberately stays silent until the lead says "hello", so this is
             # gated — without the gate an outbound lead would be talked over on pickup, and without
@@ -286,8 +297,48 @@ def _record(state: dict, speaker: str, text: str | None) -> None:
     line = (text or "").strip()
     if not line:
         return
-    state["transcript"].append((speaker, line))
+    state["transcript"].append([speaker, line])
     log.info("%s: %s", speaker.upper(), line)
+
+
+def _reserve_lead_turn(state: dict, item_id: str) -> None:
+    """Hold the caller's place in the transcript at the moment they stopped speaking.
+
+    The caller's words are transcribed by a SEPARATE pass that finishes whenever it finishes —
+    often after the agent has already heard the audio, thought, and replied. Appending on arrival
+    therefore files the caller's question AFTER the answer to it, and the saved transcript reads as
+    if the agent volunteered facts nobody asked for and the caller talked to themselves.
+
+    So the slot is claimed here, in true conversational order (this event fires when their speech
+    segment closes), and filled in later when the words arrive.
+    """
+    if not item_id or item_id in state["pending_lead_turns"]:
+        return
+    state["transcript"].append(["lead", ""])
+    state["pending_lead_turns"][item_id] = len(state["transcript"]) - 1
+
+
+def _fill_lead_turn(state: dict, item_id: str, text: str | None) -> None:
+    """Put the caller's words into the slot reserved when they spoke."""
+    line = (text or "").strip()
+    slot = state["pending_lead_turns"].pop(item_id, None)
+    if slot is None:
+        # No reservation — the commit was missed or gated. Late and out of order beats lost.
+        _record(state, "lead", line)
+        return
+    state["transcript"][slot][1] = line
+    if line:
+        log.info("LEAD: %s", line)
+
+
+def _turns(state: dict) -> list[tuple[str, str]]:
+    """The transcript as completed turns, dropping slots whose words never arrived.
+
+    An empty slot is a caller segment we reserved but never got words for — VAD tripping on line
+    noise, or a transcription that failed. It is not a silent turn the caller took, so it must not
+    appear as one.
+    """
+    return [(who, text) for who, text in state["transcript"] if text]
 
 
 def _note_outcome(state: dict, name: str, args: dict, result: str) -> None:
@@ -338,7 +389,7 @@ def _summary(state: dict) -> str:
 
 def _log_call_end(state: dict, params: dict) -> None:
     """When the call ends, log the whole transcript in one block for easy review."""
-    turns = state.get("transcript", [])
+    turns = _turns(state)
     lead = params.get("lead_name") or "?"
     if not turns:
         log.info("call ended (lead %s) — no transcript captured", lead)
@@ -352,7 +403,7 @@ async def _finalize_call(
 ) -> None:
     """At call end: log the transcript, then persist it (+ summary) to the backend per lead."""
     _log_call_end(state, params)
-    turns = state.get("transcript", [])
+    turns = _turns(state)
     if not turns:
         return
     transcript_text = "\n".join(f"{who.upper()}: {text}" for who, text in turns)
@@ -546,6 +597,11 @@ async def _model_to_caller(
             elif t == "response.output_audio_transcript.done":
                 # What the AGENT just said (transcribed from its own audio).
                 _record(state, "agent", evt.get("transcript"))
+            elif t == "input_audio_buffer.committed":
+                # The caller's speech segment just closed. Claim their place in the transcript NOW,
+                # while we know where it belongs — the words themselves arrive later, out of order.
+                if not (state.get("is_inbound") and not state.get("greeted")):
+                    _reserve_lead_turn(state, evt.get("item_id", ""))
             elif t == "conversation.item.input_audio_transcription.completed":
                 # What the LEAD just said (transcribed from their audio) — unless the agent has not
                 # spoken yet, in which case they cannot have said anything and this is a
@@ -553,8 +609,9 @@ async def _model_to_caller(
                 # mis-gate is visible rather than mysterious.
                 if state.get("is_inbound") and not state.get("greeted"):
                     log.info("ignoring %r heard before the greeting", evt.get("transcript"))
+                    state["pending_lead_turns"].pop(evt.get("item_id", ""), None)
                 else:
-                    _record(state, "lead", evt.get("transcript"))
+                    _fill_lead_turn(state, evt.get("item_id", ""), evt.get("transcript"))
             elif t == "response.function_call_arguments.done":
                 if evt.get("name") == "end_call":
                     await _handle_end_call(twilio_ws, openai_ws, evt, state)
