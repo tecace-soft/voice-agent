@@ -448,10 +448,16 @@ export function BusinessPage({
               {profile?.businessName || "Your business"}
             </div>
             <div className="card-sub ta-caption-1">
-              What the assistant says when someone calls you.
+              {profile
+                ? "Answering as this business. Details are further down the page."
+                : "Add your business information and the assistant will start answering as you."}
             </div>
           </div>
-          <button type="button" className="btn btn-primary" onClick={startEditing}>
+          <button
+            type="button"
+            className={profile ? "btn btn-quiet" : "btn btn-primary"}
+            onClick={startEditing}
+          >
             {profile ? "Edit" : "Add your business information"}
           </button>
         </div>
@@ -555,13 +561,17 @@ export function BusinessPage({
 
       {profile && (
         <section className="card">
-          <div className="card-head">
+          <div className="card-toolbar">
             <div>
-              <div className="card-title ta-headline-2">What you wrote</div>
+              <div className="card-title ta-headline-2">Your business information</div>
               <div className="card-sub ta-caption-1">
-                Your own words, kept as you saved them. This is the part you edit.
+                Your own words, kept as you saved them. Everything the assistant knows is read from
+                this.
               </div>
             </div>
+            <button type="button" className="btn btn-primary" onClick={startEditing}>
+              Edit
+            </button>
           </div>
           <p className="business-source-read ta-body-2">{profile.sourceText}</p>
         </section>
