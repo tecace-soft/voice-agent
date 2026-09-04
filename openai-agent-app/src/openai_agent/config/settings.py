@@ -91,6 +91,12 @@ class Config:
     # stream does, so pressing instantly can land before anything is listening.
     forward_accept_delay: float
     forward_announcement_seconds: float
+    # DTMF that TWILIO generates, in the TwiML, before the stream starts. 'w' is a half-second
+    # wait. Empty disables it.
+    forward_accept_twiml_digits: str
+    # The old in-band method: tones we synthesise and push through the media stream. Off by
+    # default now — see the comment where it is used.
+    forward_accept_inband: bool
     business_config_url: str
     agent_config_key: str
     open_hour: int
@@ -163,6 +169,12 @@ class Config:
             # the caller is not even bridged yet. Raise it if "This is a forwarded call" still
             # reaches the transcript; lower it if the greeting feels slow on forwarded calls.
             forward_announcement_seconds=float(_optional("FORWARD_ANNOUNCEMENT_SECONDS", "4.0")),
+            # Two presses: wait 2s, press 1, wait 1s, press again. The carrier's prompt does not
+            # start listening the instant it answers, and a second press on an already-bridged
+            # call is a short beep rather than a problem.
+            forward_accept_twiml_digits=_optional("FORWARD_ACCEPT_TWIML_DIGITS", "wwww1ww1"),
+            forward_accept_inband=_optional("FORWARD_ACCEPT_INBAND", "false").lower()
+            in ("1", "true", "yes"),
             business_config_url=_optional("BUSINESS_CONFIG_URL").rstrip("/"),
             agent_config_key=_optional("AGENT_CONFIG_KEY"),
             open_hour=int(_optional("BUSINESS_OPEN_HOUR", "9")),

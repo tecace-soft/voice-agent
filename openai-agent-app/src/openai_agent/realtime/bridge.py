@@ -267,9 +267,18 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             # and wait BEFORE greeting: a greeting spoken into that prompt reaches nobody, and the
             # caller hears ringing throughout. Direct calls skip this entirely.
             forwarded_from = str(params.get("forwarded_from", ""))
-            if is_inbound and forwarded_from and cfg.forward_accept_digit.strip():
-                log.info("call arrived forwarded from %s — sending the accept digit", forwarded_from)
-                await _accept_forwarded_call(twilio_ws, cfg, state)
+            if is_inbound and forwarded_from:
+                # Twilio already played the accept digits before this stream opened, so by now the
+                # announcement is normally over. The guard covers its tail: whatever is still on
+                # the line is the carrier finishing its sentence, not the caller.
+                state["forward_guard_until"] = time.monotonic() + cfg.forward_announcement_seconds
+                # The in-band press is kept as a fallback for a carrier that ignores the TwiML
+                # digits, but is OFF by default: on a call that IS already bridged it puts an
+                # audible beep in the real caller's ear.
+                if cfg.forward_accept_inband and cfg.forward_accept_digit.strip():
+                    log.info("call arrived forwarded from %s — sending the in-band accept digit",
+                             forwarded_from)
+                    await _accept_forwarded_call(twilio_ws, cfg, state)
                 # Wait out the rest of the announcement before speaking. A greeting delivered
                 # into "press 1 to accept" reaches nobody: the caller is not bridged until the
                 # press registers, so they would simply never hear it.

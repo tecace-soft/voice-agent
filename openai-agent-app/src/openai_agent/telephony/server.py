@@ -152,6 +152,22 @@ async def incoming(request: Request) -> Response:
         fields.get("CallSid", ""),
     )
     response = VoiceResponse()
+
+    # A forwarding carrier answers OUR leg first and plays "press 1 to accept"; the real caller
+    # hears ringing until a digit arrives. Twilio generates that digit here, as real DTMF, BEFORE
+    # the media stream starts.
+    #
+    # We used to synthesise the tones ourselves and push them up the stream. They never registered:
+    # our audio has to survive Twilio's outbound media path to reach the carrier's detector, and
+    # evidently did not — the announcement kept repeating nine seconds after two presses. Twilio
+    # generating the digits is both more reliable and simpler, and doing it before <Connect> means
+    # the announcement is over before the agent is listening at all.
+    forwarded_from = fields.get("ForwardedFrom", "")
+    if forwarded_from and cfg.forward_accept_twiml_digits:
+        log.info("forwarded from %s — playing accept digits %r before connecting",
+                 forwarded_from, cfg.forward_accept_twiml_digits)
+        response.play(digits=cfg.forward_accept_twiml_digits)
+
     connect = Connect()
     stream = Stream(url=cfg.stream_url)
     # `direction` is what switches the bridge onto the inbound rule book; without it the bridge
