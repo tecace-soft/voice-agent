@@ -175,6 +175,7 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 transfer_failed=str(params.get("transfer_failed", "")).lower() in ("yes", "true", "1"),
                 disclose_recording=cfg.disclose_recording,
                 greeting=business.greeting or cfg.greeting,
+                transfer_topics=business.transfer_topics,
                 can_transfer=bool(business.transfer_number),
             )
         # A business with nobody to transfer to doesn't get the tool at all. Telling the model not

@@ -330,6 +330,7 @@ export function getBusinessProfile(userId?: string): Promise<BusinessProfileResp
 export function saveBusinessProfile(
   sourceText: string,
   transferNumber: string,
+  transferTopics: string,
   userId?: string,
 ): Promise<{ profile: BusinessProfile; extracted: boolean }> {
   return request<{ profile: BusinessProfile; extracted: boolean }>(
@@ -337,7 +338,7 @@ export function saveBusinessProfile(
     `/business/profile${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
     // agentName/greeting are deliberately NOT sent: they belong to their own section, and the
     // backend leaves absent fields alone rather than clearing them.
-    { body: { sourceText, transferNumber } },
+    { body: { sourceText, transferNumber, transferTopics } },
   );
 }
 

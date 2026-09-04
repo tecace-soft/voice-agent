@@ -28,6 +28,8 @@ export interface BusinessProfile {
   agentName: string | null;
   /** The exact first line spoken to a caller. Null falls back to the standard greeting. */
   greeting: string | null;
+  /** Extra reasons this business wants a caller put through. Null means the standard rules only. */
+  transferTopics: string | null;
   /** True when there's enough here for the agent to answer AS this business rather than neutrally. */
   isLive: boolean;
   extractedAt: string | null;
@@ -67,6 +69,7 @@ const COLUMNS = sql`
   p.transfer_number AS "transferNumber",
   p.agent_name      AS "agentName",
   p.greeting,
+  p.transfer_topics AS "transferTopics",
   ${IS_LIVE}      AS "isLive",
   p.extracted_at  AS "extractedAt",
   p.updated_at    AS "updatedAt"
@@ -99,6 +102,7 @@ export interface TypedFields {
   transferNumber: string | null;
   agentName: string | null;
   greeting: string | null;
+  transferTopics: string | null;
 }
 
 export async function saveProfile(
@@ -111,12 +115,12 @@ export async function saveProfile(
     INSERT INTO business_profiles (
       user_id, source_text, source_hash, business_name, hours_text,
       open_hour, close_hour, website, facts, transfer_number, agent_name, greeting,
-      extracted_at, updated_at
+      transfer_topics, extracted_at, updated_at
     ) VALUES (
       ${userId}, ${sourceText}, ${hashSource(sourceText)}, ${fields.businessName},
       ${fields.hoursText}, ${fields.openHour}, ${fields.closeHour}, ${fields.website},
       ${fields.facts}, ${typed.transferNumber}, ${typed.agentName}, ${typed.greeting},
-      now(), now()
+      ${typed.transferTopics}, now(), now()
     )
     ON CONFLICT (user_id) DO UPDATE SET
       source_text   = EXCLUDED.source_text,
@@ -130,6 +134,7 @@ export async function saveProfile(
       transfer_number = EXCLUDED.transfer_number,
       agent_name      = EXCLUDED.agent_name,
       greeting        = EXCLUDED.greeting,
+      transfer_topics = EXCLUDED.transfer_topics,
       extracted_at    = now(),
       updated_at    = now()
   `;
@@ -152,6 +157,7 @@ export async function saveTypedFields(
     SET transfer_number = ${typed.transferNumber},
         agent_name      = ${typed.agentName},
         greeting        = ${typed.greeting},
+        transfer_topics = ${typed.transferTopics},
         updated_at      = now()
     WHERE user_id = ${userId}
     RETURNING user_id

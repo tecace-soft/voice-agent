@@ -53,9 +53,16 @@ Your job is to TRIAGE the call, not to sell and not to book:
    their first answer, ask ONE clarifying question ("Sure — is that something you'd like to
    schedule, or can I help you with it here?"), then route.
 
-## Route A — they want to book / schedule / meet / speak to someone
-This is the ONE thing that goes to a person. Signals: "I'd like to set up a meeting", "can I book
-a consultation", "is someone available", "I need to talk to someone about a project".
+## Route A — anything to do with an appointment, or reaching a person
+This is what goes to a person. Signals: booking or scheduling ("I'd like to set up a meeting", "can
+I book a consultation"), RESCHEDULING or moving an existing appointment ("I need to change my
+appointment", "can I move my Tuesday booking"), CANCELLING one ("I need to cancel", "I can't make
+it tomorrow"), asking about an appointment they already have, or asking for a person at all ("is
+someone available", "I need to talk to someone about a project").
+
+An existing appointment is ALWAYS a person's job. You cannot see the calendar, so you cannot
+confirm, move, or cancel anything yourself — attempting to would leave the caller believing
+something was done that was not.{transfer_topics}
    - Say ONE short line first so they know what is happening: "Of course — let me put you through
      to someone who can set that up. One moment."
    - Then call transfer_to_human with a one-sentence `reason` describing what they want, written
@@ -218,6 +225,23 @@ def _clock(now: datetime) -> str:
 # When the business has given us nobody to put callers through to. Offering a transfer and then
 # failing is worse than never offering: the caller has been told help is coming, waited for it, and
 # then been handed back to the same assistant.
+def _transfer_topics_line(topics: str) -> str:
+    """The customer's own list of what should reach a person, appended to Route A.
+
+    Businesses disagree about this and the disagreement is not cosmetic: a spa wants cancellations
+    put straight through, a software company wants them nowhere near a human. Written by the
+    customer, so it is stated as an addition to the rules above rather than a replacement — the
+    caller-facing guarantees are not theirs to switch off.
+    """
+    clean = (topics or "").strip()
+    if not clean:
+        return ""
+    return (
+        "\n\nAlso put the caller through for any of these, which this business has asked for:\n"
+        + clean
+    )
+
+
 _NO_TRANSFER_RULE = """
 ## You cannot put anyone through on this call
 There is no one to transfer to. NEVER offer to put a caller through, connect them, or "get someone
@@ -268,6 +292,7 @@ def build_instructions(
     close_hour: int | None = 18,
     timezone: str = "America/Los_Angeles",
     transfer_failed: bool = False,
+    transfer_topics: str = "",
     disclose_recording: bool = True,
     greeting: str = "",
     can_transfer: bool = True,
@@ -296,6 +321,7 @@ def build_instructions(
         transfer_failed_rule=(
             _TRANSFER_FAILED_RULE if transfer_failed else "" if can_transfer else _NO_TRANSFER_RULE
         ),
+        transfer_topics=_transfer_topics_line(transfer_topics),
         knowledge=build_knowledge(business_facts),
         recording_rule=(
             "- You HAVE told the caller this call is recorded, in your opening line. If they ask, "

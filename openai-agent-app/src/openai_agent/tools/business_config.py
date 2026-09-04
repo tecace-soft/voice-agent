@@ -55,6 +55,8 @@ class BusinessConfig:
     # when they haven't chosen, which the prompt builder reads as "use the default".
     agent_name: str
     greeting: str
+    # What this business wants put through to a person, beyond the standard appointment rules.
+    transfer_topics: str
 
 
 async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | None:
@@ -124,6 +126,7 @@ async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | N
         transfer_number=str(biz.get("transferNumber") or ""),
         agent_name=str(biz.get("agentName") or ""),
         greeting=str(biz.get("greeting") or ""),
+        transfer_topics=str(biz.get("transferTopics") or ""),
     )
 
 

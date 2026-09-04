@@ -220,6 +220,7 @@ export function BusinessPage({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [transferNumber, setTransferNumber] = useState("");
+  const [transferTopics, setTransferTopics] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
@@ -262,6 +263,7 @@ export function BusinessPage({
   function startEditing() {
     setDraft(profile?.sourceText ?? "");
     setTransferNumber(profile?.transferNumber ?? "");
+    setTransferTopics(profile?.transferTopics ?? "");
     setSaveError(null);
     setJustSaved(false);
     setEditing(true);
@@ -276,6 +278,7 @@ export function BusinessPage({
       const { profile: saved } = await saveBusinessProfile(
         draft.trim(),
         transferNumber.trim(),
+        transferTopics.trim(),
         targetId,
       );
       setProfile(saved);
@@ -408,6 +411,23 @@ export function BusinessPage({
               </span>
             </label>
 
+            <label className="field">
+              <span className="field-label ta-caption-1">
+                What else should reach a person (optional)
+              </span>
+              <textarea
+                className="input textarea"
+                value={transferTopics}
+                onChange={(e) => setTransferTopics(e.target.value.slice(0, 400))}
+                rows={3}
+                placeholder="Gift certificate problems. Group bookings for more than six people."
+              />
+              <span className="field-hint ta-caption-2 muted">
+                Booking, rescheduling and cancelling an appointment already go straight to a person.
+                Add anything else specific to you.
+              </span>
+            </label>
+
             <div className="inline-form-actions">
               <button type="submit" className="btn btn-primary" disabled={saving || !draft.trim()}>
                 {saving ? "Reading it through…" : "Save"}
@@ -517,6 +537,11 @@ export function BusinessPage({
               {profile.transferNumber ? "Change" : "Add a number"}
             </button>
           </div>
+          {profile.transferTopics && (
+            <p className="business-topics ta-caption-1 muted">
+              Also put through: {profile.transferTopics}
+            </p>
+          )}
           <p className="business-transfer">
             {profile.transferNumber ? (
               <span className="number-cell ta-headline-2">

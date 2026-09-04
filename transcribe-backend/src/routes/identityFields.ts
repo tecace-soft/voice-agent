@@ -9,6 +9,9 @@
 // risks; with it, the worst case is a long-winded hello.
 export const MAX_AGENT_NAME = 40;
 export const MAX_GREETING = 240;
+// Longer than a greeting: this is a short list, not one spoken sentence. Still capped, because it
+// lands in the agent's own instructions and an unbounded field there is a different feature.
+export const MAX_TRANSFER_TOPICS = 400;
 
 /**
  * Tidy a line the agent will SPEAK, or null if there is nothing there.

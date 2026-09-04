@@ -195,6 +195,8 @@ export interface BusinessProfile {
   agentName: string | null;
   /** The exact first line a caller hears. Null means the standard greeting. */
   greeting: string | null;
+  /** Extra reasons to put a caller through, beyond the standard appointment rules. */
+  transferTopics: string | null;
   /** Enough here for the agent to answer AS this business rather than neutrally. */
   isLive: boolean;
   extractedAt: string | null;

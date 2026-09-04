@@ -175,6 +175,8 @@ export async function initDb(): Promise<void> {
   // string and "not set" would otherwise be indistinguishable, and an empty greeting is silence.
   await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS agent_name TEXT`;
   await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS greeting TEXT`;
+  // What this business wants put through to a person, on top of the standard appointment rules.
+  await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS transfer_topics TEXT`;
 
   // Calls the voice agent answered — the conversational counterpart to a transcribed voicemail.
   // user_id is resolved at write time from the number that was dialled; nullable, because a call
@@ -246,6 +248,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM agent_numbers LIMIT 1`;
     await sql`SELECT transfer_number FROM business_profiles LIMIT 1`;
     await sql`SELECT agent_name, greeting FROM business_profiles LIMIT 1`;
+    await sql`SELECT transfer_topics FROM business_profiles LIMIT 1`;
     await sql`SELECT 1 FROM inbound_calls LIMIT 1`;
     return;
   } catch {
