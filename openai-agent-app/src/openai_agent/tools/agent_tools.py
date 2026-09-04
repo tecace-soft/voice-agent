@@ -143,6 +143,21 @@ INBOUND_TOOL_SCHEMAS: list[dict] = [
     },
     {
         "type": "function",
+        "name": "note_caller",
+        "description": "Record the caller's name the moment you learn it. Call this as soon as "
+        "they say who they are — it does not end anything, does not take a message, and does not "
+        "interrupt what you were doing. Call it even if the call goes on to be a question, a "
+        "transfer, or nothing at all.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "caller_name": {"type": "string", "description": "The caller's name, as they said it."},
+            },
+            "required": ["caller_name"],
+        },
+    },
+    {
+        "type": "function",
         "name": "take_message",
         "description": "Record a message for the team when the caller wants a callback, or when "
         "you could not help them and no transfer is appropriate.",
@@ -205,6 +220,12 @@ class ToolExecutor:
                     "/agent/mark-outcome",
                     {"intakeId": self._intake_id, "outcome": args.get("outcome", "unreachable")},
                 )
+            if name == "note_caller":
+                # Purely local, like take_message: nothing to post anywhere, it just needs to reach
+                # the bridge's state so the finished call carries a name. Kept OUT of take_message
+                # because a caller giving their name is not the same event as leaving a message —
+                # most callers do the first and never the second.
+                return json.dumps({"recorded": True})
             if name == "take_message":
                 # Inbound only. There is no intake to attach this to (a stranger called us), so the
                 # message rides out on the call log the bridge already persists at call end — see

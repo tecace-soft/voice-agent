@@ -232,6 +232,11 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "transfer_pending": None,
         # Messages taken from callers we could not transfer; appended to the call log at end.
         "messages": [],
+        # Who the caller said they were, captured when they said it. Separate from `messages`
+        # because most callers give a name and never leave a message — reading the name only off a
+        # message meant every other call was filed as anonymous despite the name being right there
+        # in the transcript.
+        "caller_name": "",
     }
     # Register for this call's answering-machine-detection result (delivered by the /amd webhook).
     # Outbound only: AMD answers "did a machine pick up the call WE placed?", which is
@@ -382,6 +387,12 @@ def _note_outcome(state: dict, name: str, args: dict, result: str) -> None:
         outcome = (args.get("outcome") or "").strip()
         if outcome:
             state["outcome"] = outcome  # wrong_number / declined / unreachable
+    elif name == "note_caller":
+        # Deliberately does NOT touch state["outcome"]: learning who is calling says nothing about
+        # how the call ended, and treating it as an outcome would relabel ordinary calls.
+        got = (args.get("caller_name") or "").strip()
+        if got:
+            state["caller_name"] = got
     elif name == "take_message" and data.get("recorded"):
         # Inbound only. There is no intake row to hang this on (a stranger called us), so keep it
         # on the call and let _finalize_call write it out with the transcript.
@@ -459,7 +470,9 @@ async def _finalize_call(
                 # Sent so the backend can spot a carrier that presents the FORWARDING line as the
                 # caller — if the two match, the caller ID is not the caller's.
                 "forwardedFrom": params.get("forwarded_from", ""),
-                "callerName": msg.get("caller_name") or "",
+                # A name confirmed for a MESSAGE is the most deliberate one, so it wins; otherwise
+                # whatever they told us in conversation.
+                "callerName": msg.get("caller_name") or state.get("caller_name") or "",
                 "callbackNumber": msg.get("callback_number") or "",
                 "request": msg.get("message") or "",
                 "summary": _summary(state),
