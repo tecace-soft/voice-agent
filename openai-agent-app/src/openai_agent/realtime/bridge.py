@@ -46,6 +46,18 @@ _HANGUP_FALLBACK_SECONDS = 12
 _VOICEMAIL_BACKSTOP_SECONDS = 30
 
 
+async def _open_realtime(cfg: Config):
+    """Open the Realtime connection.
+
+    A coroutine wrapper, not `asyncio.create_task(websockets.connect(...))` — connect() returns a
+    `connect` object that is awaitable but is NOT a coroutine, and create_task rejects it outright.
+    """
+    return await websockets.connect(
+        _OPENAI_WS.format(model=cfg.openai_model),
+        additional_headers={"Authorization": f"Bearer {cfg.openai_api_key}"},
+    )
+
+
 async def _accept_forwarded_call(twilio_ws: WebSocket, cfg: Config, state: dict) -> None:
     """Press the digit a forwarding carrier is waiting for, then let the agent greet.
 
@@ -108,12 +120,7 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     # INVARIANT: nothing between here and the `async with` below may raise, or the socket is
     # orphaned. fetch_business_config catches everything and returns None (a backend outage must
     # not take the phone line down), and the rest is string formatting and a dict literal.
-    _connecting = asyncio.create_task(
-        websockets.connect(
-            _OPENAI_WS.format(model=cfg.openai_model),
-            additional_headers={"Authorization": f"Bearer {cfg.openai_api_key}"},
-        )
-    )
+    _connecting = asyncio.create_task(_open_realtime(cfg))
     business = None  # set on the inbound path once we know whose call this is
     caller = str(params.get("caller", ""))
     is_mini = "mini" in cfg.openai_model.lower()
