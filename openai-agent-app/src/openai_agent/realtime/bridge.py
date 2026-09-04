@@ -260,6 +260,8 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             await openai_ws.send(
                 json.dumps(build_session_update(cfg, instructions, tools, vocabulary))
             )
+            # Kept so the session can be rebuilt if the model rejects semantic turn detection.
+            state["_session"] = (instructions, tools, vocabulary)
             # INBOUND ONLY: we are answering a ringing phone, so the agent has to speak first. The
             # outbound agent deliberately stays silent until the lead says "hello", so this is
             # gated — without the gate an outbound lead would be talked over on pickup, and without
@@ -737,7 +739,28 @@ async def _model_to_caller(
                     state["_tool_tasks"].add(task)
                     task.add_done_callback(state["_tool_tasks"].discard)
             elif t == "error":
-                log.warning("openai error: %s", evt.get("error"))
+                err = evt.get("error") or {}
+                text = f"{err.get('message', '')} {err.get('param', '')}".lower()
+                # A model that does not accept semantic_vad would otherwise leave the session with
+                # NO turn detection at all — the agent would never hear a turn end and the call
+                # would be dead air. Rebuild it once on plain server_vad rather than lose the call.
+                if not state.get("_vad_fell_back") and any(
+                    k in text for k in ("turn_detection", "semantic_vad", "eagerness")
+                ):
+                    state["_vad_fell_back"] = True
+                    log.warning(
+                        "semantic turn detection rejected (%s) — falling back to server_vad",
+                        err.get("message"),
+                    )
+                    built = state.get("_session")
+                    if built:
+                        await openai_ws.send(
+                            json.dumps(
+                                build_session_update(cfg, *built, force_server_vad=True)
+                            )
+                        )
+                else:
+                    log.warning("openai error: %s", err)
     except WebSocketDisconnect:
         pass
     except websockets.ConnectionClosed:

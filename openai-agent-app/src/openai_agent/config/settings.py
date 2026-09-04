@@ -49,6 +49,10 @@ class Config:
     # How loud speech must be before the model treats it as the caller talking, and how long a
     # pause must run before it treats their turn as finished. Tunable because the right values
     # depend on the room the caller is standing in, which we cannot know from here.
+    # "semantic_vad" judges whether the audio is the caller ADDRESSING the assistant, which is the
+    # only turn detection that can tell them apart from the room. "server_vad" is loudness only.
+    vad_type: str
+    vad_eagerness: str
     vad_threshold: float
     vad_prefix_padding_ms: int
     vad_silence_ms: int
@@ -144,7 +148,12 @@ class Config:
             # interrupted by conversations that were never aimed at it. Raised — the caller's own
             # voice is far louder at their handset than anyone else's in the room, so this
             # separates them cleanly. Lower it if genuine quiet speech starts being missed.
-            vad_threshold=float(_optional("VAD_THRESHOLD", "0.7")),
+            # semantic_vad with low eagerness: it waits for the caller to actually be finished and
+            # is far less willing to treat nearby conversation as a turn. Set VAD_TYPE=server_vad
+            # to go back to pure loudness detection (the settings below then apply).
+            vad_type=_optional("VAD_TYPE", "semantic_vad"),
+            vad_eagerness=_optional("VAD_EAGERNESS", "low"),
+            vad_threshold=float(_optional("VAD_THRESHOLD", "0.8")),
             vad_prefix_padding_ms=int(_optional("VAD_PREFIX_PADDING_MS", "300")),
             # How long the caller must be silent before their turn is considered over. The API
             # default (500ms) is shorter than an ordinary mid-sentence pause, so the agent answers
