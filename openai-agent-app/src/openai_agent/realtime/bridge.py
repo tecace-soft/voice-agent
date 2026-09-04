@@ -101,10 +101,21 @@ async def _accept_forwarded_call(twilio_ws: WebSocket, cfg: Config, state: dict)
 async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     await twilio_ws.accept()
 
+    # Open the model connection FIRST. It needs nothing from Twilio, so it has no reason to queue
+    # behind the start event — that handshake and this one can happen at the same time, and every
+    # millisecond of them is silence on the caller's line.
+    _connecting = asyncio.create_task(_open_realtime(cfg))
+
     # 1. Wait for Twilio's "start" event — it carries the streamSid, the call's SID (for AMD), and
     #    the lead's context.
     stream_sid, call_sid, params = await _await_start(twilio_ws)
     if not stream_sid:
+        # Nothing to bridge. Close the connection opened above rather than leaking a Realtime
+        # session for a call that never started.
+        try:
+            await (await _connecting).close()
+        except Exception:  # noqa: BLE001 — best effort; the call is already gone
+            pass
         return
     # Which KIND of call is this? Outbound (we dialed a lead we already know) and inbound (a
     # stranger dialed the company's main line) are different jobs, so they get different rules and
@@ -112,15 +123,9 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     # outbound call, unchanged — falls through to the outbound path below.
     is_inbound = str(params.get("direction", "")).strip().lower() == "inbound"
 
-    # Start connecting to the model NOW, before anything else. The business lookup below is an
-    # HTTP round trip to another continent's edge and the connection handshake is another; run
-    # back to back they are ~1.5s of the silence a caller sits through before the agent speaks,
-    # and neither one needs the other's result.
-    #
-    # INVARIANT: nothing between here and the `async with` below may raise, or the socket is
-    # orphaned. fetch_business_config catches everything and returns None (a backend outage must
-    # not take the phone line down), and the rest is string formatting and a dict literal.
-    _connecting = asyncio.create_task(_open_realtime(cfg))
+    # INVARIANT: nothing between the connection task above and the `async with` below may raise,
+    # or the socket is orphaned. fetch_business_config catches everything and returns None (a
+    # backend outage must not take the phone line down), and the rest is string formatting.
     business = None  # set on the inbound path once we know whose call this is
     caller = str(params.get("caller", ""))
     is_mini = "mini" in cfg.openai_model.lower()
