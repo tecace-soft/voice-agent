@@ -177,7 +177,10 @@ class Config:
             # Until it stops, everything on the line is the CARRIER talking to us, not the caller —
             # the caller is not even bridged yet. Raise it if "This is a forwarded call" still
             # reaches the transcript; lower it if the greeting feels slow on forwarded calls.
-            forward_announcement_seconds=float(_optional("FORWARD_ANNOUNCEMENT_SECONDS", "4.0")),
+            # Short, because Twilio now presses the accept key BEFORE the stream opens — the
+            # announcement is normally finished by the time we are listening at all. This only
+            # covers its tail, and every second of it is a second the caller waits in silence.
+            forward_announcement_seconds=float(_optional("FORWARD_ANNOUNCEMENT_SECONDS", "1.0")),
             # Two presses: wait 2s, press 1, wait 1s, press again. The carrier's prompt does not
             # start listening the instant it answers, and a second press on an already-bridged
             # call is a short beep rather than a problem.

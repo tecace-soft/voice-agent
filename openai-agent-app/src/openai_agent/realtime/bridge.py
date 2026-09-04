@@ -515,6 +515,19 @@ async def _finalize_call(
         # callback number back to confirm it, so these are CONFIRMED rather than guessed — which
         # is the thing a voicemail recording can never give us.
         msg = (state.get("messages") or [{}])[0]
+        # Worked out ONCE, and logged, so a call that files as anonymous says which of the three
+        # routes was tried and what each gave. Without this the only symptom is a blank field in
+        # the dashboard, which cannot distinguish "the model never called note_caller" from "this
+        # build does not have the fallback" from "the transcript genuinely had no name".
+        recovered = _name_from_transcript(turns)
+        caller_name = msg.get("caller_name") or state.get("caller_name") or recovered or ""
+        log.info(
+            "caller name: message=%r tool=%r transcript=%r -> %r",
+            msg.get("caller_name") or "",
+            state.get("caller_name") or "",
+            recovered,
+            caller_name,
+        )
         await post_inbound_call(
             cfg,
             {
@@ -526,12 +539,7 @@ async def _finalize_call(
                 # A name confirmed for a MESSAGE is the most deliberate one, so it wins; then the
                 # one the agent recorded as it heard it; then, if it never made that call, the one
                 # the conversation itself shows.
-                "callerName": (
-                    msg.get("caller_name")
-                    or state.get("caller_name")
-                    or _name_from_transcript(turns)
-                    or ""
-                ),
+                "callerName": caller_name,
                 "callbackNumber": msg.get("callback_number") or "",
                 "request": msg.get("message") or "",
                 "summary": _summary(state),
