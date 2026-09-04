@@ -77,15 +77,17 @@ async def _accept_forwarded_call(twilio_ws: WebSocket, cfg: Config, state: dict)
     # Everything heard from now until the announcement stops belongs to the CARRIER, not the
     # caller — who is still hearing ringing and has not been bridged. Held across the digit and
     # for a beat after, because the prompt keeps talking until it registers the press.
+    attempts = cfg.forward_accept_attempts
+    tone_seconds = len(frames) * dtmf.FRAME_MS / 1000
     state["forward_guard_until"] = (
         time.monotonic()
         + cfg.forward_accept_delay
-        + 1.5
-        + (len(frames) * dtmf.FRAME_MS / 1000) * 2
+        + cfg.forward_accept_gap * (attempts - 1)
+        + tone_seconds * attempts
         + cfg.forward_announcement_seconds
     )
-    for attempt in (1, 2):
-        await asyncio.sleep(cfg.forward_accept_delay if attempt == 1 else 1.5)
+    for attempt in range(1, attempts + 1):
+        await asyncio.sleep(cfg.forward_accept_delay if attempt == 1 else cfg.forward_accept_gap)
         if state.get("closing"):
             return
         for frame in frames:
@@ -95,7 +97,9 @@ async def _accept_forwarded_call(twilio_ws: WebSocket, cfg: Config, state: dict)
             # Paced at real time: a DTMF detector expects the tone to arrive as it would be spoken,
             # and some reject a burst that lands all at once.
             await asyncio.sleep(dtmf.FRAME_MS / 1000)
-        log.info("sent DTMF %r to accept the forwarded call (attempt %d)", digit, attempt)
+        log.info(
+            "sent DTMF %r to accept the forwarded call (attempt %d of %d)", digit, attempt, attempts
+        )
 
 
 async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:

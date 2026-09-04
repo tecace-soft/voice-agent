@@ -101,6 +101,10 @@ class Config:
     # The old in-band method: tones we synthesise and push through the media stream. Off by
     # default now — see the comment where it is used.
     forward_accept_inband: bool
+    # How many times the in-band press is sent, and the gap between them. Both are pure latency:
+    # the greeting cannot start until the last press has gone out and the prompt has stopped.
+    forward_accept_attempts: int
+    forward_accept_gap: float
     business_config_url: str
     agent_config_key: str
     open_hour: int
@@ -190,6 +194,8 @@ class Config:
             forward_accept_twiml_digits=_optional("FORWARD_ACCEPT_TWIML_DIGITS", "ww1ww1"),
             forward_accept_inband=_optional("FORWARD_ACCEPT_INBAND", "false").lower()
             in ("1", "true", "yes"),
+            forward_accept_attempts=max(1, int(_optional("FORWARD_ACCEPT_ATTEMPTS", "2"))),
+            forward_accept_gap=float(_optional("FORWARD_ACCEPT_GAP_SECONDS", "1.5")),
             business_config_url=_optional("BUSINESS_CONFIG_URL").rstrip("/"),
             agent_config_key=_optional("AGENT_CONFIG_KEY"),
             open_hour=int(_optional("BUSINESS_OPEN_HOUR", "9")),
