@@ -181,10 +181,13 @@ class Config:
             # announcement is normally finished by the time we are listening at all. This only
             # covers its tail, and every second of it is a second the caller waits in silence.
             forward_announcement_seconds=float(_optional("FORWARD_ANNOUNCEMENT_SECONDS", "1.0")),
-            # Two presses: wait 2s, press 1, wait 1s, press again. The carrier's prompt does not
-            # start listening the instant it answers, and a second press on an already-bridged
-            # call is a short beep rather than a problem.
-            forward_accept_twiml_digits=_optional("FORWARD_ACCEPT_TWIML_DIGITS", "wwww1ww1"),
+            # Wait 1s, press 1, wait 1s, press again. Twilio plays this to completion BEFORE the
+            # stream opens, so its length is silence the caller sits through — the single largest
+            # remaining part of the gap. Trimmed from a 2s first wait: the second press still lands
+            # at ~2.3s, which is where the press that worked used to be, so the late case is still
+            # covered while the early case now gets in a second sooner. Lengthen it again if a
+            # forwarded call ever goes unanswered.
+            forward_accept_twiml_digits=_optional("FORWARD_ACCEPT_TWIML_DIGITS", "ww1ww1"),
             forward_accept_inband=_optional("FORWARD_ACCEPT_INBAND", "false").lower()
             in ("1", "true", "yes"),
             business_config_url=_optional("BUSINESS_CONFIG_URL").rstrip("/"),

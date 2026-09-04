@@ -696,6 +696,14 @@ async def _model_to_caller(
             t = evt.get("type")
 
             if t == "response.output_audio.delta":
+                # The FIRST chunk is the only honest measure of the gap a caller sits through.
+                # The transcript log fires when the agent stops talking, which is that gap plus the
+                # length of the greeting — reading it as latency overstates it by several seconds.
+                if not state["greeted"]:
+                    log.info(
+                        "first audio to the caller %.1fs after the stream opened",
+                        time.monotonic() - state.get("started", time.monotonic()),
+                    )
                 state["spoke_since_user"] = True
                 state["greeted"] = True
                 await twilio_ws.send_json(
