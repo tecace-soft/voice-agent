@@ -1,6 +1,9 @@
 python-dotenv>=1.0.1
 fastapi>=0.110            # the media-stream WebSocket server
 uvicorn[standard]>=0.29  # ASGI server (WebSocket support)
-websockets>=13.0         # client connection to the OpenAI Realtime API
+websockets>=14.0         # client connection to the OpenAI Realtime API (needs the asyncio client:
+                         # the bridge opens the connection as a task and then uses the awaited
+                         # ClientConnection as an async context manager, which the pre-14 legacy
+                         # protocol does not support)
 twilio>=9.0              # place the outbound call (Twilio REST) + TwiML
 httpx>=0.27              # async calls to the shared backend /agent/* tools

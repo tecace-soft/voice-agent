@@ -143,21 +143,6 @@ INBOUND_TOOL_SCHEMAS: list[dict] = [
     },
     {
         "type": "function",
-        "name": "note_caller",
-        "description": "Record the caller's name the moment you learn it. Call this as soon as "
-        "they say who they are — it does not end anything, does not take a message, and does not "
-        "interrupt what you were doing. Call it even if the call goes on to be a question, a "
-        "transfer, or nothing at all.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "caller_name": {"type": "string", "description": "The caller's name, as they said it."},
-            },
-            "required": ["caller_name"],
-        },
-    },
-    {
-        "type": "function",
         "name": "take_message",
         "description": "Record a message for the team when the caller wants a callback, or when "
         "you could not help them and no transfer is appropriate.",
@@ -220,6 +205,11 @@ class ToolExecutor:
                     "/agent/mark-outcome",
                     {"intakeId": self._intake_id, "outcome": args.get("outcome", "unreachable")},
                 )
+            # Retained so a re-added schema still works, but note_caller is no longer offered:
+            # every call cost the caller a turn. The model would speak, call the tool, then start a
+            # NEW response after the result — "Hi Michael, let me get oriented" followed by "Hi
+            # Michael. What can I help you with?". The name is now read off the transcript instead,
+            # which costs nothing and produces the sentence the caller should have heard first.
             if name == "note_caller":
                 # Purely local, like take_message: nothing to post anywhere, it just needs to reach
                 # the bridge's state so the finished call carries a name. Kept OUT of take_message

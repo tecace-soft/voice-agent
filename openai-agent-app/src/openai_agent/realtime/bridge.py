@@ -99,6 +99,21 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     # different tools. The parameter is set by the /incoming webhook; anything without it — every
     # outbound call, unchanged — falls through to the outbound path below.
     is_inbound = str(params.get("direction", "")).strip().lower() == "inbound"
+
+    # Start connecting to the model NOW, before anything else. The business lookup below is an
+    # HTTP round trip to another continent's edge and the connection handshake is another; run
+    # back to back they are ~1.5s of the silence a caller sits through before the agent speaks,
+    # and neither one needs the other's result.
+    #
+    # INVARIANT: nothing between here and the `async with` below may raise, or the socket is
+    # orphaned. fetch_business_config catches everything and returns None (a backend outage must
+    # not take the phone line down), and the rest is string formatting and a dict literal.
+    _connecting = asyncio.create_task(
+        websockets.connect(
+            _OPENAI_WS.format(model=cfg.openai_model),
+            additional_headers={"Authorization": f"Bearer {cfg.openai_api_key}"},
+        )
+    )
     business = None  # set on the inbound path once we know whose call this is
     caller = str(params.get("caller", ""))
     is_mini = "mini" in cfg.openai_model.lower()
@@ -176,9 +191,7 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         tools = None  # the outbound default set
     executor = ToolExecutor(cfg, intake_id=params.get("intake_id", ""))
 
-    # 3. Open the Realtime session and configure it.
-    url = _OPENAI_WS.format(model=cfg.openai_model)
-    headers = {"Authorization": f"Bearer {cfg.openai_api_key}"}
+    # 3. Configure the Realtime session on the connection opened above.
     state = {
         "stream_sid": stream_sid,
         "response_active": False,
@@ -244,7 +257,7 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     # meaningless inbound — a human already dialed us — so we neither arm it nor watch it there.
     amd_queue = amd.register(call_sid) if not is_inbound else None
     try:
-        async with websockets.connect(url, additional_headers=headers) as openai_ws:
+        async with await _connecting as openai_ws:
             # The names this particular call will contain. The business's own name is the one the
             # transcriber gets wrong most, because it is the one word it has never heard.
             vocabulary = [cfg.agent_name]
@@ -282,12 +295,15 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                     log.info("call arrived forwarded from %s — sending the in-band accept digit",
                              forwarded_from)
                     await _accept_forwarded_call(twilio_ws, cfg, state)
-                # Wait out the rest of the announcement before speaking. A greeting delivered
-                # into "press 1 to accept" reaches nobody: the caller is not bridged until the
-                # press registers, so they would simply never hear it.
-                remaining = state.get("forward_guard_until", 0.0) - time.monotonic()
-                if remaining > 0:
-                    await asyncio.sleep(remaining)
+                # Only the IN-BAND press needs to finish before we speak — the digit is going up
+                # this same stream, and a greeting mixed into it reaches nobody. Twilio's TwiML
+                # press happened before this stream even opened, so on that path there is nothing
+                # to wait for: the guard below still keeps the announcement's tail out of the
+                # model's ears, but it no longer sits the caller in silence first.
+                if cfg.forward_accept_inband:
+                    remaining = state.get("forward_guard_until", 0.0) - time.monotonic()
+                    if remaining > 0:
+                        await asyncio.sleep(remaining)
                 # Whatever was buffered during the prompt is the announcement, not speech.
                 await openai_ws.send(json.dumps({"type": "input_audio_buffer.clear"}))
 
