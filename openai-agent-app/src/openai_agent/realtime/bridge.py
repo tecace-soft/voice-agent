@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 
 import websockets
@@ -372,6 +373,47 @@ def _fill_lead_turn(state: dict, item_id: str, text: str | None) -> None:
         log.info("LEAD: %s", line)
 
 
+# The agent greeting the caller by name — "Hi Michael,", "Thanks Dana." It does this naturally and
+# almost always, which makes it a better signal than anything the caller said: the model has already
+# done the work of deciding which word was the name.
+_ADDRESSED = re.compile(
+    r"\b(?i:hi|hello|hey|thanks|thank you|nice to meet you|good to meet you)[,!]?\s+"
+    r"([A-Z][a-zA-Z\u2019'-]{1,20})\b"
+)
+# Words that follow a greeting and are emphatically not names.
+_NOT_A_NAME = {
+    "there", "again", "everyone", "folks", "all", "sir", "madam", "ma", "you", "so", "much",
+    "for", "and", "ok", "okay", "yes", "no", "well", "sure", "good", "great",
+}
+
+
+def _name_from_transcript(turns: list[tuple[str, str]]) -> str:
+    """Recover the caller's name from what was said, when the tool call never came.
+
+    note_caller is the intended route and this is the safety net, because a model that is mid
+    conversation does not reliably stop to make a silent tool call — and a transcript that plainly
+    reads "Caller: Michael." above a record saying nobody gave a name is indefensible.
+
+    The rule is deliberately narrow: the AGENT must have addressed someone by name, AND that name
+    must also appear in something the CALLER said. Either signal alone misfires — the agent says
+    "Hi there", or the caller mentions a third party — but a word the agent used to address them
+    that the caller also uttered is, in practice, their name.
+    """
+    said_by_caller = " ".join(text for who, text in turns if who != "agent").lower()
+    if not said_by_caller:
+        return ""
+    for who, text in turns:
+        if who != "agent":
+            continue
+        for candidate in _ADDRESSED.findall(text):
+            if candidate.lower() in _NOT_A_NAME:
+                continue
+            # The cross-check: the caller has to have said it too.
+            if re.search(rf"\b{re.escape(candidate.lower())}\b", said_by_caller):
+                return candidate
+    return ""
+
+
 def _turns(state: dict) -> list[tuple[str, str]]:
     """The transcript as completed turns, dropping slots whose words never arrived.
 
@@ -479,9 +521,15 @@ async def _finalize_call(
                 # Sent so the backend can spot a carrier that presents the FORWARDING line as the
                 # caller — if the two match, the caller ID is not the caller's.
                 "forwardedFrom": params.get("forwarded_from", ""),
-                # A name confirmed for a MESSAGE is the most deliberate one, so it wins; otherwise
-                # whatever they told us in conversation.
-                "callerName": msg.get("caller_name") or state.get("caller_name") or "",
+                # A name confirmed for a MESSAGE is the most deliberate one, so it wins; then the
+                # one the agent recorded as it heard it; then, if it never made that call, the one
+                # the conversation itself shows.
+                "callerName": (
+                    msg.get("caller_name")
+                    or state.get("caller_name")
+                    or _name_from_transcript(turns)
+                    or ""
+                ),
                 "callbackNumber": msg.get("callback_number") or "",
                 "request": msg.get("message") or "",
                 "summary": _summary(state),
