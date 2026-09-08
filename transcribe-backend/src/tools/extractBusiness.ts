@@ -29,9 +29,18 @@ export class ExtractionError extends Error {}
 
 // Caps, applied after the model. Generous enough for a real business, tight enough that a pasted
 // novel can't become a prompt nobody can afford to send on every call.
-const MAX_FACTS = 25;
+//
+// Raised from 25/4000: those were sized for "a business describes itself in a few paragraphs", and
+// a real FAQ is several times that — a spa's prices, discounts, gift certificates and treatment
+// rules run to roughly fifty separate things a caller might ask. At the old limit the tail was
+// dropped silently, so the agent simply did not know the answers and deferred them to a person.
+//
+// Every fact is sent on EVERY call, so this is a real cost: about 750 extra tokens of system
+// prompt at the new ceiling. That buys an assistant that can actually answer, and the measured
+// time to first audio (~2.4s) has plenty of room for it.
+const MAX_FACTS = 50;
 const MAX_FACT_CHARS = 200;
-const MAX_TOTAL_CHARS = 4000;
+const MAX_TOTAL_CHARS = 7000;
 export const MAX_SOURCE_CHARS = 20_000;
 
 // Openers that are instructions rather than facts. Deliberately narrow: "always" and "never" are
@@ -68,7 +77,9 @@ Produce ONLY what the text actually says:
   Washington." is right. "Leveraging synergistic solutions" is not.
 - Keep prices, but only exactly as written. Never round them, never convert them to a range, and
   never add one that isn't there.
-- NEVER output a street address, even if the text contains one. City and region only.
+- Keep a street address if the text gives one, written the way it would be SPOKEN — "3815 196th
+  Street Southwest, Suite 160, Lynnwood, Washington", not an abbreviated postal line. A caller
+  asking where a business is wants to be able to drive there.
 - open_hour and close_hour are 24-hour integers for a normal weekday, or null if the text doesn't
   say. hours_text is how the hours should be spoken, e.g. "Monday to Friday, 8 AM to 5 PM".
 
