@@ -137,9 +137,10 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     if is_inbound:
         dialled = str(params.get("dialled", ""))
         log.info(
-            "inbound call started from %r to %r (transfer_failed=%r)",
+            "inbound call started from %r to %r on call %s (transfer_failed=%r)",
             caller or "unknown",
             dialled or "unknown",
+            call_sid or "?",
             params.get("transfer_failed"),
         )
 
@@ -491,6 +492,7 @@ _OUTCOME_SUMMARY = {
     # Inbound screening outcomes.
     "transferred": "Transferred the caller to a person.",
     "transfer_failed": "Tried to transfer but nobody was available.",
+    "caller_hung_up": "Caller hung up before the transfer could go through.",
     "message": "Took a message for the team.",
     "callback": "Asked to be called back later.",
     "declined": "Not interested — declined.",
@@ -1046,17 +1048,24 @@ async def _do_transfer(cfg: Config, openai_ws, state: dict) -> None:
     if state.get("transfer_done"):
         return
     state["transfer_done"] = True
-    ok = await transfer.redirect_to_human(
+    result = await transfer.redirect_to_human(
         cfg,
         call_sid=state.get("call_sid", ""),
         reason=state.get("transfer_pending") or "",
         caller=state.get("caller", ""),
         human_number=state.get("human_number", ""),
     )
-    if ok:
+    if result == "ok":
         state["outcome"] = "transferred"
         return
-    # The redirect never went out (no SID, no configured number, Twilio refused). The caller is
+    if result == "call_gone":
+        # The caller hung up while the hold line was playing. There is nobody to recover for, and
+        # calling this "nobody was available" would blame the colleague for the caller leaving.
+        log.info("transfer aborted — the caller had already hung up")
+        state["transfer_pending"] = None
+        state["outcome"] = "caller_hung_up"
+        return
+    # The redirect never went out (no SID, no configured number, Twilio refused) and the caller IS
     # still connected to us, so recover in conversation rather than dropping them.
     log.warning("transfer failed — falling back to taking a message")
     state["transfer_pending"] = None

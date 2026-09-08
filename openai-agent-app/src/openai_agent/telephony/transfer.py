@@ -119,32 +119,48 @@ def build_after_transfer_twiml(cfg: Config, *, dial_status: str, caller: str) ->
 
 async def redirect_to_human(
     cfg: Config, *, call_sid: str, reason: str, caller: str, human_number: str = ""
-) -> bool:
+) -> str:
     """Redirect the live call out of the media stream and into the whispered dial.
 
     Runs the blocking Twilio SDK call off the event loop so the audio relay isn't stalled while the
-    REST request is in flight. Returns False if the redirect could not be issued, so the caller can
-    be told something honest instead of sitting in silence.
+    REST request is in flight.
+
+    Returns "ok", "call_gone" (the caller had already hung up — there is nobody left to apologise
+    to), or "failed" (the redirect was refused for some other reason and the caller IS still on the
+    line). The distinction matters: recovering in conversation is right for one and pointless for
+    the other, and filing both as "nobody was available" misreports what happened.
     """
     if not call_sid:
         log.warning("transfer requested but no call SID is known for this call")
-        return False
+        return "failed"
     target = human_number or cfg.human_number
     if not target:
         log.warning("transfer requested but no number is configured for this business")
-        return False
+        return "failed"
     twiml = build_transfer_twiml(cfg, reason=reason, caller=caller, human_number=target)
 
     def _update() -> None:
         Client(cfg.twilio_account_sid, cfg.twilio_auth_token).calls(call_sid).update(twiml=twiml)
 
+    # Twilio's own view of the call, asked for only when the redirect fails. "Call is not
+    # in-progress" is the same 400 whether the caller hung up, the leg never answered, or we are
+    # holding the wrong SID — and those need completely different fixes.
+    def _status() -> str:
+        try:
+            return Client(cfg.twilio_account_sid, cfg.twilio_auth_token).calls(call_sid).fetch().status or "?"
+        except Exception as exc:  # noqa: BLE001 — diagnostics must not raise over a failed transfer
+            return f"unreadable ({exc})"
+
     try:
         await asyncio.to_thread(_update)
     except Exception as exc:  # noqa: BLE001 — a failed transfer must not drop the call
-        log.warning("could not transfer call %s: %s", call_sid, exc)
-        return False
+        status = await asyncio.to_thread(_status)
+        log.warning(
+            "could not transfer call %s — Twilio says the call is %r: %s", call_sid, status, exc
+        )
+        return "call_gone" if status in ("completed", "canceled", "busy", "no-answer", "failed") else "failed"
     log.info("transferred call %s to %s (%s)", call_sid, target, reason)
-    return True
+    return "ok"
 
 
 def _spoken_digits(number: str) -> str:
