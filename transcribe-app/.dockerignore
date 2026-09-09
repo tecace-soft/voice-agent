@@ -1,0 +1,39 @@
+# What must NOT be sent to the Docker daemon when building this image.
+#
+# The Dockerfile only COPYs requirements.txt, src/ and scripts/, so nothing below would have ended
+# up in a layer anyway. This is about the build CONTEXT: without it, every build ships the whole
+# directory — including .env and .env.test — to the daemon. Secrets should not make that trip even
+# when they do not land in the image, and the rest is just wasted transfer on every rebuild.
+#
+# The config files are MOUNTED at run time instead (see openai-agent-app/docker-compose.yml), which
+# is why excluding them here costs nothing.
+
+# ---- secrets: mounted at run time, never built in ----
+.env
+.env.*
+!.env.example
+!.env.test.example
+service-account.json
+*.pem
+*.key
+
+# ---- local development clutter ----
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- runtime state and output, which belong to a checkout and not to an image ----
+state.json
+*.log
+downloads/
+tmp/
+
+# ---- not needed to run ----
+.git/
+.gitignore
+README.md
+deploy/

@@ -1,0 +1,38 @@
+# systemd unit for the writer that puts the voice agent's taken messages into the TEST sheet.
+#
+# This runs ALONGSIDE the live voicemail poller and shares nothing with it. The poller reads
+# voicemail email and writes to the client's sheet from .env; this reads the agent's messages from
+# the backend and writes to the test sheet from .env.test. Neither can reach the other's data:
+# the script refuses to start unless every destination setting is present in .env.test AND differs
+# from the live one.
+#
+# Install (as root; adjust the paths if the repo/venv live elsewhere):
+#   cp deploy/agent-messages-writer.service /etc/systemd/system/agent-messages-writer.service
+#   systemctl daemon-reload
+#   systemctl enable --now agent-messages-writer
+#
+# Watch it:      journalctl -u agent-messages-writer -f
+# Restart it:    systemctl restart agent-messages-writer
+# Stop it:       systemctl stop agent-messages-writer
+#
+# The first lines of the log say which sheet and which backend it resolved, and that both came
+# from .env.test. If it exits immediately, read those lines — it will say exactly which setting
+# is missing or is still pointing at the live value.
+
+[Unit]
+Description=Voice agent message writer, test sheet (transcribe-app)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/voice-agent/transcribe-app
+ExecStart=/root/voice-agent/transcribe-app/.venv/bin/python scripts/write_agent_messages.py --watch
+Restart=always
+RestartSec=10
+# A misconfiguration exits 1 immediately. Without this, Restart=always would spin on it forever and
+# bury the reason in a wall of identical tracebacks.
+RestartPreventExitStatus=1
+
+[Install]
+WantedBy=multi-user.target

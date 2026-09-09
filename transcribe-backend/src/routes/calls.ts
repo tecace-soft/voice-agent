@@ -5,7 +5,9 @@ import {
   deleteInboundCall,
   insertInboundCall,
   listAllInboundCalls,
+  listCallsAwaitingSheet,
   listInboundCalls,
+  markSheetWritten,
 } from "../db/inboundCalls.js";
 
 // Calls the voice agent answered, and the conversations it had.
@@ -39,6 +41,7 @@ export const calls = new Elysia({ prefix: "/calls" })
         callerName: t.Optional(t.String({ maxLength: 200 })),
         callbackNumber: t.Optional(t.String({ maxLength: 40 })),
         request: t.Optional(t.String({ maxLength: 2000 })),
+        requestedTime: t.Optional(t.String({ maxLength: 200 })),
         summary: t.Optional(t.String({ maxLength: 2000 })),
         outcome: t.Optional(t.String({ maxLength: 100 })),
         callbackRequested: t.Optional(t.Boolean()),
@@ -80,6 +83,38 @@ export const calls = new Elysia({ prefix: "/calls" })
       const removed = await deleteInboundCall(params.id, user.role === "admin" ? null : user.id);
       if (!removed) return status(404, { error: "not_found", message: "No such call." });
       return { status: "deleted" };
+    },
+    { params: t.Object({ id: t.String({ maxLength: 64 }) }) },
+  )
+
+  // ---- the spreadsheet hand-off -------------------------------------------------------------
+  //
+  // Messages the assistant took are written to a Google Sheet by transcribe-app, which already
+  // owns all the sheet logic — tab matching, name-based column mapping, filling gaps rather than
+  // appending past stray data. Reimplementing that here would be a second place to get it wrong,
+  // so this service only holds the queue and the claim.
+  //
+  // Same shared key as the agent's own calls: this is server-to-server, with no session.
+  .get(
+    "/awaiting-sheet",
+    async ({ headers, status }) => {
+      if (!env.agentConfigKey || headers["x-agent-key"] !== env.agentConfigKey) {
+        return status(401, { error: "unauthorized" });
+      }
+      return { calls: await listCallsAwaitingSheet() };
+    },
+  )
+
+  .post(
+    "/:id/sheet-written",
+    async ({ headers, params, status }) => {
+      if (!env.agentConfigKey || headers["x-agent-key"] !== env.agentConfigKey) {
+        return status(401, { error: "unauthorized" });
+      }
+      // `false` means it was already stamped. That is a success from the caller's point of view —
+      // the row exists — so it is not an error, just nothing left to do.
+      const claimed = await markSheetWritten(params.id);
+      return { status: claimed ? "marked" : "already_written" };
     },
     { params: t.Object({ id: t.String({ maxLength: 64 }) }) },
   );

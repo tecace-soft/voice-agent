@@ -199,6 +199,13 @@ export async function initDb(): Promise<void> {
       created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  // When the caller wants an appointment. Only ever set from what they SAID — the assistant has no
+  // calendar, so this is a request to be actioned by a person, not a booking.
+  await sql`ALTER TABLE inbound_calls ADD COLUMN IF NOT EXISTS requested_time TEXT`;
+  // Stamped once the message has been written out to the spreadsheet, so a re-run cannot duplicate
+  // a row. NULL means "still owed a row"; a message is only ever claimed by one writer.
+  await sql`ALTER TABLE inbound_calls ADD COLUMN IF NOT EXISTS sheet_written_at TIMESTAMPTZ`;
+
   // The list is always "this customer's calls, newest first" — the one query the page makes.
   await sql`
     CREATE INDEX IF NOT EXISTS idx_inbound_calls_user_started
@@ -250,6 +257,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT agent_name, greeting FROM business_profiles LIMIT 1`;
     await sql`SELECT transfer_topics FROM business_profiles LIMIT 1`;
     await sql`SELECT 1 FROM inbound_calls LIMIT 1`;
+    await sql`SELECT requested_time, sheet_written_at FROM inbound_calls LIMIT 1`;
     return;
   } catch {
     await initDb();

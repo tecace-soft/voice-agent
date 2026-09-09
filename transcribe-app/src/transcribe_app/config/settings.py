@@ -105,6 +105,9 @@ class Config:
     # ---- Metrics reporting (optional — powers the dashboard's Transcriptions tab) ----
     # After each run we POST the RunSummary to <BACKEND_URL>/transcribe/runs. Empty = don't report.
     backend_url: str
+    # Shared server-to-server key, the same one the voice agent uses. Only needed to pull the
+    # messages the agent took; the voicemail pipeline never touches it.
+    agent_key: str
     # Matches TRANSCRIBE_INGEST_KEY on the backend; sent as the x-transcribe-key header. Empty = none.
     transcribe_ingest_key: str
     # The address reported runs are attributed to. Defaults to IMAP_USERNAME, which is the mailbox
@@ -154,6 +157,7 @@ class Config:
             sheet_range=_optional("SHEET_RANGE", "Voicemails!A1"),
             email_link_template=_optional("EMAIL_LINK_TEMPLATE"),
             backend_url=_optional("BACKEND_URL"),
+            agent_key=_optional("AGENT_CONFIG_KEY"),
             transcribe_ingest_key=_optional("TRANSCRIBE_INGEST_KEY"),
             mailbox_email_override=_optional("VOICEMAIL_MAILBOX_EMAIL"),
             poll_interval_seconds=float(_optional("POLL_INTERVAL_SECONDS", "300")),

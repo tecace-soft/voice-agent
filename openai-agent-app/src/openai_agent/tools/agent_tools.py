@@ -159,6 +159,12 @@ INBOUND_TOOL_SCHEMAS: list[dict] = [
                     "type": "string",
                     "description": "What the call is regarding, in one or two sentences.",
                 },
+                "requested_time": {
+                    "type": "string",
+                    "description": "When they want the appointment, in THEIR words - 'Tuesday "
+                    "afternoon', 'the 14th at 3'. Leave empty if they did not say. Never convert "
+                    "it to a date or guess one: a person reads this and books it.",
+                },
             },
             "required": ["message"],
         },

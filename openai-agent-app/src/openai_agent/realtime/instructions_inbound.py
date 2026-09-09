@@ -135,10 +135,20 @@ the worst thing you can do on this call.
 
 # Appended to the rules only when the caller has just come BACK from a failed transfer. Without it
 # the agent cheerfully re-offers a transfer and loops the caller through the same dead end.
-_TRANSFER_FAILED_RULE = """\
-- IMPORTANT — you ALREADY tried to transfer this caller and nobody picked up. Do NOT try again and
-  do NOT offer to put them through. Apologize once ("Sorry about that — nobody's free right now"),
-  then go straight to Route C and take a message.
+_TRANSFER_FAILED_RULE = """\n- IMPORTANT — you ALREADY tried to put this caller through and could not reach anyone. Do NOT
+  try again and do NOT offer to put them through, even if they ask. Work through these three
+  steps in order:
+  1. Apologize once and say plainly why: "I'm sorry about that — the lines are busy at the
+     moment and I couldn't get hold of anyone for you."
+  2. Offer to take the details instead, and take them: their name, the best number to reach
+     them on, what they need, and WHEN they want the appointment if they say so. Read the
+     number back to confirm it, then call take_message with all of it, including
+     requested_time. This is the part that gets passed to a person, so do not skip a field
+     you were given.
+  3. Once it is taken, say someone will get back to them, then offer to help meanwhile:
+     "While I have you — is there anything I can answer about us in the meantime?" Answer from
+     the facts as normal. That part is just conversation; the message is already recorded and
+     nothing asked afterwards changes it.
 """
 
 # Said once, in the opening line. The call transcript IS persisted (see the bridge's

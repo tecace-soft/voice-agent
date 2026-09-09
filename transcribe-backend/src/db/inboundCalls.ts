@@ -29,6 +29,8 @@ export interface InboundCall {
   callerName: string | null;
   callbackNumber: string | null;
   request: string | null;
+  /** When the caller wants the appointment, in their own words. Never a booking we made. */
+  requestedTime: string | null;
   summary: string | null;
   outcome: string | null;
   callbackRequested: boolean;
@@ -45,6 +47,7 @@ export interface InboundCallInput {
   callerName?: string;
   callbackNumber?: string;
   request?: string;
+  requestedTime?: string;
   summary?: string;
   outcome?: string;
   callbackRequested?: boolean;
@@ -61,6 +64,7 @@ const COLUMNS = sql`
   caller_name        AS "callerName",
   callback_number    AS "callbackNumber",
   request,
+  requested_time     AS "requestedTime",
   summary,
   outcome,
   callback_requested AS "callbackRequested",
@@ -111,7 +115,7 @@ export async function insertInboundCall(input: InboundCallInput): Promise<Inboun
   const [row] = await sql`
     INSERT INTO inbound_calls (
       user_id, dialled, caller, caller_name, callback_number, request, summary, outcome,
-      callback_requested, duration_seconds, turns, started_at
+      callback_requested, duration_seconds, turns, started_at, requested_time
     ) VALUES (
       (SELECT user_id FROM agent_numbers WHERE phone_e164 = ${dialled}),
       ${dialled},
@@ -124,7 +128,8 @@ export async function insertInboundCall(input: InboundCallInput): Promise<Inboun
       ${input.callbackRequested ?? false},
       ${input.durationSeconds ?? null},
       ${JSON.stringify(input.turns ?? [])}::jsonb,
-      ${input.startedAt ? new Date(input.startedAt) : new Date()}
+      ${input.startedAt ? new Date(input.startedAt) : new Date()},
+      ${input.requestedTime ?? null}
     )
     RETURNING ${COLUMNS}
   `;
@@ -169,5 +174,38 @@ export async function deleteInboundCall(id: string, ownerId: string | null): Pro
     ownerId === null
       ? await sql`DELETE FROM inbound_calls WHERE id = ${id} RETURNING id`
       : await sql`DELETE FROM inbound_calls WHERE id = ${id} AND user_id = ${ownerId} RETURNING id`;
+  return rows.length > 0;
+}
+
+/**
+ * Messages the assistant took that still owe a row in the spreadsheet.
+ *
+ * Only calls where a message was actually TAKEN qualify — a call answered and dealt with is not a
+ * message, and the sheet is a to-do list for a person, not a call log. `request` is what the caller
+ * wanted, and its presence is what makes this a message rather than a conversation.
+ */
+export async function listCallsAwaitingSheet(limit = 100): Promise<InboundCall[]> {
+  const rows = (await sql`
+    SELECT ${COLUMNS} FROM inbound_calls
+    WHERE sheet_written_at IS NULL
+      AND request IS NOT NULL AND btrim(request) <> ''
+    ORDER BY started_at ASC
+    LIMIT ${limit}
+  `) as unknown as InboundCall[];
+  return rows.map(withTurns);
+}
+
+/**
+ * Mark a message as written out. Idempotent, and deliberately a no-op once already stamped: a
+ * writer that crashes after writing the row but before reporting back must not cause a second row
+ * on its next run, and a second writer must not be able to un-claim the first one's work.
+ */
+export async function markSheetWritten(id: string): Promise<boolean> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return false;
+  const rows = await sql`
+    UPDATE inbound_calls SET sheet_written_at = now()
+    WHERE id = ${id} AND sheet_written_at IS NULL
+    RETURNING id
+  `;
   return rows.length > 0;
 }

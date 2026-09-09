@@ -48,6 +48,33 @@ services:
       - "traefik.http.routers.openai-poller.tls.certresolver=mytlschallenge"
       - "traefik.http.services.openai-poller.loadbalancer.server.port=5060"
 
+  # The messages the assistant TAKES, written into the test spreadsheet as rows.
+  #
+  # Here rather than in transcribe-app because it only has work to do while the agent is live: it
+  # turns "a caller wanted an appointment and nobody was free" into a row the front desk can act
+  # on. Bringing the agent up brings this up with it, so a message can never sit unwritten because
+  # somebody forgot a second command.
+  #
+  # NOT the live voicemail poller. That is a different program, on systemd, reading a mailbox and
+  # writing to the client's sheet — untouched by any of this.
+  #
+  # No ingress: it makes outbound requests only, so it needs no Traefik labels and no network.
+  messages:
+    build:
+      context: ../transcribe-app
+    restart: unless-stopped
+    volumes:
+      # .env.test decides WHERE rows go and must supply every such setting itself.
+      - ../transcribe-app/.env.test:/app/.env.test:ro
+      # .env is mounted read-only and is NEVER used to do work — only so the writer can refuse to
+      # start if .env.test points at the same sheet. Without it that check cannot run, and the
+      # writer treats a missing .env as a reason to stop rather than a reason to continue.
+      - ../transcribe-app/.env:/app/.env:ro
+      # No credentials mount: this deployment supplies the service account as
+      # GOOGLE_CLIENT_EMAIL + GOOGLE_PRIVATE_KEY inside .env, which is already mounted above.
+      # Same account for both sheets — access is decided by which sheet id is configured, not by
+      # which key signs the request.
+
 networks:
   # Traefik's existing network, attached as external so we don't recreate it.
   traefik:

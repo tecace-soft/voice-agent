@@ -577,6 +577,7 @@ async def _finalize_call(
                 "callerName": caller_name,
                 "callbackNumber": msg.get("callback_number") or "",
                 "request": msg.get("message") or "",
+                "requestedTime": msg.get("requested_time") or "",
                 "summary": _summary(state),
                 "outcome": state.get("outcome") or "",
                 "callbackRequested": bool(state.get("messages")),
