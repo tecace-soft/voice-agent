@@ -15,8 +15,9 @@ on top of `.env` the way run_test.py does it — a missing key there would silen
 client's value, which is exactly the bleed this script must not have. If one of those keys is
 absent from `.env.test`, this refuses to start rather than falling back to something that works.
 
-`.env` is still read, but ONLY as a blocklist: to know which sheet id and which backend must be
-refused. No value from it is ever used to do work. Everything else — the Google credentials above
+`.env` is still read, but ONLY as a blocklist, and only for the SPREADSHEET ID — the one setting
+that decides which document is written to. A tab name inside a different document is harmless, and
+the backend and shared key are meant to be the same on both sides. No value from it is ever used to do work. Everything else — the Google credentials above
 all — is shared on purpose: it is the same service account either way, and duplicating a file path
 would add ceremony without adding safety. The run prints where each setting came from, so this is
 checkable rather than merely claimed.
@@ -49,8 +50,16 @@ ENV_TEST = ROOT / ".env.test"
 
 log = logging.getLogger("write-agent-messages")
 
-# The settings that decide WHERE data lands. Each must be set in .env.test, by .env.test.
-DESTINATION_KEYS = ("GOOGLE_SHEET_ID", "SHEET_RANGE", "BACKEND_URL", "AGENT_CONFIG_KEY")
+# Required in .env.test, so nothing this script uses can inherit silently from .env.
+REQUIRED_KEYS = ("GOOGLE_SHEET_ID", "SHEET_RANGE", "BACKEND_URL", "AGENT_CONFIG_KEY")
+
+# Of those, the ones that must ALSO differ from the live value. Only the spreadsheet id qualifies:
+# it alone decides which document is written to. The tab name is a heading INSIDE that document, so
+# once the id differs the tab can say whatever it likes — two spreadsheets may perfectly reasonably
+# both have a "Voicemails 2026" tab. BACKEND_URL and AGENT_CONFIG_KEY are meant to match: there is
+# one backend and one shared key. Demanding they differ would be ceremony that blocks a correct
+# setup while protecting nothing.
+MUST_DIFFER_FROM_LIVE = ("GOOGLE_SHEET_ID",)
 
 
 def _load_isolated_config() -> tuple[Config, list[str]]:
@@ -76,7 +85,7 @@ def _load_isolated_config() -> tuple[Config, list[str]]:
 
     live = dotenv_values(ENV_LIVE)
 
-    for key in DESTINATION_KEYS:
+    for key in REQUIRED_KEYS:
         value = (test.get(key) or "").strip()
         if not value:
             problems.append(
@@ -86,11 +95,11 @@ def _load_isolated_config() -> tuple[Config, list[str]]:
             # Remove it outright so nothing downstream can quietly pick up the live value.
             os.environ.pop(key, None)
             continue
-        if value == (live.get(key) or "").strip():
+        if key in MUST_DIFFER_FROM_LIVE and value == (live.get(key) or "").strip():
             problems.append(
-                f"{key} in .env.test is identical to the one in .env:\n"
+                f"{key} in .env.test is the SAME SPREADSHEET as .env:\n"
                 f"      {value}\n"
-                f"      That is the live value. Give the test run its own."
+                f"      That is the client's document. Give the test run its own sheet id."
             )
         # .env.test wins, explicitly — not by override ordering that a missing key can defeat.
         os.environ[key] = value

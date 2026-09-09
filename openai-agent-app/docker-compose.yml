@@ -62,7 +62,12 @@ services:
   messages:
     build:
       context: ../transcribe-app
-    restart: unless-stopped
+    # on-failure, not unless-stopped: the only way this exits non-zero is a configuration it has
+    # refused (a missing key, or one still pointing at the client's sheet), and that is permanent
+    # until a person fixes it. Restarting forever would bury the reason in a wall of identical
+    # refusals. Transient trouble — the backend being briefly unreachable — is caught inside the
+    # loop and never reaches the exit code, so nothing recoverable is given up on here.
+    restart: on-failure:3
     volumes:
       # .env.test decides WHERE rows go and must supply every such setting itself.
       - ../transcribe-app/.env.test:/app/.env.test:ro
