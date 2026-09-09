@@ -124,7 +124,7 @@ def _run_once(cfg: Config, *, dry_run: bool) -> tuple[int, int]:
     written = failed = 0
 
     for msg in pending:
-        row = agent_messages.build_row(msg, cfg.timezone)
+        row = agent_messages.build_row(msg, cfg.business_timezone)
         who = msg.caller_name or "(no name)"
         if dry_run:
             log.info("would write: %s | %s | %s | %s", row[0], who, msg.phone, msg.summary)
@@ -179,9 +179,18 @@ def main() -> int:
             log.error("  - %s", problem)
         return 1
 
-    log.info("sheet   : %s (%s) — from .env.test", cfg.google_sheet_id, cfg.sheet_range)
+    # An id nobody can recognise is a bad last line of defence. The guard can only catch a value
+    # INHERITED from .env — it cannot know that an id typed into .env.test by hand is the client's.
+    # A human reading "Olympus Spa Voicemails 2026" in the log knows instantly; reading
+    # "1nWQso4Jkc..." knows nothing. So the document is named out loud before anything is written.
+    try:
+        title = SheetWriter(cfg).check()
+    except Exception as exc:  # noqa: BLE001 — reported, not fatal: the write below will say more
+        title = f"(could not read the title: {exc})"
+    log.info("sheet   : %r", title)
+    log.info("          %s (%s) — from .env.test", cfg.google_sheet_id, cfg.sheet_range)
     log.info("backend : %s — from .env.test", cfg.backend_url)
-    log.info("timezone: %s", cfg.timezone)
+    log.info("timezone: %s", cfg.business_timezone)
     if args.dry_run:
         log.info("dry run — nothing will be written")
 
