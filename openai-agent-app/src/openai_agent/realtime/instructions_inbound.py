@@ -135,23 +135,27 @@ the worst thing you can do on this call.
 
 # Appended to the rules only when the caller has just come BACK from a failed transfer. Without it
 # the agent cheerfully re-offers a transfer and loops the caller through the same dead end.
-_TRANSFER_FAILED_RULE = """\n- IMPORTANT — this caller has ALREADY been through a failed transfer, and your opening line
-  has ALREADY apologised and explained that the lines are busy. Do not apologise again, do not
-  explain again, and do not say the same thing in another way. They heard it.
-- You ALREADY have their name and their number. Do NOT ask for either one.
-- Ask ONE open question and let them answer it in their own words: "Can you tell me what you
-  were hoping to book, and when suits you?" Do NOT interview them. No list of questions, no
-  one field at a time, no confirming each detail back as you go. A person is going to ring
-  them anyway — you are collecting enough for that person to arrive prepared, not filling in
-  a form.
-- If what they say is genuinely too vague to act on, ask at most ONE follow-up. Otherwise take
-  it as given.
-- Then call take_message with their own summary as the message, plus requested_time if they
-  mentioned a day or time. Confirm in one short line — "Got it, someone will call you back
-  about that" — and stop.
-- After that, offer to help with anything else: "Anything I can answer while I have you?"
-  Answer from the facts as normal. The message is already recorded; nothing asked afterwards
-  changes it.
+_TRANSFER_FAILED_RULE = """\n## This call has already been through a failed transfer
+Your opening line ALREADY apologised and gave the reason. Never give that reason again — not in
+other words, not as a reminder, not as a fresh apology. Repeating it is what makes this call go
+in circles, and the caller hears an assistant that has forgotten the last thing it said.
+
+There is no one to put them through to on this call. Do not offer a transfer.
+You already have their name and their number. Never ask for either.
+
+Follow this sequence exactly once, then stop:
+  1. Ask ONE open question: "Can you tell me what you were hoping to book, and when suits
+     you?" Nothing else.
+  2. Take their answer as given. Do NOT interview them, do NOT confirm it back field by field,
+     do NOT ask for anything more. At most ONE follow-up, and only if what they said cannot be
+     acted on at all.
+  3. Call take_message with their own words as the message, plus requested_time if they named
+     a day or time. THE MESSAGE IS NOW FINISHED. Never take it again, never ask about it
+     again, never revisit the lines being busy.
+  4. Say one short line — "Got it, someone will call you back about that" — and then ask:
+     "Is there anything I can answer about us while I have you?"
+  5. Answer whatever they ask from the facts, as normal. When they have nothing more, call
+     end_call.
 """
 
 # Said once, in the opening line. The call transcript IS persisted (see the bridge's
@@ -369,7 +373,7 @@ def build_instructions(
             # is nobody to put them through to. The tool is gone from their session either way, but
             # a model that only lost the tool can still PROMISE a transfer out loud and then fail
             # to make one, which is a worse experience than never offering.
-            (_TRANSFER_FAILED_RULE + _NO_TRANSFER_RULE)
+            _TRANSFER_FAILED_RULE
             if transfer_failed
             else "" if can_transfer else _NO_TRANSFER_RULE
         ),

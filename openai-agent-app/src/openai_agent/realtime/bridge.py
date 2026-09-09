@@ -770,6 +770,7 @@ async def _model_to_caller(
                 elif state.get("hangup_pending") and state.get("spoke_since_user"):
                     await _drain_and_close(twilio_ws, state)
             elif t == "input_audio_buffer.speech_started":
+                state["speech_started_at"] = time.monotonic()
                 # While leaving a voicemail there's no live person to yield to — the machine's own
                 # audio must NOT cut our message or cancel the hang-up. Ignore it.
                 if state.get("leaving_voicemail"):
@@ -793,11 +794,17 @@ async def _model_to_caller(
                 # What the AGENT just said (transcribed from its own audio).
                 _record(state, "agent", evt.get("transcript"))
             elif t == "input_audio_buffer.speech_stopped":
-                # The caller has stopped talking. Everything between here and the agent's first
-                # audio is the gap they sit in — turn detection deciding they are finished, then
-                # the model composing. Measured because the two are fixed by completely different
-                # settings, and guessing which dominates has cost us test calls before.
-                state["quiet_since"] = time.monotonic()
+                # Turn detection has DECIDED the caller finished — not the moment they actually
+                # stopped. The gap a caller feels is therefore two parts with different causes:
+                #   heard Xs   how long detection took to call the turn (VAD_EAGERNESS)
+                #   replied Ys how long the model then took to speak (prompt size, model)
+                # They are logged separately because the fix for one does nothing for the other,
+                # and a single combined number sent us tuning the wrong thing twice.
+                now = time.monotonic()
+                started = state.get("speech_started_at")
+                if started:
+                    log.info("heard %.1fs of speech before calling the turn", now - started)
+                state["quiet_since"] = now
             elif t == "input_audio_buffer.committed":
                 # The caller's speech segment just closed. Claim their place in the transcript NOW,
                 # while we know where it belongs — the words themselves arrive later, out of order.
