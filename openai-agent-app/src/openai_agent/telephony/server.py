@@ -229,8 +229,15 @@ async def after_transfer(request: Request) -> Response:
         return _FORBIDDEN
     dial_status = fields.get("DialCallStatus", "")
     caller = request.query_params.get("caller", "") or fields.get("From", "")
-    log.info("after-transfer: DialCallStatus=%s caller=%s", dial_status, caller)
-    return _xml(transfer.build_after_transfer_twiml(cfg, dial_status=dial_status, caller=caller))
+    dialled = request.query_params.get("dialled", "") or fields.get("To", "")
+    log.info(
+        "after-transfer: DialCallStatus=%s caller=%s dialled=%s", dial_status, caller, dialled
+    )
+    return _xml(
+        transfer.build_after_transfer_twiml(
+            cfg, dial_status=dial_status, caller=caller, dialled=dialled
+        )
+    )
 
 
 @app.post("/amd")

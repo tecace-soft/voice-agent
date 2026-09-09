@@ -28,6 +28,7 @@ from ..tools.agent_tools import INBOUND_TOOL_SCHEMAS, ToolExecutor
 from . import amd
 from . import dtmf
 from .instructions import build_instructions
+from .instructions_inbound import RETURN_GREETING
 from .instructions_inbound import build_instructions as build_instructions_inbound
 from .instructions_neutral import build_instructions_neutral
 from .instructions_mini import build_instructions as build_instructions_mini
@@ -134,6 +135,10 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     caller = str(params.get("caller", ""))
     is_mini = "mini" in cfg.openai_model.lower()
 
+    # Coming BACK from a transfer that reached nobody. The caller has been on this call the whole
+    # time; only our leg of it restarted.
+    returning = str(params.get("transfer_failed", "")).lower() in ("yes", "true", "1")
+
     if is_inbound:
         dialled = str(params.get("dialled", ""))
         log.info(
@@ -173,9 +178,11 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 open_hour=business.open_hour,
                 close_hour=business.close_hour,
                 timezone=cfg.timezone,
-                transfer_failed=str(params.get("transfer_failed", "")).lower() in ("yes", "true", "1"),
-                disclose_recording=cfg.disclose_recording,
-                greeting=business.greeting or cfg.greeting,
+                transfer_failed=returning,
+                # The recording notice is not repeated on the way back — it was given when they
+                # first called, and this is the same conversation from the caller's side.
+                disclose_recording=cfg.disclose_recording and not returning,
+                greeting=RETURN_GREETING if returning else (business.greeting or cfg.greeting),
                 transfer_topics=business.transfer_topics,
                 can_transfer=bool(business.transfer_number),
             )
@@ -255,6 +262,8 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "is_inbound": is_inbound,
         "caller": caller,
         "call_sid": call_sid,
+        # Kept so a transfer can hand it back: the returning leg needs it to find the business.
+        "dialled": str(params.get("dialled", "")),
         # This customer's own person to put callers through to. Empty on an outbound call, and on
         # an inbound one where the business hasn't given us a number — the agent is then told it
         # cannot transfer, rather than offering something that would fail.
@@ -1055,6 +1064,7 @@ async def _do_transfer(cfg: Config, openai_ws, state: dict) -> None:
         reason=state.get("transfer_pending") or "",
         caller=state.get("caller", ""),
         human_number=state.get("human_number", ""),
+        dialled=state.get("dialled", ""),
     )
     if result == "ok":
         state["outcome"] = "transferred"

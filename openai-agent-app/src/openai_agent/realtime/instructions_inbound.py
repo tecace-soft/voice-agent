@@ -167,6 +167,15 @@ _RECORDING_NOTICE = " Just so you know, this call is recorded."
 # behind the disclosure and land oddly.
 DEFAULT_GREETING = "Hello, you've reached {business}, this is {agent}. How may I help you today?"
 
+# Spoken when a caller comes BACK after a transfer that reached nobody. It replaces the greeting
+# rather than following it: they have already been greeted, already said what they want, and
+# already waited — being welcomed a second time as if they had just dialled is the moment they
+# realise nobody is really listening. This says what happened and moves straight on.
+RETURN_GREETING = (
+    "I'm sorry, it appears all our lines are busy. Let me take the reason for your call, "
+    "and we'll make sure to get back to you right away."
+)
+
 
 # The last sentence boundary of ANY kind. Matching only ". " was fine while the greeting was ours
 # and always contained one, but customers write their own: "Good afternoon, Acme! How can I help?"

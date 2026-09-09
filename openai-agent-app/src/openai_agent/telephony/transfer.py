@@ -52,7 +52,7 @@ DEFAULT_RING_SECONDS = 15
 
 
 def build_transfer_twiml(
-    cfg: Config, *, reason: str, caller: str, human_number: str = ""
+    cfg: Config, *, reason: str, caller: str, human_number: str = "", dialled: str = ""
 ) -> str:
     """The TwiML that replaces the live `<Connect><Stream>` with a whispered dial to a human.
 
@@ -67,7 +67,14 @@ def build_transfer_twiml(
         # The company's main line — NOT the caller's number. See the module docstring.
         caller_id=cfg.main_line or cfg.twilio_from_number,
         timeout=cfg.transfer_ring_seconds,
-        action=f"https://{cfg.public_host}/after-transfer?{urlencode({'caller': caller or ''})}",
+        # `dialled` rides along because the caller may come BACK to us. Without it the returning
+        # leg cannot look up whose business this is, and the agent answers a caller it has already
+        # been talking to as a stranger — "Hello, I'm an assistant" — which is worse than the failed
+        # transfer it is apologising for.
+        action=(
+            f"https://{cfg.public_host}/after-transfer?"
+            + urlencode({"caller": caller or "", "dialled": dialled or ""})
+        ),
         method="POST",
     )
     dial.append(
@@ -96,7 +103,9 @@ def build_whisper_twiml(cfg: Config, *, reason: str, caller: str) -> str:
     return str(response)
 
 
-def build_after_transfer_twiml(cfg: Config, *, dial_status: str, caller: str) -> str:
+def build_after_transfer_twiml(
+    cfg: Config, *, dial_status: str, caller: str, dialled: str = ""
+) -> str:
     """Runs when the dial ends, for any reason.
 
     `completed` means the two of them talked and it is over — hang up. Anything else (no-answer,
@@ -111,6 +120,9 @@ def build_after_transfer_twiml(cfg: Config, *, dial_status: str, caller: str) ->
     stream = Stream(url=cfg.stream_url)
     stream.parameter(name="direction", value="inbound")
     stream.parameter(name="caller", value=caller or "")
+    # Same number that was dialled the first time, so the agent picks the business back up and
+    # carries on as the same assistant the caller has been speaking to.
+    stream.parameter(name="dialled", value=dialled or "")
     stream.parameter(name="transfer_failed", value="yes")
     connect.append(stream)
     response.append(connect)
@@ -118,7 +130,8 @@ def build_after_transfer_twiml(cfg: Config, *, dial_status: str, caller: str) ->
 
 
 async def redirect_to_human(
-    cfg: Config, *, call_sid: str, reason: str, caller: str, human_number: str = ""
+    cfg: Config, *, call_sid: str, reason: str, caller: str, human_number: str = "",
+    dialled: str = "",
 ) -> str:
     """Redirect the live call out of the media stream and into the whispered dial.
 
@@ -137,7 +150,9 @@ async def redirect_to_human(
     if not target:
         log.warning("transfer requested but no number is configured for this business")
         return "failed"
-    twiml = build_transfer_twiml(cfg, reason=reason, caller=caller, human_number=target)
+    twiml = build_transfer_twiml(
+        cfg, reason=reason, caller=caller, human_number=target, dialled=dialled
+    )
 
     def _update() -> None:
         Client(cfg.twilio_account_sid, cfg.twilio_auth_token).calls(call_sid).update(twiml=twiml)
