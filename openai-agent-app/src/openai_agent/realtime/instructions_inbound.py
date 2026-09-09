@@ -135,20 +135,20 @@ the worst thing you can do on this call.
 
 # Appended to the rules only when the caller has just come BACK from a failed transfer. Without it
 # the agent cheerfully re-offers a transfer and loops the caller through the same dead end.
-_TRANSFER_FAILED_RULE = """\n- IMPORTANT — you ALREADY tried to put this caller through and could not reach anyone. Do NOT
-  try again and do NOT offer to put them through, even if they ask. Work through these three
-  steps in order:
-  1. Apologize once and say plainly why: "I'm sorry about that — the lines are busy at the
-     moment and I couldn't get hold of anyone for you."
-  2. Offer to take the details instead, and take them: their name, the best number to reach
-     them on, what they need, and WHEN they want the appointment if they say so. Read the
-     number back to confirm it, then call take_message with all of it, including
-     requested_time. This is the part that gets passed to a person, so do not skip a field
-     you were given.
-  3. Once it is taken, say someone will get back to them, then offer to help meanwhile:
-     "While I have you — is there anything I can answer about us in the meantime?" Answer from
-     the facts as normal. That part is just conversation; the message is already recorded and
-     nothing asked afterwards changes it.
+_TRANSFER_FAILED_RULE = """\n- IMPORTANT — this caller has ALREADY been through a failed transfer, and your opening line
+  has ALREADY apologised and explained that the lines are busy. Do not apologise again, do not
+  explain again, and do not say the same thing in another way. They heard it.
+- You ALREADY have their name and their number. Do NOT ask for either one. Asking again is how
+  a caller learns that nothing they said was kept.
+- There is ONE thing left to get: what they actually want — the booking, the change, the
+  cancellation, in enough detail that a person can act on it without ringing back to ask. Get
+  that, and when they say so, the day or time they are after.
+- Then call take_message with what you have: the name you were given, the number you were
+  given, the request, and requested_time if they said one. Confirm it back in one short line
+  — "Got it, a body scrub, Tuesday afternoon" — and tell them someone will be in touch.
+- After that, offer to help with anything else: "Anything I can answer while I have you?"
+  Answer from the facts as normal. The message is already recorded; nothing asked afterwards
+  changes it.
 """
 
 # Said once, in the opening line. The call transcript IS persisted (see the bridge's
@@ -172,8 +172,8 @@ DEFAULT_GREETING = "Hello, you've reached {business}, this is {agent}. How may I
 # already waited — being welcomed a second time as if they had just dialled is the moment they
 # realise nobody is really listening. This says what happened and moves straight on.
 RETURN_GREETING = (
-    "I'm sorry, it appears all our lines are busy. Let me take the reason for your call, "
-    "and we'll make sure to get back to you right away."
+    "Sorry, but all lines are busy. Please give me the reason for the call so our "
+    "staff can get back to you."
 )
 
 
@@ -362,7 +362,13 @@ def build_instructions(
         hours_line=_hours_line(now, business_hours, open_hour, close_hour),
         greeting=spoken,
         transfer_failed_rule=(
-            _TRANSFER_FAILED_RULE if transfer_failed else "" if can_transfer else _NO_TRANSFER_RULE
+            # A returning caller gets BOTH: the recovery steps, and the flat statement that there
+            # is nobody to put them through to. The tool is gone from their session either way, but
+            # a model that only lost the tool can still PROMISE a transfer out loud and then fail
+            # to make one, which is a worse experience than never offering.
+            (_TRANSFER_FAILED_RULE + _NO_TRANSFER_RULE)
+            if transfer_failed
+            else "" if can_transfer else _NO_TRANSFER_RULE
         ),
         transfer_topics=(
             _transfer_topics_line(transfer_topics)

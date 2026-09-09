@@ -53,7 +53,7 @@ DEFAULT_RING_SECONDS = 15
 
 def build_transfer_twiml(
     cfg: Config, *, reason: str, caller: str, human_number: str = "", dialled: str = "",
-    caller_name: str = "",
+    caller_name: str = "", hold_line: str = "",
 ) -> str:
     """The TwiML that replaces the live `<Connect><Stream>` with a whispered dial to a human.
 
@@ -63,6 +63,14 @@ def build_transfer_twiml(
     anything up.
     """
     response = VoiceResponse()
+
+    # Spoken by Twilio, only when the model did not say it itself. On that path the alternative is
+    # a SECOND full model generation before the caller hears anything — roughly double a normal
+    # turn, all of it silence. A different voice for one short line is a smaller price than that,
+    # and it is about to be followed by a different voice anyway: a colleague's.
+    if hold_line:
+        response.say(hold_line, voice="Polly.Joanna")
+
     query = urlencode({"reason": reason or "", "caller": caller or ""})
     dial = Dial(
         # The company's main line — NOT the caller's number. See the module docstring.
@@ -142,7 +150,7 @@ def build_after_transfer_twiml(
 
 async def redirect_to_human(
     cfg: Config, *, call_sid: str, reason: str, caller: str, human_number: str = "",
-    dialled: str = "", caller_name: str = "",
+    dialled: str = "", caller_name: str = "", hold_line: str = "",
 ) -> str:
     """Redirect the live call out of the media stream and into the whispered dial.
 
@@ -163,7 +171,7 @@ async def redirect_to_human(
         return "failed"
     twiml = build_transfer_twiml(
         cfg, reason=reason, caller=caller, human_number=target, dialled=dialled,
-        caller_name=caller_name,
+        caller_name=caller_name, hold_line=hold_line,
     )
 
     def _update() -> None:

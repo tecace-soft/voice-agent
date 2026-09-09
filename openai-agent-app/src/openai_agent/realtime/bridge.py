@@ -186,13 +186,19 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 caller_name=str(params.get("caller_name", "")),
                 known_request=str(params.get("known_request", "")),
                 transfer_topics=business.transfer_topics,
-                can_transfer=bool(business.transfer_number),
+                can_transfer=bool(business.transfer_number) and not returning,
             )
         # A business with nobody to transfer to doesn't get the tool at all. Telling the model not
         # to offer it is necessary but not sufficient — removing it means a model that tries anyway
         # simply cannot, rather than reaching a dead end mid-call.
         tools = INBOUND_TOOL_SCHEMAS
-        if business is not None and not business.transfer_number:
+        # No transfer tool on a call that has ALREADY come back from a failed one, and none for a
+        # business with nobody to reach. Telling the model not to offer it is necessary but not
+        # sufficient — it tried anyway. Removing the tool means a model that ignores the rule
+        # simply cannot act on it, rather than putting the caller through a second round of
+        # ringing nobody.
+        no_transfer = returning or (business is not None and not business.transfer_number)
+        if no_transfer:
             tools = [t for t in INBOUND_TOOL_SCHEMAS if t.get("name") != "transfer_to_human"]
     else:
         log.info(
@@ -261,6 +267,8 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         # Monotonic deadline before which nothing on the line is the caller: a forwarding carrier
         # is still playing "press 1 to accept". 0.0 on every call that did not arrive forwarded.
         "forward_guard_until": 0.0,
+        # When the caller last stopped talking, for measuring the gap before the agent replies.
+        "quiet_since": None,
         "is_inbound": is_inbound,
         "caller": caller,
         "call_sid": call_sid,
@@ -728,6 +736,12 @@ async def _model_to_caller(
                         "first audio to the caller %.1fs after the stream opened",
                         time.monotonic() - state.get("started", time.monotonic()),
                     )
+                elif state.get("quiet_since"):
+                    log.info(
+                        "replied %.1fs after the caller stopped speaking",
+                        time.monotonic() - state["quiet_since"],
+                    )
+                    state["quiet_since"] = None
                 state["spoke_since_user"] = True
                 state["greeted"] = True
                 await twilio_ws.send_json(
@@ -769,6 +783,12 @@ async def _model_to_caller(
             elif t == "response.output_audio_transcript.done":
                 # What the AGENT just said (transcribed from its own audio).
                 _record(state, "agent", evt.get("transcript"))
+            elif t == "input_audio_buffer.speech_stopped":
+                # The caller has stopped talking. Everything between here and the agent's first
+                # audio is the gap they sit in — turn detection deciding they are finished, then
+                # the model composing. Measured because the two are fixed by completely different
+                # settings, and guessing which dominates has cost us test calls before.
+                state["quiet_since"] = time.monotonic()
             elif t == "input_audio_buffer.committed":
                 # The caller's speech segment just closed. Claim their place in the transcript NOW,
                 # while we know where it belongs — the words themselves arrive later, out of order.
@@ -965,6 +985,11 @@ _TRANSFER_FALLBACK_SECONDS = 12
 # without saying anything first. Same reasoning as the farewell: left to itself the model either
 # narrates the transfer or says nothing, and silence right before the audio path is torn out reads
 # as a dropped call.
+# Said by Twilio only on the path where the model did not speak for itself. Deliberately the same
+# sentence the model is asked to produce, so the two paths sound like the same assistant even
+# though one of them is not.
+_SPOKEN_HOLD_LINE = "Of course — let me put you through to someone who can help. One moment."
+
 _TRANSFER_HOLD_INSTRUCTION = (
     "You are about to put this caller through to a colleague. Say ONE short line telling them so, "
     "in the language they last spoke to you, and NOTHING else — no question, no recap of what they "
@@ -1014,21 +1039,18 @@ async def _handle_transfer(
     state["transfer_pending"] = reason
 
     # If the model already spoke this turn, that WAS the hold line (the prompt asks for it before
-    # the tool call) — just drain it. Otherwise force one, and hand off when it lands.
+    # the tool call) — drain it in its own voice and hand off.
     if state.get("spoke_since_user"):
         await _drain_and_transfer(twilio_ws, openai_ws, cfg, state)
         return
 
-    await openai_ws.send(
-        json.dumps({"type": "response.create", "response": {"instructions": _TRANSFER_HOLD_INSTRUCTION}})
-    )
-
-    async def _backstop() -> None:
-        await asyncio.sleep(_TRANSFER_FALLBACK_SECONDS)
-        if state.get("transfer_pending") and not state.get("transfer_marked"):
-            await _drain_and_transfer(twilio_ws, openai_ws, cfg, state)
-
-    state["transfer_backstop"] = asyncio.create_task(_backstop())
+    # It called the tool without speaking. Asking for a hold line now costs a second full
+    # generation, and the caller hears NOTHING for the whole of it — the longest silence in the
+    # call, at the moment they are most likely to think they have been cut off. Hand off
+    # immediately instead and let the transfer TwiML speak the line.
+    log.info("transfer requested with no hold line spoken — handing off immediately")
+    state["transfer_hold_line"] = _SPOKEN_HOLD_LINE
+    await _do_transfer(cfg, openai_ws, state)
 
 
 async def _drain_and_transfer(
@@ -1070,6 +1092,7 @@ async def _do_transfer(cfg: Config, openai_ws, state: dict) -> None:
         # Worked out now, from what has been said so far — the returning leg is a fresh session
         # with no memory of this conversation, so whatever we do not hand over is lost.
         caller_name=state.get("caller_name") or _name_from_transcript(_turns(state)),
+        hold_line=state.get("transfer_hold_line", ""),
     )
     if result == "ok":
         state["outcome"] = "transferred"

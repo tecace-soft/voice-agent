@@ -44,7 +44,14 @@ class AgentMessage:
     phone: str
     requested_time: str
     callback_requested: bool
-    summary: str
+    # What the caller wants, in the words the assistant took down. This is the Summary column: it
+    # is the same thing a voicemail's summary is — what this call is ABOUT — and it is the only
+    # part a person needs to read before picking up the phone.
+    request: str
+    # What the call RESULTED in ("Took a message for the team."). Useful context, useless as a
+    # summary: the row existing already says a message was taken. Kept only as a fallback for the
+    # rare row that somehow has no request.
+    outcome_summary: str
     transcript: str
 
 
@@ -117,7 +124,8 @@ def fetch_pending(cfg: Config) -> list[AgentMessage]:
                 ),
                 requested_time=str(call.get("requestedTime") or ""),
                 callback_requested=bool(call.get("callbackRequested")),
-                summary=str(call.get("summary") or ""),
+                request=str(call.get("request") or ""),
+                outcome_summary=str(call.get("summary") or ""),
                 transcript=_spoken_transcript(call.get("turns") or []),
             )
         )
@@ -138,7 +146,9 @@ def build_row(msg: AgentMessage, tz: str = "America/Los_Angeles") -> list[str]:
         msg.phone,
         msg.requested_time,
         "yes" if msg.callback_requested else "no",
-        msg.summary,
+        # The Summary column means "what is this call about", because that is what it means for a
+        # voicemail and the same person reads both. An outcome label belongs in neither.
+        msg.request.strip() or msg.outcome_summary,
         msg.transcript,
         "",
         "",

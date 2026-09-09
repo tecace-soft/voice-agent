@@ -127,7 +127,7 @@ def _run_once(cfg: Config, *, dry_run: bool) -> tuple[int, int]:
         row = agent_messages.build_row(msg, cfg.business_timezone)
         who = msg.caller_name or "(no name)"
         if dry_run:
-            log.info("would write: %s | %s | %s | %s", row[0], who, msg.phone, msg.summary)
+            log.info("would write: %s | %s | %s | %s", row[0], who, msg.phone, row[5])
             continue
         try:
             writer.append_row(row)
