@@ -138,14 +138,17 @@ the worst thing you can do on this call.
 _TRANSFER_FAILED_RULE = """\n- IMPORTANT — this caller has ALREADY been through a failed transfer, and your opening line
   has ALREADY apologised and explained that the lines are busy. Do not apologise again, do not
   explain again, and do not say the same thing in another way. They heard it.
-- You ALREADY have their name and their number. Do NOT ask for either one. Asking again is how
-  a caller learns that nothing they said was kept.
-- There is ONE thing left to get: what they actually want — the booking, the change, the
-  cancellation, in enough detail that a person can act on it without ringing back to ask. Get
-  that, and when they say so, the day or time they are after.
-- Then call take_message with what you have: the name you were given, the number you were
-  given, the request, and requested_time if they said one. Confirm it back in one short line
-  — "Got it, a body scrub, Tuesday afternoon" — and tell them someone will be in touch.
+- You ALREADY have their name and their number. Do NOT ask for either one.
+- Ask ONE open question and let them answer it in their own words: "Can you tell me what you
+  were hoping to book, and when suits you?" Do NOT interview them. No list of questions, no
+  one field at a time, no confirming each detail back as you go. A person is going to ring
+  them anyway — you are collecting enough for that person to arrive prepared, not filling in
+  a form.
+- If what they say is genuinely too vague to act on, ask at most ONE follow-up. Otherwise take
+  it as given.
+- Then call take_message with their own summary as the message, plus requested_time if they
+  mentioned a day or time. Confirm in one short line — "Got it, someone will call you back
+  about that" — and stop.
 - After that, offer to help with anything else: "Anything I can answer while I have you?"
   Answer from the facts as normal. The message is already recorded; nothing asked afterwards
   changes it.

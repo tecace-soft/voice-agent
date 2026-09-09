@@ -198,6 +198,15 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         # simply cannot act on it, rather than putting the caller through a second round of
         # ringing nobody.
         no_transfer = returning or (business is not None and not business.transfer_number)
+        # Stated every call. A caller asking to book and not being put through has three possible
+        # causes — no number configured, a returning leg, or the model ignoring the route — and
+        # from the outside they look identical. This says which before the call even starts.
+        log.info(
+            "transfer on this call: %s (number=%r returning=%s)",
+            "disabled" if no_transfer else "available",
+            (business.transfer_number if business else "") or "",
+            returning,
+        )
         if no_transfer:
             tools = [t for t in INBOUND_TOOL_SCHEMAS if t.get("name") != "transfer_to_human"]
     else:

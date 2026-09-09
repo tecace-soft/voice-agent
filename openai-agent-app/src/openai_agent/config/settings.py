@@ -156,7 +156,13 @@ class Config:
             # is far less willing to treat nearby conversation as a turn. Set VAD_TYPE=server_vad
             # to go back to pure loudness detection (the settings below then apply).
             vad_type=_optional("VAD_TYPE", "semantic_vad"),
-            vad_eagerness=_optional("VAD_EAGERNESS", "low"),
+            # "low" waits longest before deciding a caller has finished, which is what stopped the
+            # room interrupting the agent — but it is also a silence after every turn, and worst
+            # after a one-word answer like a name, where "have they finished?" is most ambiguous.
+            # "medium" keeps semantic turn detection (the part that tells the caller from the room)
+            # without the wait. Move to "high" for snappier still, at the cost of the agent
+            # answering half-finished sentences; back to "low" if the room starts cutting in again.
+            vad_eagerness=_optional("VAD_EAGERNESS", "medium"),
             vad_threshold=float(_optional("VAD_THRESHOLD", "0.8")),
             vad_prefix_padding_ms=int(_optional("VAD_PREFIX_PADDING_MS", "300")),
             # How long the caller must be silent before their turn is considered over. The API
