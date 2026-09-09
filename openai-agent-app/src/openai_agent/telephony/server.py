@@ -235,7 +235,13 @@ async def after_transfer(request: Request) -> Response:
     )
     return _xml(
         transfer.build_after_transfer_twiml(
-            cfg, dial_status=dial_status, caller=caller, dialled=dialled
+            cfg,
+            dial_status=dial_status,
+            caller=caller,
+            dialled=dialled,
+            # Handed back so the agent picks up where it left off instead of starting over.
+            caller_name=request.query_params.get("caller_name", ""),
+            reason=request.query_params.get("reason", ""),
         )
     )
 

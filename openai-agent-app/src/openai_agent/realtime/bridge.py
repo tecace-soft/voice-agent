@@ -183,6 +183,8 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 # first called, and this is the same conversation from the caller's side.
                 disclose_recording=cfg.disclose_recording and not returning,
                 greeting=RETURN_GREETING if returning else (business.greeting or cfg.greeting),
+                caller_name=str(params.get("caller_name", "")),
+                known_request=str(params.get("known_request", "")),
                 transfer_topics=business.transfer_topics,
                 can_transfer=bool(business.transfer_number),
             )
@@ -1065,6 +1067,9 @@ async def _do_transfer(cfg: Config, openai_ws, state: dict) -> None:
         caller=state.get("caller", ""),
         human_number=state.get("human_number", ""),
         dialled=state.get("dialled", ""),
+        # Worked out now, from what has been said so far — the returning leg is a fresh session
+        # with no memory of this conversation, so whatever we do not hand over is lost.
+        caller_name=state.get("caller_name") or _name_from_transcript(_turns(state)),
     )
     if result == "ok":
         state["outcome"] = "transferred"

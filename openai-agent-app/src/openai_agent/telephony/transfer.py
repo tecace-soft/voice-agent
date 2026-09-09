@@ -52,7 +52,8 @@ DEFAULT_RING_SECONDS = 15
 
 
 def build_transfer_twiml(
-    cfg: Config, *, reason: str, caller: str, human_number: str = "", dialled: str = ""
+    cfg: Config, *, reason: str, caller: str, human_number: str = "", dialled: str = "",
+    caller_name: str = "",
 ) -> str:
     """The TwiML that replaces the live `<Connect><Stream>` with a whispered dial to a human.
 
@@ -73,7 +74,14 @@ def build_transfer_twiml(
         # transfer it is apologising for.
         action=(
             f"https://{cfg.public_host}/after-transfer?"
-            + urlencode({"caller": caller or "", "dialled": dialled or ""})
+            + urlencode({
+                "caller": caller or "",
+                "dialled": dialled or "",
+                # So a returning caller is not asked their name and their business a second time.
+                # Capped: this rides in a URL, and the agent only needs the gist to confirm it back.
+                "caller_name": (caller_name or "")[:80],
+                "reason": (reason or "")[:200],
+            })
         ),
         method="POST",
     )
@@ -104,7 +112,8 @@ def build_whisper_twiml(cfg: Config, *, reason: str, caller: str) -> str:
 
 
 def build_after_transfer_twiml(
-    cfg: Config, *, dial_status: str, caller: str, dialled: str = ""
+    cfg: Config, *, dial_status: str, caller: str, dialled: str = "",
+    caller_name: str = "", reason: str = "",
 ) -> str:
     """Runs when the dial ends, for any reason.
 
@@ -124,6 +133,8 @@ def build_after_transfer_twiml(
     # carries on as the same assistant the caller has been speaking to.
     stream.parameter(name="dialled", value=dialled or "")
     stream.parameter(name="transfer_failed", value="yes")
+    stream.parameter(name="caller_name", value=caller_name or "")
+    stream.parameter(name="known_request", value=reason or "")
     connect.append(stream)
     response.append(connect)
     return str(response)
@@ -131,7 +142,7 @@ def build_after_transfer_twiml(
 
 async def redirect_to_human(
     cfg: Config, *, call_sid: str, reason: str, caller: str, human_number: str = "",
-    dialled: str = "",
+    dialled: str = "", caller_name: str = "",
 ) -> str:
     """Redirect the live call out of the media stream and into the whispered dial.
 
@@ -151,7 +162,8 @@ async def redirect_to_human(
         log.warning("transfer requested but no number is configured for this business")
         return "failed"
     twiml = build_transfer_twiml(
-        cfg, reason=reason, caller=caller, human_number=target, dialled=dialled
+        cfg, reason=reason, caller=caller, human_number=target, dialled=dialled,
+        caller_name=caller_name,
     )
 
     def _update() -> None:

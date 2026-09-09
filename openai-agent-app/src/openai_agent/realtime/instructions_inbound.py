@@ -244,6 +244,28 @@ def _clock(now: datetime) -> str:
 # When the business has given us nobody to put callers through to. Offering a transfer and then
 # failing is worse than never offering: the caller has been told help is coming, waited for it, and
 # then been handed back to the same assistant.
+def _returning_context(caller_name: str, request: str) -> str:
+    """What the agent already learned before it tried to put the caller through.
+
+    The transfer restarts our side of the call, not theirs. From the caller's chair it is one
+    conversation: they gave their name, said what they wanted, waited, and are now being spoken to
+    again. Asking either question a second time tells them nobody was listening the first time,
+    which is a worse impression than the failed transfer itself.
+    """
+    known = []
+    if (caller_name or "").strip():
+        known.append(f"- Their name is {caller_name.strip()}. Use it. Do NOT ask who is calling.")
+    if (request or "").strip():
+        known.append(
+            f"- They already told you what they want: {request.strip()} Do NOT ask again what "
+            f"the call is about — confirm it back instead, and fill in only what is missing."
+        )
+    if not known:
+        return ""
+    header = "\n\n# What you already know about this caller\n"
+    return header + "\n".join(known)
+
+
 def _transfer_topics_line(topics: str) -> str:
     """The customer's own list of what should reach a person, appended to Route A.
 
@@ -312,6 +334,8 @@ def build_instructions(
     timezone: str = "America/Los_Angeles",
     transfer_failed: bool = False,
     transfer_topics: str = "",
+    caller_name: str = "",
+    known_request: str = "",
     disclose_recording: bool = True,
     greeting: str = "",
     can_transfer: bool = True,
@@ -340,7 +364,10 @@ def build_instructions(
         transfer_failed_rule=(
             _TRANSFER_FAILED_RULE if transfer_failed else "" if can_transfer else _NO_TRANSFER_RULE
         ),
-        transfer_topics=_transfer_topics_line(transfer_topics),
+        transfer_topics=(
+            _transfer_topics_line(transfer_topics)
+            + (_returning_context(caller_name, known_request) if transfer_failed else "")
+        ),
         knowledge=build_knowledge(business_facts),
         recording_rule=(
             "- You HAVE told the caller this call is recorded, in your opening line. If they ask, "
