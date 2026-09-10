@@ -398,6 +398,76 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         await _finalize_call(state, params, executor, cfg)
 
 
+# Per 1M tokens, from OpenAI's published Realtime pricing. Audio input is where caching pays: the
+# whole conversation is re-sent as input on every response, so every earlier turn of the caller's
+# audio is billed again — at $32 uncached, or $0.40 cached. Output is never cached.
+_REALTIME_PRICES = {
+    # model prefix:   text_in, cached_text, audio_in, cached_audio, text_out, audio_out
+    "gpt-realtime-2.1-mini": (0.60, 0.06, 10.00, 0.30, 2.40, 20.00),
+    "gpt-realtime-mini":     (0.60, 0.06, 10.00, 0.30, 2.40, 20.00),
+    "gpt-realtime":          (4.00, 0.40, 32.00, 0.40, 24.00, 64.00),
+}
+
+
+def _prices(model: str) -> tuple[float, ...]:
+    """The most specific price row for this model — mini rows are listed first so they win."""
+    for prefix, row in _REALTIME_PRICES.items():
+        if model.startswith(prefix):
+            return row
+    return _REALTIME_PRICES["gpt-realtime"]
+
+
+def _record_usage(state: dict, usage: dict | None, model: str) -> None:
+    """Account one response's tokens, and say how much of its input came from the cache.
+
+    This runs INSIDE the live audio relay. An exception here would end the relay and drop the
+    caller's call, so accounting is wrapped entirely: a field the API renames or reshapes costs a
+    log line, never a phone call. Every nested value is type-checked, not assumed.
+    """
+    try:
+        _account(state, usage, model)
+    except Exception as exc:  # noqa: BLE001 — accounting must never take a call down
+        log.warning("could not read token usage (%s); the call is unaffected", exc)
+
+
+def _dict(value) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _account(state: dict, usage, model: str) -> None:
+    if not isinstance(usage, dict):
+        return
+    ind = _dict(usage.get("input_token_details"))
+    outd = _dict(usage.get("output_token_details"))
+    cached = _dict(ind.get("cached_tokens_details"))
+    text_in, audio_in = int(ind.get("text_tokens") or 0), int(ind.get("audio_tokens") or 0)
+    c_text, c_audio = int(cached.get("text_tokens") or 0), int(cached.get("audio_tokens") or 0)
+    # Some responses report only the combined cached count; attribute it to text if so.
+    if not (c_text or c_audio) and ind.get("cached_tokens"):
+        c_text = int(ind.get("cached_tokens") or 0)
+    text_out, audio_out = int(outd.get("text_tokens") or 0), int(outd.get("audio_tokens") or 0)
+
+    ti, ct, ai, ca, to, ao = _prices(model)
+    cost = (
+        max(text_in - c_text, 0) * ti + c_text * ct
+        + max(audio_in - c_audio, 0) * ai + c_audio * ca
+        + text_out * to + audio_out * ao
+    ) / 1_000_000
+
+    total_in = text_in + audio_in
+    hit = (c_text + c_audio) / total_in * 100 if total_in else 0.0
+    log.info(
+        "tokens: in %d (text %d, audio %d) cached %.0f%% | out %d (audio %d) | $%.4f",
+        total_in, text_in, audio_in, hit, text_out + audio_out, audio_out, cost,
+    )
+    u = state.setdefault("usage", {"in": 0, "cached": 0, "out": 0, "cost": 0.0, "responses": 0})
+    u["in"] += total_in
+    u["cached"] += c_text + c_audio
+    u["out"] += text_out + audio_out
+    u["cost"] += cost
+    u["responses"] += 1
+
+
 def _record(state: dict, speaker: str, text: str | None) -> None:
     """Append a completed turn to the running transcript and log it as it happens."""
     line = (text or "").strip()
@@ -543,6 +613,13 @@ def _summary(state: dict) -> str:
 
 def _log_call_end(state: dict, params: dict) -> None:
     """When the call ends, log the whole transcript in one block for easy review."""
+    # Logged before the transcript check: a call can cost money without leaving any turns.
+    u = state.get("usage")
+    if u and u.get("in"):
+        log.info(
+            "call cost: $%.4f over %d responses — %d input tokens, %.0f%% from cache, %d output",
+            u["cost"], u["responses"], u["in"], u["cached"] / u["in"] * 100, u["out"],
+        )
     turns = _turns(state)
     lead = params.get("lead_name") or "?"
     if not turns:
@@ -760,6 +837,7 @@ async def _model_to_caller(
                 state["response_active"] = True
             elif t == "response.done":
                 state["response_active"] = False
+                _record_usage(state, (evt.get("response") or {}).get("usage"), cfg.openai_model)
                 # INBOUND ONLY: the hold line ("let me put you through") has finished — drain it to
                 # the caller, then hand off. Outbound never sets transfer_pending, so this branch is
                 # unreachable there and the hang-up path below is untouched.
