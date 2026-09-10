@@ -29,7 +29,10 @@ def _transcription_prompt(terms: list[str] | None) -> str:
     named = list(dict.fromkeys(t.strip() for t in (terms or []) if t and t.strip()))
     if not named:
         return ""
-    return "The speakers may say these names: " + ", ".join(named) + "."
+    # Just the names, with no English sentence around them. A framing sentence in English is a
+    # nudge toward English: on a short or unclear stretch of Korean it was enough to make the
+    # transcriber write "In all painting" instead of what was said. The names are the useful part.
+    return ", ".join(named)
 
 
 def build_session_update(

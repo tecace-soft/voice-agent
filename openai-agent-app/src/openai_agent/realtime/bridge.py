@@ -1016,10 +1016,11 @@ _TRANSFER_HOLD_INSTRUCTION = (
 # The caller is still on the line and the handoff never happened. Recover in-conversation instead
 # of leaving them in silence.
 _TRANSFER_FAILED_INSTRUCTION = (
-    "The transfer did not go through, and the caller is still on the line with you. Apologize once "
-    "in ONE short sentence, then offer to take a message and ask for their name — in the language "
-    "they last spoke to you. For example: \"Sorry about that — nobody's free right now. Can I take "
-    'a message? May I start with your name?"'
+    "The transfer did not go through, and the caller is still on the line with you. In ONE short "
+    "sentence, and in the language they last spoke to you, apologise that the lines are busy and "
+    "ask them to tell you the reason for their call so the staff can get back to them. Do NOT ask "
+    "for their name or number — you already have both. For example: \"Sorry, but all lines are "
+    'busy. Please give me the reason for the call so our staff can get back to you."'
 )
 
 
