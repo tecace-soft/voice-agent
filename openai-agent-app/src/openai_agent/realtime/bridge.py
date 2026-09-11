@@ -296,7 +296,12 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         # because most callers give a name and never leave a message — reading the name only off a
         # message meant every other call was filed as anonymous despite the name being right there
         # in the transcript.
-        "caller_name": "",
+        # On a call coming BACK from a failed transfer, this is the name worked out on the first
+        # leg and handed across. It must be stored here, not just given to the prompt: the returning
+        # leg is the one that takes the message and so the one that writes the sheet row, and on it
+        # the caller never says their name — we deliberately stop asking. Without this the agent
+        # knows who it is talking to and the record does not.
+        "caller_name": str(params.get("caller_name", "")),
     }
     # Register for this call's answering-machine-detection result (delivered by the /amd webhook).
     # Outbound only: AMD answers "did a machine pick up the call WE placed?", which is
@@ -521,6 +526,36 @@ _NOT_A_NAME = {
 }
 
 
+# The caller introducing THEMSELVES — "This is Michael", "my name's Dana, I'd like to book". The
+# fallback for when nobody said the name back: a caller can give it in the same breath as their
+# request and be put through before the agent ever repeats it.
+_SELF_INTRODUCED = re.compile(
+    r"\b(?i:my name(?:'s| is)|this is|i'm|i am|it's|it is)\s+([A-Z][a-zA-Z\u2019'-]{1,20})\b"
+)
+# Capitalised words that follow "it's" / "this is" and are emphatically not names. The day and
+# month rows matter most: "it's Tuesday" is a perfectly ordinary thing to say when booking.
+_NOT_A_SELF_NAME = {
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    "january", "february", "march", "april", "may", "june", "july", "august", "september",
+    "october", "november", "december", "today", "tomorrow", "tonight",
+    "calling", "looking", "wondering", "trying", "here", "just", "sure", "okay", "ok", "fine",
+    "good", "great", "hello", "hi", "yes", "no", "booking", "about", "not", "still", "also",
+    "interested", "available", "open", "closed", "done", "ready", "back", "busy", "free", "sorry",
+    "olympus", "spa", "tecace",
+}
+
+
+def _self_introduced_name(turns: list[tuple[str, str]]) -> str:
+    """A name the CALLER gave for themselves, in their own words. Earliest wins."""
+    for who, text in turns:
+        if who == "agent":
+            continue
+        for candidate in _SELF_INTRODUCED.findall(text):
+            if candidate.lower() not in _NOT_A_SELF_NAME:
+                return candidate
+    return ""
+
+
 def _name_from_transcript(turns: list[tuple[str, str]]) -> str:
     """Recover the caller's name from what was said, when the tool call never came.
 
@@ -545,7 +580,7 @@ def _name_from_transcript(turns: list[tuple[str, str]]) -> str:
             # The cross-check: the caller has to have said it too.
             if re.search(rf"\b{re.escape(candidate.lower())}\b", said_by_caller):
                 return candidate
-    return ""
+    return _self_introduced_name(turns)
 
 
 def _turns(state: dict) -> list[tuple[str, str]]:
@@ -662,7 +697,9 @@ async def _finalize_call(
         recovered = _name_from_transcript(turns)
         caller_name = msg.get("caller_name") or state.get("caller_name") or recovered or ""
         log.info(
-            "caller name: message=%r tool=%r transcript=%r -> %r",
+            # message = given to take_message; carried = handed across a failed transfer (or set
+            # during the call); transcript = recovered from what was said on THIS leg.
+            "caller name: message=%r carried=%r transcript=%r -> %r",
             msg.get("caller_name") or "",
             state.get("caller_name") or "",
             recovered,
@@ -1130,6 +1167,13 @@ async def _handle_transfer(
         return
 
     reason = (args.get("reason") or "").strip() or "Caller would like to book something."
+    # The name rides on a call the model is ALREADY making, so it costs nothing — unlike the old
+    # note_caller, a separate silent tool call that cost a turn of dead air and was often skipped.
+    # The model heard the name whether or not it ever said it back, which is exactly the case
+    # the transcript method misses: "This is Michael, I'd like to book" and straight through.
+    named = (args.get("caller_name") or "").strip()
+    if named and not state.get("caller_name"):
+        state["caller_name"] = named
     log.info("transfer_to_human — %s", reason)
     state["transfer_pending"] = reason
 

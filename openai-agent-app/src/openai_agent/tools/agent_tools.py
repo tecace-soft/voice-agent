@@ -125,9 +125,10 @@ INBOUND_TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "name": "transfer_to_human",
-        "description": "Hand this caller to a real person. Use ONLY for a genuine request to "
-        "book, schedule, or meet with someone, or when the caller directly asks for a human. "
-        "Never for a general question, a complaint, or a sales call.",
+        "description": "Hand this caller to a real person. Use for anything to do with an "
+        "appointment — booking, rescheduling, or cancelling one, or asking about one they already "
+        "have — and whenever the caller directly asks for a human. Never for a general question, "
+        "a complaint, or a sales call.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -136,7 +137,13 @@ INBOUND_TOOL_SCHEMAS: list[dict] = [
                     "description": "One sentence, in ENGLISH, describing what the caller wants. "
                     "It is read aloud to the colleague before they accept the call, so make it "
                     "specific — e.g. 'Wants to book a consultation about a logistics AI project.'",
-                }
+                },
+                "caller_name": {
+                    "type": "string",
+                    "description": "The caller's name, if they said it at ANY point in the call — "
+                    "in passing, in the same breath as their request, anywhere. Leave empty only "
+                    "if they genuinely never gave one. Never guess or invent a name.",
+                },
             },
             "required": ["reason"],
         },
