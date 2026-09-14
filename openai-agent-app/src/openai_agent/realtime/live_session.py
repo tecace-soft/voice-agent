@@ -18,18 +18,47 @@ from ..tools.agent_tools import TOOL_SCHEMAS
 
 LIVE_URL = "wss://api.openai.com/v1/live/sessions"
 
-# The voice half never calls a tool itself, but the shared prompts say "call end_call", "call
-# check_availability" throughout. Rather than fork every prompt, tell the voice model once how to
-# read those lines.
-_VOICE_PREAMBLE = """\
+def _voice_preamble(tools: list[dict]) -> str:
+    """How the voice half should read the shared prompts, in OpenAI's delegation-policy format.
+
+    The shared prompts say "call transfer_to_human", "call end_call" throughout, and the voice model
+    cannot call anything — only the backend can, and only when the voice model DELEGATES, which
+    GPT-Live leaves entirely to its discretion. A one-line mention of delegation was not enough: on
+    the first real call the agent said "let me put you through… one moment", took Route A's "say
+    NOTHING after that" literally, never delegated, and the caller sat in silence until they hung
+    up. So this names the call's actual tools and says, bluntly, that saying is not doing.
+    """
+    capabilities = "\n".join(
+        f"- {t['name']}: {' '.join((t.get('description') or '').split())}"
+        for t in tools
+        if t.get("type") == "function"
+    )
+    return f"""\
 # How this call works (read this first)
-You are the VOICE of this call. You do not run tools yourself — a backend assistant does. Wherever
-the instructions below say to "call" a tool (check_availability, get_openings, book_appointment,
-schedule_callback, mark_outcome, take_message, transfer_to_human, end_call), delegate that to the
-backend instead. Never state what a tool would return — an open time, a booking, a callback time, a
-transfer — until the backend has returned it; if the caller is left waiting, say a short natural
-holding line such as "One moment." When the conversation is over, delegate end_call: the closing
-words are handled for you.
+You are the VOICE of this call. You cannot run tools yourself. A backend assistant runs them, and
+it only acts when you DELEGATE to it. Saying you will do something does not do it: if you tell the
+caller "let me put you through" or "I'll take that down" and do not delegate, nothing happens and
+the caller is left in silence. Wherever the instructions below say to "call" a tool, that means
+delegate it.
+
+Delegation policy:
+Backend tools:
+{capabilities}
+
+Delegate to the backend when:
+- The instructions below say to call any of the tools above. Delegate in the SAME turn as the line
+  you say to the caller: say the line, then delegate straight away. Never wait for the caller to
+  reply first, and never treat the line you said as the action itself.
+- A correction changes work you already delegated.
+
+Do not delegate to the backend when:
+- You can answer from these instructions or from a result the backend already gave you.
+- You need a brief clarification to understand the request.
+
+Delegate before giving an answer that depends on backend work. Do not guess the result while
+waiting: never say a time is open, a booking is made or a message is recorded until the backend has
+returned it. When the conversation is over, delegate end_call; the closing words are handled for
+you.
 
 """
 
@@ -80,10 +109,11 @@ def build_live_session_start(
     cfg: Config, instructions: str, tools: list[dict] | None = None
 ) -> dict:
     """Build the session.start event. `tools` defaults to the outbound set, as in session.py."""
+    tools = TOOL_SCHEMAS if tools is None else tools
     responses: dict = {
         "model": cfg.openai_live_backend_model,
         "instructions": _BACKEND_PREAMBLE + instructions,
-        "tools": _backend_tools(TOOL_SCHEMAS if tools is None else tools),
+        "tools": _backend_tools(tools),
         "tool_choice": "auto",
         # One call at a time. The booking flow is a sequence (check a time, then book it), and
         # end_call / transfer_to_human take the call away — neither should race another tool.
@@ -97,7 +127,7 @@ def build_live_session_start(
         "event_id": "session_start",
         "session": {
             "model": cfg.openai_live_model,
-            "instructions": _VOICE_PREAMBLE + instructions,
+            "instructions": _voice_preamble(tools) + instructions,
             "audio": {
                 "format": {"type": "audio/pcmu", "rate": 8000},
                 "output": {"voice": cfg.openai_voice.lower()},

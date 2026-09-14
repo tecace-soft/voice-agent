@@ -81,6 +81,13 @@ _MAX_HELD_FRAMES = 150  # 3s of 20ms frames
 # greeting never comes, stop waiting for it rather than leaving the caller unheard for the call.
 _GREETING_WAIT_SECONDS = 6.0
 _MULAW_SAMPLES_PER_SECOND = 8000
+# Dead air with no backend work in flight. GPT-Live decides for itself whether to delegate, and on
+# the first real call it said "let me put you through" and never delegated the transfer — the caller
+# sat in silence until they hung up. After this long the agent is reminded to act.
+_STUCK_SECONDS = 6.0
+# A delegation with no backend response by now is logged: from the outside it looks exactly like
+# the model never delegating at all.
+_BACKEND_STALL_SECONDS = 15.0
 
 _GREET_NOW = (
     "The call has just connected. Speak your opening line now, first, without waiting for the "
@@ -88,6 +95,12 @@ _GREET_NOW = (
 )
 _STOP_FOR_TRANSFER = (
     "The caller is being transferred to a colleague right now. Do not say anything more."
+)
+_NUDGE = (
+    "The line has been silent for several seconds. If you told the caller you would do something "
+    "that needs the backend — put them through, take a message, check or book a time, or end the "
+    "call — delegate it to the backend now, without repeating what you already said. Otherwise, "
+    "carry on the conversation naturally."
 )
 
 
@@ -206,6 +219,13 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "voice_seconds": None,
         "backend_usage": {"in": 0, "cached": 0, "out": 0, "cost": 0.0, "responses": 0},
         "append_count": 0,
+        # ---- delegation visibility and the dead-air nudge ----
+        "delegating_since": None,  # monotonic time backend work began; None when none is in flight
+        "last_activity_at": 0.0,  # last agent audio, caller words or backend event
+        "nudged": False,  # already nudged during this silence
+        "backend_text": {},  # delegation_id -> the backend's reply so far
+        "logged_types": set(),
+        "fragment_fields_logged": set(),
     }
     amd_queue = amd.register(call_sid) if not is_inbound else None
     try:
@@ -232,6 +252,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 asyncio.create_task(_caller_to_live(twilio_ws, live_ws, cfg, state)),
                 asyncio.create_task(_live_to_caller(twilio_ws, live_ws, state, executor, cfg)),
             ]
+            nudger = asyncio.create_task(_nudge_when_stuck(live_ws, state))
             try:
                 # FIRST_COMPLETED, not gather — see run_bridge for why.
                 done, pending = await asyncio.wait(relays, return_when=asyncio.FIRST_COMPLETED)
@@ -244,6 +265,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             finally:
                 for task in relays:
                     task.cancel()
+                nudger.cancel()
                 if watcher is not None:
                     watcher.cancel()
     except Exception as exc:  # noqa: BLE001 — surface, don't crash the server
@@ -364,10 +386,13 @@ async def _live_to_caller(
                 if state["is_inbound"] and not state["greeted"]:
                     log.info("ignoring %r heard before the greeting", evt.get("delta"))
                     continue
+                state["last_activity_at"] = time.monotonic()
+                state["nudged"] = False  # the caller spoke, so the next silence is a new one
                 _add_fragment(state, "lead", evt)
             elif t == "session.output_transcript.delta":
                 _add_fragment(state, "agent", evt)
             elif t == "response.event":
+                state["last_activity_at"] = time.monotonic()
                 await _on_backend_event(twilio_ws, live_ws, evt, state, executor, cfg)
             elif t == "session.instructions.appended":
                 # The closing instruction has landed. Audio from BEFORE this was the agent's
@@ -375,7 +400,10 @@ async def _live_to_caller(
                 if evt.get("client_event_id") and evt.get("client_event_id") == state["closing_event_id"]:
                     state["closing_audio"] = 0.0
             elif t == "session.delegation.created":
-                log.debug("delegated to the backend: %s", (evt.get("delegation") or {}).get("id"))
+                # INFO, not DEBUG: "did the agent delegate at all?" is the first question whenever
+                # a tool didn't happen, and it cannot be answered from anything else in the log.
+                log.info("agent delegated to the backend (%s)", (evt.get("delegation") or {}).get("id"))
+                state["delegating_since"] = state["last_activity_at"] = time.monotonic()
             elif t == "session.usage.updated":
                 seconds = (evt.get("usage") or {}).get("seconds")
                 if isinstance(seconds, (int, float)):
@@ -388,6 +416,8 @@ async def _live_to_caller(
                 break
             elif t == "error":
                 log.warning("live error: %s", evt.get("error") or evt)
+            else:
+                _log_unexpected(state, "session", evt)
     except WebSocketDisconnect:
         pass
     except websockets.ConnectionClosed:
@@ -405,7 +435,7 @@ def _note_agent_audio(state: dict, payload: str) -> None:
     # timing, so the only way to see whether audio arrives faster than it plays is to measure it.
     state["play_until"] = max(state["play_until"], now) + seconds
     state["max_playback_lead"] = max(state["max_playback_lead"], state["play_until"] - now)
-    state["last_audio_at"] = now
+    state["last_audio_at"] = state["last_activity_at"] = now
     if state["hangup_pending"]:
         state["closing_audio"] += seconds
 
@@ -427,6 +457,58 @@ async def _append(live_ws, state: dict, content: str) -> str:
     return event_id
 
 
+def _log_unexpected(state: dict, where: str, evt: dict) -> None:
+    """Make an event the bridge does not handle visible, instead of silently dropping it.
+
+    Anything that looks like a failure is logged every time, in full, as a warning. Everything else
+    is logged once per type — enough to learn the protocol from a real call without flooding it.
+    """
+    t = str(evt.get("type") or "?")
+    if "error" in t or "fail" in t:
+        log.warning("live %s event %s: %s", where, t, json.dumps(evt)[:1000])
+        return
+    key = f"{where}:{t}"
+    if key not in state["logged_types"]:
+        state["logged_types"].add(key)
+        log.info("unhandled live %s event %s (logged once): %s", where, t, json.dumps(evt)[:500])
+
+
+async def _nudge_when_stuck(live_ws, state: dict) -> None:
+    """Remind the agent to act when the line has gone dead with no backend work in flight.
+
+    GPT-Live alone decides whether to delegate, so an agent can promise a transfer, never delegate
+    it, and wait forever. One reminder per silence; the caller speaking starts a new one.
+    """
+    stall_logged = False
+    while not state["closing"]:
+        await asyncio.sleep(0.5)
+        now = time.monotonic()
+        since = state["delegating_since"]
+        if since is not None:
+            # Delegated and waiting on the backend: that silence is not the agent's to fix.
+            if not stall_logged and now - since >= _BACKEND_STALL_SECONDS:
+                stall_logged = True
+                log.warning("the backend has not answered %.0fs after the agent delegated", now - since)
+            continue
+        stall_logged = False
+        busy = state["hangup_pending"] or state["transfer_pending"] or state["_tool_tasks"]
+        if (
+            state["greeted"]
+            and not busy
+            and not state["nudged"]
+            and now - state["last_activity_at"] >= _STUCK_SECONDS
+        ):
+            state["nudged"] = True
+            log.info(
+                "%.0fs of dead air with nothing delegated — reminding the agent to act",
+                now - state["last_activity_at"],
+            )
+            try:
+                await _append(live_ws, state, _NUDGE)
+            except websockets.ConnectionClosed:
+                return
+
+
 # ---------------------------------------------------------------------------
 # Transcript
 # ---------------------------------------------------------------------------
@@ -436,6 +518,11 @@ def _add_fragment(state: dict, speaker: str, evt: dict) -> None:
     text = evt.get("delta") or ""
     if not text:
         return
+    if speaker not in state["fragment_fields_logged"]:
+        # The transcript is ordered by start_ms only when every fragment carries it; this shows
+        # which side (if either) does not.
+        state["fragment_fields_logged"].add(speaker)
+        log.info("first %s transcript fragment carries fields %s", speaker, sorted(evt))
     start = evt.get("start_ms")
     frags = state["fragments"]
     frags.append([speaker, start if isinstance(start, (int, float)) else None, len(frags), text])
@@ -505,10 +592,24 @@ async def _on_backend_event(
             task = asyncio.create_task(_handle_tool_call(live_ws, call_id, name, args, executor, state))
             state["_tool_tasks"].add(task)
             task.add_done_callback(state["_tool_tasks"].discard)
+    elif it == "response.created":
+        if state["delegating_since"] is None:
+            state["delegating_since"] = time.monotonic()
+        log.info("backend is working")
+    elif it == "response.output_text.delta":
+        key = evt.get("delegation_id") or ""
+        state["backend_text"][key] = state["backend_text"].get(key, "") + (inner.get("delta") or "")
     elif it == "response.completed":
+        state["delegating_since"] = None
+        text = " ".join(state["backend_text"].pop(evt.get("delegation_id") or "", "").split())
+        log.info("backend finished%s", f": {text}" if text else " (no text)")
         _record_backend_usage(state, (inner.get("response") or {}).get("usage"), cfg)
-    elif it in ("response.failed", "error"):
-        log.warning("backend %s: %s", it, (inner.get("response") or {}).get("error") or inner)
+    elif it in ("response.failed", "response.incomplete", "error"):
+        state["delegating_since"] = None
+        state["backend_text"].pop(evt.get("delegation_id") or "", None)
+        log.warning("backend %s: %s", it, json.dumps(inner)[:1000])
+    else:
+        _log_unexpected(state, "backend", inner)
 
 
 async def _send_tool_output(live_ws, call_id: str, output: str, *, resume: bool = True) -> None:
