@@ -92,6 +92,11 @@ _STUCK_SECONDS = 6.0
 # A delegation with no backend response by now is logged: from the outside it looks exactly like
 # the model never delegating at all.
 _BACKEND_STALL_SECONDS = 15.0
+# The agent answered and stopped on a statement — no "anything else?" — and the caller, who cannot
+# tell it has finished, says nothing either. The prompt asks for the hand-back, but GPT-Live skips it
+# often enough (in a real session: one answer handed back, the next did not) to need a backstop that
+# is much sooner than the general dead-air nudge.
+_FOLLOWUP_SECONDS = 2.5
 
 _GREET_NOW = (
     "The call has just connected. Speak your opening line now, first, without waiting for the "
@@ -103,6 +108,12 @@ _GREET_NOW = (
 _GREET_AGAIN = (
     "You have not said anything yet, and the caller is waiting on the line in silence. Say your "
     "opening line from the call flow now, in full, and then listen."
+)
+_ASK_ANYTHING_ELSE = (
+    "You stopped speaking without handing the conversation back, and the caller is waiting in "
+    "silence. In one short line, in the language they are speaking, ask whether there is anything "
+    "else you can help them with. If you were waiting on them for something specific, ask for that "
+    "instead."
 )
 _STOP_FOR_TRANSFER = (
     "The caller is being transferred to a colleague right now. Do not say anything more."
@@ -235,6 +246,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "last_activity_at": 0.0,  # last agent audio, caller words or backend event
         "nudged": False,  # already nudged during this silence
         "greet_retried": False,  # an inbound greeting that never came has been asked for again
+        "followup_asked": False,  # already prompted a hand-back for the agent's current turn
         "backend_text": {},  # delegation_id -> the backend's reply so far
         "logged_types": set(),
         "fragment_fields_logged": set(),
@@ -400,6 +412,7 @@ async def _live_to_caller(
                     continue
                 state["last_activity_at"] = time.monotonic()
                 state["nudged"] = False  # the caller spoke, so the next silence is a new one
+                state["followup_asked"] = False  # ...and the agent's next turn is a new one
                 _add_fragment(state, "lead", evt)
             elif t == "session.output_transcript.delta":
                 _add_fragment(state, "agent", evt)
@@ -538,6 +551,28 @@ async def _nudge_when_stuck(live_ws, state: dict) -> None:
                     return
             continue
         busy = state["hangup_pending"] or state["transfer_pending"] or state["_tool_tasks"]
+        # The agent's turn so far (everything it has said since the caller last spoke) ended on a
+        # FINISHED statement, and it has gone quiet. Judged by the transcript's closing punctuation,
+        # which GPT-Live writes in every language it speaks. A question hands the turn back already;
+        # no punctuation at all means it paused mid-sentence — measured on the real API at over 1.5s
+        # ("…and Claude" … "training.") — and must not be talked over.
+        run = state["current_run"]
+        if (
+            run
+            and run[0] == "agent"
+            and not busy
+            and not state["followup_asked"]
+            and state["last_audio_at"]
+            and now - state["last_audio_at"] >= _FOLLOWUP_SECONDS
+            and run[1].rstrip().endswith((".", "!", "。", "！"))
+        ):
+            state["followup_asked"] = True
+            log.info("agent stopped on a statement without handing the turn back — prompting a follow-up")
+            try:
+                await _append(live_ws, state, _ASK_ANYTHING_ELSE)
+            except websockets.ConnectionClosed:
+                return
+            continue
         if (
             (state["greeted"] or state["greet_retried"])
             and not busy

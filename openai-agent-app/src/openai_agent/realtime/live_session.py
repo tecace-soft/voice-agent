@@ -60,6 +60,12 @@ waiting: never say a time is open, a booking is made or a message is recorded un
 returned it. When the conversation is over, delegate end_call; the closing words are handled for
 you.
 
+# Never leave the caller in silence
+Every time you answer a question or finish something for the caller, end that SAME turn by handing
+it back: ask "Is there anything else I can help you with?" in the language they are speaking. The
+only exception is when your turn already ends with a question to them. Never stop on a statement and
+wait — the caller cannot tell you have finished, and the line goes dead.
+
 """
 
 _BACKEND_PREAMBLE = """\
