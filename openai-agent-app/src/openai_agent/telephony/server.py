@@ -46,6 +46,7 @@ from twilio.twiml.voice_response import Connect, Stream, VoiceResponse
 from ..config import Config
 from ..realtime import amd
 from ..realtime.bridge import run_bridge
+from ..realtime.live_bridge import run_live_bridge
 from . import transfer
 
 # Logging is configured HERE, at import, rather than only in scripts/run_server.py — because the
@@ -66,6 +67,15 @@ log = logging.getLogger(__name__)
 
 cfg = Config.load()
 app = FastAPI(title="openai-agent-app media stream")
+
+# Which engine answers calls. Logged at startup because the answer lives in .env, and a container
+# that was restarted instead of recreated silently keeps the old one.
+if cfg.openai_live_model:
+    log.info(
+        "voice engine: GPT-Live (%s, backend %s)", cfg.openai_live_model, cfg.openai_live_backend_model
+    )
+else:
+    log.info("voice engine: Realtime (%s)", cfg.openai_model)
 
 
 def _xml(twiml: str) -> Response:
@@ -281,4 +291,8 @@ async def media_stream(websocket: WebSocket, secret: str = "") -> None:
         log.warning("rejected a media-stream connection with a missing or wrong path secret")
         await websocket.close(code=1008)
         return
-    await run_bridge(websocket, cfg)
+    # OPENAI_LIVE_MODEL set = GPT-Live; blank = the Realtime bridge, untouched.
+    if cfg.openai_live_model:
+        await run_live_bridge(websocket, cfg)
+    else:
+        await run_bridge(websocket, cfg)

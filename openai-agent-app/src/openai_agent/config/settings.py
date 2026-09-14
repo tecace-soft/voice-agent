@@ -46,6 +46,16 @@ class Config:
     openai_model: str
     openai_voice: str
     openai_transcribe_model: str
+    # ---- OpenAI GPT-Live ----
+    # Set (e.g. "gpt-live-1") to run every call on GPT-Live instead of Realtime; blank = Realtime,
+    # exactly as before. GPT-Live is a different API, not just a different model, so it has its own
+    # bridge (realtime/live_bridge.py). While it is set, openai_model, openai_transcribe_model and
+    # the vad_* settings are unused.
+    openai_live_model: str
+    # The text model GPT-Live delegates tool calls to.
+    openai_live_backend_model: str
+    # That model's reasoning effort; "default" = don't send one.
+    openai_live_reasoning_effort: str
     # How loud speech must be before the model treats it as the caller talking, and how long a
     # pause must run before it treats their turn as finished. Tunable because the right values
     # depend on the room the caller is standing in, which we cannot know from here.
@@ -147,6 +157,12 @@ class Config:
             # whisper-1 is markedly worse on 8kHz phone audio, which is all we ever feed it.
             # Set OPENAI_TRANSCRIBE_MODEL=whisper-1 to go back if this model ever misbehaves.
             openai_transcribe_model=_optional("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe"),
+            openai_live_model=_optional("OPENAI_LIVE_MODEL"),
+            # gpt-5.6-terra is OpenAI's recommended delegate; gpt-5.6-luna is the cheaper one.
+            openai_live_backend_model=_optional("OPENAI_LIVE_BACKEND_MODEL", "gpt-5.6-terra"),
+            # Low, because every tool answer waits on it and that wait is silence on the phone.
+            # "default" sends no effort at all, leaving it to the model.
+            openai_live_reasoning_effort=_optional("OPENAI_LIVE_REASONING_EFFORT", "low"),
             # 0.5 is the API default and is tuned for someone speaking into a headset in a quiet
             # room. On a speakerphone in an open office it also hears the room, so the agent gets
             # interrupted by conversations that were never aimed at it. Raised — the caller's own
