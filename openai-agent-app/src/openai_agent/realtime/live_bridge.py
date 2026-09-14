@@ -70,7 +70,9 @@ _QUIET_SECONDS = 1.5
 # How much closing audio must have been heard before quiet counts. Stops a hang-up in the gap
 # between whatever the agent was saying and the farewell it was just asked for.
 _FAREWELL_MIN_AUDIO = 1.0
-_VOICEMAIL_MIN_AUDIO = 4.0
+# Counted in chunks that contain sound, so the gaps between words don't count — lower than the
+# message's length on purpose.
+_VOICEMAIL_MIN_AUDIO = 3.0
 # Agent audio within this long means it is mid-sentence (usually its own "let me put you through"),
 # so a transfer drains that first instead of having Twilio speak a hold line over it.
 _RECENTLY_SPOKE_SECONDS = 2.0
@@ -81,6 +83,8 @@ _MAX_HELD_FRAMES = 150  # 3s of 20ms frames
 # greeting never comes, stop waiting for it rather than leaving the caller unheard for the call.
 _GREETING_WAIT_SECONDS = 6.0
 _MULAW_SAMPLES_PER_SECOND = 8000
+# μ-law byte -> 1 if its amplitude is well above line noise (segment 3 or higher), else 0.
+_LOUD_BYTES = bytes(1 if ((0xFF ^ b) >> 4) & 7 >= 3 else 0 for b in range(256))
 # Dead air with no backend work in flight. GPT-Live decides for itself whether to delegate, and on
 # the first real call it said "let me put you through" and never delegated the transfer — the caller
 # sat in silence until they hung up. After this long the agent is reminded to act.
@@ -92,6 +96,13 @@ _BACKEND_STALL_SECONDS = 15.0
 _GREET_NOW = (
     "The call has just connected. Speak your opening line now, first, without waiting for the "
     "caller to say anything. Then listen."
+)
+# Sent when an inbound agent was asked to greet and has still said nothing. A greeting request is
+# only a request to GPT-Live: a caller coming back from a failed transfer once sat through 17 seconds
+# of silence and hung up, although the same prompt greeted promptly when tried on its own.
+_GREET_AGAIN = (
+    "You have not said anything yet, and the caller is waiting on the line in silence. Say your "
+    "opening line from the call flow now, in full, and then listen."
 )
 _STOP_FOR_TRANSFER = (
     "The caller is being transferred to a colleague right now. Do not say anything more."
@@ -223,6 +234,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "delegating_since": None,  # monotonic time backend work began; None when none is in flight
         "last_activity_at": 0.0,  # last agent audio, caller words or backend event
         "nudged": False,  # already nudged during this silence
+        "greet_retried": False,  # an inbound greeting that never came has been asked for again
         "backend_text": {},  # delegation_id -> the backend's reply so far
         "logged_types": set(),
         "fragment_fields_logged": set(),
@@ -424,17 +436,37 @@ async def _live_to_caller(
         pass
 
 
+def _has_sound(payload: str) -> bool:
+    """Does this chunk of μ-law audio contain actual sound, rather than silence?
+
+    GPT-Live streams output audio CONTINUOUSLY — silence included, from before the agent says a word
+    until the session ends (measured against the real API). Every "is the agent talking?" decision
+    in this bridge therefore has to look at the samples, not at whether a chunk arrived: counting
+    silent chunks marked the agent as having greeted before it spoke, kept the dead-air nudge from
+    ever firing, and would have kept a finished farewell from ever going quiet.
+    """
+    try:
+        raw = base64.b64decode(payload)
+    except (ValueError, TypeError):
+        return False
+    return bool(raw) and raw.translate(_LOUD_BYTES).count(1) * 50 >= len(raw)  # >= 2% loud
+
+
 def _note_agent_audio(state: dict, payload: str) -> None:
-    """Account one chunk of agent audio: when it was heard, how long it plays, how far ahead it is."""
+    """Account one chunk of agent audio: how long it plays, how far ahead it is, and — only if it
+    contains sound — that the agent is speaking."""
     now = time.monotonic()
     seconds = _payload_bytes(payload) / _MULAW_SAMPLES_PER_SECOND
-    if not state["greeted"]:
-        state["greeted"] = True
-        log.info("first audio to the caller %.1fs after the stream opened", now - state["started"])
     # When Twilio will finish playing everything sent so far. GPT-Live's output events carry no
     # timing, so the only way to see whether audio arrives faster than it plays is to measure it.
+    # Silence counts here: it occupies Twilio's buffer just the same.
     state["play_until"] = max(state["play_until"], now) + seconds
     state["max_playback_lead"] = max(state["max_playback_lead"], state["play_until"] - now)
+    if not _has_sound(payload):
+        return
+    if not state["greeted"]:
+        state["greeted"] = True
+        log.info("agent first spoke %.1fs after the stream opened", now - state["started"])
     state["last_audio_at"] = state["last_activity_at"] = now
     if state["hangup_pending"]:
         state["closing_audio"] += seconds
@@ -491,9 +523,23 @@ async def _nudge_when_stuck(live_ws, state: dict) -> None:
                 log.warning("the backend has not answered %.0fs after the agent delegated", now - since)
             continue
         stall_logged = False
+        if state["is_inbound"] and not state["greeted"] and not state["greet_retried"]:
+            # Waiting on the greeting. greet_deadline is only set once the session has started.
+            if now >= state["greet_deadline"]:
+                state["greet_retried"] = True
+                state["last_activity_at"] = now  # the regular nudge waits a full silence after this
+                log.info(
+                    "the agent has not greeted %.0fs after the session started — asking again",
+                    _GREETING_WAIT_SECONDS,
+                )
+                try:
+                    await _append(live_ws, state, _GREET_AGAIN)
+                except websockets.ConnectionClosed:
+                    return
+            continue
         busy = state["hangup_pending"] or state["transfer_pending"] or state["_tool_tasks"]
         if (
-            state["greeted"]
+            (state["greeted"] or state["greet_retried"])
             and not busy
             and not state["nudged"]
             and now - state["last_activity_at"] >= _STUCK_SECONDS
