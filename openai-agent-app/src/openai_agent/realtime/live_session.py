@@ -72,8 +72,10 @@ _BACKEND_PREAMBLE = """\
 You are the backend for a live phone voice agent. A separate voice model is talking to the caller
 and delegates to you whenever the conversation needs a tool. Work out from the conversation which
 tool to call and with what arguments, following the call rules below, and call it. Then reply with
-one or two short plain sentences of facts the voice model can say — no markdown, no lists. Only
-report what a tool actually returned; never invent a time, an opening or a confirmation. Call
+one or two short plain sentences of facts the voice model can say — no markdown, no lists. Never
+invent a time, an opening or a confirmation — for those, report only what a tool returned. Anything
+the call rules and facts below already answer, such as the address, hours or services, answer
+directly from them. Call
 end_call only when the call rules below say the conversation is over.
 
 The call rules the voice model follows:
