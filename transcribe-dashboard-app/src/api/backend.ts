@@ -1,5 +1,6 @@
 import type {
   AgentNumber,
+  CallMinutes,
   InboundCall,
   BusinessProfile,
   BusinessProfileResponse,
@@ -357,7 +358,10 @@ export function saveAgentIdentity(
 
 // ---- calls the agent answered ----
 
-/** A customer's calls, or — for an admin — one customer's, or everyone's when no id is given. */
+/**
+ * A customer's calls, or — for an admin — one customer's, or everyone's when no id is given.
+ * "unassigned" (admin) = calls on numbers nobody owns.
+ */
 export async function listInboundCalls(userId?: string): Promise<InboundCall[]> {
   const q = userId ? `?userId=${encodeURIComponent(userId)}` : "";
   return (await get<{ calls: InboundCall[] }>(`/calls${q}`)).calls;
@@ -366,4 +370,16 @@ export async function listInboundCalls(userId?: string): Promise<InboundCall[]> 
 /** Permanently remove one call. A customer may only delete their own; an admin, any. */
 export function deleteInboundCall(id: string): Promise<{ status: string }> {
   return request<{ status: string }>("DELETE", `/calls/${encodeURIComponent(id)}`);
+}
+
+// ---- talk time ----
+
+/**
+ * Minutes the agent spent on calls, per business, this month and last. A customer always gets their
+ * own business, whatever is asked for; an admin gets every business, or one account's, or
+ * "unassigned".
+ */
+export function listCallMinutes(userId?: string): Promise<{ timezone: string; minutes: CallMinutes[] }> {
+  const q = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+  return get<{ timezone: string; minutes: CallMinutes[] }>(`/usage/minutes${q}`);
 }

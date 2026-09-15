@@ -211,6 +211,26 @@ export async function initDb(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_inbound_calls_user_started
     ON inbound_calls (user_id, started_at DESC)
   `;
+  // How long the voice agent has been on the phone for each business: this month's running total
+  // and last month's, rolled over by src/db/callMinutes.ts. Seconds, not minutes, so short calls
+  // aren't lost to rounding.
+  //
+  // owner_key is the account id, or 'unassigned' for calls on numbers nobody owns. It is the
+  // conflict target and never null (NULL never equals NULL, so user_id itself can't be one); the
+  // CHECK keeps the two from disagreeing. CASCADE, like inbound_calls: an account's usage goes with it.
+  await sql`
+    CREATE TABLE IF NOT EXISTS agent_call_minutes (
+      owner_key        TEXT PRIMARY KEY,
+      user_id          UUID REFERENCES users(id) ON DELETE CASCADE,
+      current_month    TEXT NOT NULL,
+      current_seconds  INTEGER NOT NULL DEFAULT 0,
+      previous_month   TEXT NOT NULL,
+      previous_seconds INTEGER NOT NULL DEFAULT 0,
+      updated_at       TIMESTAMPTZ,
+      CHECK (owner_key = COALESCE(user_id::text, 'unassigned'))
+    )
+  `;
+
   // A pasted screenshot, stored inline as a data URL. Kept in the row rather than in object storage
   // because feedback is low-volume and this needs no bucket, no signed URLs and no orphan cleanup —
   // the image is deleted exactly when the note is. The client downscales before upload and the
@@ -258,6 +278,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT transfer_topics FROM business_profiles LIMIT 1`;
     await sql`SELECT 1 FROM inbound_calls LIMIT 1`;
     await sql`SELECT requested_time, sheet_written_at FROM inbound_calls LIMIT 1`;
+    await sql`SELECT 1 FROM agent_call_minutes LIMIT 1`;
     return;
   } catch {
     await initDb();

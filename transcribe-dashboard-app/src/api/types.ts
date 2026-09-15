@@ -235,3 +235,20 @@ export interface InboundCall {
   startedAt: string;
   createdAt: string;
 }
+
+// One business's talk time — GET /usage/minutes. Every agent call counts, inbound and outbound, so
+// this is more than the answered calls listed beside it. `userId` null is the bucket for calls on
+// agent numbers nobody owns. Months are "YYYY-MM" in the business timezone.
+export interface CallMinutes {
+  userId: string | null;
+  email: string | null;
+  name: string | null;
+  businessName: string | null;
+  currentMonth: string;
+  currentSeconds: number;
+  currentMinutes: number;
+  previousMonth: string;
+  previousSeconds: number;
+  previousMinutes: number;
+  updatedAt: string | null;
+}

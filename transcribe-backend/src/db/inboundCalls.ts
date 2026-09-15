@@ -158,6 +158,20 @@ export async function listAllInboundCalls(limit = 200): Promise<InboundCall[]> {
 }
 
 /**
+ * Calls on numbers nobody owned when they rang, for an admin — the same "unassigned" bucket the
+ * talk-time totals use, so the dashboard can show that group on its own like any business.
+ */
+export async function listUnassignedInboundCalls(limit = 200): Promise<InboundCall[]> {
+  const rows = (await sql`
+    SELECT ${COLUMNS} FROM inbound_calls
+    WHERE user_id IS NULL
+    ORDER BY started_at DESC
+    LIMIT ${limit}
+  `) as unknown as InboundCall[];
+  return rows.map(withTurns);
+}
+
+/**
  * Delete one call. `ownerId` null means an admin, who may delete any of them.
  *
  * Ownership is a WHERE clause rather than a read-then-check, so there is no window between the two

@@ -130,6 +130,32 @@ async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | N
     )
 
 
+async def post_call_minutes(cfg: Config, seconds: int, agent_number: str = "") -> None:
+    """Add one finished session's length to its business's call minutes for the month.
+
+    Every session counts — inbound and outbound, with or without a transcript — because every one
+    used the minutes. `agent_number` is the agent's own number on the call, and the dashboard works
+    out whose business that is the same way the config lookup does; missing or unowned, the minutes
+    go to its unassigned bucket. Best-effort and never raised: the call is already over.
+    """
+    if not cfg.business_config_url or not cfg.agent_config_key or seconds <= 0:
+        return
+    url = f"{cfg.business_config_url.rstrip('/')}/usage/minutes"
+    # The backend refuses anything over a day, which would only ever be a bug.
+    payload: dict = {"durationSeconds": min(seconds, 86400)}
+    if agent_number:
+        payload["agentNumber"] = agent_number
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(url, json=payload, headers={"x-agent-key": cfg.agent_config_key})
+        if resp.status_code >= 300:
+            log.warning("could not add the call to this month's minutes: HTTP %s", resp.status_code)
+        else:
+            log.info("added %ds to this month's call minutes for %s", seconds, agent_number or "an unknown number")
+    except Exception as exc:  # noqa: BLE001 — the call is over; this must not surface anywhere
+        log.warning("could not add the call to this month's minutes: %s", exc)
+
+
 async def post_inbound_call(cfg: Config, payload: dict) -> None:
     """Send a finished call to the dashboard, so the customer can read it back.
 

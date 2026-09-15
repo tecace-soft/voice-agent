@@ -7,6 +7,7 @@ import {
   listAllInboundCalls,
   listCallsAwaitingSheet,
   listInboundCalls,
+  listUnassignedInboundCalls,
   markSheetWritten,
 } from "../db/inboundCalls.js";
 
@@ -66,6 +67,8 @@ export const calls = new Elysia({ prefix: "/calls" })
         return { calls: await listInboundCalls(user.id) };
       }
       const wanted = query.userId?.trim();
+      // "unassigned" = calls on numbers nobody owns, the same bucket name the talk-time totals use.
+      if (wanted === "unassigned") return { calls: await listUnassignedInboundCalls() };
       return { calls: wanted ? await listInboundCalls(wanted) : await listAllInboundCalls() };
     },
     { query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }) },

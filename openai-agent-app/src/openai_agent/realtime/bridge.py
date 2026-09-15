@@ -23,7 +23,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from ..config import Config
 from ..telephony import transfer
 from ..telephony.outbound import is_machine
-from ..tools.business_config import fetch_business_config, post_inbound_call
+from ..tools.business_config import fetch_business_config, post_call_minutes, post_inbound_call
 from ..tools.agent_tools import INBOUND_TOOL_SCHEMAS, ToolExecutor
 from . import amd
 from . import dtmf
@@ -669,6 +669,18 @@ async def _finalize_call(
 ) -> None:
     """At call end: log the transcript, then persist it (+ summary) to the backend per lead."""
     _log_call_end(state, params)
+    # Every call counts toward its business's minutes for the month — outbound and inbound, on either
+    # engine, and including calls that left no transcript (a silent line still used the minutes).
+    # Sent before the transcript check below for exactly that reason. Whose minutes is decided by the
+    # agent's own number on the call — the one dialled, inbound; the one it rang out from, outbound —
+    # which the dashboard resolves to a business exactly as it does for the config lookup.
+    if cfg is not None:
+        agent_number = (
+            str(params.get("dialled", "")) if state.get("is_inbound") else cfg.twilio_from_number
+        )
+        await post_call_minutes(
+            cfg, round(time.monotonic() - state.get("started", time.monotonic())), agent_number
+        )
     turns = _turns(state)
     if not turns:
         return

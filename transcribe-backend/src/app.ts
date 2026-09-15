@@ -9,6 +9,7 @@ import { health } from "./routes/health.js";
 import { business } from "./routes/business.js";
 import { calls } from "./routes/calls.js";
 import { transcribe } from "./routes/transcribe.js";
+import { usage } from "./routes/usage.js";
 
 // Compose the application from controllers. Exported WITHOUT `.listen()` so tests can call it
 // directly and so the entrypoint owns the server lifecycle. Add controllers with another `.use()`.
@@ -40,7 +41,8 @@ export const app = new Elysia()
   .use(feedback)
   .use(transcribe)
   .use(business)
-  .use(calls);
+  .use(calls)
+  .use(usage);
 
 export type App = typeof app;
 
