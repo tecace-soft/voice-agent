@@ -11,12 +11,19 @@ import { StatCard } from "./StatCard";
 // only has the calls that rang in, so without saying so, adding up that list would come to less than
 // this and look like a mistake.
 
-/** Talk time the way people read a phone bill: minutes, with seconds only for a short total. */
+/**
+ * Talk time in the SAME form as a call's own length in the call list ("4m 12s"), switching to hours
+ * and minutes past an hour. Decimal minutes ("1.1 min") next to a call reading "1m 5s" looked like
+ * two different numbers for the same call, when they were the same 65 seconds.
+ */
 export function formatTalkTime(seconds: number): string {
-  if (seconds <= 0) return "0 min";
-  if (seconds < 60) return `${Math.round(seconds)} sec`;
-  const minutes = Math.round(seconds / 6) / 10;
-  return `${minutes.toLocaleString("en-US", { maximumFractionDigits: minutes >= 100 ? 0 : 1 })} min`;
+  const total = Math.max(0, Math.round(seconds));
+  if (total === 0) return "0s";
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (hours) return `${hours}h ${minutes}m`;
+  return minutes ? `${minutes}m ${secs}s` : `${secs}s`;
 }
 
 /** "2026-09" -> "September 2026". Formatted in UTC: the key is already the business's month. */

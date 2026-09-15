@@ -640,10 +640,22 @@ def _fmt_duration(seconds: float) -> str:
     return f"{total // 60}m {total % 60}s"
 
 
+def _call_seconds(state: dict) -> int:
+    """How long the call lasted, in whole seconds: from the stream opening to the moment it ended
+    (`ended`, stamped once by _finalize_call), or to now while it is still going.
+
+    The ONE definition of a call's length. The talk-time total, the call record the customer reads
+    and the summary line all use it — measuring separately, at different moments and rounding
+    differently, is what made the same call show two different lengths.
+    """
+    end = state.get("ended", time.monotonic())
+    return round(end - state.get("started", end))
+
+
 def _summary(state: dict) -> str:
     """A one-line summary: what happened + how long the call took."""
     base = _OUTCOME_SUMMARY.get(state.get("outcome") or "", "Call ended with no clear outcome.")
-    return f"{base} ({_fmt_duration(time.monotonic() - state.get('started', time.monotonic()))})"
+    return f"{base} ({_fmt_duration(_call_seconds(state))})"
 
 
 def _log_call_end(state: dict, params: dict) -> None:
@@ -668,6 +680,10 @@ async def _finalize_call(
     state: dict, params: dict, executor: ToolExecutor, cfg: Config | None = None
 ) -> None:
     """At call end: log the transcript, then persist it (+ summary) to the backend per lead."""
+    # Stamp the end FIRST, before any network call below. The call record used to be timed after
+    # the talk time had been sent, so it also counted that round trip (seconds, on a cold backend)
+    # and the same call showed a longer length on its transcript than in its talk time.
+    state.setdefault("ended", time.monotonic())
     _log_call_end(state, params)
     # Every call counts toward its business's minutes for the month — outbound and inbound, on either
     # engine, and including calls that left no transcript (a silent line still used the minutes).
@@ -678,9 +694,7 @@ async def _finalize_call(
         agent_number = (
             str(params.get("dialled", "")) if state.get("is_inbound") else cfg.twilio_from_number
         )
-        await post_call_minutes(
-            cfg, round(time.monotonic() - state.get("started", time.monotonic())), agent_number
-        )
+        await post_call_minutes(cfg, _call_seconds(state), agent_number)
     turns = _turns(state)
     if not turns:
         return
@@ -735,7 +749,8 @@ async def _finalize_call(
                 "summary": _summary(state),
                 "outcome": state.get("outcome") or "",
                 "callbackRequested": bool(state.get("messages")),
-                "durationSeconds": int(time.monotonic() - state.get("started", time.monotonic())),
+                # The same number the talk time was given — see _call_seconds.
+                "durationSeconds": _call_seconds(state),
                 "turns": [
                     # "lead" is the outbound word for the other party; the dashboard says "caller".
                     {"speaker": "agent" if who == "agent" else "caller", "text": text}
