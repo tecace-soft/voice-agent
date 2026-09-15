@@ -60,6 +60,7 @@ from .instructions import build_instructions
 from .instructions_inbound import RETURN_GREETING
 from .instructions_inbound import build_instructions as build_instructions_inbound
 from .instructions_neutral import build_instructions_neutral
+from .korean import HANGUL, korean_speech_guide
 from .live_session import LIVE_URL, VOICE_PRICE_PER_MINUTE, backend_cost, build_live_session_start
 
 log = logging.getLogger(__name__)
@@ -247,6 +248,9 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "nudged": False,  # already nudged during this silence
         "greet_retried": False,  # an inbound greeting that never came has been asked for again
         "followup_asked": False,  # already prompted a hand-back for the agent's current turn
+        # Appended the first time the caller is heard speaking Korean — see realtime/korean.py.
+        "korean_guide": korean_speech_guide(instructions),
+        "korean_guided": False,
         "backend_text": {},  # delegation_id -> the backend's reply so far
         "logged_types": set(),
         "fragment_fields_logged": set(),
@@ -414,6 +418,10 @@ async def _live_to_caller(
                 state["nudged"] = False  # the caller spoke, so the next silence is a new one
                 state["followup_asked"] = False  # ...and the agent's next turn is a new one
                 _add_fragment(state, "lead", evt)
+                if not state["korean_guided"] and HANGUL.search(evt.get("delta") or ""):
+                    state["korean_guided"] = True
+                    log.info("caller is speaking Korean — adding Korean pronunciation guidance")
+                    await _append(live_ws, state, state["korean_guide"])
             elif t == "session.output_transcript.delta":
                 _add_fragment(state, "agent", evt)
             elif t == "response.event":
