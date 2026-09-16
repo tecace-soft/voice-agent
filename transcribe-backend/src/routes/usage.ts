@@ -59,7 +59,8 @@ export const usage = new Elysia({ prefix: "/usage" })
         if (!key) return status(401, INVALID_API_KEY);
 
         // Every business, or the one it names — the same view an admin has in the dashboard.
-        const wanted = query.userId?.trim() || undefined;
+        // Ids are stored lower-case; an upper-cased copy must find the same business, not its zeroes.
+        const wanted = query.userId?.trim().toLowerCase() || undefined;
         if (!wanted) return { timezone: env.timezone, minutes: await listCallMinutes() };
         if (wanted === UNASSIGNED) return { timezone: env.timezone, minutes: await listCallMinutes(UNASSIGNED) };
         const [found] = await listCallMinutes(wanted);
