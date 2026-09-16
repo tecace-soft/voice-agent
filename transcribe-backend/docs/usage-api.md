@@ -8,13 +8,13 @@ integration.
 | --- | --- |
 | Base URL | `https://transcribe-app-backend.vercel.app` |
 | Authentication | API key, sent as a bearer token |
-| Endpoints you can call | `GET /usage/minutes` (API key), `GET /health` (none) |
+| Endpoints you can call | `GET /usage/minutes[?userId=…]` (API key), `GET /health` (none) |
 | Access | Read-only; no expiry until revoked |
 
 ## Quick start
 
-1. **Get your API key from TecAce.** An administrator creates one for your integration (dashboard:
-   Settings → API keys) and sends it to you. It starts with `ak_` and is shown to them only once — if
+1. **Get your API key from TecAce.** An administrator creates one key for your integration, covering
+   every business (dashboard: Settings → API keys), and sends it to you. It starts with `ak_` and is shown to them only once — if
    it's lost, ask for a new one.
 2. **Store it as a server-side secret**, e.g. `USAGE_API_KEY` in your server's environment or secret
    manager. Never in browser code, a mobile app, or a file committed to git.
@@ -22,6 +22,13 @@ integration.
 
    ```bash
    curl -sS https://transcribe-app-backend.vercel.app/usage/minutes \
+     -H "Authorization: Bearer $USAGE_API_KEY"
+   ```
+4. **Note each business's `userId`** from that list, and add `?userId=<id>` whenever you want just one
+   business:
+
+   ```bash
+   curl -sS "https://transcribe-app-backend.vercel.app/usage/minutes?userId=3f1c9a2e-5b7d-4c1a-9e0f-2d6b8a4c7e11" \
      -H "Authorization: Bearer $USAGE_API_KEY"
    ```
 
@@ -37,7 +44,7 @@ Authorization: Bearer ak_your_key_here
 | Key property | What it means for you |
 | --- | --- |
 | Format | `ak_` followed by 32 URL-safe characters. |
-| Scope | Issued for **one business** or **every business**. It decides which businesses the response contains — there is no parameter to change it. |
+| Scope | Normally issued for **every business** — one key for your whole integration, choosing a business per request with `?userId=`. A key can instead be limited to **one business**, and then it can never read any other. |
 | Permissions | Read-only, and only for `GET /usage/minutes`. It can't write data or reach any other part of the service. |
 | Expiry | None. Works until TecAce revokes it; stops immediately when they do. |
 | Storage | TecAce keeps only a hash, so it can be replaced but never read back. |
@@ -49,25 +56,43 @@ TecAce's dashboard and answers `401` or `404`.
 
 ### `GET /usage/minutes` — requires API key
 
-Call time per business: the current month so far and the previous calendar month. One entry per
-business your key covers, busiest this month first.
+Call time per business: the current month so far and the previous calendar month.
 
-- **Parameters:** none. **Body:** none. **Success:** `200` JSON.
+| Query parameter | Required | Meaning |
+| --- | --- | --- |
+| `userId` | No | Return only this business. Leave it out to get every business your key covers, busiest this month first. `unassigned` returns calls on phone numbers no business owns yet. |
+
+- **Body:** none. **Success:** `200` JSON.
+
+**Finding a business's `userId`.** Call without `userId`: every entry carries the business's `userId`
+next to its `businessName`. Store the `userId` in your app — it never changes, while a business name can
+be edited.
 
 ```js
 // Node 18+ (built-in fetch). Run on your server, never in a browser.
-const res = await fetch("https://transcribe-app-backend.vercel.app/usage/minutes", {
-  headers: { Authorization: `Bearer ${process.env.USAGE_API_KEY}` },
-});
+// Leave userId out to get every business.
+async function getMinutes(userId) {
+  const url = new URL("https://transcribe-app-backend.vercel.app/usage/minutes");
+  if (userId) url.searchParams.set("userId", userId);
+  return fetch(url, { headers: { Authorization: `Bearer ${process.env.USAGE_API_KEY}` } });
+}
+
+const res = await getMinutes("3f1c9a2e-5b7d-4c1a-9e0f-2d6b8a4c7e11");
 
 if (res.status === 401) {
   // Wrong or revoked key: retrying won't help. Alert someone and get a new key.
   const { error } = await res.json();
   throw new Error(`Usage API rejected the key (${error})`);
 }
+if (res.status === 403 || res.status === 404) {
+  // outside_key_scope / business_not_found: a wrong or out-of-scope userId. Fix the id; don't retry.
+  const { error } = await res.json();
+  throw new Error(`Usage API refused that business (${error})`);
+}
 if (!res.ok) throw new Error(`Usage API returned ${res.status}; retry with backoff`);
 
 const { timezone, minutes } = await res.json();
+const [business] = minutes; // exactly one entry when userId was given
 ```
 
 ```python
@@ -76,16 +101,21 @@ import requests
 
 resp = requests.get(
     "https://transcribe-app-backend.vercel.app/usage/minutes",
+    params={"userId": "3f1c9a2e-5b7d-4c1a-9e0f-2d6b8a4c7e11"},  # leave out for every business
     headers={"Authorization": f"Bearer {os.environ['USAGE_API_KEY']}"},
     timeout=10,
 )
 if resp.status_code == 401:
     raise RuntimeError(f"Usage API rejected the key: {resp.json().get('error')}")
+if resp.status_code in (403, 404):
+    # outside_key_scope / business_not_found: a wrong or out-of-scope userId. Fix the id; don't retry.
+    raise RuntimeError(f"Usage API refused that business: {resp.json().get('error')}")
 resp.raise_for_status()  # 5xx: retry later with backoff
-data = resp.json()
+business = resp.json()["minutes"][0]  # exactly one entry when userId was given
 ```
 
-Example response (`200`, example values):
+Example response for `?userId=3f1c9a2e-…` (`200`, example values). Without `userId`, the list holds one
+entry like this per business:
 
 ```json
 {
@@ -120,8 +150,9 @@ curl -sS https://transcribe-app-backend.vercel.app/health
 
 ## Reading the response
 
-`minutes` is always a list. A key for one business returns exactly one entry (zeroes before its first
-call); a key for every business returns one entry each.
+`minutes` is always a list. With `userId`, or with a key limited to one business, it holds exactly one
+entry — all zeroes if that business hasn't had a call yet. Without `userId`, a key for every business
+gets one entry per business.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -153,6 +184,8 @@ Every response is JSON. Errors carry an `error` code to branch on and a `message
 | --- | --- | --- | --- |
 | `200` | — | Success. | Read `minutes`. |
 | `401` | `invalid_api_key` | Key is wrong or revoked. | **Stop and alert someone.** Don't retry. Check the configured key or ask TecAce for a new one. |
+| `403` | `outside_key_scope` | Your key is limited to one business and `userId` named another. | Remove `userId`, or use the right key. Don't retry. |
+| `404` | `business_not_found` | No business has that `userId`. | Check the id against the full list (call without `userId`). Don't retry. |
 | `401` | `unauthorized` | No `Authorization` header, or its value isn't an `ak_` key. | Send `Authorization: Bearer ak_…` with the full key. |
 | `5xx` | — | Temporary problem on TecAce's side. | Retry with backoff (e.g. 5s, 30s, 2m), alert if it persists. Retrying is always safe. |
 | Timeout | — | No response / network failure. | Treat like `5xx`. Use a ~10 second request timeout. |
@@ -204,6 +237,8 @@ return `invalid_api_key` in between.
 - [ ] The key is stored as a server-side secret and nowhere else.
 - [ ] `GET /health` returns `200` from your production environment.
 - [ ] `GET /usage/minutes` returns `200` with the businesses you expect.
+- [ ] Businesses are looked up by their stored `userId`, not by name.
+- [ ] A `403` or `404` is reported as a bad `userId`, not retried.
 - [ ] Calculations use `currentSeconds` / `previousSeconds`, not the rounded minutes.
 - [ ] A `401` alerts someone instead of retrying.
 - [ ] `5xx` responses and timeouts retry with backoff.

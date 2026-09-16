@@ -2,7 +2,20 @@ import { Elysia, t } from "elysia";
 import { INVALID_API_KEY, authenticateApiKey, looksLikeApiKey } from "../auth/apiKey.js";
 import { authenticate, UNAUTHORIZED } from "../auth/guard.js";
 import { env } from "../config/env.js";
-import { addCallSeconds, emptyMinutesFor, listCallMinutes } from "../db/callMinutes.js";
+import { UNASSIGNED, addCallSeconds, emptyMinutesFor, listCallMinutes } from "../db/callMinutes.js";
+import { findUserById } from "../db/users.js";
+
+const OUTSIDE_KEY_SCOPE = {
+  error: "outside_key_scope",
+  message: "This API key is limited to one business and can't read another.",
+} as const;
+const BUSINESS_NOT_FOUND = {
+  error: "business_not_found",
+  message: "No business has that userId.",
+} as const;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUuid = (id: string) => UUID.test(id);
 
 // Minutes the voice agent has spent talking, per business, this month and last.
 //
@@ -37,8 +50,9 @@ export const usage = new Elysia({ prefix: "/usage" })
     },
   )
 
-  // `userId` is a filter for an admin — an account id, or "unassigned" — and never a way in for
-  // anyone else. Always a list, so a customer's single business and an admin's view share a shape.
+  // `userId` is a filter — an account id, or "unassigned" — for an admin or an all-businesses key,
+  // and never a way in for anyone else. Always a list, so a customer's single business and an admin's
+  // view share a shape.
   .get(
     "/minutes",
     async ({ headers, query, status }) => {
@@ -47,16 +61,29 @@ export const usage = new Elysia({ prefix: "/usage" })
       if (looksLikeApiKey(headers.authorization)) {
         const key = await authenticateApiKey(headers.authorization);
         if (!key) return status(401, INVALID_API_KEY);
-        if (!key.userId) return { timezone: env.timezone, minutes: await listCallMinutes() };
-        const scoped = await listCallMinutes(key.userId);
-        // A business with no calls yet still gets its row of zeroes — an integration asking for a
-        // total wants a number, and an empty list reads as an error at the other end.
-        return {
-          timezone: env.timezone,
-          minutes: scoped.length
-            ? scoped
-            : [emptyMinutesFor({ id: key.userId, email: key.userEmail ?? "", name: key.userName ?? "" })],
-        };
+        const wanted = query.userId?.trim() || undefined;
+
+        // A key issued for one business stays on it: naming its own business is fine, naming another
+        // is refused outright rather than quietly answered with the key's own figures.
+        if (key.userId) {
+          if (wanted && wanted !== key.userId) return status(403, OUTSIDE_KEY_SCOPE);
+          const [own] = await listCallMinutes(key.userId);
+          return {
+            timezone: env.timezone,
+            minutes: [own ?? emptyMinutesFor({ id: key.userId, email: key.userEmail ?? "", name: key.userName ?? "" })],
+          };
+        }
+
+        // A key for every business: all of them, or the one it names.
+        if (!wanted) return { timezone: env.timezone, minutes: await listCallMinutes() };
+        if (wanted === UNASSIGNED) return { timezone: env.timezone, minutes: await listCallMinutes(UNASSIGNED) };
+        const [found] = await listCallMinutes(wanted);
+        if (found) return { timezone: env.timezone, minutes: [found] };
+        // Not in the totals yet: a real customer with no number and no calls is a row of zeroes (an
+        // integration asking for a total wants a number); anything else is a mistyped id, said plainly.
+        const account = isUuid(wanted) ? await findUserById(wanted) : null;
+        if (!account || account.role === "admin") return status(404, BUSINESS_NOT_FOUND);
+        return { timezone: env.timezone, minutes: [emptyMinutesFor(account)] };
       }
 
       const user = await authenticate(headers.authorization);
