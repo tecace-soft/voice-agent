@@ -243,10 +243,6 @@ export interface ApiKey {
   id: string;
   name: string;
   keyPrefix: string;
-  userId: string | null;
-  userEmail: string | null;
-  userName: string | null;
-  businessName: string | null;
   createdAt: string;
   createdBy: string | null;
   lastUsedAt: string | null;

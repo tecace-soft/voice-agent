@@ -7,6 +7,8 @@ import { sql } from "./client.js";
 // env file. Revoking is a column, not a redeploy, and `last_used_at` says which integrations are
 // actually live.
 //
+// Every key reads every business; a caller picks one per request (?userId= on /usage/minutes).
+//
 // The secret itself is never stored, only its SHA-256 hash (see auth/apiKey.ts). `key_prefix` is the
 // first few visible characters, kept so a person can match a key on screen to the one in someone
 // else's config without either of us being able to read the rest.
@@ -16,11 +18,6 @@ export interface ApiKeyRecord {
   name: string;
   /** The first characters of the key, for recognising it on screen. Never enough to use. */
   keyPrefix: string;
-  /** The business this key may read, or null for every business. */
-  userId: string | null;
-  userEmail: string | null;
-  userName: string | null;
-  businessName: string | null;
   createdAt: string;
   createdBy: string | null;
   lastUsedAt: string | null;
@@ -31,21 +28,13 @@ const COLUMNS = sql`
   k.id,
   k.name,
   k.key_prefix   AS "keyPrefix",
-  k.user_id      AS "userId",
-  u.email        AS "userEmail",
-  u.name         AS "userName",
-  bp.business_name AS "businessName",
   k.created_at   AS "createdAt",
   k.created_by   AS "createdBy",
   k.last_used_at AS "lastUsedAt",
   k.revoked_at   AS "revokedAt"
 `;
 
-const FROM = sql`
-  FROM api_keys k
-  LEFT JOIN users u ON u.id = k.user_id
-  LEFT JOIN business_profiles bp ON bp.user_id = k.user_id
-`;
+const FROM = sql`FROM api_keys k`;
 
 export async function listApiKeys(): Promise<ApiKeyRecord[]> {
   return (await sql`
@@ -63,13 +52,11 @@ export async function createApiKey(input: {
   name: string;
   keyHash: string;
   keyPrefix: string;
-  /** null = every business. */
-  userId: string | null;
   createdBy: string;
 }): Promise<ApiKeyRecord> {
   const [row] = await sql`
-    INSERT INTO api_keys (name, key_hash, key_prefix, user_id, created_by)
-    VALUES (${input.name.trim()}, ${input.keyHash}, ${input.keyPrefix}, ${input.userId}, ${input.createdBy})
+    INSERT INTO api_keys (name, key_hash, key_prefix, created_by)
+    VALUES (${input.name.trim()}, ${input.keyHash}, ${input.keyPrefix}, ${input.createdBy})
     RETURNING id
   `;
   return (await findApiKey((row as { id: string }).id))!;

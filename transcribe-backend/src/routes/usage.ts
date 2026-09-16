@@ -5,10 +5,6 @@ import { env } from "../config/env.js";
 import { UNASSIGNED, addCallSeconds, emptyMinutesFor, listCallMinutes } from "../db/callMinutes.js";
 import { findUserById } from "../db/users.js";
 
-const OUTSIDE_KEY_SCOPE = {
-  error: "outside_key_scope",
-  message: "This API key is limited to one business and can't read another.",
-} as const;
 const BUSINESS_NOT_FOUND = {
   error: "business_not_found",
   message: "No business has that userId.",
@@ -23,9 +19,9 @@ const isUuid = (id: string) => UUID.test(id);
 // other endpoints, and keyed by the agent's own number on the call rather than an account id, exactly
 // like the call record and the config lookup.
 //
-// The read has three kinds of caller, all scoped the same way: a customer signed in to the dashboard
-// (their own business), an admin (any or all), and another system holding an API key (whatever that
-// key was issued for). See docs/usage-api.md — that file is what other teams are given.
+// The read has three kinds of caller: a customer signed in to the dashboard (their own business), an
+// admin (any or all), and another system holding an API key — which reads like an admin: every
+// business, or the one it names. See docs/usage-api.md — that file is what other teams are given.
 
 export const usage = new Elysia({ prefix: "/usage" })
   .post(
@@ -50,9 +46,9 @@ export const usage = new Elysia({ prefix: "/usage" })
     },
   )
 
-  // `userId` is a filter — an account id, or "unassigned" — for an admin or an all-businesses key,
-  // and never a way in for anyone else. Always a list, so a customer's single business and an admin's
-  // view share a shape.
+  // `userId` is a filter — an account id, or "unassigned" — for an admin or an API key, and never a
+  // way in for anyone else. Always a list, so a customer's single business and an admin's view share
+  // a shape.
   .get(
     "/minutes",
     async ({ headers, query, status }) => {
@@ -61,20 +57,9 @@ export const usage = new Elysia({ prefix: "/usage" })
       if (looksLikeApiKey(headers.authorization)) {
         const key = await authenticateApiKey(headers.authorization);
         if (!key) return status(401, INVALID_API_KEY);
+
+        // Every business, or the one it names — the same view an admin has in the dashboard.
         const wanted = query.userId?.trim() || undefined;
-
-        // A key issued for one business stays on it: naming its own business is fine, naming another
-        // is refused outright rather than quietly answered with the key's own figures.
-        if (key.userId) {
-          if (wanted && wanted !== key.userId) return status(403, OUTSIDE_KEY_SCOPE);
-          const [own] = await listCallMinutes(key.userId);
-          return {
-            timezone: env.timezone,
-            minutes: [own ?? emptyMinutesFor({ id: key.userId, email: key.userEmail ?? "", name: key.userName ?? "" })],
-          };
-        }
-
-        // A key for every business: all of them, or the one it names.
         if (!wanted) return { timezone: env.timezone, minutes: await listCallMinutes() };
         if (wanted === UNASSIGNED) return { timezone: env.timezone, minutes: await listCallMinutes(UNASSIGNED) };
         const [found] = await listCallMinutes(wanted);

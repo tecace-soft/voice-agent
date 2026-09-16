@@ -235,8 +235,8 @@ export async function initDb(): Promise<void> {
   // touching the others. Only the HASH is stored: a key is shown once when it is created and is
   // unreadable afterwards, so a database dump cannot be used to call the API.
   //
-  // user_id is the business the key may read; NULL means every business. CASCADE, so handing a
-  // customer's own system a key cannot outlive that customer's account.
+  // user_id is unused: every key reads every business, choosing one per request. It is left in place
+  // because the table is already deployed, and dropping a column is not worth a destructive migration.
   await sql`
     CREATE TABLE IF NOT EXISTS api_keys (
       id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),

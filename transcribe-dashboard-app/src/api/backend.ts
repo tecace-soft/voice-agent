@@ -392,9 +392,9 @@ export async function listApiKeys(): Promise<ApiKey[]> {
   return (await get<{ keys: ApiKey[] }>("/api-keys")).keys;
 }
 
-/** `userId` omitted = a key that reads every business. The secret comes back once, here. */
-export function createApiKey(name: string, userId?: string): Promise<CreatedApiKey> {
-  return request<CreatedApiKey>("POST", "/api-keys", { body: userId ? { name, userId } : { name } });
+/** A key reads every business. The secret comes back once, here. */
+export function createApiKey(name: string): Promise<CreatedApiKey> {
+  return request<CreatedApiKey>("POST", "/api-keys", { body: { name } });
 }
 
 export function revokeApiKey(id: string): Promise<{ key: ApiKey }> {

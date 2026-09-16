@@ -2,10 +2,9 @@ import { Elysia, t } from "elysia";
 import { apiKeyPrefixOf, generateApiKey, hashApiKey } from "../auth/apiKey.js";
 import { authenticateAdmin } from "../auth/guard.js";
 import { createApiKey, deleteApiKey, findApiKey, listApiKeys, revokeApiKey } from "../db/apiKeys.js";
-import { findUserById } from "../db/users.js";
 
-// Issuing and withdrawing the keys other systems use to read this API. Admin-only: a key is access
-// to a customer's usage data, so handing one out is an administrator's decision, not a customer's.
+// Issuing and withdrawing the keys other systems use to read this API. Admin-only: a key reads every
+// business's usage, so handing one out is an administrator's decision, not a customer's.
 //
 // The secret is returned exactly ONCE, by the create call. Nothing stores it, so a lost key is
 // replaced rather than looked up — the same rule as a generated account password.
@@ -25,28 +24,11 @@ export const apiKeys = new Elysia({ prefix: "/api-keys" })
       const caller = await authenticateAdmin(headers.authorization, KEYS_ARE_ADMIN);
       if ("denied" in caller) return status(caller.denied, caller.body);
 
-      // Scoped to one business, or to all of them. A key for a specific customer is checked here so
-      // a typo becomes a message rather than a key that reads nothing and looks broken.
-      const userId = body.userId?.trim() || null;
-      if (userId) {
-        const target = await findUserById(userId);
-        if (!target) {
-          return status(404, { error: "not_found", message: "No such customer account." });
-        }
-        if (target.role === "admin") {
-          return status(422, {
-            error: "admin_scope",
-            message: "An admin account isn't a business. Pick a customer, or give the key every business.",
-          });
-        }
-      }
-
       const secret = generateApiKey();
       const key = await createApiKey({
         name: body.name,
         keyHash: hashApiKey(secret),
         keyPrefix: apiKeyPrefixOf(secret),
-        userId,
         createdBy: caller.user.email,
       });
       // The only time this value exists outside the caller's own config.
@@ -55,8 +37,6 @@ export const apiKeys = new Elysia({ prefix: "/api-keys" })
     {
       body: t.Object({
         name: t.String({ minLength: 1, maxLength: 80 }),
-        // Omitted or blank = every business.
-        userId: t.Optional(t.String({ maxLength: 64 })),
       }),
     },
   )

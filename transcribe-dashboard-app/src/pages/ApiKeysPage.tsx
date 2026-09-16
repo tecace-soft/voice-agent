@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { createApiKey, deleteApiKey, listAccounts, listApiKeys, revokeApiKey } from "../api/backend";
-import type { ApiKey, AuthUser } from "../api/types";
+import { createApiKey, deleteApiKey, listApiKeys, revokeApiKey } from "../api/backend";
+import type { ApiKey } from "../api/types";
 import { accountErrorMessage } from "../auth";
 import { IconCopy, IconKey, IconPlus, IconTrash } from "../icons";
 import { formatDateTime } from "../lib";
 
-// Keys other systems use to read the usage endpoint. Admins only — a key is access to a customer's
-// call data, so issuing one is an administrator's decision.
+// Keys other systems use to read the usage endpoint. Admins only — a key reads every business's call
+// minutes (a caller picks one per request), so issuing one is an administrator's decision.
 //
 // A key is shown exactly once, here, at the moment it is created: the backend keeps only a hash, so
 // a lost key is replaced rather than looked up. That is why it gets a callout of its own with a copy
@@ -49,29 +49,20 @@ function SecretNotice({ name, secret, onDismiss }: { name: string; secret: strin
   );
 }
 
-function scopeOf(key: ApiKey): string {
-  if (!key.userId) return "Every business";
-  return key.businessName || key.userName || key.userEmail || "One business";
-}
-
 export function ApiKeysPage() {
   const [keys, setKeys] = useState<ApiKey[] | null>(null);
-  const [customers, setCustomers] = useState<AuthUser[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
-  const [userId, setUserId] = useState("");
   const [secret, setSecret] = useState<{ name: string; secret: string } | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    Promise.all([listApiKeys(), listAccounts()])
-      .then(([list, accounts]) => {
+    listApiKeys()
+      .then((list) => {
         setKeys(list);
-        // Only customers can be a key's scope: an admin account is staff, not a business.
-        setCustomers(accounts.filter((a) => a.role !== "admin").sort((a, b) => a.name.localeCompare(b.name)));
         setError(null);
       })
       .catch((e) => setError(accountErrorMessage(e, "Couldn't load the API keys.")));
@@ -86,10 +77,9 @@ export function ApiKeysPage() {
     setBusy(true);
     setError(null);
     try {
-      const created = await createApiKey(name.trim(), userId || undefined);
+      const created = await createApiKey(name.trim());
       setSecret({ name: created.key.name, secret: created.secret });
       setName("");
-      setUserId("");
       setAdding(false);
       load();
     } catch (e) {
@@ -144,8 +134,9 @@ export function ApiKeysPage() {
           <div>
             <div className="card-title ta-headline-2">API keys</div>
             <div className="card-sub ta-caption-1">
-              Let another system read call minutes from this service. Each integration gets its own
-              key, so one can be cut off without disturbing the rest.
+              Let another system read call minutes for every business — all at once, or one business
+              per request. Each integration gets its own key, so one can be cut off without
+              disturbing the rest.
             </div>
           </div>
           <button
@@ -175,20 +166,6 @@ export function ApiKeysPage() {
                 A name you'll recognise later, when deciding whether it is still needed.
               </span>
             </label>
-            <label className="field">
-              <span className="field-label ta-caption-1">Can read</span>
-              <select className="input" value={userId} onChange={(e) => setUserId(e.target.value)}>
-                <option value="">Every business</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              <span className="field-hint ta-caption-2 muted">
-                Give a key one business unless it genuinely needs them all.
-              </span>
-            </label>
             <div className="inline-form-actions">
               <button type="button" className="btn btn-quiet" onClick={() => setAdding(false)}>
                 Cancel
@@ -205,7 +182,6 @@ export function ApiKeysPage() {
             <thead>
               <tr>
                 <th scope="col">Name</th>
-                <th scope="col">Can read</th>
                 <th scope="col">Key</th>
                 <th scope="col">Created</th>
                 <th scope="col">Last used</th>
@@ -217,13 +193,13 @@ export function ApiKeysPage() {
             <tbody>
               {keys === null ? (
                 <tr>
-                  <td className="table-empty" colSpan={6}>
+                  <td className="table-empty" colSpan={5}>
                     Loading…
                   </td>
                 </tr>
               ) : keys.length === 0 ? (
                 <tr>
-                  <td className="table-empty" colSpan={6}>
+                  <td className="table-empty" colSpan={5}>
                     No keys yet. Create one when another system needs to read call minutes.
                   </td>
                 </tr>
@@ -234,7 +210,6 @@ export function ApiKeysPage() {
                       <span className="user-name ta-label-1">{key.name}</span>
                       {key.revokedAt && <span className="badge badge-neutral">Revoked</span>}
                     </td>
-                    <td>{scopeOf(key)}</td>
                     <td>
                       <code className="ta-caption-1">{key.keyPrefix}…</code>
                     </td>

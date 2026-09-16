@@ -13,8 +13,8 @@ integration.
 
 ## Quick start
 
-1. **Get your API key from TecAce.** An administrator creates one key for your integration, covering
-   every business (dashboard: Settings → API keys), and sends it to you. It starts with `ak_` and is shown to them only once — if
+1. **Get your API key from TecAce.** An administrator creates a key for your integration (dashboard:
+   Settings → API keys) and sends it to you. The key reads every business. It starts with `ak_` and is shown to them only once — if
    it's lost, ask for a new one.
 2. **Store it as a server-side secret**, e.g. `USAGE_API_KEY` in your server's environment or secret
    manager. Never in browser code, a mobile app, or a file committed to git.
@@ -44,7 +44,7 @@ Authorization: Bearer ak_your_key_here
 | Key property | What it means for you |
 | --- | --- |
 | Format | `ak_` followed by 32 URL-safe characters. |
-| Scope | Normally issued for **every business** — one key for your whole integration, choosing a business per request with `?userId=`. A key can instead be limited to **one business**, and then it can never read any other. |
+| Access | Reads **every business**. You choose which business you want on each request with `?userId=` — the same per-business view TecAce's dashboard shows. |
 | Permissions | Read-only, and only for `GET /usage/minutes`. It can't write data or reach any other part of the service. |
 | Expiry | None. Works until TecAce revokes it; stops immediately when they do. |
 | Storage | TecAce keeps only a hash, so it can be replaced but never read back. |
@@ -60,7 +60,7 @@ Call time per business: the current month so far and the previous calendar month
 
 | Query parameter | Required | Meaning |
 | --- | --- | --- |
-| `userId` | No | Return only this business. Leave it out to get every business your key covers, busiest this month first. `unassigned` returns calls on phone numbers no business owns yet. |
+| `userId` | No | Return only this business. Leave it out to get every business, busiest this month first. `unassigned` returns calls on phone numbers no business owns yet. |
 
 - **Body:** none. **Success:** `200` JSON.
 
@@ -84,8 +84,8 @@ if (res.status === 401) {
   const { error } = await res.json();
   throw new Error(`Usage API rejected the key (${error})`);
 }
-if (res.status === 403 || res.status === 404) {
-  // outside_key_scope / business_not_found: a wrong or out-of-scope userId. Fix the id; don't retry.
+if (res.status === 404) {
+  // business_not_found: no business has that userId. Fix the id; don't retry.
   const { error } = await res.json();
   throw new Error(`Usage API refused that business (${error})`);
 }
@@ -107,8 +107,8 @@ resp = requests.get(
 )
 if resp.status_code == 401:
     raise RuntimeError(f"Usage API rejected the key: {resp.json().get('error')}")
-if resp.status_code in (403, 404):
-    # outside_key_scope / business_not_found: a wrong or out-of-scope userId. Fix the id; don't retry.
+if resp.status_code == 404:
+    # business_not_found: no business has that userId. Fix the id; don't retry.
     raise RuntimeError(f"Usage API refused that business: {resp.json().get('error')}")
 resp.raise_for_status()  # 5xx: retry later with backoff
 business = resp.json()["minutes"][0]  # exactly one entry when userId was given
@@ -150,9 +150,8 @@ curl -sS https://transcribe-app-backend.vercel.app/health
 
 ## Reading the response
 
-`minutes` is always a list. With `userId`, or with a key limited to one business, it holds exactly one
-entry — all zeroes if that business hasn't had a call yet. Without `userId`, a key for every business
-gets one entry per business.
+`minutes` is always a list. With `userId` it holds exactly one entry — all zeroes if that business
+hasn't had a call yet. Without `userId` it holds one entry per business.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -184,7 +183,6 @@ Every response is JSON. Errors carry an `error` code to branch on and a `message
 | --- | --- | --- | --- |
 | `200` | — | Success. | Read `minutes`. |
 | `401` | `invalid_api_key` | Key is wrong or revoked. | **Stop and alert someone.** Don't retry. Check the configured key or ask TecAce for a new one. |
-| `403` | `outside_key_scope` | Your key is limited to one business and `userId` named another. | Remove `userId`, or use the right key. Don't retry. |
 | `404` | `business_not_found` | No business has that `userId`. | Check the id against the full list (call without `userId`). Don't retry. |
 | `401` | `unauthorized` | No `Authorization` header, or its value isn't an `ak_` key. | Send `Authorization: Bearer ak_…` with the full key. |
 | `5xx` | — | Temporary problem on TecAce's side. | Retry with backoff (e.g. 5s, 30s, 2m), alert if it persists. Retrying is always safe. |
@@ -205,7 +203,7 @@ Cache the last good response and show it if a request fails.
 
 ## Keeping the key safe
 
-Anyone holding the key can read the usage data it covers. Treat it like a password.
+Anyone holding the key can read every business's usage data. Treat it like a password.
 
 **Do**
 - Keep it on your server, in environment variables or a secret manager.
@@ -238,7 +236,7 @@ return `invalid_api_key` in between.
 - [ ] `GET /health` returns `200` from your production environment.
 - [ ] `GET /usage/minutes` returns `200` with the businesses you expect.
 - [ ] Businesses are looked up by their stored `userId`, not by name.
-- [ ] A `403` or `404` is reported as a bad `userId`, not retried.
+- [ ] A `404` is reported as a bad `userId`, not retried.
 - [ ] Calculations use `currentSeconds` / `previousSeconds`, not the rounded minutes.
 - [ ] A `401` alerts someone instead of retrying.
 - [ ] `5xx` responses and timeouts retry with backoff.
