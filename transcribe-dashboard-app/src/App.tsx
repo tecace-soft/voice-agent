@@ -6,6 +6,7 @@ import { Sidebar, type ViewId } from "./components/Sidebar";
 import { MailboxPicker } from "./components/MailboxPicker";
 import { IconPanelLeft, IconRefresh } from "./icons";
 import { AccountsPage } from "./pages/AccountsPage";
+import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AllFeedbackPage } from "./pages/AllFeedbackPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
@@ -34,6 +35,7 @@ const STANDALONE_VIEWS = new Set<ViewId>([
   "calls",
   "business",
   "numbers",
+  "apiKeys",
   "analytics",
   "people",
   "failed",
@@ -55,6 +57,7 @@ const VIEW_TITLES: Record<ViewId, string> = {
   calls: "Answered calls",
   business: "Business information",
   numbers: "Agent numbers",
+  apiKeys: "API keys",
   accounts: "Accounts",
 };
 
@@ -263,6 +266,12 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
               <NumbersPage />
             ) : (
               <p className="muted ta-body-2">Only an admin can manage the agent's phone numbers.</p>
+            ))}
+          {view === "apiKeys" &&
+            (isAdmin ? (
+              <ApiKeysPage />
+            ) : (
+              <p className="muted ta-body-2">Only an admin can manage API keys.</p>
             ))}
           {view === "feedback" && <FeedbackPage />}
           {view === "allFeedback" &&

@@ -236,6 +236,29 @@ export interface InboundCall {
   createdAt: string;
 }
 
+// A key another system uses to read this API — GET /api-keys (admins only). The key itself is only
+// ever seen once, when it is created; `keyPrefix` is the harmless first characters, for recognising
+// it later. `userId` null means the key reads every business.
+export interface ApiKey {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  userId: string | null;
+  userEmail: string | null;
+  userName: string | null;
+  businessName: string | null;
+  createdAt: string;
+  createdBy: string | null;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+}
+
+// POST /api-keys. `secret` is returned exactly once and is never readable again.
+export interface CreatedApiKey {
+  key: ApiKey;
+  secret: string;
+}
+
 // One business's talk time — GET /usage/minutes. Every agent call counts, inbound and outbound, so
 // this is more than the answered calls listed beside it. `userId` null is the bucket for calls on
 // agent numbers nobody owns. Months are "YYYY-MM" in the business timezone.

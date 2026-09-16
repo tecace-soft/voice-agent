@@ -9,6 +9,7 @@ import {
   IconRuns,
   IconSignOut,
   IconIdea,
+  IconKey,
   IconPhone,
   IconUsers,
   IconVoicemail,
@@ -27,6 +28,7 @@ export type ViewId =
   | "numbers"
   | "business"
   | "calls"
+  | "apiKeys"
   | "accounts";
 
 const NAV: {
@@ -62,6 +64,7 @@ const NAV: {
       { id: "calls", label: "Answered calls", icon: IconPhone },
       { id: "business", label: "Business information", icon: IconIdea },
       { id: "numbers", label: "Agent numbers", icon: IconPhone, adminOnly: true },
+      { id: "apiKeys", label: "API keys", icon: IconKey, adminOnly: true },
       { id: "accounts", label: "Accounts", icon: IconUsers, adminOnly: true },
     ],
   },

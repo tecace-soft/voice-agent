@@ -231,6 +231,26 @@ export async function initDb(): Promise<void> {
     )
   `;
 
+  // Keys other systems use to read this API — one per integration, so one can be cut off without
+  // touching the others. Only the HASH is stored: a key is shown once when it is created and is
+  // unreadable afterwards, so a database dump cannot be used to call the API.
+  //
+  // user_id is the business the key may read; NULL means every business. CASCADE, so handing a
+  // customer's own system a key cannot outlive that customer's account.
+  await sql`
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name         TEXT NOT NULL,
+      key_hash     TEXT NOT NULL UNIQUE,
+      key_prefix   TEXT NOT NULL,
+      user_id      UUID REFERENCES users(id) ON DELETE CASCADE,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+      created_by   TEXT,
+      last_used_at TIMESTAMPTZ,
+      revoked_at   TIMESTAMPTZ
+    )
+  `;
+
   // A pasted screenshot, stored inline as a data URL. Kept in the row rather than in object storage
   // because feedback is low-volume and this needs no bucket, no signed URLs and no orphan cleanup —
   // the image is deleted exactly when the note is. The client downscales before upload and the
@@ -279,6 +299,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM inbound_calls LIMIT 1`;
     await sql`SELECT requested_time, sheet_written_at FROM inbound_calls LIMIT 1`;
     await sql`SELECT 1 FROM agent_call_minutes LIMIT 1`;
+    await sql`SELECT 1 FROM api_keys LIMIT 1`;
     return;
   } catch {
     await initDb();

@@ -1,6 +1,8 @@
 import type {
   AgentNumber,
+  ApiKey,
   CallMinutes,
+  CreatedApiKey,
   InboundCall,
   BusinessProfile,
   BusinessProfileResponse,
@@ -382,4 +384,23 @@ export function deleteInboundCall(id: string): Promise<{ status: string }> {
 export function listCallMinutes(userId?: string): Promise<{ timezone: string; minutes: CallMinutes[] }> {
   const q = userId ? `?userId=${encodeURIComponent(userId)}` : "";
   return get<{ timezone: string; minutes: CallMinutes[] }>(`/usage/minutes${q}`);
+}
+
+// ---- API keys other systems read the usage endpoint with (admins only) ----
+
+export async function listApiKeys(): Promise<ApiKey[]> {
+  return (await get<{ keys: ApiKey[] }>("/api-keys")).keys;
+}
+
+/** `userId` omitted = a key that reads every business. The secret comes back once, here. */
+export function createApiKey(name: string, userId?: string): Promise<CreatedApiKey> {
+  return request<CreatedApiKey>("POST", "/api-keys", { body: userId ? { name, userId } : { name } });
+}
+
+export function revokeApiKey(id: string): Promise<{ key: ApiKey }> {
+  return request<{ key: ApiKey }>("POST", `/api-keys/${encodeURIComponent(id)}/revoke`, { body: {} });
+}
+
+export function deleteApiKey(id: string): Promise<{ status: string }> {
+  return request<{ status: string }>("DELETE", `/api-keys/${encodeURIComponent(id)}`);
 }
