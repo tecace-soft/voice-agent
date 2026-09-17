@@ -112,9 +112,10 @@ _GREET_AGAIN = (
 )
 _ASK_ANYTHING_ELSE = (
     "You stopped speaking without handing the conversation back, and the caller is waiting in "
-    "silence. In one short line, in the language they are speaking, ask whether there is anything "
-    "else you can help them with. If you were waiting on them for something specific, ask for that "
-    "instead."
+    "silence. In one short line, in the language they are speaking, ask whether they need anything "
+    "else — phrased differently from however you asked earlier in this call, and never the same "
+    "sentence twice. If you were waiting on them for something specific, ask for that instead. If "
+    "they have already said goodbye, say a brief warm farewell and end the call instead of asking."
 )
 _STOP_FOR_TRANSFER = (
     "The caller is being transferred to a colleague right now. Do not say anything more."
