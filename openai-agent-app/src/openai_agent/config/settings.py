@@ -159,8 +159,11 @@ class Config:
             openai_voice=_optional("OPENAI_VOICE", "alloy"),
             # gpt-4o-mini-tts is the speech model that offers the realtime voices (marin, cedar).
             openai_tts_model=_optional("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
-            prerendered_greeting=_optional("PRERENDERED_GREETING", "true").lower()
-            not in ("false", "0", "no"),
+            # OFF by default. The first version of this shipped audible seams in the greeting —
+            # see realtime/greeting_audio.py — so it is opt-in per deployment until a real call
+            # says it sounds right: PRERENDERED_GREETING=true.
+            prerendered_greeting=_optional("PRERENDERED_GREETING", "false").lower()
+            in ("true", "1", "yes"),
             # Transcribes the CALLER only (the agent's own words come back with its audio).
             # whisper-1 is markedly worse on 8kHz phone audio, which is all we ever feed it.
             # Set OPENAI_TRANSCRIBE_MODEL=whisper-1 to go back if this model ever misbehaves.

@@ -98,6 +98,10 @@ _BACKEND_STALL_SECONDS = 15.0
 # often enough (in a real session: one answer handed back, the next did not) to need a backstop that
 # is much sooner than the general dead-air nudge.
 _FOLLOWUP_SECONDS = 2.5
+# How far ahead of playback the pre-rendered greeting is allowed to run at Twilio. Enough that a
+# late frame never leaves a gap in a word, small enough that flushing it on an interruption is not
+# noticeable.
+_GREETING_LEAD_SECONDS = 0.2
 
 _GREET_NOW = (
     "The call has just connected. Speak your opening line now, first, without waiting for the "
@@ -577,24 +581,28 @@ def _log_unexpected(state: dict, where: str, evt: dict) -> None:
 async def _play_greeting(twilio_ws: WebSocket, state: dict, audio: bytes) -> None:
     """Play the pre-rendered opening line to the caller, in real time.
 
-    Paced at one 20ms frame per 20ms rather than sent in a burst, for the same reason the agent's
-    own audio is: whatever is already at Twilio keeps playing after we stop. Paced, a caller who
-    talks over the greeting is cut off within a frame or two of us noticing.
+    Sent with a SHORT LEAD rather than one frame per 20ms exactly. Twilio plays what it has at a
+    fixed rate, so a sender that is occasionally a few milliseconds late leaves gaps mid-word — the
+    first version did that and the greeting came back described as disjointed. A fifth of a second
+    of slack absorbs the jitter, and is still little enough that a caller who talks over the
+    greeting hears at most that much of it after the buffer is flushed.
     """
     state["greeted"] = True  # the caller HAS been greeted, whatever the model does next
     frames = greeting_audio.frames(audio)
     log.info("playing the pre-rendered greeting (%.1fs) — the model did not have to speak it",
              len(audio) / 8000)
-    nxt = time.monotonic()
+    started = time.monotonic()
     try:
-        for frame in frames:
+        for i, frame in enumerate(frames):
             await twilio_ws.send_json(
                 {"event": "media", "streamSid": state["stream_sid"], "media": {"payload": frame}}
             )
             state["last_audio_at"] = time.monotonic()
             state["last_activity_at"] = state["last_audio_at"]
-            nxt += 0.02
-            await asyncio.sleep(max(0.0, nxt - time.monotonic()))
+            # Stay _GREETING_LEAD_SECONDS ahead of playback, never further.
+            ahead = (i + 1) * 0.02 - (time.monotonic() - started)
+            if ahead > _GREETING_LEAD_SECONDS:
+                await asyncio.sleep(ahead - _GREETING_LEAD_SECONDS)
     except asyncio.CancelledError:
         # The caller started talking. Drop what Twilio has not played yet so the agent is not still
         # introducing itself over them.
