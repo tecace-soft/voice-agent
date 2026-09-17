@@ -179,14 +179,26 @@ person now. NEVER improvise a number, a date, or a promise.\
 """
 
 
-def build_knowledge(extra_facts: str = "") -> str:
+# What the agent is told when it is answering for an identified business that has no facts on file.
+# It must NOT be given TecAce's facts then: those would be read aloud as if they were this
+# business's own — its city instead of theirs, which is both wrong and a leak.
+NO_FACTS = """- You have not been given any facts about this business. You know only its name.
+- You therefore do not know where it is, its address, its hours, what it charges, or what it
+  offers. Say so plainly when asked — "I don't have that here" — and offer to take a message or
+  put them through. Never guess, and never answer from another business's details."""
+
+
+def build_knowledge(extra_facts: str = "", *, default_facts: bool = True) -> str:
     """Render the knowledge base as the prompt block the inbound agent answers from.
 
-    `extra_facts` (from BUSINESS_FACTS) REPLACES the TecAce facts rather than adding to them, so
-    the same app can answer for a different client without shipping TecAce's details to them. The
-    FAQ behaviour and the deferrals are company-agnostic and always apply.
+    `extra_facts` (the business's own facts) REPLACES the TecAce facts rather than adding to them,
+    so the same app can answer for a different client without shipping TecAce's details to them.
+    The FAQ behaviour and the deferrals are company-agnostic and always apply.
+
+    `default_facts=False` says "this call is for an identified business, not for us": with no facts
+    of its own the agent is told it knows nothing about the business, instead of inheriting ours.
     """
-    facts = extra_facts.strip() or FACTS
+    facts = extra_facts.strip() or (FACTS if default_facts else NO_FACTS)
     lines = [
         "## Facts you may state (and nothing beyond them)",
         facts,
@@ -200,4 +212,4 @@ def build_knowledge(extra_facts: str = "") -> str:
     return "\n".join(lines)
 
 
-__all__ = ["DEFERRALS", "FACTS", "FACTS_PROVENANCE", "FAQ", "build_knowledge"]
+__all__ = ["DEFERRALS", "FACTS", "FACTS_PROVENANCE", "FAQ", "NO_FACTS", "build_knowledge"]

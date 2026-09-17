@@ -342,6 +342,9 @@ def build_instructions(
     agent_name: str = "Tess",
     business_hours: str = "Monday to Friday, 9 AM to 6 PM Pacific",
     business_facts: str = "",
+    # False when this call is for a looked-up customer: no facts then means the agent knows nothing
+    # about them, not that it should fall back to ours. The bridges pass False.
+    default_facts: bool = True,
     open_hour: int | None = 9,
     close_hour: int | None = 18,
     timezone: str = "America/Los_Angeles",
@@ -355,9 +358,10 @@ def build_instructions(
 ) -> str:
     """Render the inbound screening rules for one call.
 
-    `business_facts` (BUSINESS_FACTS) REPLACES the TecAce facts, so the same app can answer for a
-    different client without leaking TecAce's details into their calls. The FAQ guidance and the
-    hard deferrals are company-agnostic and always apply.
+    `business_facts` REPLACES the TecAce facts, so the same app can answer for a different client
+    without leaking TecAce's details into their calls. The FAQ guidance and the hard deferrals are
+    company-agnostic and always apply. With `default_facts=False` a customer who has no facts on
+    file gets an agent that says it doesn't know, rather than one reciting ours.
     """
     now = datetime.now(ZoneInfo(timezone))
     # The recording notice is spliced in BEFORE the closing question, so the caller is told and
@@ -387,7 +391,7 @@ def build_instructions(
             _transfer_topics_line(transfer_topics)
             + (_returning_context(caller_name, known_request) if transfer_failed else "")
         ),
-        knowledge=build_knowledge(business_facts),
+        knowledge=build_knowledge(business_facts, default_facts=default_facts),
         recording_rule=(
             "- You HAVE told the caller this call is recorded, in your opening line. If they ask, "
             "confirm it plainly.\n"

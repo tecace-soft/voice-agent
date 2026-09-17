@@ -175,6 +175,9 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 agent_name=business.agent_name or cfg.agent_name,
                 business_hours=business.hours_text,
                 business_facts=business.facts,
+                # This call is for a customer: with no facts on file the agent must say it doesn't
+                # know, NOT recite TecAce's.
+                default_facts=False,
                 open_hour=business.open_hour,
                 close_hour=business.close_hour,
                 timezone=cfg.timezone,
