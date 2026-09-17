@@ -151,16 +151,20 @@ INBOUND_TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "name": "take_message",
-        "description": "Record a message for the team when the caller wants a callback, or when "
-        "you could not help them and no transfer is appropriate.",
+        "description": "Record a message for the team when the caller wants a callback, when they "
+        "have turned down being put through, or when there is nobody to put them through to. Offer "
+        "a person FIRST for anything you could not answer — a caller already on the line would "
+        "rather be handed to someone who knows than wait for a call back.",
         "parameters": {
             "type": "object",
             "properties": {
                 "caller_name": {"type": "string", "description": "The caller's name, as given."},
                 "callback_number": {
                     "type": "string",
-                    "description": "The number to call back, digits only. Read it back to the "
-                    "caller to confirm before recording it.",
+                    "description": "The number to call back, digits only. Default to the number "
+                    "the call came from, which is in the call rules — do NOT ask a caller for the "
+                    "number they are calling you on. Only when it is withheld, or when they give "
+                    "a different one, ask and read it back to confirm.",
                 },
                 "message": {
                     "type": "string",
