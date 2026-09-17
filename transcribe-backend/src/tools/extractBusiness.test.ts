@@ -77,8 +77,8 @@ describe("normalizeExtract", () => {
   });
 
   it("caps the number of facts", () => {
-    const many = Array.from({ length: 80 }, (_, i) => `Fact number ${i} about the practice.`);
-    expect(normalizeExtract({ ...ok, facts: many }).facts.length).toBeLessThanOrEqual(50);
+    const many = Array.from({ length: 120 }, (_, i) => `Fact number ${i} about the practice.`);
+    expect(normalizeExtract({ ...ok, facts: many }).facts.length).toBeLessThanOrEqual(80);
   });
 
   it("drops a fact too long to say on a phone", () => {
@@ -87,9 +87,9 @@ describe("normalizeExtract", () => {
   });
 
   it("caps the total size", () => {
-    const many = Array.from({ length: 50 }, () => "y".repeat(199));
+    const many = Array.from({ length: 80 }, () => "y".repeat(199));
     const total = normalizeExtract({ ...ok, facts: many }).facts.join("").length;
-    expect(total).toBeLessThanOrEqual(7000);
+    expect(total).toBeLessThanOrEqual(11_000);
   });
 
   it("throws when nothing usable survives, so the previous profile can be kept", () => {
@@ -175,11 +175,11 @@ describe("withContactFacts", () => {
   });
 
   it("never pushes the list past the caps", () => {
-    const many = Array.from({ length: 50 }, (_, i) => `Fact number ${i} about the spa.`);
+    const many = Array.from({ length: 80 }, (_, i) => `Fact number ${i} about the spa.`);
     const out = withContactFacts(extract(many), SOURCE);
-    expect(out.facts.length).toBeLessThanOrEqual(50);
+    expect(out.facts.length).toBeLessThanOrEqual(80);
     expect(out.facts[0]).toContain("3815 196th Street Southwest");
-    expect(out.facts.join("").length).toBeLessThanOrEqual(7000);
+    expect(out.facts.join("").length).toBeLessThanOrEqual(11_000);
   });
 
   it("MAX_SOURCE_CHARS is big enough for a real FAQ", () => {
@@ -222,7 +222,7 @@ describe("hashSource", () => {
     const textOnly = createHash("sha256").update(text, "utf8").digest("hex");
     expect(hashSource(text)).not.toBe(textOnly);
     expect(hashSource(text)).toContain("");
-    expect(EXTRACTOR_VERSION).toBeGreaterThanOrEqual(2);
+    expect(EXTRACTOR_VERSION).toBeGreaterThanOrEqual(3);
   });
 
   it("notices a change in the middle, not just at the ends", () => {

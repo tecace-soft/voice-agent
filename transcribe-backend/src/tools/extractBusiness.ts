@@ -30,24 +30,30 @@ export class ExtractionError extends Error {}
 // Caps, applied after the model. Generous enough for a real business, tight enough that a pasted
 // novel can't become a prompt nobody can afford to send on every call.
 //
-// Raised from 25/4000: those were sized for "a business describes itself in a few paragraphs", and
-// a real FAQ is several times that — a spa's prices, discounts, gift certificates and treatment
-// rules run to roughly fifty separate things a caller might ask. At the old limit the tail was
-// dropped silently, so the agent simply did not know the answers and deferred them to a person.
+// Raised from 25/4000, then again from 50/7000. Each limit was set from a guess about how much a
+// business writes about itself, and each was too low against a real one: a spa's own FAQ — prices,
+// discounts, gift certificates, who may visit, booking, and the detail of every treatment — runs
+// past seventy separate things a caller might ask.
 //
-// Every fact is sent on EVERY call, so this is a real cost: about 750 extra tokens of system
-// prompt at the new ceiling. That buys an assistant that can actually answer, and the measured
-// time to first audio (~2.4s) has plenty of room for it.
+// The tail is dropped SILENTLY, which is what makes a low cap expensive. On a real call a caller
+// asked what a body scrub involves; the answer was in the text they pasted and had been cut at the
+// fiftieth fact, so the agent said it was one for the team. From the caller's side that is an
+// assistant that does not know its own services.
+//
+// Every fact is sent on EVERY call, so this is a real cost: roughly 2,800 tokens of system prompt
+// at the new ceiling, about 1,000 more than the old one. Most of it is cached between calls, it
+// does not measurably change the time to the first word (prompt size moved that by 0.05s when it
+// was tested), and it buys an assistant that can answer what its own customer wrote down.
 // Bumped whenever this file changes what a given text extracts to — the prompt, the caps, the
 // backstop below. It is part of the source hash, so the next save of an UNCHANGED description
 // re-reads it instead of being skipped as "nothing changed". Without this, a customer who pasted
 // their details before an improvement keeps the old facts forever: Olympus Spa's address was in
 // their text and missing from their facts for exactly that reason.
-export const EXTRACTOR_VERSION = 2;
+export const EXTRACTOR_VERSION = 3;
 
-const MAX_FACTS = 50;
+const MAX_FACTS = 80;
 const MAX_FACT_CHARS = 200;
-const MAX_TOTAL_CHARS = 7000;
+const MAX_TOTAL_CHARS = 11_000;
 export const MAX_SOURCE_CHARS = 20_000;
 
 // Openers that are instructions rather than facts. Deliberately narrow: "always" and "never" are
