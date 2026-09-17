@@ -179,6 +179,20 @@ export async function saveTypedFields(
   return rows.length ? findProfile(userId) : null;
 }
 
+/** Update only the business's own instructions to the assistant. Null when there is no profile. */
+export async function saveHouseRules(
+  userId: string,
+  houseRules: string | null,
+): Promise<BusinessProfile | null> {
+  const rows = await sql`
+    UPDATE business_profiles
+    SET house_rules = ${houseRules}, updated_at = now()
+    WHERE user_id = ${userId}
+    RETURNING user_id
+  `;
+  return rows.length ? findProfile(userId) : null;
+}
+
 /**
  * Update only how the assistant introduces itself.
  *

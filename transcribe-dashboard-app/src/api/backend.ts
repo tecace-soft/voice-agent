@@ -330,19 +330,30 @@ export function getBusinessProfile(userId?: string): Promise<BusinessProfileResp
  * A 422 means the text couldn't be read into anything usable — nothing was written, and whatever
  * was live before is still live. The message says what to do about it.
  */
+/** The business's own instructions to the assistant. Its own endpoint, like the greeting. */
+export function saveHouseRules(
+  houseRules: string,
+  userId?: string,
+): Promise<{ profile: BusinessProfile }> {
+  return request<{ profile: BusinessProfile }>(
+    "PUT",
+    `/business/house-rules${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
+    { body: { houseRules } },
+  );
+}
+
 export function saveBusinessProfile(
   sourceText: string,
   transferNumber: string,
   transferTopics: string,
-  houseRules: string,
   userId?: string,
 ): Promise<{ profile: BusinessProfile; extracted: boolean }> {
   return request<{ profile: BusinessProfile; extracted: boolean }>(
     "PUT",
     `/business/profile${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
-    // agentName/greeting are deliberately NOT sent: they belong to their own section, and the
-    // backend leaves absent fields alone rather than clearing them.
-    { body: { sourceText, transferNumber, transferTopics, houseRules } },
+    // agentName/greeting/houseRules are deliberately NOT sent: each belongs to its own section, and
+    // the backend leaves absent fields alone rather than clearing them.
+    { body: { sourceText, transferNumber, transferTopics } },
   );
 }
 

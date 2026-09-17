@@ -10,6 +10,7 @@ import {
   hashSource,
   saveProfile,
   saveAgentIdentity,
+  saveHouseRules,
   saveTypedFields,
 } from "../db/businessProfiles.js";
 import {
@@ -323,6 +324,38 @@ export const business = new Elysia({ prefix: "/business" })
       return { status: "deleted" };
     },
     { params: t.Object({ id: t.String() }) },
+  )
+
+  // What this business wants the assistant to do differently — its own box in the dashboard, so
+  // its own endpoint. Saving it must not re-read the description (that costs a model call and can
+  // reword every fact), and editing the description must not disturb it.
+  .put(
+    "/house-rules",
+    async ({ body, headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      const target = profileTargetFor(user, query.userId);
+
+      const rules = spokenLine(body.houseRules, MAX_HOUSE_RULES, "How the assistant should behave");
+      if (rules && typeof rules === "object") {
+        return status(400, { error: "bad_house_rules", message: rules.tooLong });
+      }
+
+      const profile = await saveHouseRules(target, rules);
+      if (!profile) {
+        // Nothing to attach them to. Without a profile the agent answers neutrally and never reads
+        // these, so saying so beats storing a setting that does nothing.
+        return status(409, {
+          error: "no_profile",
+          message: "Add your business information first — until then the assistant answers neutrally.",
+        });
+      }
+      return { profile };
+    },
+    {
+      query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }),
+      body: t.Object({ houseRules: t.Optional(t.String({ maxLength: 4000 })) }),
+    },
   )
 
   // How the assistant introduces itself — its own section in the dashboard, so its own endpoint.

@@ -3,6 +3,7 @@ import {
   getBusinessProfile,
   listAccounts,
   saveAgentIdentity,
+  saveHouseRules,
   saveBusinessProfile,
 } from "../api/backend";
 import type { AgentNumber, AuthUser, BusinessProfile, MailboxScope } from "../api/types";
@@ -57,6 +58,138 @@ function stateOf(profile: BusinessProfile | null, number: AgentNumber | null): S
   return number ? "live" : "no-number";
 }
 
+
+/**
+ * What this business wants the assistant to do differently — its own card, its own save.
+ *
+ * Separate from the description for the same reason the greeting is: the description is a paste box
+ * a model reads facts out of, and these are instructions used as written. It is also the setting a
+ * business changes most often once they have heard a few calls, so it does not belong three clicks
+ * inside an edit form.
+ */
+function HouseRulesCard({
+  profile,
+  userId,
+  onSaved,
+}: {
+  profile: BusinessProfile;
+  userId?: string;
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [rules, setRules] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
+
+  const lines = (profile.houseRules ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
+
+  function startEditing() {
+    setRules(profile.houseRules ?? "");
+    setError(null);
+    setJustSaved(false);
+    setEditing(true);
+  }
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await saveHouseRules(rules.trim(), userId);
+      setEditing(false);
+      setJustSaved(true);
+      onSaved();
+    } catch (e) {
+      setError(accountErrorMessage(e, "Couldn't save that. Nothing was changed."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="card">
+      <div className="card-toolbar">
+        <div>
+          <div className="card-title ta-headline-2">How it behaves on a call</div>
+          <div className="card-sub ta-caption-1">
+            Your own instructions to the assistant, in your words — what to mention, what to leave
+            alone, what to tell people who ask. One per line.
+          </div>
+        </div>
+        {!editing && (
+          <button type="button" className="btn btn-quiet" onClick={startEditing}>
+            {lines.length ? "Change" : "Set this up"}
+          </button>
+        )}
+      </div>
+
+      {!editing ? (
+        <div className="business-status">
+          {lines.length ? (
+            <ul className="fact-list">
+              {lines.map((line) => (
+                <li key={line} className="ta-body-2">
+                  {line}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="ta-body-2 muted">
+              Nothing set — the assistant answers the way it does by default. Add a line for
+              anything you would tell a new receptionist on their first day.
+            </p>
+          )}
+          {justSaved && <span className="badge badge-success">Updated</span>}
+        </div>
+      ) : (
+        <form className="inline-form" onSubmit={onSubmit}>
+          <label className="field">
+            <span className="field-label ta-caption-1">One instruction per line</span>
+            <textarea
+              className="input textarea"
+              value={rules}
+              onChange={(e) => setRules(e.target.value.slice(0, MAX_HOUSE_RULES))}
+              rows={6}
+              autoFocus
+              placeholder={
+                "Mention that tips for services are cash only.\n" +
+                "Tell first-time guests to arrive fifteen minutes early.\n" +
+                "Don't discuss other spas."
+              }
+            />
+            <span className="field-hint ta-caption-2 muted">
+              These are followed on top of the way the assistant already works: it will still never
+              say something is booked, never promise what your team will do, never answer from
+              anything but your business details, and always ask before putting a caller through.
+              {rules.length > MAX_HOUSE_RULES - 200 && (
+                <> {MAX_HOUSE_RULES - rules.length} characters left.</>
+              )}
+            </span>
+          </label>
+          {error && (
+            <p className="error ta-body-2" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="inline-form-actions">
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() => setEditing(false)}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
+  );
+}
 
 /**
  * How the assistant answers the phone — its own card, because it is its own decision.
@@ -225,7 +358,6 @@ export function BusinessPage({
   const [draft, setDraft] = useState("");
   const [transferNumber, setTransferNumber] = useState("");
   const [transferTopics, setTransferTopics] = useState("");
-  const [houseRules, setHouseRules] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
@@ -269,7 +401,6 @@ export function BusinessPage({
     setDraft(profile?.sourceText ?? "");
     setTransferNumber(profile?.transferNumber ?? "");
     setTransferTopics(profile?.transferTopics ?? "");
-    setHouseRules(profile?.houseRules ?? "");
     setSaveError(null);
     setJustSaved(false);
     setEditing(true);
@@ -285,7 +416,6 @@ export function BusinessPage({
         draft.trim(),
         transferNumber.trim(),
         transferTopics.trim(),
-        houseRules.trim(),
         targetId,
       );
       setProfile(saved);
@@ -435,32 +565,6 @@ export function BusinessPage({
               </span>
             </label>
 
-            <label className="field">
-              <span className="field-label ta-caption-1">
-                How the assistant should behave (optional)
-              </span>
-              <textarea
-                className="input textarea"
-                value={houseRules}
-                onChange={(e) => setHouseRules(e.target.value.slice(0, MAX_HOUSE_RULES))}
-                rows={5}
-                placeholder={
-                  "Mention that tips for services are cash only.\n" +
-                  "If someone asks about a first visit, tell them to arrive fifteen minutes early.\n" +
-                  "Don't discuss other spas."
-                }
-              />
-              <span className="field-hint ta-caption-2 muted">
-                Your instructions to the assistant, in your own words — one per line. It follows
-                these on top of the way it already works: it will still never say something is
-                booked, never promise what your team will do, never answer from anything but the
-                details above, and always ask before putting a caller through.
-                {houseRules.length > MAX_HOUSE_RULES - 200 && (
-                  <> {MAX_HOUSE_RULES - houseRules.length} characters left.</>
-                )}
-              </span>
-            </label>
-
             <div className="inline-form-actions">
               <button type="submit" className="btn btn-primary" disabled={saving || !draft.trim()}>
                 {saving ? "Reading it through…" : "Save"}
@@ -554,6 +658,7 @@ export function BusinessPage({
       </section>
 
       {profile && <IdentityCard profile={profile} userId={targetId} onSaved={load} />}
+      {profile && <HouseRulesCard profile={profile} userId={targetId} onSaved={load} />}
 
       {profile && (
         <section className="card">
@@ -570,14 +675,6 @@ export function BusinessPage({
               {profile.transferNumber ? "Change" : "Add a number"}
             </button>
           </div>
-          {profile.houseRules && (
-            <div className="business-extra ta-body-2">
-              <span className="ta-label-1">How it behaves</span>
-              {profile.houseRules.split("\n").filter(Boolean).map((rule) => (
-                <div key={rule}>{rule}</div>
-              ))}
-            </div>
-          )}
           {profile.transferTopics && (
             <p className="business-topics ta-caption-1 muted">
               Also put through: {profile.transferTopics}
