@@ -38,6 +38,13 @@ export class ExtractionError extends Error {}
 // Every fact is sent on EVERY call, so this is a real cost: about 750 extra tokens of system
 // prompt at the new ceiling. That buys an assistant that can actually answer, and the measured
 // time to first audio (~2.4s) has plenty of room for it.
+// Bumped whenever this file changes what a given text extracts to — the prompt, the caps, the
+// backstop below. It is part of the source hash, so the next save of an UNCHANGED description
+// re-reads it instead of being skipped as "nothing changed". Without this, a customer who pasted
+// their details before an improvement keeps the old facts forever: Olympus Spa's address was in
+// their text and missing from their facts for exactly that reason.
+export const EXTRACTOR_VERSION = 2;
+
 const MAX_FACTS = 50;
 const MAX_FACT_CHARS = 200;
 const MAX_TOTAL_CHARS = 7000;
@@ -80,6 +87,10 @@ Produce ONLY what the text actually says:
 - Keep a street address if the text gives one, written the way it would be SPOKEN — "3815 196th
   Street Southwest, Suite 160, Lynnwood, Washington", not an abbreviated postal line. A caller
   asking where a business is wants to be able to drive there.
+- Keep the address and the phone number EVEN WHEN they are written as labelled lines rather than
+  sentences ("Address: ...", "Phone: ..."), and put them among the FIRST facts. They look like
+  page furniture; they are the two things callers ask for most. Turn each into a sentence: "The
+  address is ...", "The phone number is ...".
 - open_hour and close_hour are 24-hour integers for a normal weekday, or null if the text doesn't
   say. hours_text is how the hours should be spoken, e.g. "Monday to Friday, 8 AM to 5 PM".
 
@@ -160,6 +171,57 @@ export function normalizeExtract(raw: Record<string, unknown>): BusinessExtract 
   };
 }
 
+// A street line as businesses write one, labelled or not, and a North American phone number.
+// Deliberately loose: these only decide whether to ADD a fact the text already contains.
+const ADDRESS_LINE = /(?:^|\n)[ \t]*(?:address|location|find us|visit us)[ \t]*[:\-][ \t]*([^\n]+)/i;
+const STREET_LINE =
+  /(?:^|\n)[ \t]*(\d{1,6}\s+[\w.'-]+(?:\s+[\w.'-]+){0,6}\s+(?:street|st|avenue|ave|road|rd|drive|dr|way|place|pl|boulevard|blvd|lane|ln|court|ct|parkway|pkwy|circle|cir|highway|hwy)\b[^\n]*)/i;
+const PHONE_LINE = /(?:^|\n)[ \t]*(?:phone|tel|telephone|call us)[ \t]*[:\-][ \t]*([+(\d][\d\s().+-]{6,}\d)/i;
+const ANY_PHONE = /(\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/;
+
+const tidy = (value: string) => value.replace(/\s+/g, " ").trim().replace(/[.,;]+$/, "");
+
+/**
+ * Put back the two facts a caller asks for most, when the text has them and the model dropped them.
+ *
+ * The model usually keeps both. "Usually" is not good enough for the address: a caller who asks
+ * where a business is and is told only the city hangs up and calls someone else, and that is what
+ * happened to a real spa whose address sat in their pasted text the whole time. So this checks the
+ * text directly, and prepends what is missing — the facts list is the agent's whole world, and
+ * first is where these belong.
+ */
+export function withContactFacts(extract: BusinessExtract, sourceText: string): BusinessExtract {
+  const facts = [...extract.facts];
+  const said = facts.join(" ").toLowerCase();
+  const add: string[] = [];
+
+  const address = tidy(sourceText.match(ADDRESS_LINE)?.[1] ?? sourceText.match(STREET_LINE)?.[1] ?? "");
+  // The street number is enough to tell whether the agent can already say it: a fact mentioning
+  // "3815" is the address however the model phrased the rest.
+  const streetNumber = address.match(/\d{1,6}/)?.[0];
+  if (address && streetNumber && !said.includes(streetNumber.toLowerCase())) {
+    add.push(`The address is ${address}.`);
+  }
+
+  const phone = tidy(sourceText.match(PHONE_LINE)?.[1] ?? sourceText.match(ANY_PHONE)?.[1] ?? "");
+  const digits = phone.replace(/\D/g, "");
+  if (phone && digits.length >= 10 && !said.replace(/\D/g, "").includes(digits.slice(-10))) {
+    add.push(`The phone number is ${phone}.`);
+  }
+
+  if (!add.length) return extract;
+  // Prepended, then re-capped from the front, so adding these can never push the list over a limit.
+  const merged: string[] = [];
+  let total = 0;
+  for (const fact of [...add, ...facts]) {
+    if (fact.length > MAX_FACT_CHARS || total + fact.length > MAX_TOTAL_CHARS) continue;
+    merged.push(fact);
+    total += fact.length;
+    if (merged.length >= MAX_FACTS) break;
+  }
+  return { ...extract, facts: merged };
+}
+
 /** The bullets as the agent's `business_facts` wants them — one per line, dash-prefixed. */
 export function renderFacts(extract: BusinessExtract): string {
   return extract.facts.map((f) => `- ${f}`).join("\n");
@@ -232,5 +294,5 @@ export async function extractBusiness(sourceText: string): Promise<BusinessExtra
   } catch {
     throw new ExtractionError("Your details came back in an unexpected format. Try saving again.");
   }
-  return normalizeExtract(parsed);
+  return withContactFacts(normalizeExtract(parsed), source);
 }

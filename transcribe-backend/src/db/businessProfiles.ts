@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { EXTRACTOR_VERSION } from "../tools/extractBusiness.js";
 import { sql } from "./client.js";
 
 // What a customer told us about their business, and what the agent may say because of it.
@@ -77,7 +78,14 @@ const COLUMNS = sql`
 
 /** Stable fingerprint of the source, so an unchanged save skips the model call entirely. */
 export function hashSource(sourceText: string): string {
-  return createHash("sha256").update(sourceText.trim(), "utf8").digest("hex");
+  // Versioned: the hash answers "would saving this produce the same profile?", and that depends on
+  // the reader as much as on the text. Bumping EXTRACTOR_VERSION makes the next save of an
+  // unchanged description re-read it, instead of being skipped as unchanged and keeping facts an
+  // older reader produced.
+  return createHash("sha256")
+    .update(`v${EXTRACTOR_VERSION}
+${sourceText.trim()}`, "utf8")
+    .digest("hex");
 }
 
 export async function findProfile(userId: string): Promise<BusinessProfile | null> {
