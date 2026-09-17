@@ -117,9 +117,16 @@ def _backend_tools(tools: list[dict]) -> list[dict]:
 
 
 def build_live_session_start(
-    cfg: Config, instructions: str, tools: list[dict] | None = None
+    cfg: Config, instructions: str, tools: list[dict] | None = None, greet_now: str = ""
 ) -> dict:
-    """Build the session.start event. `tools` defaults to the outbound set, as in session.py."""
+    """Build the session.start event. `tools` defaults to the outbound set, as in session.py.
+
+    `greet_now` is the "speak your opening line now" instruction for an inbound call. It rides
+    along with session.start rather than being appended once the session is up, which measured a
+    second faster to the first audible word (3.5s -> 2.5s over three runs each): the append costs a
+    round trip AND lands after the model has already settled into waiting for the caller. It goes
+    only on the VOICE half — the backend never speaks, and a greeting order would only confuse it.
+    """
     tools = TOOL_SCHEMAS if tools is None else tools
     responses: dict = {
         "model": cfg.openai_live_backend_model,
@@ -138,7 +145,11 @@ def build_live_session_start(
         "event_id": "session_start",
         "session": {
             "model": cfg.openai_live_model,
-            "instructions": _voice_preamble(tools) + instructions,
+            "instructions": (
+                _voice_preamble(tools)
+                + instructions
+                + (f"\n\n# RIGHT NOW\n{greet_now}\n" if greet_now else "")
+            ),
             "audio": {
                 "format": {"type": "audio/pcmu", "rate": 8000},
                 "output": {"voice": cfg.openai_voice.lower()},

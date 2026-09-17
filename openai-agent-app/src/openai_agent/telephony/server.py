@@ -47,6 +47,7 @@ from ..config import Config
 from ..realtime import amd
 from ..realtime.bridge import run_bridge
 from ..realtime.live_bridge import run_live_bridge
+from ..tools.business_config import prefetch_business_config
 from . import transfer
 
 # Logging is configured HERE, at import, rather than only in scripts/run_server.py — because the
@@ -161,6 +162,10 @@ async def incoming(request: Request) -> Response:
         fields.get("CallerName", ""),
         fields.get("CallSid", ""),
     )
+    # Start the "whose business is this?" lookup now, while Twilio is still setting up the media
+    # stream. It used to run when the stream connected, with the caller listening to silence.
+    prefetch_business_config(cfg, fields.get("To", ""))
+
     response = VoiceResponse()
 
     # A forwarding carrier answers OUR leg first and plays "press 1 to accept"; the real caller

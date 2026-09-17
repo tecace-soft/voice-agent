@@ -262,7 +262,13 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     amd_queue = amd.register(call_sid) if not is_inbound else None
     try:
         async with await connecting as live_ws:
-            await live_ws.send(json.dumps(build_live_session_start(cfg, instructions, tools)))
+            await live_ws.send(json.dumps(build_live_session_start(
+                cfg, instructions, tools,
+                # Inbound answers a ringing phone, so the order to speak first travels with the
+                # session instead of costing a round trip once it is up. _GREET_AGAIN still covers
+                # the session that comes up and says nothing anyway.
+                greet_now=_GREET_NOW if is_inbound else "",
+            )))
 
             forwarded_from = str(params.get("forwarded_from", ""))
             if is_inbound and forwarded_from:
@@ -412,8 +418,10 @@ async def _live_to_caller(
                 log.info("live session started: %s", (evt.get("session") or {}).get("id", "?"))
                 state["ready"].set()
                 if state["is_inbound"]:
+                    # The order to greet already went with session.start — appending it again here
+                    # would only ask twice. The deadline still arms _GREET_AGAIN for the session
+                    # that comes up and stays silent.
                     state["greet_deadline"] = time.monotonic() + _GREETING_WAIT_SECONDS
-                    await _append(live_ws, state, _GREET_NOW)
             elif t == "session.input_transcript.delta":
                 if state["is_inbound"] and not state["greeted"]:
                     log.info("ignoring %r heard before the greeting", evt.get("delta"))

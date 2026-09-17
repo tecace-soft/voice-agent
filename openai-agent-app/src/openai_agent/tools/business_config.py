@@ -17,7 +17,9 @@ and is exactly what this whole mechanism exists to prevent.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from urllib.parse import quote
 
@@ -26,6 +28,20 @@ import httpx
 from ..config import Config
 
 log = logging.getLogger(__name__)
+
+# The lookup is one HTTPS round trip to the dashboard, and on an inbound call it happens while the
+# caller listens to silence — nothing can be said until we know whose business this is. Two things
+# keep it off the critical path:
+#
+#   * /incoming knows the dialled number a fraction of a second before the media stream connects,
+#     and calls prefetch_business_config() there, so the answer is usually already in hand.
+#   * the answer is cached briefly, so a second call to the same number skips the trip entirely.
+#
+# The TTL is short on purpose: a customer who edits their profile expects the next call to reflect
+# it, and a minute of staleness is the most this may cost them. Only successful lookups are cached
+# — caching "we could not tell" would turn one blip into a minute of neutral answering.
+_CACHE_SECONDS = 60.0
+_cache: dict[str, tuple[float, "BusinessConfig"]] = {}
 
 
 @dataclass(frozen=True)
@@ -74,6 +90,11 @@ async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | N
         log.warning("no dialled number on this call — answering neutrally")
         return None
 
+    cached = _cache.get(dialled)
+    if cached and time.monotonic() - cached[0] < _CACHE_SECONDS:
+        log.info("business config for %s served from the last %.0fs — no lookup", dialled, _CACHE_SECONDS)
+        return cached[1]
+
     url = f"{cfg.business_config_url.rstrip('/')}/business/config?to={quote(dialled)}"
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
@@ -110,7 +131,7 @@ async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | N
     def _hour(value: object) -> int | None:
         return value if isinstance(value, int) and 0 <= value <= 23 else None
 
-    return BusinessConfig(
+    business = BusinessConfig(
         to=str(data.get("to") or dialled),
         user_id=str(user.get("id") or ""),
         user_email=str(user.get("email") or ""),
@@ -128,6 +149,30 @@ async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | N
         greeting=str(biz.get("greeting") or ""),
         transfer_topics=str(biz.get("transferTopics") or ""),
     )
+    _cache[dialled] = (time.monotonic(), business)
+    return business
+
+
+def prefetch_business_config(cfg: Config, dialled: str) -> None:
+    """Start the lookup for a number that is ringing right now, and don't wait for it.
+
+    Called from the /incoming webhook, which knows the dialled number a moment before Twilio opens
+    the media stream. By the time the bridge asks, the answer is normally cached and the caller's
+    silence is that much shorter. Every failure mode is already "answer neutrally", so this is
+    fire-and-forget: it never blocks the webhook and never fails it.
+    """
+    if not dialled or not cfg.business_config_url or not cfg.agent_config_key:
+        return
+    cached = _cache.get(dialled)
+    if cached and time.monotonic() - cached[0] < _CACHE_SECONDS:
+        return
+    task = asyncio.create_task(fetch_business_config(cfg, dialled))
+    # Held only so the task is not garbage-collected mid-flight; the result is read from the cache.
+    _prefetching.add(task)
+    task.add_done_callback(_prefetching.discard)
+
+
+_prefetching: set[asyncio.Task] = set()
 
 
 async def post_call_minutes(cfg: Config, seconds: int, agent_number: str = "") -> None:
