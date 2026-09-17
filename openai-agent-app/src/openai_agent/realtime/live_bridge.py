@@ -271,6 +271,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "closing_event_id": None,
         "play_until": 0.0,
         "max_playback_lead": 0.0,
+        "live_closed": False,  # OpenAI's side hung up on us, rather than the call ending normally
         "underruns": 0,  # times Twilio had nothing left to play while the agent was talking
         "underrun_seconds": 0.0,
         "voice_seconds": None,
@@ -348,7 +349,9 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 if watcher is not None:
                     watcher.cancel()
     except Exception as exc:  # noqa: BLE001 — surface, don't crash the server
-        log.warning("live bridge ended: %s", exc)
+        # With the traceback: "live bridge ended: 'greeted'" told us a KeyError happened and
+        # nothing about where, and this path is the one that silently ends a live call.
+        log.warning("live bridge ended: %s: %s", type(exc).__name__, exc, exc_info=True)
     finally:
         amd.unregister(call_sid)
         _flush_run(state)
@@ -511,9 +514,21 @@ async def _live_to_caller(
             else:
                 _log_unexpected(state, "session", evt)
     except WebSocketDisconnect:
-        pass
-    except websockets.ConnectionClosed:
-        pass
+        log.info("the caller's end of the stream closed")
+    except websockets.ConnectionClosed as closed:
+        # THE failure the caller experiences as "it went dead mid-sentence". OpenAI's side hung up,
+        # and everything after this is silence until the call is torn down — so it is logged with
+        # the close code and with what the agent was doing at the time, which is the difference
+        # between "they dropped us" and "we sent something they rejected".
+        state["live_closed"] = True
+        speaking = state["last_audio_at"] and time.monotonic() - state["last_audio_at"] < 2.0
+        log.warning(
+            "GPT-Live closed the session after %.0fs (code %s, reason %r) — the caller hears "
+            "silence from here%s",
+            time.monotonic() - state["started"], getattr(closed.rcvd, "code", "?"),
+            getattr(closed.rcvd, "reason", "") or "none given",
+            ", and it closed WHILE THE AGENT WAS SPEAKING" if speaking else "",
+        )
 
 
 def _has_sound(payload: str) -> bool:
@@ -1026,6 +1041,9 @@ def _log_live_cost(state: dict, cfg: Config) -> None:
     # because it is already queued at Twilio. Well under a second is fine; seconds means Twilio's
     # buffer has to be cleared on interruption.
     log.info("agent audio ran up to %.1fs ahead of playback", state["max_playback_lead"])
+    if state["live_closed"]:
+        log.warning("this call ended because the GPT-Live session closed, not because the "
+                    "conversation finished")
     if state["underruns"]:
         log.warning("the agent's audio ran dry %d time(s), %.1fs of gaps in total — the caller "
                     "heard it cut out", state["underruns"], state["underrun_seconds"])
