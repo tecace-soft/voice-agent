@@ -102,6 +102,9 @@ _FOLLOWUP_SECONDS = 2.5
 # late frame never leaves a gap in a word, small enough that flushing it on an interruption is not
 # noticeable.
 _GREETING_LEAD_SECONDS = 0.2
+# A gap longer than this between the end of what we have sent and the next audio is long enough to
+# hear. Below it, ordinary jitter.
+_UNDERRUN_SECONDS = 0.06
 
 _GREET_NOW = (
     "The call has just connected. Speak your opening line now, first, without waiting for the "
@@ -253,6 +256,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "ready": asyncio.Event(),  # set on session.started
         "greeted": False,  # the agent has produced audio
         "greeting_task": None,  # playing the pre-rendered opening line, if there is one
+        "model_audio_frames": 0,  # audio the MODEL has sent — see _play_greeting's interrupt path
         "greet_deadline": float("inf"),
         "leaving_voicemail": False,
         "transfer_pending": None,
@@ -267,6 +271,8 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "closing_event_id": None,
         "play_until": 0.0,
         "max_playback_lead": 0.0,
+        "underruns": 0,  # times Twilio had nothing left to play while the agent was talking
+        "underrun_seconds": 0.0,
         "voice_seconds": None,
         "backend_usage": {"in": 0, "cached": 0, "out": 0, "cost": 0.0, "responses": 0},
         "append_count": 0,
@@ -446,6 +452,7 @@ async def _live_to_caller(
             if t == "session.output_audio.delta":
                 payload = evt.get("delta") or ""
                 _note_agent_audio(state, payload)
+                state["model_audio_frames"] += 1
                 await twilio_ws.send_json(
                     {"event": "media", "streamSid": state["stream_sid"], "media": {"payload": payload}}
                 )
@@ -530,6 +537,16 @@ def _note_agent_audio(state: dict, payload: str) -> None:
     contains sound — that the agent is speaking."""
     now = time.monotonic()
     seconds = _payload_bytes(payload) / _MULAW_SAMPLES_PER_SECOND
+    # A gap the CALLER hears: everything sent had already finished playing before this arrived, so
+    # Twilio had nothing to play in between. Reported because "the agent cut out for a moment" is
+    # otherwise unanswerable after the fact — this says whether it happened, and for how long.
+    starved = state["play_until"] and now - state["play_until"] > _UNDERRUN_SECONDS
+    if starved and state["greeted"]:
+        state["underruns"] += 1
+        state["underrun_seconds"] += now - state["play_until"]
+        if state["underruns"] <= 5:
+            log.warning("agent audio ran dry for %.0fms — the caller heard a gap",
+                        (now - state["play_until"]) * 1000)
     # When Twilio will finish playing everything sent so far. GPT-Live's output events carry no
     # timing, so the only way to see whether audio arrives faster than it plays is to measure it.
     # Silence counts here: it occupies Twilio's buffer just the same.
@@ -605,12 +622,19 @@ async def _play_greeting(twilio_ws: WebSocket, state: dict, audio: bytes) -> Non
                 await asyncio.sleep(ahead - _GREETING_LEAD_SECONDS)
     except asyncio.CancelledError:
         # The caller started talking. Drop what Twilio has not played yet so the agent is not still
-        # introducing itself over them.
-        try:
-            await twilio_ws.send_json({"event": "clear", "streamSid": state["stream_sid"]})
-        except Exception:  # noqa: BLE001 — the call may already be gone
-            pass
-        log.info("caller spoke during the greeting — stopped playing it")
+        # introducing itself over them — but ONLY while the greeting is all that is queued. Once
+        # the model has started answering, its audio is in that same buffer, and flushing would cut
+        # the answer off mid-word. That is a gap the caller hears, and the whole point of stopping
+        # the greeting is to let the answer through.
+        if state.get("model_audio_frames", 0) == 0:
+            try:
+                await twilio_ws.send_json({"event": "clear", "streamSid": state["stream_sid"]})
+            except Exception:  # noqa: BLE001 — the call may already be gone
+                pass
+            log.info("caller spoke during the greeting — stopped it and flushed what was queued")
+        else:
+            log.info("caller spoke during the greeting — stopped sending it; the model is already "
+                     "answering, so nothing was flushed")
         raise
     finally:
         state["greeting_task"] = None
@@ -1002,3 +1026,6 @@ def _log_live_cost(state: dict, cfg: Config) -> None:
     # because it is already queued at Twilio. Well under a second is fine; seconds means Twilio's
     # buffer has to be cleared on interruption.
     log.info("agent audio ran up to %.1fs ahead of playback", state["max_playback_lead"])
+    if state["underruns"]:
+        log.warning("the agent's audio ran dry %d time(s), %.1fs of gaps in total — the caller "
+                    "heard it cut out", state["underruns"], state["underrun_seconds"])
