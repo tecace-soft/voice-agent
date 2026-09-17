@@ -39,7 +39,7 @@ from ..telephony import transfer
 from ..telephony.outbound import is_machine
 from ..tools.agent_tools import INBOUND_TOOL_SCHEMAS, ToolExecutor
 from ..tools.business_config import fetch_business_config
-from . import amd
+from . import amd, greeting_audio
 from .bridge import (
     _HANGUP_FALLBACK_SECONDS,
     _SPOKEN_HOLD_LINE,
@@ -57,7 +57,7 @@ from .bridge import (
     _turns,
 )
 from .instructions import build_instructions
-from .instructions_inbound import RETURN_GREETING
+from .instructions_inbound import RETURN_GREETING, spoken_greeting
 from .instructions_inbound import build_instructions as build_instructions_inbound
 from .instructions_neutral import build_instructions_neutral
 from .korean import HANGUL, korean_speech_guide
@@ -150,6 +150,8 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
 
     is_inbound = str(params.get("direction", "")).strip().lower() == "inbound"
     caller = str(params.get("caller", ""))
+    opening = ""
+    prerendered: bytes | None = None
     returning = str(params.get("transfer_failed", "")).lower() in ("yes", "true", "1")
     business = None
 
@@ -187,6 +189,23 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 transfer_topics=business.transfer_topics,
                 can_transfer=bool(business.transfer_number) and not returning,
             )
+        # The opening line the caller is about to hear. If it has been rendered already (the
+        # /incoming webhook starts that while Twilio connects), it is played the instant the stream
+        # opens and the model is told what was said instead of being asked to say it — which is the
+        # ~2.5s the model needs before its first audible word, spent before the call was answered.
+        if business is not None and not returning:
+            opening = spoken_greeting(
+                greeting=business.greeting or cfg.greeting,
+                business_name=business.business_name,
+                agent_name=business.agent_name or cfg.agent_name,
+                disclose_recording=cfg.disclose_recording,
+            )
+            prerendered = greeting_audio.ready(cfg, opening)
+            # Not cached yet (first call after a deploy or a greeting change): render it for the
+            # next caller, and let the model speak this one, exactly as before.
+            if prerendered is None:
+                greeting_audio.warm(cfg, opening)
+
         tools = INBOUND_TOOL_SCHEMAS
         if returning or (business is not None and not business.transfer_number):
             tools = [t for t in INBOUND_TOOL_SCHEMAS if t.get("name") != "transfer_to_human"]
@@ -229,6 +248,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         # ---- live only ----
         "ready": asyncio.Event(),  # set on session.started
         "greeted": False,  # the agent has produced audio
+        "greeting_task": None,  # playing the pre-rendered opening line, if there is one
         "greet_deadline": float("inf"),
         "leaving_voicemail": False,
         "transfer_pending": None,
@@ -262,13 +282,24 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     amd_queue = amd.register(call_sid) if not is_inbound else None
     try:
         async with await connecting as live_ws:
-            await live_ws.send(json.dumps(build_live_session_start(
-                cfg, instructions, tools,
+            if is_inbound and prerendered:
+                first_turn = greeting_audio.already_greeted(opening)
+            elif is_inbound:
                 # Inbound answers a ringing phone, so the order to speak first travels with the
                 # session instead of costing a round trip once it is up. _GREET_AGAIN still covers
                 # the session that comes up and says nothing anyway.
-                greet_now=_GREET_NOW if is_inbound else "",
+                first_turn = _GREET_NOW
+            else:
+                first_turn = ""
+            await live_ws.send(json.dumps(build_live_session_start(
+                cfg, instructions, tools, greet_now=first_turn,
             )))
+
+            # Said before the model is even connected — this is the whole point of rendering it.
+            if is_inbound and prerendered:
+                state["greeting_task"] = asyncio.create_task(
+                    _play_greeting(twilio_ws, state, prerendered)
+                )
 
             forwarded_from = str(params.get("forwarded_from", ""))
             if is_inbound and forwarded_from:
@@ -423,6 +454,11 @@ async def _live_to_caller(
                     # that comes up and stays silent.
                     state["greet_deadline"] = time.monotonic() + _GREETING_WAIT_SECONDS
             elif t == "session.input_transcript.delta":
+                # The caller talked over the pre-rendered greeting: stop it mid-sentence, as a
+                # person would, rather than finishing the introduction into their first question.
+                task = state.get("greeting_task")
+                if task is not None and not task.done():
+                    task.cancel()
                 if state["is_inbound"] and not state["greeted"]:
                     log.info("ignoring %r heard before the greeting", evt.get("delta"))
                     continue
@@ -536,6 +572,40 @@ def _log_unexpected(state: dict, where: str, evt: dict) -> None:
     if key not in state["logged_types"]:
         state["logged_types"].add(key)
         log.info("unhandled live %s event %s (logged once): %s", where, t, json.dumps(evt)[:500])
+
+
+async def _play_greeting(twilio_ws: WebSocket, state: dict, audio: bytes) -> None:
+    """Play the pre-rendered opening line to the caller, in real time.
+
+    Paced at one 20ms frame per 20ms rather than sent in a burst, for the same reason the agent's
+    own audio is: whatever is already at Twilio keeps playing after we stop. Paced, a caller who
+    talks over the greeting is cut off within a frame or two of us noticing.
+    """
+    state["greeted"] = True  # the caller HAS been greeted, whatever the model does next
+    frames = greeting_audio.frames(audio)
+    log.info("playing the pre-rendered greeting (%.1fs) — the model did not have to speak it",
+             len(audio) / 8000)
+    nxt = time.monotonic()
+    try:
+        for frame in frames:
+            await twilio_ws.send_json(
+                {"event": "media", "streamSid": state["stream_sid"], "media": {"payload": frame}}
+            )
+            state["last_audio_at"] = time.monotonic()
+            state["last_activity_at"] = state["last_audio_at"]
+            nxt += 0.02
+            await asyncio.sleep(max(0.0, nxt - time.monotonic()))
+    except asyncio.CancelledError:
+        # The caller started talking. Drop what Twilio has not played yet so the agent is not still
+        # introducing itself over them.
+        try:
+            await twilio_ws.send_json({"event": "clear", "streamSid": state["stream_sid"]})
+        except Exception:  # noqa: BLE001 — the call may already be gone
+            pass
+        log.info("caller spoke during the greeting — stopped playing it")
+        raise
+    finally:
+        state["greeting_task"] = None
 
 
 async def _nudge_when_stuck(live_ws, state: dict) -> None:

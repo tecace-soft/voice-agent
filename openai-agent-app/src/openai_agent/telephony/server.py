@@ -34,6 +34,7 @@ AUTHENTICATION. These endpoints are on a public host, so they verify Twilio's re
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
 import os
@@ -46,8 +47,10 @@ from twilio.twiml.voice_response import Connect, Stream, VoiceResponse
 from ..config import Config
 from ..realtime import amd
 from ..realtime.bridge import run_bridge
+from ..realtime import greeting_audio
 from ..realtime.live_bridge import run_live_bridge
-from ..tools.business_config import prefetch_business_config
+from ..realtime.instructions_inbound import spoken_greeting
+from ..tools.business_config import fetch_business_config
 from . import transfer
 
 # Logging is configured HERE, at import, rather than only in scripts/run_server.py — because the
@@ -141,6 +144,30 @@ async def health() -> dict:
     return {"ok": not cfg.missing_for_server(), "missing": cfg.missing_for_server()}
 
 
+def _warm_for_call(dialled: str) -> None:
+    """Get everything the first second of the call needs, while Twilio is still connecting."""
+    if not dialled:
+        return
+
+    async def run() -> None:
+        business = await fetch_business_config(cfg, dialled)
+        if business is None:
+            return
+        greeting_audio.warm(cfg, spoken_greeting(
+            greeting=business.greeting or cfg.greeting,
+            business_name=business.business_name,
+            agent_name=business.agent_name or cfg.agent_name,
+            disclose_recording=cfg.disclose_recording,
+        ))
+
+    task = asyncio.create_task(run())
+    _warming.add(task)
+    task.add_done_callback(_warming.discard)
+
+
+_warming: set[asyncio.Task] = set()
+
+
 @app.post("/incoming")
 async def incoming(request: Request) -> Response:
     """A call rang the number. Hand its audio to the screening agent.
@@ -163,8 +190,10 @@ async def incoming(request: Request) -> Response:
         fields.get("CallSid", ""),
     )
     # Start the "whose business is this?" lookup now, while Twilio is still setting up the media
-    # stream. It used to run when the stream connected, with the caller listening to silence.
-    prefetch_business_config(cfg, fields.get("To", ""))
+    # stream. It used to run when the stream connected, with the caller listening to silence. The
+    # greeting audio for that business is rendered in the same breath, so the first words are ready
+    # to play the moment the stream opens.
+    _warm_for_call(fields.get("To", ""))
 
     response = VoiceResponse()
 

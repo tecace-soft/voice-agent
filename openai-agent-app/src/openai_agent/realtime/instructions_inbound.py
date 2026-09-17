@@ -352,6 +352,21 @@ def _is_open(now: datetime, open_hour: int, close_hour: int) -> bool:
     return now.weekday() < 5 and open_hour <= now.hour < close_hour
 
 
+def spoken_greeting(
+    greeting: str = "",
+    business_name: str = "TecAce",
+    agent_name: str = "Tess",
+    disclose_recording: bool = True,
+) -> str:
+    """Exactly what the caller hears first — the same string the prompt tells the agent to say.
+
+    Shared so the pre-rendered audio and the prompt can never drift apart: one of them saying a
+    different opening line than the other is a caller greeted twice, differently.
+    """
+    spoken = _render_greeting(greeting, business_name, agent_name)
+    return _splice_notice(spoken) if disclose_recording else spoken
+
+
 def build_instructions(
     *,
     caller: str = "",

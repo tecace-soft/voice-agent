@@ -45,6 +45,10 @@ class Config:
     openai_api_key: str
     openai_model: str
     openai_voice: str
+    # The greeting is spoken by this model instead of the live one, so the caller hears it at once
+    # rather than ~2.5s in. Same voice, so there is no seam. PRERENDERED_GREETING=false disables it.
+    openai_tts_model: str
+    prerendered_greeting: bool
     openai_transcribe_model: str
     # ---- OpenAI GPT-Live ----
     # Set (e.g. "gpt-live-1") to run every call on GPT-Live instead of Realtime; blank = Realtime,
@@ -153,6 +157,10 @@ class Config:
             openai_model=_optional("OPENAI_MODEL", "gpt-realtime-2.1"),
             # gpt-realtime voices include natural ones like "marin" and "cedar"; "alloy" always works.
             openai_voice=_optional("OPENAI_VOICE", "alloy"),
+            # gpt-4o-mini-tts is the speech model that offers the realtime voices (marin, cedar).
+            openai_tts_model=_optional("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
+            prerendered_greeting=_optional("PRERENDERED_GREETING", "true").lower()
+            not in ("false", "0", "no"),
             # Transcribes the CALLER only (the agent's own words come back with its audio).
             # whisper-1 is markedly worse on 8kHz phone audio, which is all we ever feed it.
             # Set OPENAI_TRANSCRIBE_MODEL=whisper-1 to go back if this model ever misbehaves.
