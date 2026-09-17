@@ -31,6 +31,8 @@ export interface BusinessProfile {
   greeting: string | null;
   /** Extra reasons this business wants a caller put through. Null means the standard rules only. */
   transferTopics: string | null;
+  /** How this business wants the assistant to behave, in their words. Null means the defaults. */
+  houseRules: string | null;
   /** True when there's enough here for the agent to answer AS this business rather than neutrally. */
   isLive: boolean;
   extractedAt: string | null;
@@ -71,6 +73,7 @@ const COLUMNS = sql`
   p.agent_name      AS "agentName",
   p.greeting,
   p.transfer_topics AS "transferTopics",
+  p.house_rules     AS "houseRules",
   ${IS_LIVE}      AS "isLive",
   p.extracted_at  AS "extractedAt",
   p.updated_at    AS "updatedAt"
@@ -111,6 +114,7 @@ export interface TypedFields {
   agentName: string | null;
   greeting: string | null;
   transferTopics: string | null;
+  houseRules: string | null;
 }
 
 export async function saveProfile(
@@ -123,12 +127,12 @@ export async function saveProfile(
     INSERT INTO business_profiles (
       user_id, source_text, source_hash, business_name, hours_text,
       open_hour, close_hour, website, facts, transfer_number, agent_name, greeting,
-      transfer_topics, extracted_at, updated_at
+      transfer_topics, house_rules, extracted_at, updated_at
     ) VALUES (
       ${userId}, ${sourceText}, ${hashSource(sourceText)}, ${fields.businessName},
       ${fields.hoursText}, ${fields.openHour}, ${fields.closeHour}, ${fields.website},
       ${fields.facts}, ${typed.transferNumber}, ${typed.agentName}, ${typed.greeting},
-      ${typed.transferTopics}, now(), now()
+      ${typed.transferTopics}, ${typed.houseRules}, now(), now()
     )
     ON CONFLICT (user_id) DO UPDATE SET
       source_text   = EXCLUDED.source_text,
@@ -143,6 +147,7 @@ export async function saveProfile(
       agent_name      = EXCLUDED.agent_name,
       greeting        = EXCLUDED.greeting,
       transfer_topics = EXCLUDED.transfer_topics,
+      house_rules     = EXCLUDED.house_rules,
       extracted_at    = now(),
       updated_at    = now()
   `;
@@ -166,6 +171,7 @@ export async function saveTypedFields(
         agent_name      = ${typed.agentName},
         greeting        = ${typed.greeting},
         transfer_topics = ${typed.transferTopics},
+        house_rules     = ${typed.houseRules},
         updated_at      = now()
     WHERE user_id = ${userId}
     RETURNING user_id

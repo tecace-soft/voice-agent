@@ -1,5 +1,5 @@
 import { Elysia, t } from "elysia";
-import { MAX_TRANSFER_TOPICS, resolveIdentity, spokenLine } from "./identityFields.js";
+import { MAX_HOUSE_RULES, MAX_TRANSFER_TOPICS, resolveIdentity, spokenLine } from "./identityFields.js";
 import { authenticate, authenticateAdmin, UNAUTHORIZED } from "../auth/guard.js";
 import { env } from "../config/env.js";
 import { findUserById } from "../db/users.js";
@@ -90,6 +90,7 @@ export const business = new Elysia({ prefix: "/business" })
           agentName: profile.agentName,
           greeting: profile.greeting,
           transferTopics: profile.transferTopics,
+          houseRules: profile.houseRules,
           hoursText: profile.hoursText,
           openHour: profile.openHour,
           closeHour: profile.closeHour,
@@ -164,7 +165,11 @@ export const business = new Elysia({ prefix: "/business" })
       if (topics && typeof topics === "object") {
         return status(400, { error: "bad_transfer_topics", message: topics.tooLong });
       }
-      const typed = { transferNumber, transferTopics: topics, ...identity };
+      const rules = spokenLine(body.houseRules, MAX_HOUSE_RULES, "How the assistant should behave");
+      if (rules && typeof rules === "object") {
+        return status(400, { error: "bad_house_rules", message: rules.tooLong });
+      }
+      const typed = { transferNumber, transferTopics: topics, houseRules: rules, ...identity };
       if (existing && existingHash === hashSource(sourceText)) {
         // The description is unchanged, so nothing is re-read — but the typed-in fields are not
         // part of that hash, and skipping the write entirely would silently discard an edit to any
@@ -172,6 +177,7 @@ export const business = new Elysia({ prefix: "/business" })
         const typedChanged =
           (existing.transferNumber ?? null) !== transferNumber ||
           (existing.transferTopics ?? null) !== topics ||
+          (existing.houseRules ?? null) !== rules ||
           (existing.agentName ?? null) !== identity.agentName ||
           (existing.greeting ?? null) !== identity.greeting;
         if (typedChanged) {
@@ -207,6 +213,8 @@ export const business = new Elysia({ prefix: "/business" })
         sourceText: t.String({ minLength: 1, maxLength: MAX_SOURCE_CHARS }),
         transferNumber: t.Optional(t.String({ maxLength: 40 })),
         transferTopics: t.Optional(t.String({ maxLength: 2000 })),
+        // How this business wants the assistant to behave, in their own words.
+        houseRules: t.Optional(t.String({ maxLength: 4000 })),
         // Generous outer bounds; the real limits are MAX_* above, which reject with a message
         // saying what to do rather than a schema error saying only that it failed.
         agentName: t.Optional(t.String({ maxLength: 200 })),

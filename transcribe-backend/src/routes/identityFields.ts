@@ -12,6 +12,11 @@ export const MAX_GREETING = 240;
 // Longer than a greeting: this is a short list, not one spoken sentence. Still capped, because it
 // lands in the agent's own instructions and an unbounded field there is a different feature.
 export const MAX_TRANSFER_TOPICS = 400;
+// The business's own instructions to the assistant. Longer than the others because it is a short
+// list of preferences rather than a spoken line — but still capped: it lands inside the agent's
+// instructions on every call, and an unbounded field there is a different feature with different
+// risks.
+export const MAX_HOUSE_RULES = 1500;
 
 /**
  * Tidy a line the agent will SPEAK, or null if there is nothing there.

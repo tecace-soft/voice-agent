@@ -73,6 +73,9 @@ class BusinessConfig:
     greeting: str
     # What this business wants put through to a person, beyond the standard appointment rules.
     transfer_topics: str
+    # How this business wants the assistant to behave on their calls, typed in the dashboard. Their
+    # preferences, in their words — never a replacement for the caller-facing rules.
+    house_rules: str
 
 
 async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | None:
@@ -148,6 +151,7 @@ async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | N
         agent_name=str(biz.get("agentName") or ""),
         greeting=str(biz.get("greeting") or ""),
         transfer_topics=str(biz.get("transferTopics") or ""),
+        house_rules=str(biz.get("houseRules") or ""),
     )
     _cache[dialled] = (time.monotonic(), business)
     return business

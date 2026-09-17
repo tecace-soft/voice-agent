@@ -194,6 +194,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 caller_name=str(params.get("caller_name", "")),
                 known_request=str(params.get("known_request", "")),
                 transfer_topics=business.transfer_topics,
+                house_rules=business.house_rules,
                 can_transfer=bool(business.transfer_number) and not returning,
             )
         # The opening line the caller is about to hear. If it has been rendered already (the

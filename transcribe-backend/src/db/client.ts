@@ -177,6 +177,10 @@ export async function initDb(): Promise<void> {
   await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS greeting TEXT`;
   // What this business wants put through to a person, on top of the standard appointment rules.
   await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS transfer_topics TEXT`;
+  // What this business wants the assistant to do differently on their calls — typed in the
+  // dashboard, in their own words, and appended to the agent's instructions as preferences. Their
+  // wishes, not their own rule book: the caller-facing guarantees are not a customer setting.
+  await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS house_rules TEXT`;
 
   // Calls the voice agent answered — the conversational counterpart to a transcribed voicemail.
   // user_id is resolved at write time from the number that was dialled; nullable, because a call
@@ -296,6 +300,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT transfer_number FROM business_profiles LIMIT 1`;
     await sql`SELECT agent_name, greeting FROM business_profiles LIMIT 1`;
     await sql`SELECT transfer_topics FROM business_profiles LIMIT 1`;
+    await sql`SELECT house_rules FROM business_profiles LIMIT 1`;
     await sql`SELECT 1 FROM inbound_calls LIMIT 1`;
     await sql`SELECT requested_time, sheet_written_at FROM inbound_calls LIMIT 1`;
     await sql`SELECT 1 FROM agent_call_minutes LIMIT 1`;

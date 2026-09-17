@@ -197,6 +197,10 @@ function IdentityCard({
   );
 }
 
+// The backend's own limit (MAX_HOUSE_RULES). Enforced here too so the box stops rather than
+// letting someone type a page and have the save rejected.
+const MAX_HOUSE_RULES = 1500;
+
 export function BusinessPage({
   isAdmin = false,
   scope,
@@ -221,6 +225,7 @@ export function BusinessPage({
   const [draft, setDraft] = useState("");
   const [transferNumber, setTransferNumber] = useState("");
   const [transferTopics, setTransferTopics] = useState("");
+  const [houseRules, setHouseRules] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
@@ -264,6 +269,7 @@ export function BusinessPage({
     setDraft(profile?.sourceText ?? "");
     setTransferNumber(profile?.transferNumber ?? "");
     setTransferTopics(profile?.transferTopics ?? "");
+    setHouseRules(profile?.houseRules ?? "");
     setSaveError(null);
     setJustSaved(false);
     setEditing(true);
@@ -279,6 +285,7 @@ export function BusinessPage({
         draft.trim(),
         transferNumber.trim(),
         transferTopics.trim(),
+        houseRules.trim(),
         targetId,
       );
       setProfile(saved);
@@ -428,6 +435,32 @@ export function BusinessPage({
               </span>
             </label>
 
+            <label className="field">
+              <span className="field-label ta-caption-1">
+                How the assistant should behave (optional)
+              </span>
+              <textarea
+                className="input textarea"
+                value={houseRules}
+                onChange={(e) => setHouseRules(e.target.value.slice(0, MAX_HOUSE_RULES))}
+                rows={5}
+                placeholder={
+                  "Mention that tips for services are cash only.\n" +
+                  "If someone asks about a first visit, tell them to arrive fifteen minutes early.\n" +
+                  "Don't discuss other spas."
+                }
+              />
+              <span className="field-hint ta-caption-2 muted">
+                Your instructions to the assistant, in your own words — one per line. It follows
+                these on top of the way it already works: it will still never say something is
+                booked, never promise what your team will do, never answer from anything but the
+                details above, and always ask before putting a caller through.
+                {houseRules.length > MAX_HOUSE_RULES - 200 && (
+                  <> {MAX_HOUSE_RULES - houseRules.length} characters left.</>
+                )}
+              </span>
+            </label>
+
             <div className="inline-form-actions">
               <button type="submit" className="btn btn-primary" disabled={saving || !draft.trim()}>
                 {saving ? "Reading it through…" : "Save"}
@@ -537,6 +570,14 @@ export function BusinessPage({
               {profile.transferNumber ? "Change" : "Add a number"}
             </button>
           </div>
+          {profile.houseRules && (
+            <div className="business-extra ta-body-2">
+              <span className="ta-label-1">How it behaves</span>
+              {profile.houseRules.split("\n").filter(Boolean).map((rule) => (
+                <div key={rule}>{rule}</div>
+              ))}
+            </div>
+          )}
           {profile.transferTopics && (
             <p className="business-topics ta-caption-1 muted">
               Also put through: {profile.transferTopics}
