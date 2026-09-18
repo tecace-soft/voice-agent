@@ -211,6 +211,33 @@ _ONLY_OFFERING = re.compile(
 )
 
 
+# The agent telling the caller their message is with the team. On a probe of the leg after a
+# failed transfer it said "Got it, someone will call you back about that" and never called
+# take_message — the caller rings off believing the team has their request, and nothing was
+# written down. Offers are excluded for the same reason as the transfer ones: "shall I take a
+# message?" is a question, and the caller has not answered it yet.
+_PROMISED_A_MESSAGE = re.compile(
+    r"("
+    r"(?:i'?ll|i will|let me|i'?ve|i have)\s+(?:just\s+)?"
+    r"(?:make a note|note that|pass (?:that|this|it|along)|let the team know|"
+    r"get (?:that|this) to the team|add that)"
+    r"|(?:someone|somebody|the team|they)\s+(?:will|'ll)\s+"
+    r"(?:call|get back|be in touch|reach out|follow up)"
+    r"|(?:the team|they)\s+(?:has|have|'ve)\s+(?:got\s+)?your"
+    r"|message (?:is|has been) (?:with|passed|noted|recorded)"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _promised_a_message(text: str) -> bool:
+    """Has the agent told the caller, in so many words, that their message is with the team?"""
+    said = (text or "").strip()
+    if not said or _ONLY_OFFERING.search(said):
+        return False
+    return bool(_PROMISED_A_MESSAGE.search(said))
+
+
 def _promised_a_transfer(text: str) -> bool:
     """Has the agent told the caller, in so many words, that it is putting them through now?"""
     said = (text or "").strip()
@@ -227,6 +254,15 @@ def _sounds_finished(text: str) -> bool:
 _STOP_FOR_TRANSFER = (
     "The caller is being transferred to a colleague right now. Do not say anything more."
 )
+_STILL_NEED_THE_MESSAGE = (
+    "You just told the caller their message is with the team, but you have not called take_message "
+    "— so nothing was recorded and nobody will call them back. Call it NOW, with what they have "
+    "already told you as the message and the number they are calling from as callback_number. Do "
+    "not ask them to repeat it, do not say anything about this to them, and do not say you are "
+    "noting it a second time."
+)
+# Twice. A third would be the bridge arguing with the model in front of the caller.
+_MESSAGE_REMINDER_LIMIT = 2
 _NUDGE = (
     "The line has been silent for several seconds. If you told the caller you would do something "
     "that needs the backend — put them through, take a message, check or book a time, or end the "
@@ -361,6 +397,8 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "greeted": False,  # the agent has produced audio
         "opening": opening,  # the words the caller should hear first, for the greeting rescue
         "greet_rescued": False,  # the bridge has already said hello on the model's behalf
+        "message_taken": False,  # take_message has actually been called on this call
+        "message_reminders": 0,
         "model_audio_frames": 0,  # audio the MODEL has sent — see _caller_started_talking
         "greet_deadline": float("inf"),
         "leaving_voicemail": False,
@@ -905,6 +943,28 @@ async def _watch_the_clock(state: dict) -> None:
 
 
 async def _nudge_when_stuck(twilio_ws: WebSocket, live_ws, state: dict, cfg: Config) -> None:
+    """Keep the nudge loop alive for the length of the call.
+
+    Every backstop lives in that loop — the greeting rescue, the sign-off wrap-up, the transfer and
+    message promises. An exception in it would end the task without a word and leave the rest of
+    the call with none of them, and the caller would simply be left waiting. So anything unexpected
+    is logged and the loop is restarted. It wakes twice a second, so a repeated fault costs a log
+    line rather than a spin.
+    """
+    while not state["closing"]:
+        try:
+            await _nudge_loop(twilio_ws, live_ws, state, cfg)
+            return
+        except asyncio.CancelledError:
+            raise
+        except websockets.ConnectionClosed:
+            return
+        except Exception:  # noqa: BLE001 — a dead nudger is worse than a logged one
+            log.exception("the nudge loop hit an error — restarting it so the backstops survive")
+            await asyncio.sleep(0.5)
+
+
+async def _nudge_loop(twilio_ws: WebSocket, live_ws, state: dict, cfg: Config) -> None:
     """Remind the agent to act when the line has gone dead with no backend work in flight.
 
     GPT-Live alone decides whether to delegate, so an agent can promise a transfer, never delegate
@@ -1019,6 +1079,29 @@ async def _nudge_when_stuck(twilio_ws: WebSocket, live_ws, state: dict, cfg: Con
                         "transferring them")
             try:
                 await _handle_transfer(twilio_ws, live_ws, "", {"reason": reason}, state, cfg)
+            except websockets.ConnectionClosed:
+                return
+            continue
+
+        # ...and the same for a message. Saying "someone will get back to you" without calling
+        # take_message leaves the caller certain their request is in hand and leaves us with
+        # nothing — worse than never having offered, because they will not call again.
+        if (
+            run
+            and run[0] == "agent"
+            and not busy
+            and not caller_speaking
+            and not state["message_taken"]
+            and state["message_reminders"] < _MESSAGE_REMINDER_LIMIT
+            and state["last_audio_at"]
+            and now - state["last_audio_at"] >= _PROMISE_GRACE_SECONDS
+            and _promised_a_message(run[1])
+        ):
+            state["message_reminders"] += 1
+            log.warning("the agent told the caller their message was taken and never called "
+                        "take_message — reminding it (%d)", state["message_reminders"])
+            try:
+                await _append(live_ws, state, _STILL_NEED_THE_MESSAGE)
             except websockets.ConnectionClosed:
                 return
             continue
@@ -1143,6 +1226,8 @@ async def _on_backend_event(
         elif name == "transfer_to_human":
             await _handle_transfer(twilio_ws, live_ws, call_id, args, state, cfg)
         else:
+            if name == "take_message":
+                state["message_taken"] = True
             # Off the receive loop, so the caller's audio keeps flowing while the backend works.
             task = asyncio.create_task(_handle_tool_call(live_ws, call_id, name, args, executor, state))
             state["_tool_tasks"].add(task)
@@ -1274,6 +1359,23 @@ async def _watch_amd(queue: asyncio.Queue, live_ws, twilio_ws: WebSocket, state:
     )
 
 
+def _still_speaking(state: dict) -> bool:
+    """Is the caller still HEARING the agent?
+
+    Not the same question as "did audio arrive recently", which is what this used to ask. Audio
+    arrives from the model far faster than it plays — a fifteen-second answer can land in about a
+    second and then sit in the reservoir being paced out — so arrival time said the agent had
+    finished talking while the caller was still a sentence behind. Acting on that cut a hand-off
+    line off mid-word: the caller heard "let me put you through, one mo—" and then the transfer.
+    """
+    now = time.monotonic()
+    return (
+        bool(state["out"])  # still queued here
+        or state["play_until"] > now  # still queued at Twilio
+        or now - state["last_audio_at"] < _RECENTLY_SPOKE_SECONDS  # more may be on its way
+    )
+
+
 async def _handle_transfer(
     twilio_ws: WebSocket, live_ws, call_id: str, args: dict, state: dict, cfg: Config
 ) -> None:
@@ -1289,8 +1391,9 @@ async def _handle_transfer(
     state["transfer_pending"] = reason
     await _append(live_ws, state, _STOP_FOR_TRANSFER)
 
-    if time.monotonic() - state["last_audio_at"] < _RECENTLY_SPOKE_SECONDS:
-        # The agent is saying its own hold line — let it finish playing, then hand off.
+    if _still_speaking(state):
+        # The agent is saying its own hold line — let it finish playing, then hand off. The mark
+        # below is queued behind the audio, so it comes back once the caller has heard all of it.
         await _drain_and_transfer(twilio_ws, live_ws, cfg, state)
         return
 
