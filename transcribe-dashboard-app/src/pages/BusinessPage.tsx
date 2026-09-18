@@ -371,6 +371,10 @@ export function BusinessPage({
   // What the assistant does before this business adds anything — sent with the profile so the
   // page never has its own stale copy of the agent's behaviour.
   const [standard, setStandard] = useState<BehaviourDefault[]>([]);
+  // Their saved facts came from an older reader, so the description would produce more (or better)
+  // facts today. Invisible otherwise: the page looks fine and only callers find the gaps.
+  const [factsStale, setFactsStale] = useState(false);
+  const [rereading, setRereading] = useState(false);
   const [number, setNumber] = useState<AgentNumber | null>(null);
   const [maxChars, setMaxChars] = useState(20_000);
   const [loading, setLoading] = useState(true);
@@ -410,6 +414,7 @@ export function BusinessPage({
         setNumber(r.number);
         setMaxChars(r.maxSourceChars);
         setStandard(r.defaultBehaviour ?? []);
+        setFactsStale(Boolean(r.factsStale));
         setError(null);
       })
       .catch((e) => setError(accountErrorMessage(e, "Couldn't load these business details.")))
@@ -427,6 +432,27 @@ export function BusinessPage({
     setSaveError(null);
     setJustSaved(false);
     setEditing(true);
+  }
+
+  async function onReread() {
+    if (!profile) return;
+    setRereading(true);
+    setSaveError(null);
+    try {
+      const { profile: saved } = await saveBusinessProfile(
+        profile.sourceText,
+        profile.transferNumber ?? "",
+        profile.transferTopics ?? "",
+        targetId,
+      );
+      setProfile(saved);
+      setFactsStale(false);
+      load();
+    } catch (e) {
+      setSaveError(accountErrorMessage(e, "Couldn't re-read your details. Nothing was changed."));
+    } finally {
+      setRereading(false);
+    }
   }
 
   async function onSave(event: FormEvent) {
@@ -725,7 +751,7 @@ export function BusinessPage({
 
       {profile && facts.length > 0 && (
         <section className="card">
-          <div className="card-head">
+          <div className="card-toolbar">
             <div>
               <div className="card-title ta-headline-2">What the assistant knows about you</div>
               <div className="card-sub ta-caption-1">
@@ -733,7 +759,19 @@ export function BusinessPage({
                 something here is wrong, callers will hear it wrong.
               </div>
             </div>
+            {factsStale && (
+              <button type="button" className="btn btn-primary" onClick={onReread} disabled={rereading}>
+                {rereading ? "Reading it again…" : "Read my details again"}
+              </button>
+            )}
           </div>
+          {factsStale && (
+            <p className="notice-inline ta-body-2" role="status">
+              These were read from your description by an older version of the assistant, and it can
+              take in more than it could then — so some of what you wrote may be missing here.
+              Reading your details again fixes it. Nothing you typed changes.
+            </p>
+          )}
           <ul className="business-facts">
             {facts.map((fact) => (
               <li key={fact} className="ta-body-2">

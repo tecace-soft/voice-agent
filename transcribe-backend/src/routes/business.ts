@@ -116,14 +116,26 @@ export const business = new Elysia({ prefix: "/business" })
       const user = await authenticate(headers.authorization);
       if (!user) return status(401, UNAUTHORIZED);
       const target = profileTargetFor(user, query.userId);
-      const [profile, number] = await Promise.all([
+      const [profile, number, storedHash] = await Promise.all([
         findProfile(target),
         findNumberForUser(target),
+        currentHash(target),
       ]);
+      // Their details were read by an older version of the reader — the facts on file are not what
+      // the same description would produce today. It happens on every improvement to the extraction
+      // (a raised cap, a new rule about addresses) and is invisible from the dashboard: the page
+      // shows facts that look fine, and callers hear the gaps. Saying so is the whole fix.
+      const factsStale = Boolean(profile && storedHash !== hashSource(profile.sourceText));
       // The standing behaviour travels with the profile so the page can show what the
       // assistant already does, instead of "nothing set" on a business that has simply not
       // added anything of their own.
-      return { profile, number, maxSourceChars: MAX_SOURCE_CHARS, defaultBehaviour: DEFAULT_BEHAVIOUR };
+      return {
+        profile,
+        number,
+        maxSourceChars: MAX_SOURCE_CHARS,
+        defaultBehaviour: DEFAULT_BEHAVIOUR,
+        factsStale,
+      };
     },
     { query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }) },
   )

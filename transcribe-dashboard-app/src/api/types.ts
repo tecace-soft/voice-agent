@@ -215,6 +215,8 @@ export interface BusinessProfileResponse {
   profile: BusinessProfile | null;
   /** The standing behaviour, so the page can show what it already does rather than "nothing set". */
   defaultBehaviour: BehaviourDefault[];
+  /** True when the saved facts were read by an older reader — re-reading the description fixes it. */
+  factsStale: boolean;
   /** Their assigned number, or null — a profile with no number is saved but not in use. */
   number: AgentNumber | null;
   maxSourceChars: number;
