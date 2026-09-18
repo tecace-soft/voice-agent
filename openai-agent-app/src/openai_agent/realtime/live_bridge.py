@@ -60,7 +60,7 @@ from .bridge import (
 from .instructions import build_instructions
 from .instructions_inbound import RETURN_GREETING, spoken_greeting
 from .instructions_inbound import build_instructions as build_instructions_inbound
-from .instructions_neutral import build_instructions_neutral
+from .instructions_neutral import NEUTRAL_GREETING, build_instructions_neutral
 from .korean import HANGUL, korean_speech_guide
 from .live_session import LIVE_URL, VOICE_PRICE_PER_MINUTE, backend_cost, build_live_session_start
 
@@ -86,6 +86,10 @@ _MAX_HELD_FRAMES = 150  # 3s of 20ms frames
 # Lowered from 6s: on a real call the agent took 9.8s to say hello — six of them waiting for a
 # greeting that was never coming, and the caller said "Hello?" into the silence first.
 _GREETING_WAIT_SECONDS = 3.0
+# And when asking again does not work either — a call where the model never spoke at all — this is
+# how long after that the bridge gives up and speaks the greeting itself. A caller listening to
+# silence has no way of knowing anyone picked up.
+_GREETING_RESCUE_SECONDS = 3.0
 _MULAW_SAMPLES_PER_SECOND = 8000
 # μ-law byte -> 1 if its amplitude is well above line noise (segment 3 or higher), else 0.
 _LOUD_BYTES = bytes(1 if ((0xFF ^ b) >> 4) & 7 >= 3 else 0 for b in range(256))
@@ -218,6 +222,10 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             instructions = build_instructions_neutral(
                 caller=caller, timezone=cfg.timezone, disclose_recording=cfg.disclose_recording
             )
+            # The neutral opening, rendered for the same rescue: a caller who reaches a line we
+            # cannot identify still deserves to hear that somebody picked up.
+            opening = NEUTRAL_GREETING
+            greeting_audio.warm(cfg, opening)
         else:
             instructions = build_instructions_inbound(
                 caller=caller,
@@ -251,11 +259,10 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 agent_name=business.agent_name or cfg.agent_name,
                 disclose_recording=cfg.disclose_recording,
             )
-            prerendered = greeting_audio.ready(cfg, opening)
-            # Not cached yet (first call after a deploy or a greeting change): render it for the
-            # next caller, and let the model speak this one, exactly as before.
-            if prerendered is None:
-                greeting_audio.warm(cfg, opening)
+            # Rendered either way. Played now only where the deployment asked for it; otherwise
+            # it waits as the rescue for a model that never says hello — see the nudger.
+            greeting_audio.warm(cfg, opening)
+            prerendered = greeting_audio.ready(cfg, opening) if cfg.prerendered_greeting else None
 
         tools = INBOUND_TOOL_SCHEMAS
         if returning or (business is not None and not business.transfer_number):
@@ -300,6 +307,8 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "ready": asyncio.Event(),  # set on session.started
         "greeted": False,  # the agent has produced audio
         "greeting_task": None,  # playing the pre-rendered opening line, if there is one
+        "opening": opening,  # the words the caller should hear first, for the greeting rescue
+        "greet_rescued": False,  # the bridge has already said hello on the model's behalf
         "model_audio_frames": 0,  # audio the MODEL has sent — see _play_greeting's interrupt path
         "greet_deadline": float("inf"),
         "leaving_voicemail": False,
@@ -379,7 +388,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 asyncio.create_task(_caller_to_live(twilio_ws, live_ws, cfg, state)),
                 asyncio.create_task(_live_to_caller(twilio_ws, live_ws, state, executor, cfg)),
             ]
-            nudger = asyncio.create_task(_nudge_when_stuck(twilio_ws, live_ws, state))
+            nudger = asyncio.create_task(_nudge_when_stuck(twilio_ws, live_ws, state, cfg))
             try:
                 # FIRST_COMPLETED, not gather — see run_bridge for why.
                 done, pending = await asyncio.wait(relays, return_when=asyncio.FIRST_COMPLETED)
@@ -745,7 +754,7 @@ async def _play_greeting(twilio_ws: WebSocket, state: dict, audio: bytes) -> Non
         state["greeting_task"] = None
 
 
-async def _nudge_when_stuck(twilio_ws: WebSocket, live_ws, state: dict) -> None:
+async def _nudge_when_stuck(twilio_ws: WebSocket, live_ws, state: dict, cfg: Config) -> None:
     """Remind the agent to act when the line has gone dead with no backend work in flight.
 
     GPT-Live alone decides whether to delegate, so an agent can promise a transfer, never delegate
@@ -763,6 +772,37 @@ async def _nudge_when_stuck(twilio_ws: WebSocket, live_ws, state: dict) -> None:
                 log.warning("the backend has not answered %.0fs after the agent delegated", now - since)
             continue
         stall_logged = False
+        # Asked twice and still nothing. Say it ourselves — the caller has been listening to an
+        # open line since they dialled, and no amount of asking the model has produced a word.
+        if (
+            state["is_inbound"]
+            and not state["greeted"]
+            and state["greet_retried"]
+            and not state["greet_rescued"]
+            and state["greet_deadline"]
+            and now >= state["greet_deadline"] + _GREETING_RESCUE_SECONDS
+        ):
+            audio = greeting_audio.ready(cfg, state["opening"])
+            if audio:
+                state["greet_rescued"] = True
+                log.warning("the agent never greeted — playing the greeting ourselves so the caller "
+                            "is not left on an open line")
+                state["greeting_task"] = asyncio.create_task(
+                    _play_greeting(twilio_ws, state, audio)
+                )
+                try:
+                    await _append(live_ws, state, greeting_audio.already_greeted(state["opening"]))
+                except websockets.ConnectionClosed:
+                    return
+            else:
+                # Still rendering, or the speech request failed. Try again on the next tick, and
+                # say so once rather than every half second.
+                if not state.get("_rescue_waiting"):
+                    state["_rescue_waiting"] = True
+                    log.warning("the agent has not greeted and no rendered greeting is ready yet")
+                greeting_audio.warm(cfg, state["opening"])
+            continue
+
         if state["is_inbound"] and not state["greeted"] and not state["greet_retried"]:
             # Waiting on the greeting. greet_deadline is only set once the session has started.
             if now >= state["greet_deadline"]:

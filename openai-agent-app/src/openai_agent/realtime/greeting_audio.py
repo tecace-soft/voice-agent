@@ -132,8 +132,14 @@ async def _synthesise(cfg: Config, text: str) -> bytes | None:
 
 
 def warm(cfg: Config, text: str) -> None:
-    """Start rendering a greeting we expect to need, and don't wait for it."""
-    if not cfg.prerendered_greeting or not text.strip():
+    """Start rendering a greeting we expect to need, and don't wait for it.
+
+    Rendered on EVERY inbound call, not only where PRERENDERED_GREETING is on: the setting decides
+    whether the caller hears this instead of the model, but the bridge also falls back to it when
+    the model will not greet at all — and a rescue that has to wait two seconds for a speech request
+    is not much of a rescue. One request per distinct greeting, cached for the life of the process.
+    """
+    if not text.strip():
         return
     key = _key(cfg, text)
     if key in _cache or key in _pending:
@@ -151,8 +157,8 @@ def warm(cfg: Config, text: str) -> None:
 
 
 def ready(cfg: Config, text: str) -> bytes | None:
-    """The cached greeting audio, or None — in which case the model greets, as it always did."""
-    if not cfg.prerendered_greeting or not text.strip():
+    """The cached greeting audio, or None if it has not been rendered (yet, or at all)."""
+    if not text.strip():
         return None
     return _cache.get(_key(cfg, text))
 
