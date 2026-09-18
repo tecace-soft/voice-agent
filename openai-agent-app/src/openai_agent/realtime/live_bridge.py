@@ -135,6 +135,10 @@ _AUDIO_CUSHION_STEP = 0.3
 # After the caller says they are done: how long the agent gets to end the call itself before the
 # bridge does it for them.
 _SIGNOFF_GRACE_SECONDS = 4.0
+# After the agent tells a caller it is putting them through: how long it gets to actually do it
+# before the bridge performs the transfer itself. Short, because the caller has been told to expect
+# a person and is listening to nothing until one arrives.
+_PROMISE_GRACE_SECONDS = 2.5
 # A gap longer than this between the end of what we have sent and the next audio is long enough to
 # hear. Below it, ordinary jitter.
 _UNDERRUN_SECONDS = 0.06
@@ -172,6 +176,29 @@ _SIGNED_OFF = re.compile(
     r"[\s,.!]*(?:thanks|thank you|then|bye|goodbye)?[\s,.!]*$",
     re.IGNORECASE,
 )
+
+
+# The agent SAYING it is transferring, as opposed to OFFERING to. The difference decides whether a
+# caller gets handed to a stranger they did not ask for, so the offer forms are excluded explicitly:
+# "would you like me to put you through?" is a question and must never trigger a transfer.
+_PROMISED_TRANSFER = re.compile(
+    r"\b(?:let me|i'?ll|i will|i'?m going to|going to|allow me to)\s+"
+    r"(?:just\s+)?(?:put|get|connect|transfer)\b[^.?!]{0,40}"
+    r"(?:through|you (?:to|with)|over to)?",
+    re.IGNORECASE,
+)
+_ONLY_OFFERING = re.compile(
+    r"(would you like|shall i|want me to|do you want|if you'?d like|should i|may i)",
+    re.IGNORECASE,
+)
+
+
+def _promised_a_transfer(text: str) -> bool:
+    """Has the agent told the caller, in so many words, that it is putting them through now?"""
+    said = (text or "").strip()
+    if not said or _ONLY_OFFERING.search(said):
+        return False
+    return bool(_PROMISED_TRANSFER.search(said))
 
 
 def _sounds_finished(text: str) -> bool:
@@ -735,6 +762,20 @@ async def _append(live_ws, state: dict, content: str) -> str:
     return event_id
 
 
+def _last_caller_words(state: dict) -> str:
+    """What the caller last said, for a transfer reason a colleague can act on."""
+    # The fragments are what exists DURING a call; state["transcript"] is assembled from them and
+    # is a turn behind until then.
+    for fragment in reversed(state["fragments"]):
+        speaker, text = fragment[0], fragment[-1]
+        if speaker == "lead" and str(text).strip():
+            return f"Caller asked: {str(text).strip()[:150]}"
+    for speaker, text in reversed(state["transcript"]):
+        if speaker == "lead" and text.strip():
+            return f"Caller asked: {text.strip()[:150]}"
+    return ""
+
+
 def _log_unexpected(state: dict, where: str, evt: dict) -> None:
     """Make an event the bridge does not handle visible, instead of silently dropping it.
 
@@ -904,6 +945,32 @@ async def _nudge_when_stuck(twilio_ws: WebSocket, live_ws, state: dict, cfg: Con
             except websockets.ConnectionClosed:
                 return
             continue
+        # The agent told the caller it was putting them through, and then did not. GPT-Live decides
+        # for itself whether to delegate, and on a real call it said "Of course, let me put you
+        # through, one moment" and simply stopped — the caller waited, heard nothing, and hung up.
+        # Saying it is a promise to the caller; this keeps it.
+        run = state["current_run"]
+        if (
+            run
+            and run[0] == "agent"
+            and not busy
+            and not caller_speaking
+            and state["human_number"]
+            and not state["transfer_pending"]
+            and not state.get("transfer_done")
+            and state["last_audio_at"]
+            and now - state["last_audio_at"] >= _PROMISE_GRACE_SECONDS
+            and _promised_a_transfer(run[1])
+        ):
+            reason = _last_caller_words(state) or "Caller asked to be put through."
+            log.warning("the agent said it was putting the caller through and then did not — "
+                        "transferring them")
+            try:
+                await _handle_transfer(twilio_ws, live_ws, "", {"reason": reason}, state, cfg)
+            except websockets.ConnectionClosed:
+                return
+            continue
+
         # The agent's turn so far (everything it has said since the caller last spoke) ended on a
         # FINISHED statement, and it has gone quiet. Judged by the transcript's closing punctuation,
         # which GPT-Live writes in every language it speaks. A question hands the turn back already;
