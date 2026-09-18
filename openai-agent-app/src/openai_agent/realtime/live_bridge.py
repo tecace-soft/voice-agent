@@ -29,6 +29,7 @@ import asyncio
 import base64
 import json
 import logging
+import re
 import time
 
 import websockets
@@ -102,6 +103,13 @@ _FOLLOWUP_SECONDS = 2.5
 # late frame never leaves a gap in a word, small enough that flushing it on an interruption is not
 # noticeable.
 _GREETING_LEAD_SECONDS = 0.2
+# How much audio to keep queued at Twilio while the agent speaks. GPT-Live's stream stalls for a
+# few hundred milliseconds now and then; with nothing buffered, every stall is a gap the caller
+# hears. Measured on a real call: ten gaps, four seconds in total, with the lead never above 0.1s.
+_AUDIO_CUSHION_SECONDS = 0.35
+# After the caller says they are done: how long the agent gets to end the call itself before the
+# bridge does it for them.
+_SIGNOFF_GRACE_SECONDS = 4.0
 # A gap longer than this between the end of what we have sent and the next audio is long enough to
 # hear. Below it, ordinary jitter.
 _UNDERRUN_SECONDS = 0.06
@@ -124,6 +132,28 @@ _ASK_ANYTHING_ELSE = (
     "sentence twice. If you were waiting on them for something specific, ask for that instead. If "
     "they have already said goodbye, say a brief warm farewell and end the call instead of asking."
 )
+# The caller saying they are finished. Deliberately narrow — every phrase here has to be a whole
+# turn, or nearly, because ending a call on someone who was still talking is far worse than staying
+# on the line a few seconds too long. "Thanks" alone is NOT here: people thank you mid-conversation.
+_SIGNED_OFF = re.compile(
+    r"^\W*(?:"
+    r"(?:okay|ok|alright|right|well|yeah|yep|no|nope|cool|great|perfect|awesome)[,.\s]*)*"
+    r"(?:"
+    r"that(?:'?s| is| was)?\s+(?:all|it|everything|what i needed|great)"
+    r"|(?:i'?m|we'?re)\s+(?:all\s+)?(?:good|set|done)"
+    r"|no(?:thing)?\s+(?:else|more)(?:\s+(?:thanks|thank you))?"
+    r"|(?:good)?bye|bye bye|have a (?:good|great|nice) (?:one|day|night)|take care"
+    r")"
+    r"[\s,.!]*(?:thanks|thank you|then|bye|goodbye)?[\s,.!]*$",
+    re.IGNORECASE,
+)
+
+
+def _sounds_finished(text: str) -> bool:
+    """Has the caller said, plainly, that they are done?"""
+    return bool(_SIGNED_OFF.match((text or "").strip()))
+
+
 _STOP_FOR_TRANSFER = (
     "The caller is being transferred to a colleague right now. Do not say anything more."
 )
@@ -282,6 +312,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "delegating_since": None,  # monotonic time backend work began; None when none is in flight
         "last_activity_at": 0.0,  # last agent audio, caller words or backend event
         "nudged": False,  # already nudged during this silence
+        "signed_off_at": None,  # when the caller last said they were done, for the wrap-up backstop
         "greet_retried": False,  # an inbound greeting that never came has been asked for again
         "followup_asked": False,  # already prompted a hand-back for the agent's current turn
         # Appended the first time the caller is heard speaking Korean — see realtime/korean.py.
@@ -333,7 +364,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 asyncio.create_task(_caller_to_live(twilio_ws, live_ws, cfg, state)),
                 asyncio.create_task(_live_to_caller(twilio_ws, live_ws, state, executor, cfg)),
             ]
-            nudger = asyncio.create_task(_nudge_when_stuck(live_ws, state))
+            nudger = asyncio.create_task(_nudge_when_stuck(twilio_ws, live_ws, state))
             try:
                 # FIRST_COMPLETED, not gather — see run_bridge for why.
                 done, pending = await asyncio.wait(relays, return_when=asyncio.FIRST_COMPLETED)
@@ -455,6 +486,14 @@ async def _live_to_caller(
 
             if t == "session.output_audio.delta":
                 payload = evt.get("delta") or ""
+                # Top Twilio's buffer up before speech when it has run low, so the next stall in
+                # GPT-Live's stream is absorbed instead of being heard as a clipped word.
+                cushion = _cushion_for(state, payload)
+                if cushion:
+                    _note_agent_audio(state, cushion, audible=False)
+                    await twilio_ws.send_json(
+                        {"event": "media", "streamSid": state["stream_sid"], "media": {"payload": cushion}}
+                    )
                 _note_agent_audio(state, payload)
                 state["model_audio_frames"] += 1
                 await twilio_ws.send_json(
@@ -481,6 +520,12 @@ async def _live_to_caller(
                 state["nudged"] = False  # the caller spoke, so the next silence is a new one
                 state["followup_asked"] = False  # ...and the agent's next turn is a new one
                 _add_fragment(state, "lead", evt)
+                if _sounds_finished(evt.get("delta") or ""):
+                    # Said in so many words. The agent should end the call itself — the prompt says
+                    # so — but on a real call it answered "You're welcome" and then sat there while
+                    # the caller waited for the line to close. The backstop below closes it.
+                    state["signed_off_at"] = time.monotonic()
+                    log.info("the caller signalled they are finished: %r", (evt.get("delta") or "").strip())
                 if not state["korean_guided"] and HANGUL.search(evt.get("delta") or ""):
                     state["korean_guided"] = True
                     log.info("caller is speaking Korean — adding Korean pronunciation guidance")
@@ -548,7 +593,26 @@ def _has_sound(payload: str) -> bool:
     return bool(raw) and raw.translate(_LOUD_BYTES).count(1) * 50 >= len(raw)  # >= 2% loud
 
 
-def _note_agent_audio(state: dict, payload: str) -> None:
+def _cushion_for(state: dict, payload: str) -> str:
+    """Silence to send ahead of this audio, or "" when Twilio already has enough queued.
+
+    Only ever sent in front of SPEECH, and only once per dry spell: padding silence with more
+    silence would push the agent further and further behind the caller for no benefit.
+    """
+    if not _has_sound(payload) or state["closing"]:
+        return ""
+    queued = state["play_until"] - time.monotonic()
+    if queued >= _AUDIO_CUSHION_SECONDS:
+        return ""
+    wanted = int((_AUDIO_CUSHION_SECONDS - max(queued, 0.0)) * _MULAW_SAMPLES_PER_SECOND)
+    if wanted < 160:  # less than one frame is not worth a message
+        return ""
+    if wanted not in _silence_cache:
+        _silence_cache[wanted] = base64.b64encode(b"\xff" * wanted).decode("ascii")
+    return _silence_cache[wanted]
+
+
+def _note_agent_audio(state: dict, payload: str, *, audible: bool = True) -> None:
     """Account one chunk of agent audio: how long it plays, how far ahead it is, and — only if it
     contains sound — that the agent is speaking."""
     now = time.monotonic()
@@ -568,7 +632,7 @@ def _note_agent_audio(state: dict, payload: str) -> None:
     # Silence counts here: it occupies Twilio's buffer just the same.
     state["play_until"] = max(state["play_until"], now) + seconds
     state["max_playback_lead"] = max(state["max_playback_lead"], state["play_until"] - now)
-    if not _has_sound(payload):
+    if not audible or not _has_sound(payload):
         return
     if not state["greeted"]:
         state["greeted"] = True
@@ -656,7 +720,7 @@ async def _play_greeting(twilio_ws: WebSocket, state: dict, audio: bytes) -> Non
         state["greeting_task"] = None
 
 
-async def _nudge_when_stuck(live_ws, state: dict) -> None:
+async def _nudge_when_stuck(twilio_ws: WebSocket, live_ws, state: dict) -> None:
     """Remind the agent to act when the line has gone dead with no backend work in flight.
 
     GPT-Live alone decides whether to delegate, so an agent can promise a transfer, never delegate
@@ -689,6 +753,26 @@ async def _nudge_when_stuck(live_ws, state: dict) -> None:
                     return
             continue
         busy = state["hangup_pending"] or state["transfer_pending"] or state["_tool_tasks"]
+
+        # The caller said they were done and the call is still open. Give the agent a few seconds to
+        # say goodbye and call end_call; if it does neither, end the call here. GPT-Live decides for
+        # itself whether to delegate, and a caller left holding a line nobody is going to close has
+        # to hang up on us — which reads as the assistant not noticing they had finished.
+        signed_off = state["signed_off_at"]
+        if (
+            signed_off is not None
+            and not busy
+            and now - signed_off >= _SIGNOFF_GRACE_SECONDS
+            and now - state["last_audio_at"] >= _QUIET_SECONDS
+        ):
+            state["signed_off_at"] = None
+            log.info("the caller said they were finished %.0fs ago and the agent has not ended the "
+                     "call — wrapping it up", now - signed_off)
+            try:
+                await _handle_end_call(twilio_ws, live_ws, "", state)
+            except websockets.ConnectionClosed:
+                return
+            continue
         # The agent's turn so far (everything it has said since the caller last spoke) ended on a
         # FINISHED statement, and it has gone quiet. Judged by the transcript's closing punctuation,
         # which GPT-Live writes in every language it speaks. A question hands the turn back already;
