@@ -89,7 +89,11 @@ _GREETING_WAIT_SECONDS = 3.0
 # And when asking again does not work either — a call where the model never spoke at all — this is
 # how long after that the bridge gives up and speaks the greeting itself. A caller listening to
 # silence has no way of knowing anyone picked up.
-_GREETING_RESCUE_SECONDS = 3.0
+#
+# 1.5s, not 3: with the retry at 3s that puts the rescue at four and a half seconds, and a model
+# that is going to greet has always done so inside three. Every second here is a second of someone
+# holding a phone to their ear wondering whether the call connected.
+_GREETING_RESCUE_SECONDS = 1.5
 # How late a scheduled wake-up has to be before it counts as this process having been blocked. Well
 # under the gaps being investigated, and far above ordinary scheduling jitter.
 _LOOP_LAG_SECONDS = 0.08
@@ -114,10 +118,15 @@ _FOLLOWUP_SECONDS = 2.5
 # the caller their answer — they asked where the spa was, the agent got as far as "Sure. We're at"
 # and then said "Anything else I can help with?" twice, and they had to ask again.
 _CALLER_QUIET_SECONDS = 2.0
-# How far ahead of playback the pre-rendered greeting is allowed to run at Twilio. Enough that a
-# late frame never leaves a gap in a word, small enough that flushing it on an interruption is not
-# noticeable.
-_GREETING_LEAD_SECONDS = 0.2
+# How far ahead of playback the pre-rendered greeting runs at Twilio, and how much audio goes in
+# each message.
+#
+# The first version sent one 20ms frame every 20ms with a fifth of a second of slack — fifty
+# messages a second, each of which had to be on time, and it stuttered on a real call. The model's
+# own audio does not: it arrives in large chunks and sits behind a half-second cushion, and that
+# path plays cleanly. So this now does the same thing: quarter-second chunks, half a second ahead.
+_GREETING_LEAD_SECONDS = 0.5
+_GREETING_CHUNK_SECONDS = 0.25
 # How much audio to keep queued at Twilio while the agent speaks. GPT-Live's stream stalls for a
 # few hundred milliseconds now and then; with nothing buffered, every stall is a gap the caller
 # hears. Measured on a real call: ten gaps, four seconds in total, with the lead never above 0.1s.
@@ -793,30 +802,36 @@ def _log_unexpected(state: dict, where: str, evt: dict) -> None:
 
 
 async def _play_greeting(twilio_ws: WebSocket, state: dict, audio: bytes) -> None:
-    """Play the pre-rendered opening line to the caller, in real time.
-
-    Sent with a SHORT LEAD rather than one frame per 20ms exactly. Twilio plays what it has at a
-    fixed rate, so a sender that is occasionally a few milliseconds late leaves gaps mid-word — the
-    first version did that and the greeting came back described as disjointed. A fifth of a second
-    of slack absorbs the jitter, and is still little enough that a caller who talks over the
-    greeting hears at most that much of it after the buffer is flushed.
-    """
+    """Play the pre-rendered opening line to the caller, in quarter-second chunks, half a second
+    ahead of playback — the same shape as the model's own audio, which plays cleanly."""
     state["greeted"] = True  # the caller HAS been greeted, whatever the model does next
-    frames = greeting_audio.frames(audio)
+    step = int(_GREETING_CHUNK_SECONDS * _MULAW_SAMPLES_PER_SECOND)
+    chunks = [audio[i : i + step] for i in range(0, len(audio), step)]
     log.info("playing the pre-rendered greeting (%.1fs) — the model did not have to speak it",
-             len(audio) / 8000)
+             len(audio) / _MULAW_SAMPLES_PER_SECOND)
     started = time.monotonic()
+    sent = 0.0
     try:
-        for i, frame in enumerate(frames):
+        for chunk in chunks:
             await twilio_ws.send_json(
-                {"event": "media", "streamSid": state["stream_sid"], "media": {"payload": frame}}
+                {
+                    "event": "media",
+                    "streamSid": state["stream_sid"],
+                    "media": {"payload": base64.b64encode(chunk).decode("ascii")},
+                }
             )
+            sent += len(chunk) / _MULAW_SAMPLES_PER_SECOND
             state["last_audio_at"] = time.monotonic()
             state["last_activity_at"] = state["last_audio_at"]
-            # Stay _GREETING_LEAD_SECONDS ahead of playback, never further.
-            ahead = (i + 1) * 0.02 - (time.monotonic() - started)
+            # Keep _GREETING_LEAD_SECONDS of audio queued ahead of what has played.
+            ahead = sent - (time.monotonic() - started)
             if ahead > _GREETING_LEAD_SECONDS:
                 await asyncio.sleep(ahead - _GREETING_LEAD_SECONDS)
+    except (WebSocketDisconnect, RuntimeError) as exc:
+        # The caller hung up mid-greeting. Not an error, and not something to raise out of a task
+        # nobody is awaiting — that reached the log as "Task exception was never retrieved".
+        log.info("the caller hung up while the greeting was playing (%s)", type(exc).__name__)
+        return
     except asyncio.CancelledError:
         # The caller started talking. Drop what Twilio has not played yet so the agent is not still
         # introducing itself over them — but ONLY while the greeting is all that is queued. Once
