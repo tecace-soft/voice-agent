@@ -71,6 +71,14 @@ FAQ: list[tuple[str, str]] = [
         "every service aloud — name the two or three closest to what they asked about.",
     ),
     (
+        "What do you offer? / What services do you have? / What kind of <services> are there?",
+        "Name them, from the facts. A business's facts usually describe each service on its own "
+        "rather than listing them together — a scrub here, a massage there — and those ARE the "
+        "answer: say the two or three the facts describe, in a sentence, and offer to go into any "
+        "of them. Never say you do not have the list when the facts describe the things it would "
+        "contain.",
+    ),
+    (
         "Do you do <some specific thing>? / Can you help with <a project>?",
         "If it plainly falls under the services or solutions in the facts, say yes and offer to "
         "set up a consultation. If you are not sure, do NOT guess — say it sounds like one for a "

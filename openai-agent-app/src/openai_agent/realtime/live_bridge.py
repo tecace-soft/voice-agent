@@ -90,6 +90,9 @@ _GREETING_WAIT_SECONDS = 3.0
 # how long after that the bridge gives up and speaks the greeting itself. A caller listening to
 # silence has no way of knowing anyone picked up.
 _GREETING_RESCUE_SECONDS = 3.0
+# How late a scheduled wake-up has to be before it counts as this process having been blocked. Well
+# under the gaps being investigated, and far above ordinary scheduling jitter.
+_LOOP_LAG_SECONDS = 0.08
 _MULAW_SAMPLES_PER_SECOND = 8000
 # μ-law byte -> 1 if its amplitude is well above line noise (segment 3 or higher), else 0.
 _LOUD_BYTES = bytes(1 if ((0xFF ^ b) >> 4) & 7 >= 3 else 0 for b in range(256))
@@ -156,7 +159,7 @@ _SIGNED_OFF = re.compile(
     r"^\W*(?:"
     r"(?:okay|ok|alright|right|well|yeah|yep|no|nope|cool|great|perfect|awesome)[,.\s]*)*"
     r"(?:"
-    r"that(?:'?s| is| was)?\s+(?:all|it|everything|what i needed|great)"
+    r"that(?:'?s|'?ll be|'?d be| is| was| will be| would be)?\s+(?:all|it|everything|what i needed|great)"
     r"|(?:i'?m|we'?re)\s+(?:all\s+)?(?:good|set|done)"
     r"|no(?:thing)?\s+(?:else|more)(?:\s+(?:thanks|thank you))?"
     r"|(?:good)?bye|bye bye|have a (?:good|great|nice) (?:one|day|night)|take care"
@@ -326,6 +329,10 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "max_playback_lead": 0.0,
         "live_closed": False,  # OpenAI's side hung up on us, rather than the call ending normally
         "cushion": _AUDIO_CUSHION_SECONDS,  # audio kept queued at Twilio; grows if this call stalls
+        "max_loop_lag": 0.0,  # the latest a scheduled wake-up ran — how blocked this process got
+        "loop_stalls": 0,
+        "max_delta_gap": 0.0,  # the longest OpenAI went without sending audio while the agent spoke
+        "last_delta_at": 0.0,
         "underruns": 0,  # times Twilio had nothing left to play while the agent was talking
         "underrun_seconds": 0.0,
         "voice_seconds": None,
@@ -389,6 +396,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 asyncio.create_task(_live_to_caller(twilio_ws, live_ws, state, executor, cfg)),
             ]
             nudger = asyncio.create_task(_nudge_when_stuck(twilio_ws, live_ws, state, cfg))
+            clock = asyncio.create_task(_watch_the_clock(state))
             try:
                 # FIRST_COMPLETED, not gather — see run_bridge for why.
                 done, pending = await asyncio.wait(relays, return_when=asyncio.FIRST_COMPLETED)
@@ -402,6 +410,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 for task in relays:
                     task.cancel()
                 nudger.cancel()
+                clock.cancel()
                 if watcher is not None:
                     watcher.cancel()
     except Exception as exc:  # noqa: BLE001 — surface, don't crash the server
@@ -512,6 +521,7 @@ async def _live_to_caller(
                 payload = evt.get("delta") or ""
                 # Top Twilio's buffer up before speech when it has run low, so the next stall in
                 # GPT-Live's stream is absorbed instead of being heard as a clipped word.
+                _note_delta_gap(state)
                 cushion = _cushion_for(state, payload)
                 if cushion:
                     _note_agent_audio(state, cushion, audible=False)
@@ -545,12 +555,18 @@ async def _live_to_caller(
                 state["followup_asked"] = False  # ...and the agent's next turn is a new one
                 state["last_lead_at"] = time.monotonic()
                 _add_fragment(state, "lead", evt)
-                if _sounds_finished(evt.get("delta") or ""):
+                # Judged on the caller's WHOLE turn so far, not the fragment that just arrived.
+                # GPT-Live splits a sentence wherever it likes: "No that'll" and "be all" came as
+                # two events on a real call, neither of which reads as a goodbye on its own, and the
+                # caller was left holding the line.
+                turn = state["current_run"]
+                heard = turn[1] if turn and turn[0] == "lead" else (evt.get("delta") or "")
+                if _sounds_finished(heard):
                     # Said in so many words. The agent should end the call itself — the prompt says
                     # so — but on a real call it answered "You're welcome" and then sat there while
                     # the caller waited for the line to close. The backstop below closes it.
                     state["signed_off_at"] = time.monotonic()
-                    log.info("the caller signalled they are finished: %r", (evt.get("delta") or "").strip())
+                    log.info("the caller signalled they are finished: %r", heard.strip())
                 if not state["korean_guided"] and HANGUL.search(evt.get("delta") or ""):
                     state["korean_guided"] = True
                     log.info("caller is speaking Korean — adding Korean pronunciation guidance")
@@ -636,6 +652,17 @@ def _cushion_for(state: dict, payload: str) -> str:
     if wanted not in _silence_cache:
         _silence_cache[wanted] = base64.b64encode(b"\xff" * wanted).decode("ascii")
     return _silence_cache[wanted]
+
+
+def _note_delta_gap(state: dict) -> None:
+    """How long OpenAI left us with nothing to forward, mid-utterance."""
+    now = time.monotonic()
+    last = state["last_delta_at"]
+    # Only within a turn: the pause between the agent finishing and starting again is a
+    # conversation, not a stall.
+    if last and now - last > state["max_delta_gap"] and now - last < 3.0:
+        state["max_delta_gap"] = now - last
+    state["last_delta_at"] = now
 
 
 def _note_agent_audio(state: dict, payload: str, *, audible: bool = True) -> None:
@@ -752,6 +779,24 @@ async def _play_greeting(twilio_ws: WebSocket, state: dict, audio: bytes) -> Non
         raise
     finally:
         state["greeting_task"] = None
+
+
+async def _watch_the_clock(state: dict) -> None:
+    """Measure whether WE are the thing stalling.
+
+    A gap in the agent's audio has two possible causes and they need opposite fixes: OpenAI stopped
+    sending for a moment, or this process was too busy to forward what it had. This sleeps in a
+    tight loop and records how late each wake-up is — if the loop is healthy while the caller hears
+    gaps, the stall is upstream and no amount of buffering here is a cure.
+    """
+    while not state["closing"]:
+        due = time.monotonic() + 0.05
+        await asyncio.sleep(0.05)
+        late = time.monotonic() - due
+        if late > state["max_loop_lag"]:
+            state["max_loop_lag"] = late
+        if late > _LOOP_LAG_SECONDS:
+            state["loop_stalls"] += 1
 
 
 async def _nudge_when_stuck(twilio_ws: WebSocket, live_ws, state: dict, cfg: Config) -> None:
@@ -1206,3 +1251,13 @@ def _log_live_cost(state: dict, cfg: Config) -> None:
     if state["underruns"]:
         log.warning("the agent's audio ran dry %d time(s), %.1fs of gaps in total — the caller "
                     "heard it cut out", state["underruns"], state["underrun_seconds"])
+        # Which end was at fault. This process being healthy while the audio stopped means OpenAI
+        # stopped sending, and the only defence here is to buffer further ahead.
+        log.warning(
+            "during those gaps: OpenAI left up to %.0fms between chunks mid-sentence; this process "
+            "was late by at most %.0fms (%d wake-ups over %.0fms) — %s",
+            state["max_delta_gap"] * 1000, state["max_loop_lag"] * 1000, state["loop_stalls"],
+            _LOOP_LAG_SECONDS * 1000,
+            "the stalls are upstream" if state["max_loop_lag"] < _LOOP_LAG_SECONDS
+            else "THIS PROCESS was blocked; that is ours to fix",
+        )
