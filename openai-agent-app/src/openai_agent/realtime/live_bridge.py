@@ -575,8 +575,6 @@ async def _live_to_caller(
                 if state["closing"]:
                     continue
                 payload = evt.get("delta") or ""
-                # Top Twilio's buffer up before speech when it has run low, so the next stall in
-                # GPT-Live's stream is absorbed instead of being heard as a clipped word.
                 # Our own greeting is playing. Anything arriving now is the model's continuous
                 # stream — silence, or a greeting it was told not to say — and mixing it into the
                 # queue is what made the opening stutter.
@@ -585,11 +583,11 @@ async def _live_to_caller(
                 _note_delta_gap(state)
                 _note_agent_audio(state, payload)
                 state["model_audio_frames"] += 1
-                # Into the reservoir. _stream_to_caller decides when it reaches Twilio.
+                # Into the reservoir, and no further: _stream_to_caller is the ONLY thing that
+                # writes audio to Twilio. Sending from here as well delivered every chunk twice —
+                # once raw at the model's pace and once again as the queue drained — which is what
+                # a caller hears as the agent stuttering and repeating itself.
                 state["out"].extend(base64.b64decode(payload))
-                await twilio_ws.send_json(
-                    {"event": "media", "streamSid": state["stream_sid"], "media": {"payload": payload}}
-                )
             elif t == "session.started":
                 log.info("live session started: %s", (evt.get("session") or {}).get("id", "?"))
                 state["ready"].set()
@@ -713,18 +711,19 @@ def _note_agent_audio(state: dict, payload: str, *, audible: bool = True) -> Non
     # A gap the CALLER hears: everything sent had already finished playing before this arrived, so
     # Twilio had nothing to play in between. Reported because "the agent cut out for a moment" is
     # otherwise unanswerable after the fact — this says whether it happened, and for how long.
-    starved = state["play_until"] and now - state["play_until"] > _UNDERRUN_SECONDS
+    # Twilio has run out AND there is nothing waiting to go to it — so this chunk arrived into
+    # silence the caller heard. Audio still in the reservoir is not a gap: it is being paced out.
+    starved = (
+        state["play_until"]
+        and not state["out"]
+        and now - state["play_until"] > _UNDERRUN_SECONDS
+    )
     if starved and state["greeted"]:
         state["underruns"] += 1
         state["underrun_seconds"] += now - state["play_until"]
         if state["underruns"] <= 5:
             log.warning("agent audio ran dry for %.0fms — the caller heard a gap",
                         (now - state["play_until"]) * 1000)
-    # When Twilio will finish playing everything sent so far. GPT-Live's output events carry no
-    # timing, so the only way to see whether audio arrives faster than it plays is to measure it.
-    # Silence counts here: it occupies Twilio's buffer just the same.
-    state["play_until"] = max(state["play_until"], now) + seconds
-    state["max_playback_lead"] = max(state["max_playback_lead"], state["play_until"] - now)
     if not audible or not _has_sound(payload):
         return
     if not state["greeted"]:
@@ -880,7 +879,10 @@ async def _stream_to_caller(twilio_ws: WebSocket, state: dict) -> None:
         except (WebSocketDisconnect, RuntimeError):
             return  # the caller hung up; the call is already being torn down
         now = time.monotonic()
+        # When Twilio will finish playing everything it has been sent. Silence counts: it occupies
+        # the buffer just the same. This is the sender's ledger and nothing else writes to it.
         state["play_until"] = max(state["play_until"], now) + len(chunk) / _MULAW_SAMPLES_PER_SECOND
+        state["max_playback_lead"] = max(state["max_playback_lead"], state["play_until"] - now)
         state["sent_at"] = now
 
 
@@ -967,6 +969,11 @@ async def _nudge_when_stuck(twilio_ws: WebSocket, live_ws, state: dict, cfg: Con
         # Someone is mid-sentence, or has just finished one and is waiting on an answer. Whatever
         # the agent is or is not doing, this is not the moment to append an instruction to it.
         caller_speaking = now - state["last_lead_at"] < _CALLER_QUIET_SECONDS
+        # Our own greeting is queued in one go rather than played chunk by chunk, so nothing keeps
+        # stamping last_audio_at while it runs. Without this the nudger sees a silent call and
+        # prompts the model mid-greeting — the caller hears it start talking over itself.
+        if state["greeting_until"] > now:
+            state["last_audio_at"] = state["last_activity_at"] = now
 
         # The caller said they were done and the call is still open. Give the agent a few seconds to
         # say goodbye and call end_call; if it does neither, end the call here. GPT-Live decides for
