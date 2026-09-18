@@ -121,12 +121,17 @@ _GREETING_LEAD_SECONDS = 0.2
 # How much audio to keep queued at Twilio while the agent speaks. GPT-Live's stream stalls for a
 # few hundred milliseconds now and then; with nothing buffered, every stall is a gap the caller
 # hears. Measured on a real call: ten gaps, four seconds in total, with the lead never above 0.1s.
-_AUDIO_CUSHION_SECONDS = 0.35
+# Raised from 0.35: on a real call the caller heard four gaps inside the greeting while this
+# climbed, and every one of them was within what half a second would have covered. Half a second of
+# audio sitting at Twilio costs half a second before the agent's first word, which is the trade.
+_AUDIO_CUSHION_SECONDS = 0.5
 # Some calls stall worse than others. Each gap the caller hears widens the cushion for the rest of
 # that call, up to this much: a line that keeps stalling trades a little more delay before the agent
 # speaks for not being chopped up, and a clean line never pays for it.
 _AUDIO_CUSHION_MAX = 0.9
-_AUDIO_CUSHION_STEP = 0.2
+# A gap means this call's stream is unreliable, so the first one jumps most of the way to the
+# ceiling rather than creeping there over three more gaps the caller also hears.
+_AUDIO_CUSHION_STEP = 0.3
 # After the caller says they are done: how long the agent gets to end the call itself before the
 # bridge does it for them.
 _SIGNOFF_GRACE_SECONDS = 4.0
@@ -518,6 +523,11 @@ async def _live_to_caller(
             t = evt.get("type")
 
             if t == "session.output_audio.delta":
+                # The farewell has played and Twilio's socket is closed, but GPT-Live keeps sending
+                # for a moment. Forwarding it raises, and the raise came out of the relay as
+                # "live bridge ended: RuntimeError" on a call that had ended properly.
+                if state["closing"]:
+                    continue
                 payload = evt.get("delta") or ""
                 # Top Twilio's buffer up before speech when it has run low, so the next stall in
                 # GPT-Live's stream is absorbed instead of being heard as a clipped word.
@@ -600,6 +610,11 @@ async def _live_to_caller(
                 log.warning("live error: %s", evt.get("error") or evt)
             else:
                 _log_unexpected(state, "session", evt)
+    except RuntimeError as exc:
+        # Starlette raises this when the socket is already closed. Only ever seen while hanging up.
+        if "close message has been sent" not in str(exc):
+            raise
+        log.info("the line closed while the agent's last audio was still arriving")
     except WebSocketDisconnect:
         log.info("the caller's end of the stream closed")
     except websockets.ConnectionClosed as closed:
@@ -1034,6 +1049,11 @@ async def _on_backend_event(
 
 
 async def _send_tool_output(live_ws, call_id: str, output: str, *, resume: bool = True) -> None:
+    # No call_id means nobody asked: the bridge decided to end the call itself, and there is no
+    # function call waiting for a result. Sending one anyway is rejected — "Invalid 'item.call_id':
+    # empty string" — which is a real error in the log for a call that was ending fine.
+    if not call_id:
+        return
     await live_ws.send(
         json.dumps(
             {
