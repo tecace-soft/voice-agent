@@ -261,8 +261,14 @@ def _sounds_finished(text: str) -> bool:
     return bool(_SIGNED_OFF.match((text or "").strip()))
 
 
+# Appended the moment a transfer starts. The first version ended at "do not say anything more",
+# and on a real call the model answered it — "Sure, hang on" — which is both a stray sentence to the
+# caller and the audio that then got cut off by the redirect. An instruction the model can reply to
+# is an instruction it will reply to, so this one forbids the reply as well.
 _STOP_FOR_TRANSFER = (
-    "The caller is being transferred to a colleague right now. Do not say anything more."
+    "The caller is being handed to a colleague right now. Stop speaking immediately. No further "
+    "words, no goodbye, no 'one moment', and do NOT acknowledge this message — not out loud and "
+    "not in text. Say nothing at all from here."
 )
 _STILL_NEED_THE_MESSAGE = (
     "You just told the caller their message is with the team, but you have not called take_message "
@@ -273,6 +279,10 @@ _STILL_NEED_THE_MESSAGE = (
 )
 # Twice. A third would be the bridge arguing with the model in front of the caller.
 _MESSAGE_REMINDER_LIMIT = 2
+# How many times the transfer mark is re-issued while the model is still talking. Each round is one
+# Twilio round trip, and _TRANSFER_FALLBACK_SECONDS caps the whole wait regardless; this stops a
+# model that will not stop talking from holding the caller indefinitely.
+_TRANSFER_MARK_LIMIT = 6
 _NUDGE = (
     "The line has been silent for several seconds. If you told the caller you would do something "
     "that needs the backend — put them through, take a message, check or book a time, or end the "
@@ -407,6 +417,9 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "greeted": False,  # the agent has produced audio
         "opening": opening,  # the words the caller should hear first, for the greeting rescue
         "greet_rescued": False,  # the bridge has already said hello on the model's behalf
+        "transfer_marks": 0,  # marks sent while waiting for the agent to stop talking
+        "transfer_mark_at": 0.0,
+        "transfer_fallback": None,
         "message_taken": False,  # take_message has actually been called on this call
         "message_reminders": 0,
         "model_audio_frames": 0,  # audio the MODEL has sent — see _caller_started_talking
@@ -584,6 +597,15 @@ async def _caller_to_live(twilio_ws: WebSocket, live_ws, cfg: Config, state: dic
                     break
                 # The hold line has played — redirect, and do NOT close (that would drop the call).
                 if mark_name == "transfer":
+                    # Audio the model sent AFTER this mark went out is queued behind it, so the
+                    # mark returning says nothing about that audio. Redirecting now would cut it
+                    # off mid-word, which is exactly what the caller heard on the 22:45 call.
+                    still_talking = (
+                        state["out"] or state["last_audio_at"] > state["transfer_mark_at"]
+                    )
+                    if still_talking:
+                        await _drain_and_transfer(twilio_ws, live_ws, cfg, state)
+                        continue
                     await _do_transfer(cfg, live_ws, state)
                     continue
             elif e == "stop":
@@ -1430,9 +1452,18 @@ async def _handle_transfer(
 
 
 async def _drain_and_transfer(twilio_ws: WebSocket, live_ws, cfg: Config, state: dict) -> None:
-    if state["closing"] or state.get("transfer_marked"):
+    if state["closing"] or state.get("transfer_done"):
+        return
+    if state["transfer_marks"] >= _TRANSFER_MARK_LIMIT:
+        # It is still talking several rounds later. Waiting longer serves the model, not the
+        # caller, who was told they were being put through some time ago.
+        log.info("the agent is still speaking after %d marks — handing off anyway",
+                 state["transfer_marks"])
+        await _do_transfer(cfg, live_ws, state)
         return
     state["transfer_marked"] = True
+    state["transfer_marks"] += 1
+    state["transfer_mark_at"] = time.monotonic()
     await twilio_ws.send_json(
         {"event": "mark", "streamSid": state["stream_sid"], "mark": {"name": "transfer"}}
     )
@@ -1441,7 +1472,9 @@ async def _drain_and_transfer(twilio_ws: WebSocket, live_ws, cfg: Config, state:
         await asyncio.sleep(_TRANSFER_FALLBACK_SECONDS)
         await _do_transfer(cfg, live_ws, state)
 
-    state["transfer_fallback"] = asyncio.create_task(_fallback())
+    # One overall cap, not one per mark.
+    if state.get("transfer_fallback") is None:
+        state["transfer_fallback"] = asyncio.create_task(_fallback())
 
 
 async def _do_transfer(cfg: Config, live_ws, state: dict) -> None:
