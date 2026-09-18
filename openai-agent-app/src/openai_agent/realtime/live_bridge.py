@@ -130,17 +130,36 @@ _GREETING_CHUNK_SECONDS = 0.25
 # How much audio to keep queued at Twilio while the agent speaks. GPT-Live's stream stalls for a
 # few hundred milliseconds now and then; with nothing buffered, every stall is a gap the caller
 # hears. Measured on a real call: ten gaps, four seconds in total, with the lead never above 0.1s.
-# Raised from 0.35: on a real call the caller heard four gaps inside the greeting while this
-# climbed, and every one of them was within what half a second would have covered. Half a second of
-# audio sitting at Twilio costs half a second before the agent's first word, which is the trade.
-_AUDIO_CUSHION_SECONDS = 0.5
-# Some calls stall worse than others. Each gap the caller hears widens the cushion for the rest of
-# that call, up to this much: a line that keeps stalling trades a little more delay before the agent
-# speaks for not being chopped up, and a clean line never pays for it.
-_AUDIO_CUSHION_MAX = 0.9
-# A gap means this call's stream is unreliable, so the first one jumps most of the way to the
-# ceiling rather than creeping there over three more gaps the caller also hears.
-_AUDIO_CUSHION_STEP = 0.3
+# How the agent's audio reaches the caller.
+#
+# GPT-Live does not send at a steady rate: it bursts, then stalls — measured at up to 576ms of
+# nothing in the middle of a sentence, with this process idle throughout. Forwarding each chunk the
+# moment it arrives passes those stalls straight to the caller, which is the stutter.
+#
+# So the bridge holds a reservoir. Twilio is kept topped up to _AUDIO_LEAD_SECONDS of queued audio
+# and everything beyond that waits here — and when the stream stalls, the sender keeps feeding
+# Twilio out of what it is holding. A burst refills it. The caller hears one continuous voice.
+#
+# The earlier version injected SILENCE when it noticed the buffer had run dry, which is both too
+# late and actively worse: the gap had already started, and padding it made the words that followed
+# land later still.
+# What makes a stall survivable is having audio in hand BEFORE it happens, and the only way to get
+# that is to start a turn slightly late: the first _AUDIO_PRIME_SECONDS of each utterance is held,
+# then everything flows. The caller waits that long for the agent to start and never hears the
+# stalls inside the sentence, which is the trade the stutter is worth.
+_AUDIO_PRIME_SECONDS = 0.5
+# If the model sends less than that and stops (a two-word answer), waiting for more would hold a
+# finished sentence hostage. This is how long a pause counts as "that is all of it".
+_AUDIO_PRIME_PATIENCE = 0.15
+# Silence longer than this means the agent has finished speaking, rather than the stream having
+# stalled mid-sentence. Comfortably longer than the worst stall measured (576ms).
+_AUDIO_TURN_GAP = 1.0
+_AUDIO_LEAD_SECONDS = 0.6
+_AUDIO_SEND_CHUNK = 0.1
+# What the agent is allowed to finish saying once the caller starts talking. Enough to end a word,
+# short enough that it is not still explaining something over them.
+_AUDIO_INTERRUPT_KEEP = 0.15
+_AUDIO_CUSHION_SECONDS = 0.5  # the greeting player's own lead
 # After the caller says they are done: how long the agent gets to end the call itself before the
 # bridge does it for them.
 _SIGNOFF_GRACE_SECONDS = 4.0
@@ -369,7 +388,9 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "play_until": 0.0,
         "max_playback_lead": 0.0,
         "live_closed": False,  # OpenAI's side hung up on us, rather than the call ending normally
-        "cushion": _AUDIO_CUSHION_SECONDS,  # audio kept queued at Twilio; grows if this call stalls
+        "out": bytearray(),  # the agent's audio, waiting to be fed to Twilio at a steady rate
+        "sent_at": 0.0,
+        "cushion": _AUDIO_CUSHION_SECONDS,  # the greeting player's own lead
         "max_loop_lag": 0.0,  # the latest a scheduled wake-up ran — how blocked this process got
         "loop_stalls": 0,
         "max_delta_gap": 0.0,  # the longest OpenAI went without sending audio while the agent spoke
@@ -438,6 +459,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             ]
             nudger = asyncio.create_task(_nudge_when_stuck(twilio_ws, live_ws, state, cfg))
             clock = asyncio.create_task(_watch_the_clock(state))
+            sender = asyncio.create_task(_stream_to_caller(twilio_ws, state))
             try:
                 # FIRST_COMPLETED, not gather — see run_bridge for why.
                 done, pending = await asyncio.wait(relays, return_when=asyncio.FIRST_COMPLETED)
@@ -452,6 +474,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                     task.cancel()
                 nudger.cancel()
                 clock.cancel()
+                sender.cancel()
                 if watcher is not None:
                     watcher.cancel()
     except Exception as exc:  # noqa: BLE001 — surface, don't crash the server
@@ -568,14 +591,10 @@ async def _live_to_caller(
                 # Top Twilio's buffer up before speech when it has run low, so the next stall in
                 # GPT-Live's stream is absorbed instead of being heard as a clipped word.
                 _note_delta_gap(state)
-                cushion = _cushion_for(state, payload)
-                if cushion:
-                    _note_agent_audio(state, cushion, audible=False)
-                    await twilio_ws.send_json(
-                        {"event": "media", "streamSid": state["stream_sid"], "media": {"payload": cushion}}
-                    )
                 _note_agent_audio(state, payload)
                 state["model_audio_frames"] += 1
+                # Into the reservoir. _stream_to_caller decides when it reaches Twilio.
+                state["out"].extend(base64.b64decode(payload))
                 await twilio_ws.send_json(
                     {"event": "media", "streamSid": state["stream_sid"], "media": {"payload": payload}}
                 )
@@ -600,6 +619,14 @@ async def _live_to_caller(
                 state["nudged"] = False  # the caller spoke, so the next silence is a new one
                 state["followup_asked"] = False  # ...and the agent's next turn is a new one
                 state["last_lead_at"] = time.monotonic()
+                # They have started talking. Anything still held here was composed before they did;
+                # keeping a moment of it lets the agent finish its word, but the rest is talking
+                # over them.
+                held = len(state["out"]) / _MULAW_SAMPLES_PER_SECOND
+                if held > _AUDIO_INTERRUPT_KEEP:
+                    del state["out"][int(_AUDIO_INTERRUPT_KEEP * _MULAW_SAMPLES_PER_SECOND):]
+                    log.info("caller spoke over the agent — dropped %.0fms of held audio",
+                             (held - _AUDIO_INTERRUPT_KEEP) * 1000)
                 _add_fragment(state, "lead", evt)
                 # Judged on the caller's WHOLE turn so far, not the fragment that just arrived.
                 # GPT-Live splits a sentence wherever it likes: "No that'll" and "be all" came as
@@ -685,26 +712,6 @@ def _has_sound(payload: str) -> bool:
     return bool(raw) and raw.translate(_LOUD_BYTES).count(1) * 50 >= len(raw)  # >= 2% loud
 
 
-def _cushion_for(state: dict, payload: str) -> str:
-    """Silence to send ahead of this audio, or "" when Twilio already has enough queued.
-
-    Only ever sent in front of SPEECH, and only once per dry spell: padding silence with more
-    silence would push the agent further and further behind the caller for no benefit.
-    """
-    if not _has_sound(payload) or state["closing"]:
-        return ""
-    target = state["cushion"]
-    queued = state["play_until"] - time.monotonic()
-    if queued >= target:
-        return ""
-    wanted = int((target - max(queued, 0.0)) * _MULAW_SAMPLES_PER_SECOND)
-    if wanted < 160:  # less than one frame is not worth a message
-        return ""
-    if wanted not in _silence_cache:
-        _silence_cache[wanted] = base64.b64encode(b"\xff" * wanted).decode("ascii")
-    return _silence_cache[wanted]
-
-
 def _note_delta_gap(state: dict) -> None:
     """How long OpenAI left us with nothing to forward, mid-utterance."""
     now = time.monotonic()
@@ -728,14 +735,6 @@ def _note_agent_audio(state: dict, payload: str, *, audible: bool = True) -> Non
     if starved and state["greeted"]:
         state["underruns"] += 1
         state["underrun_seconds"] += now - state["play_until"]
-        # Buffer further ahead for the rest of this call — enough to have covered the gap we just
-        # heard, within the ceiling.
-        if state["cushion"] < _AUDIO_CUSHION_MAX:
-            state["cushion"] = min(
-                _AUDIO_CUSHION_MAX,
-                max(state["cushion"] + _AUDIO_CUSHION_STEP, now - state["play_until"] + 0.1),
-            )
-            log.info("buffering %.0fms ahead for the rest of this call", state["cushion"] * 1000)
         if state["underruns"] <= 5:
             log.warning("agent audio ran dry for %.0fms — the caller heard a gap",
                         (now - state["play_until"]) * 1000)
@@ -850,6 +849,59 @@ async def _play_greeting(twilio_ws: WebSocket, state: dict, audio: bytes) -> Non
         raise
     finally:
         state["greeting_task"] = None
+
+
+async def _stream_to_caller(twilio_ws: WebSocket, state: dict) -> None:
+    """Feed Twilio from the reservoir, keeping it a fixed distance ahead of what has played.
+
+    Everything the model sends beyond that distance waits here rather than at Twilio, which is what
+    makes a stall survivable: while nothing is arriving, this keeps sending.
+    """
+    step = int(_AUDIO_SEND_CHUNK * _MULAW_SAMPLES_PER_SECOND)
+    priming = True  # a new turn: hold the opening until there is a cushion of it in hand
+    while not state["closing"]:
+        out: bytearray = state["out"]
+        if not out:
+            # Prime again only when this is genuinely a NEW turn — the model has stopped sending
+            # for longer than any stall. Re-priming after a mid-sentence stall would add half a
+            # second of silence to a gap the caller has already heard, which is the exact mistake
+            # the old silence-padding made.
+            if time.monotonic() - state["last_delta_at"] > _AUDIO_TURN_GAP:
+                priming = True
+            await asyncio.sleep(0.01)
+            continue
+
+        if priming and not (state["hangup_pending"] or state["transfer_pending"]):
+            held = len(out) / _MULAW_SAMPLES_PER_SECOND
+            waited = time.monotonic() - state["last_delta_at"]
+            if held < _AUDIO_PRIME_SECONDS and waited < _AUDIO_PRIME_PATIENCE:
+                await asyncio.sleep(0.01)
+                continue
+            priming = False
+        queued = state["play_until"] - time.monotonic()
+        # Closing words, or a hold line before a transfer: Twilio has to have all of it before the
+        # mark that follows, or the caller hears it cut off mid-word.
+        emptying = state["hangup_pending"] or state["transfer_pending"]
+        if not emptying and queued >= _AUDIO_LEAD_SECONDS:
+            # Twilio has enough; hold the rest. Sleeping for what it has beyond the target keeps
+            # this loop off the CPU without letting the queue run dry.
+            await asyncio.sleep(min(queued - _AUDIO_LEAD_SECONDS + 0.01, 0.05))
+            continue
+        chunk = bytes(out[:step])
+        del out[:step]
+        try:
+            await twilio_ws.send_json(
+                {
+                    "event": "media",
+                    "streamSid": state["stream_sid"],
+                    "media": {"payload": base64.b64encode(chunk).decode("ascii")},
+                }
+            )
+        except (WebSocketDisconnect, RuntimeError):
+            return  # the caller hung up; the call is already being torn down
+        now = time.monotonic()
+        state["play_until"] = max(state["play_until"], now) + len(chunk) / _MULAW_SAMPLES_PER_SECOND
+        state["sent_at"] = now
 
 
 async def _watch_the_clock(state: dict) -> None:
@@ -1199,7 +1251,11 @@ async def _hang_up_when_quiet(
     while not state["closing"]:
         await asyncio.sleep(0.2)
         now = time.monotonic()
-        if state["closing_audio"] >= min_audio and now - state["last_audio_at"] >= _QUIET_SECONDS:
+        if (
+            state["closing_audio"] >= min_audio
+            and not state["out"]  # everything held has reached Twilio
+            and now - state["last_audio_at"] >= _QUIET_SECONDS
+        ):
             log.info("closing words finished (%.1fs of audio) — hanging up", state["closing_audio"])
             break
         if now - asked >= backstop:
@@ -1252,6 +1308,18 @@ async def _handle_transfer(
         # The agent is saying its own hold line — let it finish playing, then hand off.
         await _drain_and_transfer(twilio_ws, live_ws, cfg, state)
         return
+
+    # It said it a moment ago and has since gone quiet — usually while the backend worked out the
+    # arguments. The caller has been told; saying it again in Twilio's voice is a second, robotic
+    # copy of what they just heard, which is how a smooth hand-off turns into an obviously
+    # automated one.
+    run = state["current_run"]
+    if run and run[0] == "agent" and _promised_a_transfer(run[1]):
+        log.info("the agent already told the caller it was putting them through — handing off "
+                 "without repeating it")
+        await _do_transfer(cfg, live_ws, state)
+        return
+
     log.info("transfer requested with no hold line spoken — handing off immediately")
     state["transfer_hold_line"] = _SPOKEN_HOLD_LINE
     await _do_transfer(cfg, live_ws, state)
@@ -1345,8 +1413,7 @@ def _log_live_cost(state: dict, cfg: Config) -> None:
     # The barge-in diagnostic. A caller who interrupts still hears up to this much of the agent,
     # because it is already queued at Twilio. Well under a second is fine; seconds means Twilio's
     # buffer has to be cleared on interruption.
-    log.info("agent audio ran up to %.1fs ahead of playback (buffering %.0fms by the end)",
-             state["max_playback_lead"], state["cushion"] * 1000)
+    log.info("agent audio ran up to %.1fs ahead of playback", state["max_playback_lead"])
     if state["live_closed"]:
         log.warning("this call ended because the GPT-Live session closed, not because the "
                     "conversation finished")
