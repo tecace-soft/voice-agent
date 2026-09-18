@@ -83,7 +83,9 @@ _RECENTLY_SPOKE_SECONDS = 2.0
 _MAX_HELD_FRAMES = 150  # 3s of 20ms frames
 # An inbound agent greets first; until it does, the caller cannot have said anything. If the
 # greeting never comes, stop waiting for it rather than leaving the caller unheard for the call.
-_GREETING_WAIT_SECONDS = 6.0
+# Lowered from 6s: on a real call the agent took 9.8s to say hello — six of them waiting for a
+# greeting that was never coming, and the caller said "Hello?" into the silence first.
+_GREETING_WAIT_SECONDS = 3.0
 _MULAW_SAMPLES_PER_SECOND = 8000
 # μ-law byte -> 1 if its amplitude is well above line noise (segment 3 or higher), else 0.
 _LOUD_BYTES = bytes(1 if ((0xFF ^ b) >> 4) & 7 >= 3 else 0 for b in range(256))
@@ -99,6 +101,12 @@ _BACKEND_STALL_SECONDS = 15.0
 # often enough (in a real session: one answer handed back, the next did not) to need a backstop that
 # is much sooner than the general dead-air nudge.
 _FOLLOWUP_SECONDS = 2.5
+# How recently the CALLER must have been heard for the bridge to keep its hands off the session.
+# Every nudge is an instruction appended mid-call, and the model acts on it at once: appended while
+# someone is asking a question, it answers the nudge instead of the caller. On a real call that cost
+# the caller their answer — they asked where the spa was, the agent got as far as "Sure. We're at"
+# and then said "Anything else I can help with?" twice, and they had to ask again.
+_CALLER_QUIET_SECONDS = 2.0
 # How far ahead of playback the pre-rendered greeting is allowed to run at Twilio. Enough that a
 # late frame never leaves a gap in a word, small enough that flushing it on an interruption is not
 # noticeable.
@@ -107,6 +115,11 @@ _GREETING_LEAD_SECONDS = 0.2
 # few hundred milliseconds now and then; with nothing buffered, every stall is a gap the caller
 # hears. Measured on a real call: ten gaps, four seconds in total, with the lead never above 0.1s.
 _AUDIO_CUSHION_SECONDS = 0.35
+# Some calls stall worse than others. Each gap the caller hears widens the cushion for the rest of
+# that call, up to this much: a line that keeps stalling trades a little more delay before the agent
+# speaks for not being chopped up, and a clean line never pays for it.
+_AUDIO_CUSHION_MAX = 0.9
+_AUDIO_CUSHION_STEP = 0.2
 # After the caller says they are done: how long the agent gets to end the call itself before the
 # bridge does it for them.
 _SIGNOFF_GRACE_SECONDS = 4.0
@@ -303,6 +316,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "play_until": 0.0,
         "max_playback_lead": 0.0,
         "live_closed": False,  # OpenAI's side hung up on us, rather than the call ending normally
+        "cushion": _AUDIO_CUSHION_SECONDS,  # audio kept queued at Twilio; grows if this call stalls
         "underruns": 0,  # times Twilio had nothing left to play while the agent was talking
         "underrun_seconds": 0.0,
         "voice_seconds": None,
@@ -312,6 +326,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "delegating_since": None,  # monotonic time backend work began; None when none is in flight
         "last_activity_at": 0.0,  # last agent audio, caller words or backend event
         "nudged": False,  # already nudged during this silence
+        "last_lead_at": 0.0,  # when the caller was last heard, so nudges never talk over them
         "signed_off_at": None,  # when the caller last said they were done, for the wrap-up backstop
         "greet_retried": False,  # an inbound greeting that never came has been asked for again
         "followup_asked": False,  # already prompted a hand-back for the agent's current turn
@@ -519,6 +534,7 @@ async def _live_to_caller(
                 state["last_activity_at"] = time.monotonic()
                 state["nudged"] = False  # the caller spoke, so the next silence is a new one
                 state["followup_asked"] = False  # ...and the agent's next turn is a new one
+                state["last_lead_at"] = time.monotonic()
                 _add_fragment(state, "lead", evt)
                 if _sounds_finished(evt.get("delta") or ""):
                     # Said in so many words. The agent should end the call itself — the prompt says
@@ -601,10 +617,11 @@ def _cushion_for(state: dict, payload: str) -> str:
     """
     if not _has_sound(payload) or state["closing"]:
         return ""
+    target = state["cushion"]
     queued = state["play_until"] - time.monotonic()
-    if queued >= _AUDIO_CUSHION_SECONDS:
+    if queued >= target:
         return ""
-    wanted = int((_AUDIO_CUSHION_SECONDS - max(queued, 0.0)) * _MULAW_SAMPLES_PER_SECOND)
+    wanted = int((target - max(queued, 0.0)) * _MULAW_SAMPLES_PER_SECOND)
     if wanted < 160:  # less than one frame is not worth a message
         return ""
     if wanted not in _silence_cache:
@@ -624,6 +641,14 @@ def _note_agent_audio(state: dict, payload: str, *, audible: bool = True) -> Non
     if starved and state["greeted"]:
         state["underruns"] += 1
         state["underrun_seconds"] += now - state["play_until"]
+        # Buffer further ahead for the rest of this call — enough to have covered the gap we just
+        # heard, within the ceiling.
+        if state["cushion"] < _AUDIO_CUSHION_MAX:
+            state["cushion"] = min(
+                _AUDIO_CUSHION_MAX,
+                max(state["cushion"] + _AUDIO_CUSHION_STEP, now - state["play_until"] + 0.1),
+            )
+            log.info("buffering %.0fms ahead for the rest of this call", state["cushion"] * 1000)
         if state["underruns"] <= 5:
             log.warning("agent audio ran dry for %.0fms — the caller heard a gap",
                         (now - state["play_until"]) * 1000)
@@ -753,6 +778,9 @@ async def _nudge_when_stuck(twilio_ws: WebSocket, live_ws, state: dict) -> None:
                     return
             continue
         busy = state["hangup_pending"] or state["transfer_pending"] or state["_tool_tasks"]
+        # Someone is mid-sentence, or has just finished one and is waiting on an answer. Whatever
+        # the agent is or is not doing, this is not the moment to append an instruction to it.
+        caller_speaking = now - state["last_lead_at"] < _CALLER_QUIET_SECONDS
 
         # The caller said they were done and the call is still open. Give the agent a few seconds to
         # say goodbye and call end_call; if it does neither, end the call here. GPT-Live decides for
@@ -762,6 +790,9 @@ async def _nudge_when_stuck(twilio_ws: WebSocket, live_ws, state: dict) -> None:
         if (
             signed_off is not None
             and not busy
+            # They said they were done and then carried on talking. Hanging up on that is the
+            # rudest thing this bridge could do, so the same guard applies here.
+            and not caller_speaking
             and now - signed_off >= _SIGNOFF_GRACE_SECONDS
             and now - state["last_audio_at"] >= _QUIET_SECONDS
         ):
@@ -784,6 +815,7 @@ async def _nudge_when_stuck(twilio_ws: WebSocket, live_ws, state: dict) -> None:
             and run[0] == "agent"
             and not busy
             and not state["followup_asked"]
+            and not caller_speaking
             and state["last_audio_at"]
             and now - state["last_audio_at"] >= _FOLLOWUP_SECONDS
             and run[1].rstrip().endswith((".", "!", "。", "！"))
@@ -798,6 +830,7 @@ async def _nudge_when_stuck(twilio_ws: WebSocket, live_ws, state: dict) -> None:
         if (
             (state["greeted"] or state["greet_retried"])
             and not busy
+            and not caller_speaking
             and not state["nudged"]
             and now - state["last_activity_at"] >= _STUCK_SECONDS
         ):
@@ -1125,7 +1158,8 @@ def _log_live_cost(state: dict, cfg: Config) -> None:
     # The barge-in diagnostic. A caller who interrupts still hears up to this much of the agent,
     # because it is already queued at Twilio. Well under a second is fine; seconds means Twilio's
     # buffer has to be cleared on interruption.
-    log.info("agent audio ran up to %.1fs ahead of playback", state["max_playback_lead"])
+    log.info("agent audio ran up to %.1fs ahead of playback (buffering %.0fms by the end)",
+             state["max_playback_lead"], state["cushion"] * 1000)
     if state["live_closed"]:
         log.warning("this call ended because the GPT-Live session closed, not because the "
                     "conversation finished")
