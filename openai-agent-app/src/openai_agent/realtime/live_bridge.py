@@ -196,6 +196,56 @@ _SIGNED_OFF = re.compile(
 )
 
 
+# The agent asking whether the call is done. Only after one of these does a bare "no" mean
+# goodbye rather than an answer to whatever else was on the table.
+_ASKED_IF_DONE = re.compile(
+    r"("
+    r"anything else|something else|anything more|anything further"
+    r"|anything (?:i|we) can (?:help|do)|what else can (?:i|we)"
+    r"|(?:was|is) there anything"
+    r"|help you with anything|need anything"
+    r")",
+    re.IGNORECASE,
+)
+# A short no. Matched only against a whole turn, and only when the question above was the last
+# thing the agent said.
+_DECLINED_MORE = re.compile(
+    r"^\W*(?:"
+    r"(?:okay|ok|alright|right|well|um|uh|yeah|cool|great|perfect|awesome)[,.\s]*)*"
+    r"(?:"
+    r"no|nope|nah|not (?:right now|at the moment|today|for now)"
+    r"|(?:i )?(?:don'?t|do not) think so|(?:i )?think(?: that)?'?s it"
+    r"|all good|we'?re good|that should (?:do|be) it|that does it"
+    r")"
+    r"[\s,.!]*(?:thanks|thank you|thanks so much|then|that'?s it|i'?m good)?[\s,.!]*$",
+    re.IGNORECASE,
+)
+
+
+def _last_agent_words(state: dict) -> str:
+    """The last thing the agent said, to read the caller's answer against."""
+    for fragment in reversed(state["fragments"]):
+        speaker, text = fragment[0], fragment[-1]
+        if speaker == "agent" and str(text).strip():
+            return str(text)
+    for speaker, text in reversed(state["transcript"]):
+        if speaker == "agent" and text.strip():
+            return text
+    return ""
+
+
+def _declined_more(state: dict, heard: str) -> bool:
+    """Did the caller just turn down the agent's offer of anything else?
+
+    Context is the whole point. "No" after "do you need anything else?" ends the call; "no" after
+    "is that for a day pass or a service?" is an answer, and hanging up on it would be abrupt to
+    the point of rudeness.
+    """
+    if not _DECLINED_MORE.match((heard or "").strip()):
+        return False
+    return bool(_ASKED_IF_DONE.search(_last_agent_words(state)))
+
+
 # The agent SAYING it is transferring, as opposed to OFFERING to. The difference decides whether a
 # caller gets handed to a stranger they did not ask for, so the offer forms are excluded explicitly:
 # "would you like me to put you through?" is a question and must never trigger a transfer.
@@ -254,6 +304,26 @@ def _promised_a_transfer(text: str) -> bool:
     if not said or _ONLY_OFFERING.search(said):
         return False
     return bool(_PROMISED_TRANSFER.search(said))
+
+
+# A goodbye the agent has ALREADY spoken. Matched on the agent's own turn, to decide whether the
+# bridge still needs to supply one. Deliberately generous: a second goodbye stacked on the first is
+# a worse outcome than hanging up a beat after the agent's own, and end_call is only ever handled
+# once the caller has said they are done.
+_SAID_GOODBYE = re.compile(
+    r"\b("
+    r"good ?bye|bye now|bye bye"
+    r"|have a (?:good|great|lovely|wonderful|nice) (?:day|one|evening|afternoon|morning|night)"
+    r"|take care|enjoy your (?:day|evening)|have a good rest of your"
+    r"|thanks for calling|thank you for calling"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _said_goodbye(text: str) -> bool:
+    """Has the agent already signed off in its own words?"""
+    return bool(_SAID_GOODBYE.search((text or "").strip()))
 
 
 def _sounds_finished(text: str) -> bool:
@@ -686,7 +756,10 @@ async def _live_to_caller(
                 # caller was left holding the line.
                 turn = state["current_run"]
                 heard = turn[1] if turn and turn[0] == "lead" else (evt.get("delta") or "")
-                if _sounds_finished(heard):
+                # Either they said it outright, or they turned down the agent's own offer of
+                # anything else — which is the same thing, and is how most callers actually end a
+                # call: the agent asks, and they say "no thanks".
+                if _sounds_finished(heard) or _declined_more(state, heard):
                     # Said in so many words. The agent should end the call itself — the prompt says
                     # so — but on a real call it answered "You're welcome" and then sat there while
                     # the caller waited for the line to close. The backstop below closes it.
@@ -1011,6 +1084,11 @@ async def _nudge_loop(twilio_ws: WebSocket, live_ws, state: dict, cfg: Config) -
     stall_logged = False
     while not state["closing"]:
         await asyncio.sleep(0.5)
+        # The call can end DURING that sleep, and the loop condition was checked before it. Without
+        # this, a nudge is appended to a call that is already hanging up — the model answers it and
+        # the caller hears a fragment of a new sentence over the goodbye, or after it.
+        if state["closing"]:
+            return
         now = time.monotonic()
         since = state["delegating_since"]
         if since is not None:
@@ -1078,18 +1156,34 @@ async def _nudge_loop(twilio_ws: WebSocket, live_ws, state: dict, cfg: Config) -
         # itself whether to delegate, and a caller left holding a line nobody is going to close has
         # to hang up on us — which reads as the assistant not noticing they had finished.
         signed_off = state["signed_off_at"]
+        # The grace is there to let the agent get to end_call in its own time. Once it has SAID
+        # goodbye there is nothing left to wait for — the caller has heard the last thing they are
+        # going to hear, and every further second is dead air on a call both sides know is over.
+        run = state["current_run"]
+        said_bye = bool(run and run[0] == "agent" and _said_goodbye(run[1]))
+        grace = 0.0 if said_bye else _SIGNOFF_GRACE_SECONDS
+        wrap_up = (
+            # They told us they were done, and the agent has had its grace.
+            (signed_off is not None and now - signed_off >= grace)
+            # Or the agent said goodbye of its own accord and then just sat there. The words that
+            # end a call have been spoken; leaving the line open after them is the call that never
+            # ends, and the caller has to hang up on us to get away.
+            or (said_bye and now - state["last_audio_at"] >= _SIGNOFF_GRACE_SECONDS)
+        )
         if (
-            signed_off is not None
+            wrap_up
             and not busy
             # They said they were done and then carried on talking. Hanging up on that is the
             # rudest thing this bridge could do, so the same guard applies here.
             and not caller_speaking
-            and now - signed_off >= _SIGNOFF_GRACE_SECONDS
             and now - state["last_audio_at"] >= _QUIET_SECONDS
         ):
             state["signed_off_at"] = None
-            log.info("the caller said they were finished %.0fs ago and the agent has not ended the "
-                     "call — wrapping it up", now - signed_off)
+            if signed_off is not None:
+                log.info("the caller said they were finished %.0fs ago and the agent has not ended "
+                         "the call — wrapping it up", now - signed_off)
+            else:
+                log.info("the agent said goodbye and left the line open — wrapping it up")
             try:
                 await _handle_end_call(twilio_ws, live_ws, "", state)
             except websockets.ConnectionClosed:
@@ -1099,7 +1193,6 @@ async def _nudge_loop(twilio_ws: WebSocket, live_ws, state: dict, cfg: Config) -
         # for itself whether to delegate, and on a real call it said "Of course, let me put you
         # through, one moment" and simply stopped — the caller waited, heard nothing, and hung up.
         # Saying it is a promise to the caller; this keeps it.
-        run = state["current_run"]
         if (
             run
             and run[0] == "agent"
@@ -1149,7 +1242,6 @@ async def _nudge_loop(twilio_ws: WebSocket, live_ws, state: dict, cfg: Config) -
         # which GPT-Live writes in every language it speaks. A question hands the turn back already;
         # no punctuation at all means it paused mid-sentence — measured on the real API at over 1.5s
         # ("…and Claude" … "training.") — and must not be talked over.
-        run = state["current_run"]
         if (
             run
             and run[0] == "agent"
@@ -1159,6 +1251,11 @@ async def _nudge_loop(twilio_ws: WebSocket, live_ws, state: dict, cfg: Config) -
             and state["last_audio_at"]
             and now - state["last_audio_at"] >= _FOLLOWUP_SECONDS
             and run[1].rstrip().endswith((".", "!", "。", "！"))
+            # A goodbye is a finished statement too, and prompting a hand-back after one asks the
+            # caller "anything else?" seconds after being told to have a good day. Nor is there
+            # anything to hand back to a caller who has already said they are done.
+            and signed_off is None
+            and not said_bye
         ):
             state["followup_asked"] = True
             log.info("agent stopped on a statement without handing the turn back — prompting a follow-up")
@@ -1330,6 +1427,20 @@ async def _handle_end_call(twilio_ws: WebSocket, live_ws, call_id: str, state: d
     """
     await _send_tool_output(live_ws, call_id, '{"ok": true}', resume=False)
     if state["hangup_pending"] or state["closing"]:
+        return
+    run = state["current_run"]
+    if run and run[0] == "agent" and _said_goodbye(run[1]):
+        # It has already said it. Asking for another is what put "Have a good day" and then, after
+        # the pause while this tool call went to the backend, "Have a good day, goodbye" on the
+        # same call. Let its own goodbye finish and hang up on that.
+        log.info("end_call — the agent has already said goodbye; hanging up on that one")
+        state["hangup_pending"] = True  # the sender stops pacing and empties what it holds
+        state["closing_audio"] = 0.0
+        state["hangup_task"] = asyncio.create_task(
+            _hang_up_when_quiet(
+                twilio_ws, state, min_audio=0.0, backstop=_HANGUP_FALLBACK_SECONDS
+            )
+        )
         return
     log.info("end_call — delivering the farewell, then hanging up")
     await _start_closing(

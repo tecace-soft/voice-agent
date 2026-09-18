@@ -1021,12 +1021,17 @@ def _farewell_instruction(state: dict) -> str:
     # that called YOU — both wrong for a stranger who rang the main line. Checked first so neither
     # outbound branch below is reachable on an inbound call.
     if state.get("is_inbound"):
+        # No fixed line to recite. A sign-off is the last thing a caller hears, and a canned one
+        # lands as a different person from the one they have been talking to — the business sets a
+        # persona and its own instructions on the dashboard, and both are already in this session's
+        # prompt. This asks for a goodbye in that voice rather than supplying someone else's.
         return (
-            "The call is over. Speak a short, warm sign-off to the caller, in the language they "
-            "last spoke to you (translate the example if that language is not English). Thank them "
-            'for calling and wish them a good day — for example: "Thanks for calling. Have a great '
-            'day — goodbye!" Output ONLY the spoken words: do NOT announce or describe it, and do '
-            "NOT say things like 'let me wrap this up'."
+            "The call is over. Say the goodbye and nothing else. Say it AS THE PERSON YOU HAVE "
+            "BEEN on this call — your instructions describe who that is, and this business's own "
+            "instructions to you apply to this line as much as to any other. One or two short "
+            "sentences: thank them for calling and wish them well, warmly and without hurry, in "
+            "the language they last spoke to you. Output ONLY the spoken words: do NOT announce "
+            "or describe it, and do NOT say things like 'let me wrap this up'."
         )
 
     booked = state.get("outcome") == "booked"
