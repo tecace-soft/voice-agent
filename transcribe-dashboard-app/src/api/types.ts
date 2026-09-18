@@ -205,8 +205,16 @@ export interface BusinessProfile {
   updatedAt: string;
 }
 
+/** One thing the assistant does on every call, before a business adds anything of its own. */
+export interface BehaviourDefault {
+  does: string;
+  because?: string;
+}
+
 export interface BusinessProfileResponse {
   profile: BusinessProfile | null;
+  /** The standing behaviour, so the page can show what it already does rather than "nothing set". */
+  defaultBehaviour: BehaviourDefault[];
   /** Their assigned number, or null — a profile with no number is saved but not in use. */
   number: AgentNumber | null;
   maxSourceChars: number;

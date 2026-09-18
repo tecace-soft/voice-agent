@@ -1,4 +1,5 @@
 import { Elysia, t } from "elysia";
+import { DEFAULT_BEHAVIOUR } from "./behaviourDefaults.js";
 import { MAX_HOUSE_RULES, MAX_TRANSFER_TOPICS, resolveIdentity, spokenLine } from "./identityFields.js";
 import { authenticate, authenticateAdmin, UNAUTHORIZED } from "../auth/guard.js";
 import { env } from "../config/env.js";
@@ -119,7 +120,10 @@ export const business = new Elysia({ prefix: "/business" })
         findProfile(target),
         findNumberForUser(target),
       ]);
-      return { profile, number, maxSourceChars: MAX_SOURCE_CHARS };
+      // The standing behaviour travels with the profile so the page can show what the
+      // assistant already does, instead of "nothing set" on a business that has simply not
+      // added anything of their own.
+      return { profile, number, maxSourceChars: MAX_SOURCE_CHARS, defaultBehaviour: DEFAULT_BEHAVIOUR };
     },
     { query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }) },
   )

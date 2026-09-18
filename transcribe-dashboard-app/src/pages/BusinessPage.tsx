@@ -6,7 +6,13 @@ import {
   saveHouseRules,
   saveBusinessProfile,
 } from "../api/backend";
-import type { AgentNumber, AuthUser, BusinessProfile, MailboxScope } from "../api/types";
+import type {
+  AgentNumber,
+  AuthUser,
+  BehaviourDefault,
+  BusinessProfile,
+  MailboxScope,
+} from "../api/types";
 import { accountErrorMessage } from "../auth";
 import { IconAlert, IconCheck, IconChevronLeft, IconChevronRight, IconPhone } from "../icons";
 import { formatDateTime, formatPhone } from "../lib";
@@ -69,10 +75,12 @@ function stateOf(profile: BusinessProfile | null, number: AgentNumber | null): S
  */
 function HouseRulesCard({
   profile,
+  standard,
   userId,
   onSaved,
 }: {
   profile: BusinessProfile;
+  standard: BehaviourDefault[];
   userId?: string;
   onSaved: () => void;
 }) {
@@ -126,6 +134,17 @@ function HouseRulesCard({
 
       {!editing ? (
         <div className="business-status">
+          <div className="field-label ta-caption-1">On every call, as standard</div>
+          <ul className="fact-list">
+            {standard.map((rule) => (
+              <li key={rule.does} className="ta-body-2">
+                {rule.does}
+                {rule.because && <div className="ta-caption-2 muted">{rule.because}</div>}
+              </li>
+            ))}
+          </ul>
+
+          <div className="field-label ta-caption-1">Your own instructions</div>
           {lines.length ? (
             <ul className="fact-list">
               {lines.map((line) => (
@@ -136,8 +155,8 @@ function HouseRulesCard({
             </ul>
           ) : (
             <p className="ta-body-2 muted">
-              Nothing set — the assistant answers the way it does by default. Add a line for
-              anything you would tell a new receptionist on their first day.
+              None yet. Add a line for anything you would tell a new receptionist on their first
+              day — it is followed on top of everything above.
             </p>
           )}
           {justSaved && <span className="badge badge-success">Updated</span>}
@@ -349,6 +368,9 @@ export function BusinessPage({
   // profile that could never become live.
   const [customers, setCustomers] = useState<AuthUser[] | null>(null);
   const [profile, setProfile] = useState<BusinessProfile | null>(null);
+  // What the assistant does before this business adds anything — sent with the profile so the
+  // page never has its own stale copy of the agent's behaviour.
+  const [standard, setStandard] = useState<BehaviourDefault[]>([]);
   const [number, setNumber] = useState<AgentNumber | null>(null);
   const [maxChars, setMaxChars] = useState(20_000);
   const [loading, setLoading] = useState(true);
@@ -387,6 +409,7 @@ export function BusinessPage({
         setProfile(r.profile);
         setNumber(r.number);
         setMaxChars(r.maxSourceChars);
+        setStandard(r.defaultBehaviour ?? []);
         setError(null);
       })
       .catch((e) => setError(accountErrorMessage(e, "Couldn't load these business details.")))
@@ -658,7 +681,14 @@ export function BusinessPage({
       </section>
 
       {profile && <IdentityCard profile={profile} userId={targetId} onSaved={load} />}
-      {profile && <HouseRulesCard profile={profile} userId={targetId} onSaved={load} />}
+      {profile && (
+        <HouseRulesCard
+          profile={profile}
+          standard={standard}
+          userId={targetId}
+          onSaved={load}
+        />
+      )}
 
       {profile && (
         <section className="card">
