@@ -200,13 +200,23 @@ _SIGNED_OFF = re.compile(
 # caller gets handed to a stranger they did not ask for, so the offer forms are excluded explicitly:
 # "would you like me to put you through?" is a question and must never trigger a transfer.
 _PROMISED_TRANSFER = re.compile(
-    r"\b(?:let me|i'?ll|i will|i'?m going to|going to|allow me to)\s+"
-    r"(?:just\s+)?(?:put|get|connect|transfer)\b[^.?!]{0,40}"
-    r"(?:through|you (?:to|with)|over to)?",
+    r"("
+    # "let me put you through", "I'll transfer you", "one moment while I put you through",
+    # "hold on while I connect you", "I'm going to hand you over"
+    r"\b(?:let me|i'?ll|i will|i'?m going to|i am going to|going to|allow me to|while i|"
+    r"i'?m about to|i'?m|i am)\s+(?:just\s+|now\s+|quickly\s+)?"
+    r"(?:put|get|connect|transfer|pass|hand)\b"
+    # "putting you through now", "connecting you to the team"
+    r"|\b(?:putting|connecting|transferring|handing)\s+you\b"
+    r")",
     re.IGNORECASE,
 )
+# Asking is not doing. "Would you like me to put you through?" must never transfer anyone, and
+# neither must "I CAN put you through to someone who can" — that says what is possible, and the
+# caller has not answered yet. Transferring on either would hand a stranger to a stranger.
 _ONLY_OFFERING = re.compile(
-    r"(would you like|shall i|want me to|do you want|if you'?d like|should i|may i)",
+    r"(would you like|shall i|want me to|do you want|if you'?d like|should i|may i|"
+    r"\b(?:i|we)\s+c(?:an|ould)\b)",
     re.IGNORECASE,
 )
 
@@ -618,8 +628,10 @@ async def _live_to_caller(
                 # queue is what made the opening stutter.
                 if state["greeting_until"] > time.monotonic():
                     continue
-                _note_delta_gap(state)
+                # Order matters: _note_agent_audio reads last_delta_at to tell a mid-sentence
+                # stall from the ordinary quiet between turns, and _note_delta_gap overwrites it.
                 _note_agent_audio(state, payload)
+                _note_delta_gap(state)
                 state["model_audio_frames"] += 1
                 # Into the reservoir, and no further: _stream_to_caller is the ONLY thing that
                 # writes audio to Twilio. Sending from here as well delivered every chunk twice —
@@ -746,13 +758,17 @@ def _note_agent_audio(state: dict, payload: str, *, audible: bool = True) -> Non
     contains sound — that the agent is speaking."""
     now = time.monotonic()
     seconds = _payload_bytes(payload) / _MULAW_SAMPLES_PER_SECOND
-    # A gap the CALLER hears: everything sent had already finished playing before this arrived, so
-    # Twilio had nothing to play in between. Reported because "the agent cut out for a moment" is
-    # otherwise unanswerable after the fact — this says whether it happened, and for how long.
-    # Twilio has run out AND there is nothing waiting to go to it — so this chunk arrived into
-    # silence the caller heard. Audio still in the reservoir is not a gap: it is being paced out.
+    # A gap the CALLER hears, mid-sentence. Three things have to be true together:
+    #   - this chunk continues a turn already in progress. The quiet between the agent finishing
+    #     and starting again is a conversation, not a stall, and counting it filled the log with
+    #     warnings about calls that sounded fine.
+    #   - Twilio has run out, so there was nothing to play.
+    #   - and nothing was waiting here either — audio still in the reservoir is not a gap, it is
+    #     being paced out on purpose.
+    mid_turn = state["last_delta_at"] and now - state["last_delta_at"] < _AUDIO_TURN_GAP
     starved = (
-        state["play_until"]
+        mid_turn
+        and state["play_until"]
         and not state["out"]
         and now - state["play_until"] > _UNDERRUN_SECONDS
     )
