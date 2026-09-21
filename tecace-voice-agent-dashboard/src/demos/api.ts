@@ -41,6 +41,29 @@ export function setPromoLockedHandler(handler: (() => void) | null): void {
   onLocked = handler;
 }
 
+/**
+ * The drop-in the ported promo screens use in place of `fetch("/api/…")`: it sends the request
+ * through the /promo-api proxy with the cookie and returns the Response untouched, so the promo's
+ * own `readJson` goes on reading it exactly as before. The one addition: a 401 tells the gate, which
+ * swaps in the unlock card.
+ */
+export async function promoFetch(input: string, init?: RequestInit): Promise<Response> {
+  if (!input.startsWith("/api/")) {
+    throw new Error(`promoFetch only takes /api/ paths (got ${input})`);
+  }
+  let response: Response;
+  try {
+    response = await fetch(`${PROMO_API}${input.slice("/api".length)}`, {
+      credentials: "same-origin",
+      ...init,
+    });
+  } catch {
+    throw new Error("Couldn't reach the demo service.");
+  }
+  if (response.status === 401) onLocked?.();
+  return response;
+}
+
 export async function promoRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { accept: "application/json" };
   if (body !== undefined) headers["content-type"] = "application/json";
@@ -146,14 +169,6 @@ export interface PromoProspect {
 // (rather than letting it into the URL) is what stops a "/.." or similar from path-normalising a
 // request onto some other route on the promo origin.
 const PROSPECT_ID = /^[A-Za-z0-9_-]+$/;
-
-export async function listProspects(): Promise<PromoProspect[]> {
-  const data = await promoRequest<{ customers?: PromoProspect[] }>("GET", "/admin/customers");
-  if (!Array.isArray(data.customers)) {
-    throw new PromoError("failed", "The demo service sent an unexpected response.", 0);
-  }
-  return data.customers;
-}
 
 export async function getProspect(id: string): Promise<PromoProspect> {
   if (!PROSPECT_ID.test(id)) {

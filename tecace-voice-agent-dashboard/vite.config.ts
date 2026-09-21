@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 
@@ -13,9 +15,19 @@ import { defineConfig, loadEnv } from "vite";
 // with no change to the promo. `vite preview` uses the same proxy. A deployed build needs the same
 // two paths as Vercel rewrites (added at first deploy — see README): /promo-api/:path* and, just
 // as narrow, /promo-page/c/:path* — never a bare /promo-page/:path*.
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const promo = (env.PROMO_API_URL || "http://localhost:3000").replace(/\/$/, "");
+  // The demo links the Prospects screen copies and emails (src/demos/lib/share.ts, kept verbatim)
+  // fall back to this app's own origin without it — a link that opens the dashboard's sign-in, not
+  // the demo. A warning, not a failure: compare.py and tw_probe.py build without it (demos_e2e.py sets it).
+  if (command === "build" && !env.VITE_PUBLIC_DEMO_BASE_URL) {
+    console.warn(
+      "\n[warning] VITE_PUBLIC_DEMO_BASE_URL is not set: copied/emailed demo links will point at " +
+        "this dashboard's own origin (its sign-in page), not the demo. Set it to the promo's " +
+        "public origin (see README).\n",
+    );
+  }
   const proxy = {
     "/promo-api": {
       target: promo,
@@ -30,6 +42,11 @@ export default defineConfig(({ mode }) => {
   };
   return {
     plugins: [react()],
+    // Ported promo code imports "@/components/…", "@/lib/…" exactly as in its own repo; @/ is
+    // src/demos, which mirrors the promo's layout. The regex only matches "@/" — never "@base-ui/…".
+    resolve: {
+      alias: [{ find: /^@\//, replacement: fileURLToPath(new URL("./src/demos/", import.meta.url)) }],
+    },
     server: { port: 5175, proxy },
     preview: { proxy },
     // Shown on the "demo service unreachable" card in development, so a wrong target is obvious.

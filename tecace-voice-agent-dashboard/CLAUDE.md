@@ -24,6 +24,8 @@ The header of `src/styles/index.css` explains the layer order and why; read it b
   - Promo theme variables are prefixed **`--ui-`**; utility names are unchanged (`bg-primary`). In
     arbitrary values use Tailwind's namespaced names (`var(--color-secondary)`), never a bare
     `var(--border)` / `var(--radius)` / `var(--primary)` — those are the *transcribe* variables.
+    The same goes for CSS variables read from JS (`getComputedStyle(…).getPropertyValue("--x")`):
+    read the promo's own `--ui-x` (e.g. `--ui-chart-1`), never a bare `--x`.
   - Transcribe class names (`.card`, `.badge`, `.input`, `.muted`, `.error`, …) are global and also
     match inside `.tw`: don't reuse them in promo markup.
 - `src/styles/ui-preflight.css` is **generated** — run `npm run gen:preflight` after upgrading
@@ -51,6 +53,19 @@ The header of `src/styles/index.css` explains the layer order and why; read it b
 - Proxy only what's needed: `/promo-api/*` and `/promo-page/c/*` (the public demo page, stage 5).
   Never proxy the promo's other pages onto this origin — the dashboard's admin token lives in
   localStorage here.
+- Ported promo code lives in `src/demos/` in the promo's own layout (`components/ui`,
+  `components/admin`, `components/charts`, `lib`, and pages as `screens/`), imported as `@/…`
+  (= `src/demos/`). It is a verbatim copy of voiceagent_promo @ f482848 plus the edits logged in
+  `src/demos/PORTING.md` — keep that log current; it's what makes a later sync a plain diff
+  (`diff --strip-trailing-cr`).
+- Porting rules: `fetch("/api/…")` → `promoFetch("/api/…")` (`@/api`); `next/link` →
+  `<a href={demoHref(…)}>` (`@/routes`); `next-themes` → `useDocumentTheme()` (`@/theme`); pop-ups
+  render into `twPortalContainer()` (`@/portal`); `process.env.NEXT_PUBLIC_*` →
+  `import.meta.env.VITE_*`; no bare `var(--x)` in CSS/markup and no bare
+  `getPropertyValue("--x")` in JS (read `--ui-x`); don't reuse transcribe class names; strictness
+  fixes must keep behaviour identical. The toaster lives inside `DemosGate` (sonner can't portal).
+- Toasts live inside the gate, so they survive navigation between Demos views but vanish when
+  leaving the section or when it re-locks.
 - Routes live in `src/routing.ts` `PATHS` (a `Record<ViewId, string>` — add every new view there;
   `:id` marks a record segment, e.g. `demos/prospects/:id`). `DEMO_VIEWS` lists the Demos views.
 

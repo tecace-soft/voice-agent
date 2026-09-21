@@ -308,7 +308,6 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
                 <DemosView
                   view={view}
                   id={routeId}
-                  onOpenProspect={(id) => navigate({ view: "demoProspect", id })}
                   onShowProspects={() => navigate({ view: "demoProspects" })}
                 />
               ) : (

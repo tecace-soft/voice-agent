@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { IconMoon, IconSun } from "./icons";
 import { applyTheme, readTheme, type Theme } from "./themeCore";
 
@@ -32,4 +32,16 @@ export function ThemeToggle() {
       {theme === "dark" ? <IconSun size={16} /> : <IconMoon size={16} />}
     </button>
   );
+}
+
+// The current theme as a subscribable value, for components that must redraw when it changes
+// (Chart.js charts, the toaster). Watches <html data-theme>, which every toggle writes.
+function subscribeTheme(onChange: () => void): () => void {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  return () => observer.disconnect();
+}
+
+export function useDocumentTheme(): Theme {
+  return useSyncExternalStore(subscribeTheme, () => readTheme(document.documentElement), () => "light");
 }

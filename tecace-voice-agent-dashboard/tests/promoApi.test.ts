@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getProspect,
-  listProspects,
   lockPromo,
   probePromo,
+  promoFetch,
   PromoError,
   promoRequest,
   setPromoLockedHandler,
@@ -144,19 +144,6 @@ describe("unlock / lock", () => {
 });
 
 describe("prospects", () => {
-  it("lists them", async () => {
-    stubFetch(async () => json(200, { customers: [{ id: "a", businessName: "A" }] }));
-    await expect(listProspects()).resolves.toEqual([{ id: "a", businessName: "A" }]);
-  });
-
-  it("treats a missing customers array as a failure, not a crash", async () => {
-    stubFetch(async () => json(200, { ok: true }));
-    await expect(listProspects()).rejects.toMatchObject({
-      kind: "failed",
-      message: "The demo service sent an unexpected response.",
-    });
-  });
-
   it("reads one prospect", async () => {
     const fetchFn = stubFetch(async () => json(200, { customer: { id: "abc-123_XYZ" }, calls: [] }));
     await expect(getProspect("abc-123_XYZ")).resolves.toEqual({ id: "abc-123_XYZ" });
@@ -206,5 +193,41 @@ describe("probePromo — who answered", () => {
     await expect(promoRequest("GET", "/admin/customers")).rejects.toMatchObject({ fromPromo: true });
     stubFetch(async () => new Response("<h1>Not found</h1>", { status: 404, headers: { "content-type": "text/html" } }));
     await expect(promoRequest("GET", "/admin/customers")).rejects.toMatchObject({ kind: "failed", fromPromo: false });
+  });
+});
+
+// promoFetch is the drop-in the ported promo screens use in place of fetch("/api/…"): same Response
+// back (their own readJson still reads it), routed through the proxy, with 401s reported to the gate.
+describe("promoFetch", () => {
+  it("routes /api/… through /promo-api with the cookie and passes init through", async () => {
+    const fetchFn = stubFetch(async () => json(200, { customers: [] }));
+    const res = await promoFetch("/api/admin/customers", { method: "PATCH", body: "{}" });
+    const [url, init] = fetchFn.mock.calls[0]!;
+    expect(url).toBe("/promo-api/admin/customers");
+    expect(init.method).toBe("PATCH");
+    expect(init.body).toBe("{}");
+    expect(init.credentials).toBe("same-origin");
+    expect(res.status).toBe(200);
+  });
+
+  it("reports a 401 to the gate and still returns the response", async () => {
+    const onLocked = vi.fn();
+    setPromoLockedHandler(onLocked);
+    stubFetch(async () => json(401, { error: "Not signed in." }));
+    const res = await promoFetch("/api/admin/customers");
+    expect(res.status).toBe(401);
+    expect(onLocked).toHaveBeenCalledOnce();
+  });
+
+  it("turns a network failure into a readable error", async () => {
+    stubFetch(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    await expect(promoFetch("/api/admin/customers")).rejects.toThrow("Couldn't reach the demo service.");
+  });
+
+  it("refuses anything that isn't a promo /api/ path", async () => {
+    stubFetch(async () => json(200, {}));
+    await expect(promoFetch("https://example.com/api/x")).rejects.toThrow(/only takes \/api\//);
   });
 });

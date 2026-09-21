@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { Toaster } from "@/components/ui/sonner";
 import { usePromoAuth } from "./PromoAuth";
 import { UnlockCard } from "./UnlockCard";
 
@@ -40,7 +41,16 @@ export function DemosGate({ children }: { children: ReactNode }) {
           </button>
         </section>
       )}
-      {state === "unlocked" && children}
+      {state === "unlocked" && (
+        // The promo's pages are fragments that relied on their layout's `flex-col gap` — this is it.
+        // The toaster lives here, inside .tw, so toasts get the promo styling and only exist on
+        // Demos views. It sits after the flex column, not in it: sonner renders a zero-height
+        // <section> that would otherwise be one more flex child and add a gap at the bottom.
+        <>
+          <div className="flex flex-col gap-4 md:gap-6">{children}</div>
+          <Toaster position="bottom-right" />
+        </>
+      )}
     </div>
   );
 }

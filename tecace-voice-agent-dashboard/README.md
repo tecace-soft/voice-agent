@@ -32,4 +32,7 @@ dashboard session expiring, locks them again.
 **Before the first deploy:** Vercel doesn't run the Vite proxy, so `vercel.json` needs two
 rewrites, above the SPA fallback, pointing at the promo's deployed origin — and no wider than this:
 `/promo-api/:path*` → `<promo>/api/:path*` and `/promo-page/c/:path*` → `<promo>/c/:path*`.
-Without them the Demos section reports "Demo service unreachable".
+Without them the Demos section reports "Demo service unreachable". Also set
+`VITE_PUBLIC_DEMO_BASE_URL` (build time) to the promo's public origin: it is the origin of the demo
+links the Prospects screen copies and emails, and without it they fall back to this dashboard's own
+origin (its sign-in page). `npm run build` warns when it is unset.

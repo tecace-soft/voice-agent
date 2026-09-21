@@ -36,13 +36,16 @@ for the promo screens only. `CLAUDE.md` is updated to say so (stage 2).
 - `src/` starts as a copy of `transcribe-dashboard-app/src/`, unchanged.
 - `src/demos/` — promo admin screens, their components and the browser-safe promo libs.
 - `src/public-demo/` — the prospect page and its components.
-- `src/components/ui/` — shadcn components, copied from the promo.
+- `src/demos/components/ui/` — shadcn components, copied from the promo. All ported promo code keeps
+  the promo's own layout under `src/demos/` (`components/{ui,admin,charts}`, `lib`, pages as
+  `screens/`), imported via `@/` = `src/demos/`, so not one promo import is rewritten; every
+  deviation is logged in `src/demos/PORTING.md` (decided in stage 4a).
 - Browser-safe promo `lib/` modules are copied: `transcript`, `schedule`, `integrations`, `hours`,
   `proof`, `use-cases`, `voice-level`, `scroll`, `call-audio`, `ambience`, `ringtone`, `languages`,
-  `links`, `share`, `types`, `utils`, `chart-theme`, `analytics` (all checked 2026-09-21: they import
-  only each other, `cn`, or `chart.js`). Server-only modules (`store`, `kv`, `calls`, `crm`,
-  `research*`, `openai`, `claude-cli`, `auth`,
-  `visitor`, `api`, `http`, `maps`, `call-review`) are not. The rule: a module importing `node:*`,
+  `links`, `share`, `types`, `utils`, `chart-theme`, `analytics`, `http` (all checked 2026-09-21:
+  they import only each other, `cn`, or `chart.js`; ported in stage 4a). Server-only modules
+  (`store`, `kv`, `calls`, `crm`, `research*`, `openai`, `claude-cli`, `auth`, `visitor`, `api`,
+  `maps`, `call-review`) are not. The rule: a module importing `node:*`,
   `next/server` or `next/headers` stays behind; where a client module imports one, the needed pure
   function is split out.
 - Next.js couplings are replaced: `next/link` → the hash router's link/navigate, `usePathname` /
@@ -188,7 +191,8 @@ Each stage leaves the app working and gets its own implementation plan.
    unified theme hook, Vitest; regression check passes again; `CLAUDE.md` updated.
 3. **Promo plumbing.** `src/demos/api.ts`, Vite proxy + `vercel.json` rewrites, `PromoAuth` context,
    Unlock card, Demos sidebar group with placeholder views, router path params.
-4. **Promo admin screens.** Demo overview, Prospects list + new prospect dialog, prospect detail
+4. **Promo admin screens** — split into 4a (foundation + Overview + Prospects), 4b (prospect
+   detail + test call), 4c (pipeline), each with its own plan. Demo overview, Prospects list + new prospect dialog, prospect detail
    tabs + test call, Pipeline.
 5. **Public demo.** `/c/:id` and `/c/:id/scenarios`, the live call hook, call audio, orb, visitor
    cookie priming.
