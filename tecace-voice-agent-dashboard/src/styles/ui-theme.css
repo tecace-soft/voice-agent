@@ -1,0 +1,245 @@
+/* Promo screens' theme — TecAce Dashboard Theme for shadcn/ui (Tailwind v4), from voiceagent_promo
+   app/globals.css @ f482848. Source of truth: TECACE DESIGN SYSTEM_JULY.fig. Brand #116DFF.
+
+   Differences from the promo's file, all so it can share a page with the transcribe CSS:
+   - Every variable is prefixed --ui- (the transcribe CSS and design-system tokens use --primary,
+     --muted, --border, --label-strong, --font-sans … with different meanings).
+   - The base rules and the .ta-* scale apply only inside a .tw subtree.
+   Tailwind utility names are unchanged: bg-primary still means brand blue. */
+
+@custom-variant dark (&:is(.dark *));
+
+/* ================= LIGHT ================= */
+:root {
+  --ui-background: #ffffff;
+  --ui-foreground: #171717;
+  --ui-card: #ffffff;
+  --ui-card-foreground: #171717;
+  --ui-popover: #ffffff;
+  --ui-popover-foreground: #171717;
+  --ui-primary: #116dff;
+  --ui-primary-foreground: #ffffff;
+  --ui-secondary: rgba(112, 115, 124, 0.08);
+  --ui-secondary-foreground: #171717;
+  --ui-muted: rgba(112, 115, 124, 0.05);
+  --ui-muted-foreground: rgba(55, 56, 60, 0.61);
+  --ui-accent: rgba(112, 115, 124, 0.05);
+  --ui-accent-foreground: #171717;
+  --ui-destructive: #e83034;
+  --ui-destructive-foreground: #ffffff;
+  --ui-border: rgba(112, 115, 124, 0.16);
+  --ui-input: rgba(112, 115, 124, 0.16);
+  --ui-ring: #116dff;
+  --ui-chart-1: #116dff;
+  --ui-chart-2: #00b9dc;
+  --ui-chart-3: #7038e1;
+  --ui-chart-4: #f532a8;
+  --ui-chart-5: #66bc12;
+  --ui-chart-6: #5860d5;
+  --ui-chart-7: #eb4e1c;
+  --ui-sidebar: #f7f7f8;
+  --ui-sidebar-foreground: #171717;
+  --ui-sidebar-primary: #116dff;
+  --ui-sidebar-primary-foreground: #ffffff;
+  --ui-sidebar-accent: rgba(112, 115, 124, 0.08);
+  --ui-sidebar-accent-foreground: #171717;
+  --ui-sidebar-border: rgba(112, 115, 124, 0.16);
+  --ui-sidebar-ring: #116dff;
+
+  --ui-success: #0abe5c;
+  --ui-success-foreground: #ffffff;
+  --ui-warning: #e18a0f;
+  --ui-warning-foreground: #ffffff;
+  --ui-primary-strong: #0e64e6;
+  --ui-primary-heavy: #0b55cc;
+  --ui-label-strong: #000000;
+  --ui-label-neutral: rgba(46, 47, 51, 0.88);
+  --ui-label-assistive: rgba(55, 56, 60, 0.28);
+  --ui-label-disable: rgba(55, 56, 60, 0.16);
+  --ui-fill-strong: rgba(112, 115, 124, 0.16);
+
+  --ui-font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ui-font-display: Poppins, "Pretendard Variable", Pretendard, sans-serif;
+  --ui-font-mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --ui-radius: 0.75rem;
+
+  --ui-shadow-2xs: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --ui-shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --ui-shadow-sm: 0 1px 2px 0 rgba(23, 23, 25, 0.06);
+  --ui-shadow: 0 2px 8px 0 rgba(23, 23, 25, 0.08);
+  --ui-shadow-md: 0 4px 12px 0 rgba(23, 23, 25, 0.1);
+  --ui-shadow-lg: 0 8px 24px 0 rgba(23, 23, 25, 0.12);
+  --ui-shadow-xl: 0 12px 32px 0 rgba(23, 23, 25, 0.14);
+  --ui-shadow-2xl: 0 16px 48px 0 rgba(23, 23, 25, 0.16);
+}
+
+/* ================= DARK ================= */
+.dark {
+  --ui-background: #1b1c1e;
+  --ui-foreground: #f7f7f7;
+  --ui-card: #212225;
+  --ui-card-foreground: #f7f7f7;
+  --ui-popover: #212225;
+  --ui-popover-foreground: #f7f7f7;
+  --ui-primary: #5b84ff;
+  --ui-primary-foreground: #ffffff;
+  --ui-secondary: rgba(112, 115, 124, 0.22);
+  --ui-secondary-foreground: #f7f7f7;
+  --ui-muted: rgba(112, 115, 124, 0.12);
+  --ui-muted-foreground: rgba(174, 176, 182, 0.61);
+  --ui-accent: rgba(112, 115, 124, 0.12);
+  --ui-accent-foreground: #f7f7f7;
+  --ui-destructive: #f05555;
+  --ui-destructive-foreground: #ffffff;
+  --ui-border: rgba(112, 115, 124, 0.28);
+  --ui-input: rgba(112, 115, 124, 0.28);
+  --ui-ring: #5b84ff;
+  --ui-chart-1: #5b84ff;
+  --ui-chart-2: #28cdeb;
+  --ui-chart-3: #8e5aeb;
+  --ui-chart-4: #f85fb9;
+  --ui-chart-5: #87d237;
+  --ui-chart-6: #787fde;
+  --ui-chart-7: #f27041;
+  --ui-sidebar: #171719;
+  --ui-sidebar-foreground: #f7f7f7;
+  --ui-sidebar-primary: #5b84ff;
+  --ui-sidebar-primary-foreground: #ffffff;
+  --ui-sidebar-accent: rgba(112, 115, 124, 0.22);
+  --ui-sidebar-accent-foreground: #f7f7f7;
+  --ui-sidebar-border: rgba(112, 115, 124, 0.22);
+  --ui-sidebar-ring: #5b84ff;
+
+  --ui-success: #37d278;
+  --ui-success-foreground: #0c1126;
+  --ui-warning: #eea832;
+  --ui-warning-foreground: #0c1126;
+  --ui-primary-strong: #3383ff;
+  --ui-primary-heavy: #116dff;
+  --ui-label-strong: #ffffff;
+  --ui-label-neutral: rgba(219, 220, 223, 0.88);
+  --ui-label-assistive: rgba(174, 176, 182, 0.28);
+  --ui-label-disable: rgba(174, 176, 182, 0.16);
+  --ui-fill-strong: rgba(112, 115, 124, 0.28);
+}
+
+/* ============ Tailwind v4 theme mapping ============
+   `inline` makes utilities use these values directly rather than var(--radius-sm) etc., so the
+   transcribe CSS's own --radius-sm / --font-sans can never leak into a utility. */
+@theme inline {
+  --color-background: var(--ui-background);
+  --color-foreground: var(--ui-foreground);
+  --color-card: var(--ui-card);
+  --color-card-foreground: var(--ui-card-foreground);
+  --color-popover: var(--ui-popover);
+  --color-popover-foreground: var(--ui-popover-foreground);
+  --color-primary: var(--ui-primary);
+  --color-primary-foreground: var(--ui-primary-foreground);
+  --color-secondary: var(--ui-secondary);
+  --color-secondary-foreground: var(--ui-secondary-foreground);
+  --color-muted: var(--ui-muted);
+  --color-muted-foreground: var(--ui-muted-foreground);
+  --color-accent: var(--ui-accent);
+  --color-accent-foreground: var(--ui-accent-foreground);
+  --color-destructive: var(--ui-destructive);
+  --color-destructive-foreground: var(--ui-destructive-foreground);
+  --color-border: var(--ui-border);
+  --color-input: var(--ui-input);
+  --color-ring: var(--ui-ring);
+  --color-chart-1: var(--ui-chart-1);
+  --color-chart-2: var(--ui-chart-2);
+  --color-chart-3: var(--ui-chart-3);
+  --color-chart-4: var(--ui-chart-4);
+  --color-chart-5: var(--ui-chart-5);
+  --color-chart-6: var(--ui-chart-6);
+  --color-chart-7: var(--ui-chart-7);
+  --color-sidebar: var(--ui-sidebar);
+  --color-sidebar-foreground: var(--ui-sidebar-foreground);
+  --color-sidebar-primary: var(--ui-sidebar-primary);
+  --color-sidebar-primary-foreground: var(--ui-sidebar-primary-foreground);
+  --color-sidebar-accent: var(--ui-sidebar-accent);
+  --color-sidebar-accent-foreground: var(--ui-sidebar-accent-foreground);
+  --color-sidebar-border: var(--ui-sidebar-border);
+  --color-sidebar-ring: var(--ui-sidebar-ring);
+  --color-success: var(--ui-success);
+  --color-success-foreground: var(--ui-success-foreground);
+  --color-warning: var(--ui-warning);
+  --color-warning-foreground: var(--ui-warning-foreground);
+  --color-primary-strong: var(--ui-primary-strong);
+
+  --font-sans: var(--ui-font-sans);
+  --font-display: var(--ui-font-display);
+  --font-mono: var(--ui-font-mono);
+
+  --radius-sm: calc(var(--ui-radius) - 4px);
+  --radius-md: calc(var(--ui-radius) - 2px);
+  --radius-lg: var(--ui-radius);
+  --radius-xl: calc(var(--ui-radius) + 4px);
+  --radius-2xl: calc(var(--ui-radius) + 8px);
+
+  --shadow-2xs: var(--ui-shadow-2xs);
+  --shadow-xs: var(--ui-shadow-xs);
+  --shadow-sm: var(--ui-shadow-sm);
+  --shadow: var(--ui-shadow);
+  --shadow-md: var(--ui-shadow-md);
+  --shadow-lg: var(--ui-shadow-lg);
+  --shadow-xl: var(--ui-shadow-xl);
+  --shadow-2xl: var(--ui-shadow-2xl);
+}
+
+/* The promo's base rules, applied to .tw subtrees only. `:scope` stands in for the promo's body. */
+@layer base {
+  @scope (.tw) {
+    :scope, * {
+      @apply border-border outline-ring/50;
+    }
+    :scope {
+      /* No background: embedded promo screens sit on the dashboard canvas like transcribe cards
+         (the stage-5 public page gives itself a full-height bg-background child). */
+      @apply text-foreground;
+      font-family: var(--ui-font-sans);
+      font-weight: 500;
+      -webkit-font-smoothing: antialiased;
+      /* Reset inherited typography so promo content can't inherit it from a legacy container
+         (line-height comes from the preflight :scope rule). */
+      font-size: 1rem;
+      letter-spacing: normal;
+      text-align: start;
+      white-space: normal;
+      text-transform: none;
+      font-style: normal;
+      font-variant-numeric: normal;
+    }
+    ::placeholder {
+      color: var(--ui-label-assistive);
+    }
+  }
+}
+
+/* ============ TecAce type scale (19 styles), .tw subtrees only ============
+   Unlayered on purpose: in the promo these beat Tailwind utilities, and promo markup relies on it
+   (e.g. `ta-caption-1 font-semibold` renders at 500). The transcribe screens keep their own copy in
+   tecace/typography.css inside @layer legacy. */
+@scope (.tw) {
+  .ta-display-1{font-family:var(--ui-font-sans);font-weight:700;font-size:56px;line-height:72px;letter-spacing:-0.0319em}
+  .ta-display-2{font-family:var(--ui-font-sans);font-weight:700;font-size:40px;line-height:52px;letter-spacing:-0.0282em}
+  .ta-display-3{font-family:var(--ui-font-sans);font-weight:700;font-size:36px;line-height:48px;letter-spacing:-0.027em}
+  .ta-title-1{font-family:var(--ui-font-sans);font-weight:700;font-size:32px;line-height:44px;letter-spacing:-0.0253em}
+  .ta-title-2{font-family:var(--ui-font-sans);font-weight:700;font-size:28px;line-height:38px;letter-spacing:-0.0236em}
+  .ta-title-3{font-family:var(--ui-font-sans);font-weight:700;font-size:24px;line-height:32px;letter-spacing:-0.023em}
+  .ta-heading-1{font-family:var(--ui-font-sans);font-weight:600;font-size:22px;line-height:30px;letter-spacing:-0.0194em}
+  .ta-heading-2{font-family:var(--ui-font-sans);font-weight:600;font-size:20px;line-height:28px;letter-spacing:-0.012em}
+  .ta-headline-1{font-family:var(--ui-font-sans);font-weight:600;font-size:18px;line-height:26px;letter-spacing:-0.002em}
+  .ta-headline-2{font-family:var(--ui-font-sans);font-weight:600;font-size:17px;line-height:24px;letter-spacing:0}
+  .ta-body-1{font-family:var(--ui-font-sans);font-weight:500;font-size:16px;line-height:24px;letter-spacing:0.0057em}
+  .ta-body-1-reading{font-family:var(--ui-font-sans);font-weight:500;font-size:16px;line-height:26px;letter-spacing:0.0057em}
+  .ta-body-2{font-family:var(--ui-font-sans);font-weight:500;font-size:15px;line-height:22px;letter-spacing:0.0096em}
+  .ta-body-2-reading{font-family:var(--ui-font-sans);font-weight:500;font-size:15px;line-height:24px;letter-spacing:0.0096em}
+  .ta-label-1{font-family:var(--ui-font-sans);font-weight:500;font-size:14px;line-height:20px;letter-spacing:0.0145em}
+  .ta-label-1-reading{font-family:var(--ui-font-sans);font-weight:500;font-size:14px;line-height:22px;letter-spacing:0.0145em}
+  .ta-label-2{font-family:var(--ui-font-sans);font-weight:500;font-size:13px;line-height:18px;letter-spacing:0.0194em}
+  .ta-caption-1{font-family:var(--ui-font-sans);font-weight:500;font-size:12px;line-height:16px;letter-spacing:0.0252em}
+  .ta-caption-2{font-family:var(--ui-font-sans);font-weight:500;font-size:11px;line-height:14px;letter-spacing:0.0311em}
+  .ta-numeric{font-family:var(--ui-font-display);font-variant-numeric:tabular-nums;font-weight:600}
+}

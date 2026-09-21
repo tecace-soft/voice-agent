@@ -1,0 +1,47 @@
+/* Stylesheet entry. Two styling systems share this app, kept apart by cascade layers:
+
+   (properties  Tailwind's generated @property fallbacks — it emits this layer first, so it sits
+                lowest, below theme; it only sets --tw-* variables)
+   theme      Tailwind's default theme variables (every layer below overrides them)
+   legacy     the transcribe screens: design-system tokens + type scale + their component CSS,
+              written against browser defaults, unchanged
+   base       Tailwind's reset + the promo base rules, scoped to .tw subtrees (ui-preflight.css,
+              ui-theme.css). After legacy, so inside .tw they win over legacy's bare element rules;
+              outside .tw they match nothing
+   components (unused)
+   utilities  Tailwind utilities, scoped to .tw subtrees
+
+   Unlayered: ui-theme.css's --ui-* variables and its .tw-scoped type scale.
+   Promo screens render inside an element with class "tw". Nothing outside one is affected.
+
+   The minifier drops the layer statement below and the built CSS orders layers by first
+   appearance — so main.tsx must import this file before anything else that emits CSS. */
+@layer theme, legacy, base, components, utilities;
+
+/* No rule may sit between or before these @imports — PostCSS silently drops any @import that follows a rule. */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css");
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css");
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap");
+
+@import "tailwindcss/theme.css" layer(theme);
+
+@import "../tecace/fig-tokens.css" layer(legacy);
+@import "../tecace/typography.css" layer(legacy);
+@import "./legacy.css" layer(legacy);
+
+@import "./ui-preflight.css" layer(base);
+
+@import "tw-animate-css";
+
+@import "./ui-theme.css";
+
+/* Must come after every @import (a rule before an @import makes PostCSS drop that import).
+   Utilities are scoped to .tw like the reset: Tailwind scans the whole project, and transcribe
+   markup already uses names Tailwind knows (`grid` on SVG gridlines, `sr-only`) — unscoped, those
+   utilities would restyle transcribe elements. Inside @scope a plain selector matches DESCENDANTS
+   of a .tw element, not the .tw element itself — so the wrapper carries no utilities of its own. */
+@layer utilities {
+  @scope (.tw) {
+    @tailwind utilities;
+  }
+}
