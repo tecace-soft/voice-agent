@@ -94,6 +94,27 @@ def _hit_token_ceiling(response) -> bool:
     return "MAX_TOKENS" in str(getattr(reason, "name", reason) or "")
 
 
+def _truncation_report(response, attachment, text: str) -> str:
+    """What the model actually produced, for the log, when it ran out of room.
+
+    A transcript that runs to the ceiling is one of two things, and they need opposite fixes:
+    a genuinely long recording, or a model repeating itself on audio with nothing in it. The
+    head and the tail of the output tell them apart at a glance — a loop reads the same in
+    both, a real transcript has moved on. The audio size settles it either way: voicemail audio
+    runs a few KB a second, so a small file that produced thousands of tokens can only be a
+    loop. One line, because this is read in a journal alongside everything else.
+    """
+    usage = getattr(response, "usage_metadata", None)
+    flat = " ".join(text.split())
+    return (
+        f"{len(attachment.data)} bytes of {attachment.content_type}, "
+        f"{getattr(usage, 'candidates_token_count', None)} tokens out "
+        f"of {getattr(usage, 'prompt_token_count', None)} in"
+        f" | STARTS: {flat[:200]}"
+        f" | ENDS: {flat[-200:]}"
+    )
+
+
 @dataclass(frozen=True)
 class VoicemailInfo:
     caller_name: str | None
@@ -176,6 +197,13 @@ class Extractor:
         # transcript written into the sheet would look complete to the person ringing the caller
         # back.
         if _hit_token_ceiling(response):
+            # The detail goes to the log, not into the exception: that message is stored in a
+            # database column and shown on a dashboard card, where 500 characters of raw model
+            # output would bury the sentence that explains the failure.
+            log.warning(
+                "output ran to the ceiling on %s — %s",
+                attachment.filename, _truncation_report(response, attachment, text),
+            )
             raise RuntimeError(
                 f"Gemini stopped at its {_MAX_OUTPUT_TOKENS}-token output limit, so the transcript "
                 f"was cut off mid-sentence and the JSON it returned never closed. Either this "
