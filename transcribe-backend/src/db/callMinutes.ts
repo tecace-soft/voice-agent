@@ -110,48 +110,74 @@ export function asOf(stored: StoredTotals | null, current: string): MonthTotals 
 
 /**
  * Add one agent session's seconds to the business that owns `agentNumber`, rolling that business's
- * month over first if it has changed. Returns the owner's totals afterwards.
+ * month over first if it has changed, and record the session itself. Returns the owner's totals
+ * afterwards.
  *
- * The casts are deliberate: in an INSERT ... SELECT, an untyped parameter in the select list resolves
- * to text, and text into an integer column is an error.
+ * Both rows are written in ONE transaction. They are two views of the same call — a running counter
+ * and the append-only session log the ranged totals are summed from — and nothing reconciles them
+ * afterwards, so a session row without its counter increment (or the reverse) would leave the
+ * monthly and the ranged answers permanently disagreeing about a call that did happen.
+ *
+ * `startedAt` is when the call began, which is what ranges are measured by; `now` is when the agent
+ * reported it, and the month the counter rolls onto. They differ by the call's length.
+ *
+ * The casts are deliberate: an untyped parameter resolves to text, and text into an integer column
+ * is an error — in the upsert's select list, and in the session row's NULLIF, where two untyped
+ * parameters would leave Postgres unable to work out the type at all.
  */
 export async function addCallSeconds(
   seconds: number,
   agentNumber: string | undefined,
-  now: Date = new Date(),
+  now: Date,
+  startedAt: Date,
 ): Promise<OwnerCallMinutes> {
   const current = monthKey(now);
   const previous = previousMonthKey(current);
   const phone = toE164(agentNumber ?? "");
-  const [row] = (await sql`
-    WITH owner AS (
-      SELECT (SELECT user_id FROM agent_numbers WHERE phone_e164 = ${phone}::text) AS user_id
-    )
-    INSERT INTO agent_call_minutes AS m
-      (owner_key, user_id, current_month, current_seconds, previous_month, previous_seconds, updated_at)
-    SELECT COALESCE(owner.user_id::text, ${UNASSIGNED}::text), owner.user_id,
-           ${current}::text, ${seconds}::int, ${previous}::text, 0,
-           ${seconds > 0 ? now : null}::timestamptz
-    FROM owner
-    ON CONFLICT (owner_key) DO UPDATE SET
-      current_month = GREATEST(m.current_month, EXCLUDED.current_month),
-      current_seconds = CASE
-        WHEN m.current_month >= EXCLUDED.current_month THEN m.current_seconds + EXCLUDED.current_seconds
-        ELSE EXCLUDED.current_seconds
-      END,
-      previous_month = CASE
-        WHEN m.current_month >= EXCLUDED.current_month THEN m.previous_month
-        ELSE EXCLUDED.previous_month
-      END,
-      previous_seconds = CASE
-        WHEN m.current_month >= EXCLUDED.current_month THEN m.previous_seconds
-        WHEN m.current_month = EXCLUDED.previous_month THEN m.current_seconds
-        ELSE 0
-      END,
-      updated_at = COALESCE(EXCLUDED.updated_at, m.updated_at)
-    RETURNING m.owner_key AS "ownerKey"
-  `) as unknown as { ownerKey: string }[];
-  const [owner] = await listCallMinutes(row!.ownerKey, now);
+  const ownerKey = await sql.begin(async (tx) => {
+    const [row] = (await tx`
+      WITH owner AS (
+        SELECT (SELECT user_id FROM agent_numbers WHERE phone_e164 = ${phone}::text) AS user_id
+      )
+      INSERT INTO agent_call_minutes AS m
+        (owner_key, user_id, current_month, current_seconds, previous_month, previous_seconds, updated_at)
+      SELECT COALESCE(owner.user_id::text, ${UNASSIGNED}::text), owner.user_id,
+             ${current}::text, ${seconds}::int, ${previous}::text, 0,
+             ${seconds > 0 ? now : null}::timestamptz
+      FROM owner
+      ON CONFLICT (owner_key) DO UPDATE SET
+        current_month = GREATEST(m.current_month, EXCLUDED.current_month),
+        current_seconds = CASE
+          WHEN m.current_month >= EXCLUDED.current_month THEN m.current_seconds + EXCLUDED.current_seconds
+          ELSE EXCLUDED.current_seconds
+        END,
+        previous_month = CASE
+          WHEN m.current_month >= EXCLUDED.current_month THEN m.previous_month
+          ELSE EXCLUDED.previous_month
+        END,
+        previous_seconds = CASE
+          WHEN m.current_month >= EXCLUDED.current_month THEN m.previous_seconds
+          WHEN m.current_month = EXCLUDED.previous_month THEN m.current_seconds
+          ELSE 0
+        END,
+        updated_at = COALESCE(EXCLUDED.updated_at, m.updated_at)
+      RETURNING m.owner_key AS "ownerKey"
+    `) as unknown as { ownerKey: string }[];
+    // The owner comes from the upsert above rather than a second lookup of the number: READ
+    // COMMITTED gives each statement its own snapshot, so a number reassigned between the two would
+    // file the session under one account and the counter under another — the exact disagreement this
+    // transaction exists to prevent. NULLIF turns the unassigned bucket back into a NULL user_id.
+    const ownerKey = row!.ownerKey;
+    await tx`
+      INSERT INTO agent_call_sessions (owner_key, user_id, seconds, started_at, reported_at)
+      VALUES (${ownerKey}::text, NULLIF(${ownerKey}::text, ${UNASSIGNED}::text)::uuid,
+              ${seconds}::int, ${startedAt}::timestamptz, ${now}::timestamptz)
+    `;
+    return ownerKey;
+  });
+  // Read back outside the transaction: it is a plain read of what was just committed, and holding
+  // the transaction open across it would lock the counter row for the length of a join it doesn't need.
+  const [owner] = await listCallMinutes(ownerKey, now);
   return owner!;
 }
 

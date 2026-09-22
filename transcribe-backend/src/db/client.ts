@@ -235,6 +235,30 @@ export async function initDb(): Promise<void> {
     )
   `;
 
+  // One row per reported agent session, so usage can be totalled over any range — the monthly
+  // counter above can only answer "this month" and "last month". Written in the same transaction as
+  // that counter (src/db/callMinutes.ts), so the two can never disagree about a call.
+  //
+  // owner_key matches the counter's: the account that owned the agent's number when the call was
+  // reported, or 'unassigned'. Fixed at write time, so reassigning a number later doesn't rewrite
+  // history. started_at is what every range is measured by; reported_at is when the agent told us,
+  // and the two differ by the call's length (or by however late the report was).
+  await sql`
+    CREATE TABLE IF NOT EXISTS agent_call_sessions (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      owner_key   TEXT NOT NULL,
+      user_id     UUID REFERENCES users(id) ON DELETE CASCADE,
+      seconds     INTEGER NOT NULL CHECK (seconds >= 0 AND seconds <= 86400),
+      started_at  TIMESTAMPTZ NOT NULL,
+      reported_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CHECK (owner_key = COALESCE(user_id::text, 'unassigned'))
+    )
+  `;
+  // The range query is always "this owner, between two instants"; the second index is for
+  // coverageFrom, a MIN over the whole table.
+  await sql`CREATE INDEX IF NOT EXISTS idx_agent_call_sessions_owner_started ON agent_call_sessions (owner_key, started_at)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_agent_call_sessions_started ON agent_call_sessions (started_at)`;
+
   // Keys other systems use to read this API — one per integration, so one can be cut off without
   // touching the others. Only the HASH is stored: a key is shown once when it is created and is
   // unreadable afterwards, so a database dump cannot be used to call the API.
@@ -304,6 +328,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM inbound_calls LIMIT 1`;
     await sql`SELECT requested_time, sheet_written_at FROM inbound_calls LIMIT 1`;
     await sql`SELECT 1 FROM agent_call_minutes LIMIT 1`;
+    await sql`SELECT 1 FROM agent_call_sessions LIMIT 1`;
     await sql`SELECT 1 FROM api_keys LIMIT 1`;
     return;
   } catch {

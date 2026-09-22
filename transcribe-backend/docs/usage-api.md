@@ -26,6 +26,11 @@ Read-only JSON over HTTPS, authenticated with an API key.
    # {"status":"ok","uptime":5231.4}
    ```
 
+4. **Running separate staging and production systems?** Ask for two keys, one per environment. They're
+   independent secrets — either can be revoked without touching the other, and TecAce can tell them apart
+   by their "last used" time. Both read the same live data: a staging key sees real customer numbers, the
+   same as production, so treat it with the same care.
+
 Send the key on every usage request, in the `Authorization` header. Always use HTTPS, and never put the
 key in a URL or query string — URLs end up in logs.
 
@@ -37,6 +42,7 @@ These are the only requests available to your integration.
 | --- | --- | --- |
 | `GET /usage/minutes` | Required | Every business, busiest this month first. Use it to find each business's `userId`, or to report on all of them. |
 | `GET /usage/minutes?userId=<id>` | Required | Just that business's minutes. |
+| `GET /usage/minutes?userId=<id>&from=<iso>&to=<iso>` | Required | That business's minutes, and its totals between two instants. |
 | `GET /usage/minutes?userId=unassigned` | Required | Calls on phone numbers no business owns yet. Most integrations can ignore this. |
 | `GET /health` | None | Whether the service is up. Says nothing about your key. |
 
@@ -119,6 +125,118 @@ back the same way, with zeroes. An id that isn't a business gets `404` `business
 Months run midnight to midnight in `timezone`. On the 1st, this month's total moves to `previousSeconds`
 and `currentSeconds` starts again at zero — so to bill a finished month, read `previousSeconds` any time
 after the 1st and check `previousMonth` is the month you're billing.
+
+## Usage between two dates
+
+For anything other than "this month" or "last month" — a custom billing cycle, a year-to-date report,
+reconciling a single day — add `from` and `to` to either request from the section above (all businesses,
+or one by `userId`).
+
+- **`from` is inclusive, `to` is exclusive.** Back-to-back ranges neither overlap nor leave a gap: if one
+  request ends `&to=2026-09-01T07:00:00Z` and the next begins `&from=2026-09-01T07:00:00Z`, every call is
+  counted exactly once between them.
+- **Both are ISO 8601 instants, with an offset or `Z`** — for example `2026-09-01T00:00:00-07:00` or
+  `2026-09-01T07:00:00Z` (the same instant). A plain date like `2026-09-01` is refused: without a timezone
+  it means a different moment depending on where it's read, and a usage boundary that moves with the
+  reader can't be reconciled. Send both parameters, or neither — one without the other is an error.
+- **A call counts wholly in the period its start falls in.** A call is never split across two ranges, even
+  one that runs past `to`.
+
+Add both parameters to either request:
+
+```bash
+curl -sS "https://transcribe-app-backend.vercel.app/usage/minutes?userId=3f1c9a2e-5b7d-4c1a-9e0f-2d6b8a4c7e11&from=2026-08-15T07:00:00Z&to=2026-09-15T07:00:00Z" \
+  -H "Authorization: Bearer $USAGE_API_KEY"
+```
+
+Response (`200`):
+
+```json
+{
+  "timezone": "America/Los_Angeles",
+  "from": "2026-08-15T07:00:00.000Z",
+  "to": "2026-09-15T07:00:00.000Z",
+  "settled": true,
+  "settleSeconds": 3600,
+  "coverageFrom": "2026-07-01T00:00:00.000Z",
+  "minutes": [
+    {
+      "userId": "3f1c9a2e-5b7d-4c1a-9e0f-2d6b8a4c7e11",
+      "email": "owner@olympusspa.com",
+      "name": "Sam Park",
+      "businessName": "Olympus Spa",
+      "currentMonth": "2026-09",
+      "currentSeconds": 9000,
+      "currentMinutes": 150,
+      "previousMonth": "2026-08",
+      "previousSeconds": 4230,
+      "previousMinutes": 70.5,
+      "updatedAt": "2026-09-15T18:04:11.284Z",
+      "periodSeconds": 5424,
+      "periodMinutes": 90.4,
+      "periodCalls": 37
+    }
+  ]
+}
+```
+
+`from` and `to` are echoed back exactly as the server understood them — always normalized to UTC (`Z`) with
+millisecond precision, regardless of the offset you sent. `periodSeconds`, `periodMinutes` and `periodCalls`
+are added to every entry in `minutes` (a business with no calls in the window still appears, at zero — it
+isn't dropped from the list). `settled`, `settleSeconds` and `coverageFrom` are explained below.
+
+**Seconds and minutes, side by side.** `periodSeconds` is the exact total, the same way `currentSeconds` is
+— use it for billing and any calculation. `periodMinutes` is the same figure rounded to one decimal, the
+same way `currentMinutes` is — for display. This API is read in minutes throughout, so `periodMinutes` is
+there for consistency with the monthly fields, but `periodSeconds` is exact and there's no rounding to
+account for.
+
+**A range over a calendar month won't always match `currentMinutes`/`previousMinutes` for that month, by
+design** — two reasons:
+
+1. **Different clocks.** The monthly counters bucket a call by when the agent *reported* it, which happens
+   as the call ends; a ranged query buckets a call by when it *started* (see above). A call that starts at
+   23:57 on the last day of the month and ends at 00:03 the next day is reported in the new month, so it
+   lands in `currentSeconds` for that new month — but a range would count it in the period containing
+   23:57, the period before.
+2. **Calendar months are in `timezone`; a range is in absolute instants.** `currentMonth`/`previousMonth`
+   are calendar months in the business's timezone (`timezone` in the response, `America/Los_Angeles` unless
+   TecAce has set otherwise) — not UTC. To ask for the same span as a calendar month as a range, convert
+   that month's boundaries out of `timezone` yourself. For example, September 2026 in
+   `America/Los_Angeles` (UTC−7 all month; daylight saving doesn't end until November) is:
+
+   ```
+   from=2026-09-01T07:00:00Z   (2026-09-01T00:00:00-07:00)
+   to=2026-10-01T07:00:00Z     (2026-10-01T00:00:00-07:00)
+   ```
+
+   Using UTC midnight instead (`2026-09-01T00:00:00Z` to `2026-10-01T00:00:00Z`) asks for a window shifted
+   seven hours from what "September" means in the business's own timezone.
+
+If you need a range's total to reconcile with a monthly figure, expect small, explainable differences —
+don't treat them as a bug in either field.
+
+### When a total stops changing
+
+`settled` is `false` until `settleSeconds` after `to` has passed — `3600` (one hour) by default. A call is
+only reported to this API once it ends, so a call that started before `to` may still be in progress when
+the period closes, and its minutes haven't arrived yet. Until `settled` is `true`, `periodSeconds`,
+`periodMinutes` and `periodCalls` for that range can still rise. Poll again after `settleSeconds` has
+passed `to` for a number that won't move again.
+
+`settleSeconds` is returned on every ranged response so you don't have to hard-code it — TecAce can change
+the window without breaking your integration.
+
+`settled: true` assumes no call in the window runs longer than `settleSeconds`; calls up to 24 hours long
+are accepted, so on rare, unusually long calls a total can still rise after `settled` first reads `true`.
+
+### How far back the data goes
+
+`coverageFrom` is the earliest call this API has any record of (`null` if there are none yet). A range that
+falls entirely before `coverageFrom` reads as zero because nothing was recorded that far back, not because
+nothing happened — don't treat it as a confident answer. For periods before `coverageFrom`, use the
+monthly totals instead (`currentSeconds`/`previousSeconds` from the section above), which aren't affected
+by this limit.
 
 ## Complete example
 
@@ -250,11 +368,16 @@ Call time per business: the current month so far and the previous calendar month
 | Query parameter | Required | Meaning |
 | --- | --- | --- |
 | `userId` | No | A business's `userId`: returns only that business, as a one-entry list. `unassigned`: calls on numbers no business owns — a one-entry list, or an empty one if there have never been any. Left out or blank: every business, busiest this month first, with the unassigned bucket last. |
+| `from`, `to` | No — send both or neither | ISO 8601 instants (offset or `Z`) bounding a range, `from` inclusive and `to` exclusive. Adds `periodSeconds`/`periodMinutes`/`periodCalls` to each business and `from`/`to`/`settled`/`settleSeconds`/`coverageFrom` to the response. See [Usage between two dates](#usage-between-two-dates). |
 
 - **Headers:** `Authorization: Bearer ak_…`
 - **Body:** none.
 - **Responses:**
-  - `200` `{ timezone, minutes: [ … ] }` — see [Response fields](#response-fields).
+  - `200` `{ timezone, minutes: [ … ] }`, plus `from`, `to`, `settled`, `settleSeconds`, `coverageFrom` when
+    `from`/`to` were sent — see [Response fields](#response-fields) and
+    [Usage between two dates](#usage-between-two-dates).
+  - `400` `invalid_range` — `from`/`to` malformed, only one of them sent, or `from` at or after `to`.
+  - `400` `range_too_long` — the range covers more than 366 days.
   - `401` `invalid_api_key` or `unauthorized`.
   - `404` `business_not_found` — the `userId` isn't a business.
 
@@ -284,6 +407,10 @@ Every entry in `minutes` has these fields, whether you asked for one business or
 | `previousMinutes` | number | Last month's total in minutes, rounded to one decimal. |
 | `updatedAt` | string · null | ISO 8601 time a call last added to this business's total, or `null` if none yet. |
 
+**With `from`/`to`.** Each entry in `minutes` also gains `periodSeconds`, `periodMinutes` and `periodCalls`, and the response
+gains `from`, `to`, `settled`, `settleSeconds` and `coverageFrom`. See
+[Usage between two dates](#usage-between-two-dates) for what each one means and a full example.
+
 **What counts as call time.** Every call the voice agent handles: inbound and outbound, answered or not,
 including calls that left no transcript. Each call is measured from when its audio starts to when it ends,
 and added to the business that owns the phone number the call came in on or went out from. A call
@@ -298,6 +425,8 @@ Every response is JSON. Errors carry an `error` code to branch on, and a `messag
 
 | Status | `error` | Cause | What your integration should do |
 | --- | --- | --- | --- |
+| `400` | `invalid_range` | `from`/`to` isn't a valid ISO 8601 instant with an offset or `Z`, only one of the two was sent, or `from` is at or after `to`. | Don't retry unchanged. Fix the request — see [Usage between two dates](#usage-between-two-dates). This is checked before your key, so you'll see it even if the key is also wrong. |
+| `400` | `range_too_long` | The range from `from` to `to` covers more than 366 days. | Don't retry unchanged. Split the request into ranges of 366 days or less. |
 | `401` | `invalid_api_key` | The key is wrong, or it has been revoked. | **Stop and alert someone.** Don't retry. Check the configured key, or ask TecAce for a new one. |
 | `401` | `unauthorized` | No `Authorization` header, or its value isn't an `ak_` key. | Send `Authorization: Bearer ak_…` with the full key. |
 | `404` | `business_not_found` | No business has that `userId` — mistyped, or the business was removed. | Don't retry. Look the business up again in the full list (step 1). |

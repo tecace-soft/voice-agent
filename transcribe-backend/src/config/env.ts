@@ -68,6 +68,14 @@ if (!Number.isFinite(capWarnAt) || capWarnAt <= 0 || capWarnAt > 1) {
   throw new Error("TRANSCRIBE_CAP_WARN_AT must be a fraction between 0 and 1 (e.g. 0.8).");
 }
 
+// How long after a period ends its usage total stops changing. A call is only reported once it ends,
+// so one that started just before the boundary may still be running; an hour is far longer than any
+// real agent call, and the API tells callers the number it used.
+const settleSeconds = Number(process.env.USAGE_SETTLE_SECONDS ?? 3600);
+if (!Number.isFinite(settleSeconds) || settleSeconds < 0) {
+  throw new Error("USAGE_SETTLE_SECONDS must be a non-negative number of seconds.");
+}
+
 // Secret that signs dashboard session tokens. Required in production — without it nobody could be
 // kept signed in across deploys, and a predictable secret would let anyone mint a valid token.
 // In development an ephemeral one is generated so `bun run dev` works with no setup; it changes on
@@ -119,6 +127,7 @@ export const env = {
   monthlyCap,
   capWarnAt,
   overageRate,
+  settleSeconds,
   authSecret: resolveAuthSecret(),
   authTokenTtlHours: ttlHours,
   seedAdminEmail,
