@@ -33,6 +33,14 @@ Every file is a verbatim copy except for the edits listed below. Add a line for 
 
 No `tsc` strictness fixes were needed for the 13 `components/ui/*.tsx` files (`npx tsc --noEmit` is clean).
 
+### The remaining shadcn components (Task 2)
+
+Copied (`"use client"` removed): `components/ui/{tabs,sheet,separator}.tsx`.
+
+- `components/ui/sheet.tsx`: `<SheetPrimitive.Portal data-slot="sheet-portal" {...props} />` → adds `container={twPortalContainer()}`; new import `import { twPortalContainer } from "@/portal"` after the last import (same `SheetPortalProps.container` type as dialog/dropdown-menu/select). (portal)
+
+`tabs.tsx` and `separator.tsx` have no edits beyond the directive (no portal, no bare `var(--`). No `tsc` strictness fixes were needed for these 3 files (`npx tsc --noEmit` is clean).
+
 ### Overview + Prospects screens (Task 5)
 
 Copied (LF, `"use client"` removed): `components/admin/{shared,CustomerTable,NewCustomerDialog}.tsx`, `components/charts/{CallsPerDayChart,TopCustomersChart}.tsx`; `app/admin/(dashboard)/page.tsx` → `screens/OverviewScreen.tsx`; `app/admin/(dashboard)/customers/page.tsx` → `screens/ProspectsScreen.tsx`. `shared.tsx` has no edits beyond the directive.
@@ -54,6 +62,22 @@ Legacy class-name scan (literal `className`s in `components/` + `screens/`): hit
 - `lib/chart-theme.ts` `readChartTheme()`: the `getPropertyValue` reads `--chart-${i + 1}` → `--ui-chart-${i + 1}`, `--foreground` → `--ui-foreground`, `--muted-foreground` → `--ui-muted-foreground`, `--card` → `--ui-card`, `--border` → `--ui-border`, `--success` → `--ui-success`, `--destructive` → `--ui-destructive`, `--font-sans` → `--ui-font-sans`. The bare names read the *transcribe* variables on `<html>` or nothing at all (dark `--chart-1` is the 3-digit `#59f`, so the charts' `${color}1F` alpha suffix made an invalid colour and the fill/bars painted black; axis labels fell back to black). The `--ui-*` tokens are the promo theme's own, defined unlayered on `:root`/`.dark`. `CHART_SERIES`' comment (`--chart-1 .. --chart-7`) left verbatim. (raw vars, JS)
 
 - `components/charts/CallsPerDayChart.tsx`, `TopCustomersChart.tsx`: `useEffect(() => applyChartDefaults(), [resolvedTheme])` -> `applyChartDefaults()` called during render; the now-unused `useEffect` import dropped. Fixes a bug that is also in the promo: the child `<Line>`/`<Bar>` effect built the chart before the parent's effect updated Chart.js defaults, so after a theme toggle the axis labels drew in the previous theme's colours. Found in the stage-4a re-review. (bug fix, upstream too)
+
+### Prospect detail (stage 4b)
+
+Copied (`"use client"` removed): `components/admin/{ActivityTab,KnowledgeEditor,PromptEditor,ResearchInputsPanel,SharePanel}.tsx`, `components/call/{CallPanel,Transcript}.tsx`, `components/public/{Exchange,SchedulePanel}.tsx`, `components/research/SourcesPanel.tsx`, `hooks/useLiveCall.ts`; `app/admin/(dashboard)/customers/[id]/page.tsx` → `screens/ProspectScreen.tsx`. `Exchange.tsx` has no directive and is byte-identical to the promo (modulo line endings); `PromptEditor`, `ResearchInputsPanel`, `SharePanel`, `CallPanel`, `Transcript`, `SchedulePanel`, `SourcesPanel` have no edits beyond the directive.
+
+- `components/admin/ActivityTab.tsx`: new first import `import { promoFetch } from "@/api"`; `:160` `fetch(`/api/admin/customers/${customerId}/calls`, {…})` → `promoFetch(…)` (same arguments). (fetch)
+- `components/admin/KnowledgeEditor.tsx:122`: `day: DAYS[profile.hours.length % 7],` → `day: DAYS[profile.hours.length % 7]!,` (`DAYS` is the fixed 7-entry weekday array at `:15`, so `% 7` is always in range). (strictness)
+- `hooks/useLiveCall.ts`: new first import `import { promoFetch, promoUrl } from "@/api"`; `:163` `navigator.sendBeacon(url, …)` → `navigator.sendBeacon(promoUrl(url), …)` (a beacon can't go through `promoFetch`; `promoUrl` maps the same `/api/calls/${callId}` path onto the `/promo-api` proxy); `:166` `void fetch(url, {…})` → `void promoFetch(url, {…})` (the non-beacon fallback; `url` is still the `/api/…` path); `:315` `fetch("/api/session", {…})` → `promoFetch(…)`. (fetch, beacon)
+- `screens/ProspectScreen.tsx`: new first import `import { promoFetch } from "@/api"`; `export default function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) { const { id } = use(params);` → `export function ProspectScreen({ id }: { id: string }) {` (Next's route params → a plain prop; everything after unchanged) and `use` dropped from the `react` import (now unused); the four `fetch(`/api/admin/customers/${id}…`, …)` calls (`:51` GET, `:102` PATCH, `:121` POST research, `:298` PATCH) → `promoFetch(…)` (same arguments). (params, fetch, naming)
+
+Scans: no `var(--…)`, `getPropertyValue(` or other `--x` custom-property reference anywhere in these 12 files (the only inline `style` is `SharePanel.tsx:87`'s computed `width`; `SchedulePanel.tsx`'s literal hex fills are the Microsoft logo and the white initial on an integration's brand-colour monogram, theme-independent in the promo too). Legacy class-name scan (4a Task 5 Step 6 script over `components/` + `screens/`): only `grid` (new: `KnowledgeEditor`, `PromptEditor`, `ResearchInputsPanel`, `SchedulePanel`, `SharePanel`, `ProspectScreen`) and `sr-only` (`ui/dialog.tsx`, `ui/sheet.tsx`) — both allowed (see the 4a note above). A wider scan of every quoted string in the new files also matched `short`, `icon`, `line`, `session`, `error`, `muted` — all false positives (prose, the `size="icon"` cva variant key, `state === "error"`, Exchange's `muted` prop), none used as a class. Only `KnowledgeEditor.tsx:122` needed a `tsc` strictness fix.
+
+### Stage 4b review fixes
+
+- `hooks/useLiveCall.ts`: new `const aliveRef = useRef(true)` after `greetTimerRef`; the pagehide/unmount effect sets `aliveRef.current = true` in its body (so StrictMode's mount → cleanup → mount leaves it true) and `false` first thing in its cleanup, before `onLeave()`. In `dial`: after `getUserMedia` resolves, if not alive → stop the stream's tracks and return (before any peer connection, CallAudio or ringtone); after `waitForIceGathering`, if not alive → `teardown()` and return (before the ringtone and the session request); after the session answer is read, if not alive → `teardown()`, and if a `callId` came back set `callIdRef` and `report("abandoned", "unmounted", true)`, then return. `report` added to `dial`'s dependency list. Without this, leaving the page while the microphone prompt (or ICE gathering, or the session request) was pending let `dial` carry on after unmount — mic open, ringtone, `POST /api/session`, a live billed session with no UI and no end report (`onLeave` saw no `pcRef` yet, so did nothing). Worse here than in the promo: in this hash-routed SPA a sidebar click unmounts the page without a pagehide. (bug fix, upstream too)
+- `lib/ringtone.ts` `start()`: after the `context.resume()` try/catch, added `if (!this.context) return;` — `stop()` can run while `resume()` is pending (a fast refusal from `/api/session` ends the call first), leaving `this.context` null, and the following `this.context.createGain()` threw inside the unawaited `void ringtone.start()` → an unhandled rejection. (bug fix, upstream too)
 
 ## Tests
 

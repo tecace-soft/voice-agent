@@ -36,3 +36,26 @@ Without them the Demos section reports "Demo service unreachable". Also set
 `VITE_PUBLIC_DEMO_BASE_URL` (build time) to the promo's public origin: it is the origin of the demo
 links the Prospects screen copies and emails, and without it they fall back to this dashboard's own
 origin (its sign-in page). `npm run build` warns when it is unset.
+
+**Also check at first deploy:**
+- The promo's `/api/session` rate limit (5 calls/min) keys on `x-forwarded-for`. Behind a Vercel
+  rewrite it may see Vercel's egress address rather than each admin's, putting every admin's test
+  calls in one bucket. (Through the local Vite proxy every caller is keyed as `local`.)
+- Re-running research can take over a minute (the promo route allows 300 s). A rewrite's own proxy
+  timeout may answer with a gateway error while the research still finishes on the promo; the page
+  reloads the record either way, but confirm the timeout.
+
+## Trying a real test call
+
+The end-to-end script proves everything up to the promo's session request (with a fake microphone),
+but not the conversation itself. To hear one:
+
+1. In the voiceagent_promo repo: `.env.local` with `OPENAI_API_KEY`, `ADMIN_PASSWORD` and
+   `ADMIN_SESSION_SECRET`, then `npm run dev` (port 3000).
+2. Here: `PROMO_API_URL=http://localhost:3000` (and `VITE_BACKEND_URL` for the dashboard sign-in),
+   then `npm run dev` and open http://localhost:5175.
+3. Sign in as an admin, open **Demos**, unlock with the promo's `ADMIN_PASSWORD`, open a *ready*
+   prospect and press the test call. Allow the microphone.
+
+It is a real GPT-Live-1 session, billed to that OpenAI key. It's tagged as a test, so it doesn't
+spend the prospect's demo minutes and is left out of the prospect's numbers.

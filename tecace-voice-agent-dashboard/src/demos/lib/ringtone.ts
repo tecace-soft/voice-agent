@@ -21,6 +21,8 @@ export class Ringtone {
         // Autoplay policy can refuse; the call still works without a tone.
       }
     }
+    // stop() may have run while resume() was pending (a fast refusal ends the call first).
+    if (!this.context) return;
 
     this.gain = this.context.createGain();
     this.gain.gain.value = 0;

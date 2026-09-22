@@ -60,7 +60,8 @@ for the promo screens only. `CLAUDE.md` is updated to say so (stage 2).
   - anything else → the signed-in dashboard.
 - Dashboard views stay in the URL hash, as in the transcribe app today. `routing.ts` gains optional
   path parameters so a view can address a record: `#/demos/overview`, `#/demos/prospects`,
-  `#/demos/prospects/<id>?tab=knowledge`, `#/demos/pipeline`.
+  `#/demos/prospects/<id>`, `#/demos/pipeline`. The active tab on a prospect is component
+  state, as in the promo (decided in 4b: not worth deviating from the source).
 - The existing bug where `apiKeys` is missing from the router's view list is fixed while in there.
 - `vercel.json` already rewrites every path to `index.html`; the `/promo-api` and `/promo-page`
   rewrites (section 5) go before it.

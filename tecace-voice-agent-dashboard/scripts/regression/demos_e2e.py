@@ -12,6 +12,7 @@ signs in against fake_backend.py and walks the flow in Edge. Exit 0 = all checks
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import socket
@@ -126,7 +127,7 @@ STAT_JS = """
   for (const label of document.querySelectorAll('main .tw span.ta-label-1')) {
     if (label.textContent.trim() !== title) continue;
     const value = label.parentElement.querySelector('.ta-numeric');
-    return value ? value.textContent.trim() : null;
+    if (value) return value.textContent.trim();
   }
   return null;
 }
@@ -183,15 +184,75 @@ CANVAS_PIXELS_JS = """
 """
 
 
+# Keeps every stream getUserMedia hands the page, so the harness can see the test call stop the
+# microphone afterwards (every track "ended"). With window.__holdMic = true, getUserMedia waits
+# (like a permission prompt left open) until the harness calls window.__releaseMic(); window.__micHeld
+# says it is waiting. Behaviour is otherwise unchanged.
+MIC_HOOK_JS = """
+(() => {
+  const md = navigator.mediaDevices;
+  if (!md || !md.getUserMedia) return;
+  const original = md.getUserMedia.bind(md);
+  window.__micStreams = [];
+  window.__holdMic = false;
+  window.__micHeld = false;
+  md.getUserMedia = async (constraints) => {
+    if (window.__holdMic) {
+      window.__micHeld = true;
+      await new Promise((resolve) => { window.__releaseMic = resolve; });
+      window.__micHeld = false;
+    }
+    const stream = await original(constraints);
+    window.__micStreams.push(stream);
+    return stream;
+  };
+})();
+"""
+
+MIC_STATE_JS = """
+() => (window.__micStreams || []).map((s) => s.getTracks().map((t) => t.kind + ':' + t.readyState))
+"""
+
+# Marks the toasts on screen now, so a wait can tell a new toast from one still fading out.
+MARK_TOASTS_JS = "() => document.querySelectorAll('[data-sonner-toast]').forEach((t) => t.dataset.seen = '1')"
+
+
+def new_toast(page, text: str):
+    """Wait for a toast with `text` that wasn't on screen at the last MARK_TOASTS_JS."""
+    page.locator("main .tw [data-sonner-toast]:not([data-seen])", has_text=text).first.wait_for()
+    return True
+
+
+def legacy_collisions(css: dict, classes: set[str]) -> tuple[list[str], list[str]]:
+    """Classes on promo markup that a rule in @layer legacy also uses: (collisions, shadowed).
+
+    sr-only: Tailwind's utility sets a superset of the transcribe rule's properties (spec §3).
+    grid: legacy only has `.areachart .grid` / `.barchart .grid` (SVG gridlines), which can't
+    match promo markup — no promo element sits under .areachart/.barchart. The TecAce type scale
+    (.ta-*) is defined twice on purpose (spec §3): the transcribe copy in @layer legacy and the
+    promo's unlayered copy in @scope (.tw), which wins inside .tw. A shared .ta-* name passes
+    only when every legacy rule for it is a plain `.name` rule whose properties the promo's copy
+    also sets — i.e. it is fully shadowed.
+    """
+    legacy, scoped = css["legacy"], css["scoped"]
+    hits = sorted((classes & set(legacy)) - {"sr-only", "grid"})
+    shadowed = [c for c in hits
+                if c.startswith("ta-") and not legacy[c]["compound"]
+                and set(legacy[c]["props"]) <= set(scoped.get(c, []))]
+    return [c for c in hits if c not in shadowed], shadowed
+
+
 def open_page(browser, token: str | None, url: str, promo_requests: list[str], page_errors: list[str]):
     ctx = browser.new_context(viewport={"width": 1440, "height": 900}, reduced_motion="reduce")
-    init = ["try { localStorage.clear(); } catch (e) {}", "localStorage.setItem('theme', 'light');"]
+    init = ["try { localStorage.clear(); } catch (e) {}", "localStorage.setItem('theme', 'light');",
+            MIC_HOOK_JS]
     if token:
         init.append(f"localStorage.setItem('transcribe.token', '{token}');")
     ctx.add_init_script("\n".join(init))
     # "Copy link" / "Copy email" write to the clipboard; without the grant the write is refused
-    # and the (unawaited) promise rejection would surface as a page error.
-    ctx.grant_permissions(["clipboard-read", "clipboard-write"])
+    # and the (unawaited) promise rejection would surface as a page error. The microphone is
+    # Edge's fake device (launch flags), granted so the test call's getUserMedia needs no prompt.
+    ctx.grant_permissions(["microphone", "clipboard-read", "clipboard-write"])
     page = ctx.new_page()
     page.route("**/favicon.ico", lambda r: r.fulfill(status=204))
     page.on("request", lambda r: promo_requests.append(f"{r.method} {urlparse(r.url).path}")
@@ -222,7 +283,10 @@ def run() -> int:
             base = f"http://127.0.0.1:{NEW_PORT}/"
             try:
                 with sync_playwright() as p:
-                    browser = p.chromium.launch(channel="msedge")
+                    # A fake microphone (a generated tone), with no permission prompt, so the test
+                    # call builds a real WebRTC offer.
+                    browser = p.chromium.launch(channel="msedge", args=[
+                        "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"])
 
                     # A user never sees the Demos section, and asking for it by URL is refused
                     # without the promo ever being contacted.
@@ -410,41 +474,283 @@ def run() -> int:
 
                     # --- No transcribe class name lands on promo markup ---
                     css = page.evaluate(LEGACY_CLASSES_JS)
-                    legacy, scoped = css["legacy"], css["scoped"]
-                    # sr-only: Tailwind's utility sets a superset of the transcribe rule's
-                    # properties (spec §3). grid: legacy only has `.areachart .grid` /
-                    # `.barchart .grid` (SVG gridlines), which can't match promo markup — no
-                    # promo element sits under .areachart/.barchart.
-                    allowed = {"sr-only", "grid"}
-                    hits = sorted((tw_classes & set(legacy)) - allowed)
-                    # The TecAce type scale (.ta-*) is defined twice on purpose (spec §3): the
-                    # transcribe copy in @layer legacy and the promo's unlayered copy in
-                    # @scope (.tw), which wins inside .tw. A shared name passes only when every
-                    # legacy rule for it is a plain `.name` rule whose properties the promo's
-                    # copy also sets — i.e. it is fully shadowed.
-                    shadowed = [c for c in hits
-                                if c.startswith("ta-") and not legacy[c]["compound"]
-                                and set(legacy[c]["props"]) <= set(scoped.get(c, []))]
-                    bad = [c for c in hits if c not in shadowed]
+                    bad, shadowed = legacy_collisions(css, tw_classes)
                     check("no @layer legacy class name on promo markup (bar sr-only, grid, shadowed .ta-*)",
-                          bool(legacy) and bool(tw_classes) and bad == [],
-                          f"collisions: {bad}; legacy classes seen: {len(legacy)}")
+                          bool(css["legacy"]) and bool(tw_classes) and bad == [],
+                          f"collisions: {bad}; legacy classes seen: {len(css['legacy'])}")
                     if shadowed:
                         print(f"       (fully shadowed by the promo's own copy: {', '.join(shadowed)})")
 
+                    # --- The prospect page (the promo's real customer page) ---
                     page.get_by_role("button", name="Prospects", exact=True).click()
                     harbor_link.wait_for()
                     harbor_link.click()
-                    page.get_by_role("heading", name="Harbor Dental").wait_for()
+                    page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
                     check("a prospect gets its own URL",
                           page.evaluate("location.hash") == "#/demos/prospects/pr0SPct1",
                           page.evaluate("location.hash"))
                     check("Prospects stays highlighted on a prospect",
                           page.locator(".nav-item.is-active").inner_text().strip() == "Prospects")
 
+                    main_tw = page.locator("main .tw")
+                    stats = {t: page.evaluate(STAT_JS, t)
+                             for t in ("Link opens", "Calls", "Minutes", "Average call")}
+                    check("prospect: header names the business and its address",
+                          main_tw.get_by_text("12 Wharf St, Portland, ME", exact=True).is_visible())
+                    check("prospect: the stat cards show the promo's numbers",
+                          stats == {"Link opens": "14", "Calls": "3", "Minutes": "9", "Average call": "3:00"},
+                          str(stats))
+                    per_state: dict[str, set[str]] = {}
+
+                    def snapshot(label: str) -> None:
+                        per_state[label] = set(page.evaluate(TW_CLASSES_JS))
+
+                    # Activity (the default tab)
+                    transcript_buttons = main_tw.get_by_role("button", name="Read the full transcript")
+                    check("activity: one card per call (4)", transcript_buttons.count() == 4,
+                          str(transcript_buttons.count()))
+                    fix = main_tw.locator("section", has=page.get_by_role("heading", name="What to fix"))
+                    shared = fix.locator("li", has_text="No price list for implants")
+                    check("activity: the gap roll-up counts the shared gap twice",
+                          shared.count() == 1 and shared.locator(".ta-numeric").inner_text().strip() == "2",
+                          fix.inner_text() if fix.count() else "no 'What to fix' section")
+                    check("activity: the test call is called out",
+                          main_tw.get_by_text("1 of these are marked as your own tests").is_visible())
+                    snapshot("activity")
+
+                    transcript_buttons.nth(1).click()  # call2: the 18-turn reviewed call
+                    sheet = page.locator("[data-tw-portal] [role=dialog]")
+                    sheet.wait_for()
+                    check("activity: the transcript opens in a sheet inside [data-tw-portal]",
+                          page.locator("[role=dialog]").count() == 1
+                          and sheet.get_by_role("heading", name="Call transcript").is_visible()
+                          and sheet.get_by_text("Perfect, book me in for Thursday then.").is_visible())
+                    snapshot("activity + transcript sheet")
+                    page.keyboard.press("Escape")
+                    sheet.wait_for(state="detached")
+
+                    page.evaluate(MARK_TOASTS_JS)
+                    with page.expect_request(lambda r: r.method == "PATCH"
+                                             and r.url.endswith("/promo-api/admin/customers/pr0SPct1/calls")) as req:
+                        main_tw.get_by_role("switch", name="Count this call as your test").first.click()
+                    body = req.value.post_data_json
+                    check("activity: marking a call as a test PATCHes {callId, isTest}",
+                          body == {"callId": "call2", "isTest": True}, str(body))
+                    check("activity: ... and says so", new_toast(page, "Counted as your test."))
+
+                    # Knowledge
+                    main_tw.get_by_role("tab", name="Knowledge").click()
+                    phone = main_tw.get_by_label("Phone", exact=True)
+                    phone.wait_for()
+                    check("knowledge: the fields hold the profile",
+                          phone.input_value() == "+1 207 555 0142"
+                          and main_tw.get_by_label("Category", exact=True).input_value() == "Dentist")
+                    snapshot("knowledge")
+                    phone.fill("+1 207 555 0199")
+                    page.evaluate(MARK_TOASTS_JS)
+                    with page.expect_request(lambda r: r.method == "PATCH"
+                                             and r.url.endswith("/promo-api/admin/customers/pr0SPct1")) as req:
+                        main_tw.get_by_role("button", name="Save", exact=True).click()
+                    body = req.value.post_data_json
+                    check("knowledge: Save PATCHes the edited profile",
+                          body["profile"]["phone"] == "+1 207 555 0199"
+                          and body["profile"]["name"] == "Harbor Dental", str(body.get("profile")))
+                    check("knowledge: ... and says Saved.", new_toast(page, "Saved."))
+
+                    # Schedule (a mock-up drawn from the profile's hours)
+                    main_tw.get_by_role("tab", name=re.compile(r"^Schedule")).click()
+                    main_tw.get_by_role("heading", name="A week on the book").wait_for()
+                    week = page.evaluate("""() => [...document.querySelectorAll('main .tw .grid-cols-7 > div')]
+                        .map((col) => [...col.querySelectorAll(':scope > div:first-child p')]
+                        .map((p) => p.textContent.trim()).join(' '))""")
+                    expected = [f"{d} 08:00 to 17:00" for d in ("Mon", "Tue", "Wed", "Thu", "Fri")] \
+                        + ["Sat Closed", "Sun Closed"]
+                    check("schedule: the week grid follows the hours (Mon-Fri 08:00-17:00, weekend closed)",
+                          week == expected, str(week))
+                    check("schedule: it says it's a mock-up",
+                          main_tw.get_by_text(re.compile(r"is a mock-up drawn from Harbor Dental")).is_visible())
+                    snapshot("schedule")
+
+                    # Prompt
+                    main_tw.get_by_role("tab", name="Prompt").click()
+                    greeting = main_tw.get_by_label("Greeting", exact=True)
+                    greeting.wait_for()
+                    check("prompt: the three prompts are shown",
+                          main_tw.get_by_label("Voice prompt").input_value().startswith("You are Alex, the receptionist at Harbor Dental")
+                          and main_tw.get_by_label("Backend prompt").input_value() == "Facts about Harbor Dental for the receptionist."
+                          and greeting.input_value() == "Thanks for calling Harbor Dental, this is Alex. How can I help?")
+                    snapshot("prompt")
+                    greeting.fill("Harbor Dental, Alex speaking. What can I do for you?")
+                    page.evaluate(MARK_TOASTS_JS)
+                    with page.expect_request(lambda r: r.method == "PATCH"
+                                             and r.url.endswith("/promo-api/admin/customers/pr0SPct1")) as req:
+                        main_tw.get_by_role("button", name="Save", exact=True).click()
+                    body = req.value.post_data_json
+                    check("prompt: an edited prompt is saved with prompts.edited true",
+                          body["prompts"]["edited"] is True
+                          and body["prompts"]["greeting"] == "Harbor Dental, Alex speaking. What can I do for you?",
+                          str(body.get("prompts")))
+                    new_toast(page, "Saved.")
+                    check("prompt: ... and the page says the prompts were edited by hand",
+                          main_tw.get_by_text("These prompts were edited by hand").is_visible())
+
+                    # Sources (the research inputs and the dossier as markdown)
+                    main_tw.get_by_role("tab", name="Sources").click()
+                    main_tw.get_by_role("heading", name="Raw research").wait_for()
+                    check("sources: the dossier renders as markdown (<strong>, <li>)",
+                          main_tw.locator("strong", has_text="Family dental practice").count() == 1
+                          and main_tw.locator("li", has_text="Free parking behind the building").count() == 1)
+                    links = main_tw.locator('a[href="https://harbordental.example"][target="_blank"],'
+                                            ' a[href="https://maps.google.com/?cid=42"][target="_blank"]')
+                    check("sources: the cited sources link out in a new tab", links.count() == 2,
+                          str(links.count()))
+                    snapshot("sources")
+
+                    # Share
+                    main_tw.get_by_role("tab", name="Share").click()
+                    link = main_tw.get_by_label("Customer link")
+                    link.wait_for()
+                    check("share: the customer link is the public demo URL",
+                          link.input_value() == f"{DEMO_BASE_URL}/c/pr0SPct1", link.input_value())
+                    page.evaluate(MARK_TOASTS_JS)
+                    main_tw.get_by_role("button", name="Copy", exact=True).click()
+                    new_toast(page, "Link copied.")
+                    copied = page.evaluate("navigator.clipboard.readText()")
+                    check("share: Copy copies it", copied == f"{DEMO_BASE_URL}/c/pr0SPct1", repr(copied))
+                    subject = main_tw.get_by_label("Email subject").input_value()
+                    email = main_tw.get_by_label("Email body").input_value()
+                    check("share: the email names the business and carries the link",
+                          "Harbor Dental" in subject and "Harbor Dental" in email
+                          and f"{DEMO_BASE_URL}/c/pr0SPct1" in email, subject)
+                    snapshot("share")
+
+                    # Re-research
+                    page.evaluate(MARK_TOASTS_JS)
+                    with page.expect_request(lambda r: r.method == "POST"
+                                             and r.url.endswith("/promo-api/admin/customers/pr0SPct1/research")) as req:
+                        main_tw.get_by_role("button", name="Re-research").click()
+                    body = req.value.post_data_json
+                    check("re-research POSTs the research inputs",
+                          body.get("businessName") == "Harbor Dental" and body.get("regeneratePrompts") is False,
+                          str(body))
+                    check("re-research: ... and says Research finished.", new_toast(page, "Research finished."))
+
+                    # The test call: a real offer from the fake microphone, refused by the promo's
+                    # own "every line busy" answer (the fake can't mint an OpenAI SDP answer).
+                    call_now = main_tw.get_by_role("button", name="Call now")
+                    for attempt in (1, 2):
+                        with page.expect_request(lambda r: r.method == "POST"
+                                                 and r.url.endswith("/promo-api/session"),
+                                                 timeout=15000) as req:
+                            call_now.click()
+                        body = req.value.post_data_json or {}
+                        busy = main_tw.get_by_role("alert").filter(has_text=fake_promo.BUSY_EVERYWHERE)
+                        busy.wait_for()
+                        again = main_tw.get_by_role("button", name="Start a new call")
+                        again.wait_for()
+                        if attempt == 1:
+                            check("test call: POST /promo-api/session with customerId, isTest and a real SDP offer",
+                                  body.get("customerId") == "pr0SPct1" and body.get("isTest") is True
+                                  and str(body.get("sdp", "")).startswith("v=0"),
+                                  str({k: (v[:12] + "…" if isinstance(v, str) and len(v) > 12 else v)
+                                       for k, v in body.items()}))
+                            check("test call: the busy refusal is shown, and 'Call failed'",
+                                  busy.is_visible() and main_tw.get_by_text("Call failed").is_visible())
+                            mics = page.evaluate(MIC_STATE_JS)
+                            check("test call: the fake microphone was opened and is stopped again",
+                                  len(mics) == 1 and mics[0] and all(t.endswith(":ended") for t in mics[0]),
+                                  str(mics))
+                            snapshot("test call refused")
+                        again.click()
+                        call_now.wait_for()
+                        if attempt == 1:
+                            check("test call: 'Call again' returns to a callable state",
+                                  call_now.is_enabled() and busy.count() == 0)
+                    mics = page.evaluate(MIC_STATE_JS)
+                    check("test call: a retry dials again and stops its microphone too",
+                          len(mics) == 2 and all(all(t.endswith(":ended") for t in s) for s in mics),
+                          str(mics))
+
+                    # Leaving the page while the microphone prompt is still open must not let the
+                    # call carry on behind it (mic, ringtone, a session nobody hears or reports).
+                    page.evaluate("() => { window.__holdMic = true; }")
+                    call_now.click()
+                    page.wait_for_function("() => window.__micHeld === true")
+                    page.get_by_role("button", name="Prospects", exact=True).click()
+                    harbor_link.wait_for()
+                    after_leave = len(reqs)
+                    page.evaluate("() => { window.__holdMic = false; window.__releaseMic(); }")
+                    page.wait_for_function("() => window.__micStreams.length === 3")
+                    page.wait_for_timeout(3000)  # time for a runaway dial to reach /api/session
+                    late = [r for r in reqs[after_leave:] if r.endswith("/promo-api/session")]
+                    check("test call: leaving mid-dial sends no session request afterwards", late == [],
+                          str(late))
+                    mics = page.evaluate(MIC_STATE_JS)
+                    check("test call: ... and the microphone it got after leaving is stopped "
+                          "(also true without the guard against the fake's 429; "
+                          "the no-session-request check is the proof)",
+                          len(mics) == 3 and all(t.endswith(":ended") for t in mics[2]), str(mics))
+                    harbor_link.click()
+                    page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
+
+                    # The billed case: the promo GRANTS the session after the admin has left.
+                    # The session request is held (not answered) until the page is gone, then
+                    # answered with a grant; the call must be handed back with one "abandoned /
+                    # unmounted" report and go no further (the fake SDP would make
+                    # setRemoteDescription throw if it did).
+                    held: list = []
+                    reports: list[dict] = []
+
+                    def record_report(route):
+                        try:
+                            body = json.loads(route.request.post_data or "{}")
+                        except ValueError:
+                            body = {"unparsable": route.request.post_data}
+                        reports.append({"path": urlparse(route.request.url).path, **body})
+                        route.fulfill(status=200, content_type="application/json", body='{"ok": true}')
+
+                    page.route("**/promo-api/session", lambda route: held.append(route))
+                    page.route("**/promo-api/calls/**", record_report)
+                    errors_before = len(page_errors)
+                    call_now.click()
+                    for _ in range(150):  # up to 15 s for the mic, the offer and ICE gathering
+                        if held:
+                            break
+                        page.wait_for_timeout(100)
+                    if not held:
+                        raise HarnessError("the test call never sent its session request")
+                    page.get_by_role("button", name="Prospects", exact=True).click()
+                    harbor_link.wait_for()
+                    held[0].fulfill(status=200, content_type="application/json",
+                                    body=json.dumps({"callId": "held42", "sdp": "v=0\r\n", "greeting": "Hi."}))
+                    for _ in range(50):
+                        if reports:
+                            break
+                        page.wait_for_timeout(100)
+                    page.wait_for_timeout(3000)  # time for a second report to show up
+                    check("test call: a session granted after leaving is reported once as abandoned/unmounted",
+                          len(reports) == 1 and reports[0]["path"] == "/promo-api/calls/held42"
+                          and reports[0].get("status") == "abandoned"
+                          and reports[0].get("endReason") == "unmounted",
+                          str([{k: v for k, v in rep.items() if k != "transcript"} for rep in reports]))
+                    mics = page.evaluate(MIC_STATE_JS)
+                    check("test call: ... its microphone is stopped and nothing threw",
+                          len(mics) == 4 and all(t.endswith(":ended") for t in mics[3])
+                          and len(page_errors) == errors_before,
+                          f"{mics} {page_errors[errors_before:]}")
+                    page.unroute("**/promo-api/session")
+                    page.unroute("**/promo-api/calls/**")
+                    harbor_link.click()
+                    page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
+
+                    for label, classes in per_state.items():
+                        bad, _ = legacy_collisions(css, classes)
+                        check(f"no @layer legacy class name on promo markup: prospect / {label}",
+                              bool(classes) and bad == [], f"collisions: {bad}")
+
                     page.reload()
                     settle(page)
-                    page.get_by_role("heading", name="Harbor Dental").wait_for()
+                    page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
                     check("refresh keeps the prospect", True)
                     check("refresh stays unlocked (the promo cookie was kept)",
                           page.get_by_role("heading", name="Unlock demos").count() == 0)
@@ -452,9 +758,21 @@ def run() -> int:
                     page.goto(base + "#/demos/prospects/nope")
                     page.reload()
                     settle(page)
-                    page.get_by_role("alert").wait_for()
-                    check("an unknown prospect says so",
-                          "That prospect doesn't exist." in page.get_by_role("alert").inner_text())
+                    page.locator("main .tw").get_by_text("Customer not found.").wait_for()
+                    check("an unknown prospect says so (the promo's 404 message)",
+                          page.get_by_role("heading", name="Harbor Dental").count() == 0)
+
+                    # A record id that isn't a promo id never reaches a promo path: the hash
+                    # decodes to "../../analytics", which would leave the customer route.
+                    reqs.clear()
+                    page.evaluate("() => { location.hash = '#/demos/prospects/..%2F..%2Fanalytics'; }")
+                    harbor_link.wait_for()
+                    page.wait_for_timeout(500)
+                    stray = [r for r in reqs if not re.fullmatch(
+                        r"/promo-api/admin/customers(/[A-Za-z0-9_-]+(/[a-z]+)?)?", r.split(" ", 1)[1])]
+                    check("a malformed prospect id shows the list and asks the promo nothing else",
+                          page.get_by_role("heading", name="Prospects", level=1).is_visible() and stray == [],
+                          str(reqs))
 
                     page.goto(base + "#/apiKeys")
                     page.reload()

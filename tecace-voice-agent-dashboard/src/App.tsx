@@ -305,11 +305,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
               ))}
             {isDemoView &&
               (isAdmin ? (
-                <DemosView
-                  view={view}
-                  id={routeId}
-                  onShowProspects={() => navigate({ view: "demoProspects" })}
-                />
+                <DemosView view={view} id={routeId} />
               ) : (
                 <p className="muted ta-body-2">Only an admin can see the demos.</p>
               ))}

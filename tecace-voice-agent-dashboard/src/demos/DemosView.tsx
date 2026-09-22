@@ -1,26 +1,27 @@
 import type { ViewId } from "../components/Sidebar";
 import { DemosGate } from "./DemosGate";
 import { DemoPlaceholderPage } from "./pages/DemoPlaceholderPage";
-import { DemoProspectPage } from "./pages/DemoProspectPage";
 import { OverviewScreen } from "./screens/OverviewScreen";
+import { ProspectScreen } from "./screens/ProspectScreen";
 import { ProspectsScreen } from "./screens/ProspectsScreen";
+import { isPromoId } from "./routes";
 
 // Which Demos screen to show for a route. Everything goes through the gate (promo sign-in + the
 // .tw styling boundary).
 export function DemosView({
   view,
   id,
-  onShowProspects,
 }: {
   view: ViewId;
   id: string | undefined;
-  onShowProspects: () => void;
 }) {
   return (
     <DemosGate>
       {view === "demoOverview" && <OverviewScreen />}
       {view === "demoProspects" && <ProspectsScreen />}
-      {view === "demoProspect" && (id ? <DemoProspectPage id={id} onBack={onShowProspects} /> : <ProspectsScreen />)}
+      {/* Only a well-formed id reaches ProspectScreen (kept verbatim), which puts it in a promo path. */}
+      {view === "demoProspect" &&
+        (id && isPromoId(id) ? <ProspectScreen key={id} id={id} /> : <ProspectsScreen />)}
       {view === "demoPipeline" && (
         <DemoPlaceholderPage
           title="Pipeline"

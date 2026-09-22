@@ -91,20 +91,52 @@ port 5199 and 8899 free; don't run it at the same time as `compare.py` (they'd s
     python scripts/regression/demos_e2e.py
 
 Builds this app, serves it with `vite preview` proxied (`PROMO_API_URL`) to `fake_promo.py` — a
-stand-in for voiceagent_promo's admin API that answers, statelessly, with the promo's full record
-shapes (two `CustomerWithStats` prospects, analytics KPIs/charts/recent calls; POST/PATCH/DELETE
-answer as if they worked and change nothing) — and walks the Demos section in Edge: a user never
-sees it; an admin unlocks it (wrong password rejected); the promo's real Prospects screen (table,
-search, the "More actions" menu and the "New customer" dialog rendered inside `[data-tw-portal]`
-with promo styling, copy-link / add / pause / resume toasts, the promo's 400 for a blank name) and
-Overview screen (KPI values, a `<canvas>` per chart, recent calls linking to the prospect; a theme
-toggle replaces both canvases, and in dark mode the chart colour variables are 6-digit hex and
-the line/area and bar canvases are actually painted in `--ui-chart-1`, not black — the dark
-Overview is saved to `DEMOS_E2E_SCREENSHOT`, default `%TEMP%/demos-e2e-chart-dark.png`); "Copy
-link" copies `VITE_PUBLIC_DEMO_BASE_URL/c/<id>` (the build sets it to `http://promo.example`); a
-promo session that ends mid-use (cookie cleared) re-locks the section on the next fetch; a runtime check that no class used in `@layer legacy` lands on
-promo markup (bar `sr-only`, `grid`, and the `.ta-*` type scale where the promo's unlayered copy
-fully shadows the transcribe one); a prospect opens by URL, refreshes and stays unlocked;
-`#/apiKeys` survives a refresh; signing out clears the promo cookie; a promo that's down shows the
-"unreachable" card and "Try again" recovers; no page errors throughout. Exit 0/1/2 like the others.
-Needs ports 5199, 8898 and 8899 free — don't run it at the same time as `compare.py`.
+stand-in for voiceagent_promo's API that answers, statelessly, with the promo's full record shapes
+(two `CustomerWithStats` prospects; Harbor Dental's detail with four calls — transcripts, reviews
+sharing a gap, one test call — 14 page views and a CRM note; analytics that agree with it;
+POST/PATCH/DELETE answer as if they worked and change nothing; the public `/api/session` always
+refuses with the promo's "All the demo lines are busy" 429) — and walks the Demos section in Edge:
+
+- a user never sees it; an admin unlocks it (wrong password rejected);
+- the Prospects screen: table, search, the "More actions" menu and the "New customer" dialog
+  rendered inside `[data-tw-portal]` with promo styling, copy-link / add / pause / resume toasts,
+  the promo's 400 for a blank name; "Copy link" copies `VITE_PUBLIC_DEMO_BASE_URL/c/<id>` (the
+  build sets it to `http://promo.example`);
+- the Overview screen: KPI values, a `<canvas>` per chart, recent calls linking to the prospect; a
+  theme toggle replaces both canvases, and in dark mode the chart colour variables are 6-digit hex
+  and the canvases are actually painted in `--ui-chart-1`, not black (the dark Overview is saved to
+  `DEMOS_E2E_SCREENSHOT`, default `%TEMP%/demos-e2e-chart-dark.png`); a promo session that ends
+  mid-use (cookie cleared) re-locks the section on the next fetch;
+- the prospect page: header and stat cards; Activity (a card per call, the gap roll-up count, the
+  transcript sheet inside `[data-tw-portal]`, "count as your test" PATCHes `{callId, isTest}`);
+  Knowledge (Save PATCHes the edited profile, "Saved."); Schedule (the week grid follows the
+  hours, says it's a mock-up); Prompt (the three prompts; an edit saves `prompts.edited: true`);
+  Sources (the dossier as markdown, source links with `target="_blank"`); Share (link, Copy,
+  email); Re-research (POST, "Research finished."); a refresh keeps it; an unknown id shows the
+  promo's "Customer not found."; a malformed id (`..%2F..%2Fanalytics`) shows the list and sends
+  no promo request outside `/promo-api/admin/customers`;
+- **the test call**: Edge runs with a fake microphone (`--use-fake-device-for-media-stream
+  --use-fake-ui-for-media-stream`, microphone permission granted), so pressing "Call now" builds a
+  real WebRTC offer. The check proves the request the promo would get — `POST
+  /promo-api/session` with `customerId`, `isTest: true` and an SDP offer (`v=0…`) — that the
+  promo's refusal is shown, that "Call again" makes a second attempt possible, and (through a
+  `getUserMedia` hook added by an init script) that each attempt's microphone tracks end up
+  stopped. The hook can also hold `getUserMedia` open like an unanswered permission prompt: the
+  check leaves the page mid-dial, releases it, and requires that no `/promo-api/session` request
+  follows and the late microphone is stopped (the microphone part is supporting evidence only:
+  against the fake's 429 it holds even without the guard; the no-session-request check is the
+  proof). A second check holds the session request itself (a Playwright route), leaves the page,
+  then answers it with a grant: exactly one report must follow, `POST /promo-api/calls/held42`
+  with `status: "abandoned"`, `endReason: "unmounted"`, and nothing may throw. It does **not**
+  prove a call connects: the fake can't answer with an OpenAI SDP, so the
+  live conversation (audio both ways, transcript, hang-up, the end-of-call report) is checked by
+  hand against the real promo;
+- a runtime check that no class used in `@layer legacy` lands on promo markup (bar `sr-only`,
+  `grid`, and the `.ta-*` type scale where the promo's unlayered copy fully shadows the transcribe
+  one) — over Overview, Prospects, the menu, the dialog, and each prospect tab, the transcript
+  sheet and the refused call, one check line per prospect-page state;
+- `#/apiKeys` survives a refresh; signing out clears the promo cookie; a promo that's down shows
+  the "unreachable" card and "Try again" recovers; no page errors throughout.
+
+Exit 0/1/2 like the others. Needs ports 5199, 8898 and 8899 free — don't run it at the same time
+as `compare.py`.

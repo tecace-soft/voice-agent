@@ -63,7 +63,8 @@ The header of `src/styles/index.css` explains the layer order and why; read it b
   render into `twPortalContainer()` (`@/portal`); `process.env.NEXT_PUBLIC_*` →
   `import.meta.env.VITE_*`; no bare `var(--x)` in CSS/markup and no bare
   `getPropertyValue("--x")` in JS (read `--ui-x`); don't reuse transcribe class names; strictness
-  fixes must keep behaviour identical. The toaster lives inside `DemosGate` (sonner can't portal).
+  fixes must keep behaviour identical. `navigator.sendBeacon` to a promo path → `sendBeacon(promoUrl("/api/…"))`; a
+  Next page's `params` → an `id` prop (see `screens/ProspectScreen.tsx`). The toaster lives inside `DemosGate` (sonner can't portal).
 - Toasts live inside the gate, so they survive navigation between Demos views but vanish when
   leaving the section or when it re-locks.
 - Routes live in `src/routing.ts` `PATHS` (a `Record<ViewId, string>` — add every new view there;

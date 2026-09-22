@@ -41,6 +41,14 @@ export function setPromoLockedHandler(handler: (() => void) | null): void {
   onLocked = handler;
 }
 
+/** A promo `/api/…` path as the same-origin proxy URL — for what can't use promoFetch (a beacon). */
+export function promoUrl(path: string): string {
+  if (!path.startsWith("/api/")) {
+    throw new Error(`promoFetch only takes /api/ paths (got ${path})`);
+  }
+  return `${PROMO_API}${path.slice("/api".length)}`;
+}
+
 /**
  * The drop-in the ported promo screens use in place of `fetch("/api/…")`: it sends the request
  * through the /promo-api proxy with the cookie and returns the Response untouched, so the promo's
@@ -48,12 +56,10 @@ export function setPromoLockedHandler(handler: (() => void) | null): void {
  * swaps in the unlock card.
  */
 export async function promoFetch(input: string, init?: RequestInit): Promise<Response> {
-  if (!input.startsWith("/api/")) {
-    throw new Error(`promoFetch only takes /api/ paths (got ${input})`);
-  }
+  const url = promoUrl(input);
   let response: Response;
   try {
-    response = await fetch(`${PROMO_API}${input.slice("/api".length)}`, {
+    response = await fetch(url, {
       credentials: "same-origin",
       ...init,
     });
@@ -154,30 +160,4 @@ export async function lockPromo(): Promise<void> {
   } catch {
     /* already locked, or the promo isn't running — either way there's nothing left to clear */
   }
-}
-
-// The slice of the promo's customer record the stage-3 screens show. Stage 4 replaces this with
-// the promo's full `Customer` type when its screens are ported.
-export interface PromoProspect {
-  id: string;
-  businessName: string;
-  status: "researching" | "ready" | "error";
-  profile: { name: string; category: string };
-}
-
-// Promo record ids are nanoids — this alphabet, no separators. Rejecting anything else up front
-// (rather than letting it into the URL) is what stops a "/.." or similar from path-normalising a
-// request onto some other route on the promo origin.
-const PROSPECT_ID = /^[A-Za-z0-9_-]+$/;
-
-export async function getProspect(id: string): Promise<PromoProspect> {
-  if (!PROSPECT_ID.test(id)) {
-    throw new PromoError("failed", "That prospect doesn't exist.", 404);
-  }
-  const path = `/admin/customers/${encodeURIComponent(id)}`;
-  const data = await promoRequest<{ customer?: PromoProspect }>("GET", path);
-  if (!data.customer || typeof data.customer !== "object") {
-    throw new PromoError("failed", "The demo service sent an unexpected response.", 0);
-  }
-  return data.customer;
 }

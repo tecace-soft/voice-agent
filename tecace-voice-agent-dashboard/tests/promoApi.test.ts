@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  getProspect,
   lockPromo,
   probePromo,
   promoFetch,
   PromoError,
   promoRequest,
+  promoUrl,
   setPromoLockedHandler,
   unlockPromo,
 } from "../src/demos/api";
@@ -143,32 +143,6 @@ describe("unlock / lock", () => {
   });
 });
 
-describe("prospects", () => {
-  it("reads one prospect", async () => {
-    const fetchFn = stubFetch(async () => json(200, { customer: { id: "abc-123_XYZ" }, calls: [] }));
-    await expect(getProspect("abc-123_XYZ")).resolves.toEqual({ id: "abc-123_XYZ" });
-    expect(fetchFn.mock.calls[0]![0]).toBe("/promo-api/admin/customers/abc-123_XYZ");
-  });
-
-  it("treats a missing customer object as a failure, not a crash", async () => {
-    stubFetch(async () => json(200, { ok: true }));
-    await expect(getProspect("abc123")).rejects.toMatchObject({
-      kind: "failed",
-      message: "The demo service sent an unexpected response.",
-    });
-  });
-
-  it("rejects an id that isn't a plain nanoid, without ever asking the promo", async () => {
-    const fetchFn = stubFetch(async () => json(200, { customer: { id: "x" } }));
-    await expect(getProspect("../admin/login")).rejects.toMatchObject({
-      kind: "failed",
-      status: 404,
-      message: "That prospect doesn't exist.",
-    });
-    expect(fetchFn).not.toHaveBeenCalled();
-  });
-});
-
 // Only an answer that really came from the promo (a JSON object) proves its auth let us through. An
 // SPA fallback serving index.html (a deploy without the /promo-api rewrite), or some other server
 // on PROMO_API_URL, must read as "unreachable" — not as unlocked.
@@ -229,5 +203,15 @@ describe("promoFetch", () => {
   it("refuses anything that isn't a promo /api/ path", async () => {
     stubFetch(async () => json(200, {}));
     await expect(promoFetch("https://example.com/api/x")).rejects.toThrow(/only takes \/api\//);
+  });
+});
+
+describe("promoUrl", () => {
+  it("maps a promo /api/ path onto the proxy", () => {
+    expect(promoUrl("/api/calls/abc123")).toBe("/promo-api/calls/abc123");
+  });
+
+  it("refuses anything that isn't a promo /api/ path", () => {
+    expect(() => promoUrl("https://example.com/api/x")).toThrow(/only takes \/api\//);
   });
 });
