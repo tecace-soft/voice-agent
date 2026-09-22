@@ -50,9 +50,9 @@ The header of `src/styles/index.css` explains the layer order and why; read it b
 - The promo cookie is the real credential for the demos and knows nothing about dashboard roles, so
   `App` clears it whenever the dashboard session ends — a click, or an expired/revoked token. Keep
   it that way.
-- Proxy only what's needed: `/promo-api/*` and `/promo-page/c/*` (the public demo page, stage 5).
-  Never proxy the promo's other pages onto this origin — the dashboard's admin token lives in
-  localStorage here.
+- Proxy only `/promo-api/*`. The prospect-facing demo page (`/c/<id>`) stays on the promo and is
+  linked to via `VITE_PUBLIC_DEMO_BASE_URL` (decided in stage 5) — never proxy promo HTML onto this
+  origin: the dashboard's session token lives in localStorage here, and that page is public.
 - Ported promo code lives in `src/demos/` in the promo's own layout (`components/ui`,
   `components/admin`, `components/charts`, `lib`, and pages as `screens/`), imported as `@/…`
   (= `src/demos/`). It is a verbatim copy of voiceagent_promo @ f482848 plus the edits logged in
@@ -67,6 +67,9 @@ The header of `src/styles/index.css` explains the layer order and why; read it b
   Next page's `params` → an `id` prop (see `screens/ProspectScreen.tsx`). The toaster lives inside `DemosGate` (sonner can't portal).
 - Toasts live inside the gate, so they survive navigation between Demos views but vanish when
   leaving the section or when it re-locks.
+- Every Demos view is now a ported promo screen — `screens/{OverviewScreen,ProspectsScreen,
+  ProspectScreen,PipelineScreen}.tsx` (stage 4c finished the promo's admin side). There is no
+  `src/demos/pages/` any more.
 - Routes live in `src/routing.ts` `PATHS` (a `Record<ViewId, string>` — add every new view there;
   `:id` marks a record segment, e.g. `demos/prospects/:id`). `DEMO_VIEWS` lists the Demos views.
 

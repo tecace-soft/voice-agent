@@ -92,8 +92,10 @@ port 5199 and 8899 free; don't run it at the same time as `compare.py` (they'd s
 
 Builds this app, serves it with `vite preview` proxied (`PROMO_API_URL`) to `fake_promo.py` — a
 stand-in for voiceagent_promo's API that answers, statelessly, with the promo's full record shapes
-(two `CustomerWithStats` prospects; Harbor Dental's detail with four calls — transcripts, reviews
-sharing a gap, one test call — 14 page views and a CRM note; analytics that agree with it;
+(two `CustomerWithStats` prospects — Harbor "interested", Cedar "contacted" with an overdue
+follow-up; Harbor Dental's detail with four calls — transcripts, reviews sharing a gap, one test
+call — 14 page views and a CRM note, Cedar a note of its own; analytics and the CRM feed built
+from that same table, so every screen's numbers agree;
 POST/PATCH/DELETE answer as if they worked and change nothing; the public `/api/session` always
 refuses with the promo's "All the demo lines are busy" 429) — and walks the Demos section in Edge:
 
@@ -131,10 +133,28 @@ refuses with the promo's "All the demo lines are busy" 429) — and walks the De
   prove a call connects: the fake can't answer with an OpenAI SDP, so the
   live conversation (audio both ways, transcript, hang-up, the end-of-call report) is checked by
   hand against the real promo;
+- the pipeline (CRM) page: the stage board's columns, counts and cards (Harbor in Interested,
+  Cedar in Contacted), the "Due now" section naming Cedar, the activity feed across both
+  prospects (its first four rows asserted in order), and stage moves, each with the `PATCH` held
+  so the harness decides the answer — a granted move moves the card before the answer arrives
+  and toasts where it went; a refused one puts the card back and says why; a refused move whose
+  recovery reload also fails still says so, rather than leaving the card parked in a stage the
+  promo never accepted;
+- the drawer, opened all three ways (a board card, an activity-feed row, a "Due now" chip):
+  inside `[data-tw-portal]` with that prospect's timeline and a link to
+  `#/demos/prospects/pr0SPct1` (followed, it lands there); its own writes — the Stage select is a
+  second portal surface (a popover beside the modal sheet), and picking a stage `PATCH`es
+  `{stage}` while the follow-up date field `PATCH`es `{followUpAt}`; notes — a blank one can't be
+  sent (the button stays disabled, no request), a real one `POST`s `{text}`, clears the box and
+  shows no toast (the component reports only failures); and a slow read for a prospect that has
+  since been closed must not take over the drawer on screen, nor send its next save to that
+  older record. Because the fake is stateless, none of the drawer's writes change what the next
+  read returns, so the board behind it isn't asserted to follow them;
 - a runtime check that no class used in `@layer legacy` lands on promo markup (bar `sr-only`,
   `grid`, and the `.ta-*` type scale where the promo's unlayered copy fully shadows the transcribe
   one) — over Overview, Prospects, the menu, the dialog, and each prospect tab, the transcript
-  sheet and the refused call, one check line per prospect-page state;
+  sheet, the refused call and the pipeline page with and without its drawer, one check line per
+  state;
 - `#/apiKeys` survives a refresh; signing out clears the promo cookie; a promo that's down shows
   the "unreachable" card and "Try again" recovers; no page errors throughout.
 

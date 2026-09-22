@@ -29,13 +29,15 @@ to `PROMO_API_URL` (default `http://localhost:3000` — run `npm run dev` in the
 promo's own admin password unlocks them once per browser; signing out of the dashboard, or the
 dashboard session expiring, locks them again.
 
-**Before the first deploy:** Vercel doesn't run the Vite proxy, so `vercel.json` needs two
-rewrites, above the SPA fallback, pointing at the promo's deployed origin — and no wider than this:
-`/promo-api/:path*` → `<promo>/api/:path*` and `/promo-page/c/:path*` → `<promo>/c/:path*`.
-Without them the Demos section reports "Demo service unreachable". Also set
-`VITE_PUBLIC_DEMO_BASE_URL` (build time) to the promo's public origin: it is the origin of the demo
-links the Prospects screen copies and emails, and without it they fall back to this dashboard's own
-origin (its sign-in page). `npm run build` warns when it is unset.
+The prospect-facing demo page (`/c/<id>`) is **not** served here: the promo serves it, and this app
+only links to it. Set `VITE_PUBLIC_DEMO_BASE_URL` (build time) to the promo's public origin — it is
+the origin of the demo links the Prospects and Share screens copy and email, and without it they
+fall back to this dashboard's own origin (its sign-in page). `npm run build` warns when it is unset.
+
+**Before the first deploy:** Vercel doesn't run the Vite proxy, so `vercel.json` needs one rewrite,
+above the SPA fallback, pointing at the promo's deployed origin — and no wider than this:
+`/promo-api/:path*` → `<promo>/api/:path*`. Without it the Demos section reports "Demo service
+unreachable".
 
 **Also check at first deploy:**
 - The promo's `/api/session` rate limit (5 calls/min) keys on `x-forwarded-for`. Behind a Vercel

@@ -34,6 +34,15 @@ CallReview, TrackEvent, CrmNote) and lib/analytics.ts (Kpis, DayBucket, computeS
   -> {call}; bad JSON -> 400; neither -> 400 "Send a callId with isTest or analyze."; unknown call
   -> 404 "Call not found."; analyze on a call with too few caller lines -> 400 "This call is too
   short to say anything about."
+- GET /api/admin/crm -> {customers, feed}: the same two CustomerWithStats records the list route
+  serves (so the board's stage counts and heat agree), and activityFeed() over the same call /
+  event / note table the detail route reads — Harbor's calls, views and note plus Cedar's note,
+  newest first, each row carrying customerId/customerName (and callId on a call row). Harbor is
+  stage "interested"; Cedar is "contacted" with a followUpAt a day old, so the page's "Due now"
+  section has exactly one entry.
+- GET /api/admin/customers/<id>/notes -> {notes} (the detail route's list); POST -> 201 {note}
+  ({id, at, text}, not stored); bad JSON -> 400 "Invalid request body."; blank/whitespace text ->
+  400 "Write something first." (checked before the customer, as the route does)
 - an unknown <id> on any /customers/<id> route -> 404 {error: "Customer not found."}
 - POST /api/session (PUBLIC — not under /api/admin, no cookie needed, as in the promo) {customerId,
   sdp, isTest?}: bad JSON -> 400; missing customerId/sdp -> 400 "Missing customerId or sdp.";
@@ -200,6 +209,12 @@ def harbor_notes() -> list[dict]:
     return [{"id": "note1", "at": _ago(days=2), "text": "Asked for a follow-up after the expo."}]
 
 
+def cedar_notes() -> list[dict]:
+    """Cedar has no calls or views (its stats stay empty, so its heat stays "cold / No activity
+    yet"), but one note — enough for the CRM feed to carry both prospects."""
+    return [{"id": "note2", "at": _ago(hours=5), "text": "Left a voicemail with the owner."}]
+
+
 def compute_stats(calls: list[dict], events: list[dict]) -> dict:
     """lib/analytics.ts computeStats(): only real, finished calls count."""
     real = [c for c in calls if not c["isTest"] and c["status"] != "started"]
@@ -220,6 +235,48 @@ def harbor_detail() -> dict:
     calls, events = harbor_calls(), harbor_events()
     return {"calls": calls, "events": events, "notes": harbor_notes(),
             "stats": compute_stats(calls, events)}
+
+
+def detail_for(customer_id: str) -> dict:
+    """One prospect's calls, events, notes and stats — the one table the detail route, the CRM
+    feed and the notes routes all read."""
+    if customer_id == "pr0SPct1":
+        return harbor_detail()
+    if customer_id == "cedar42":
+        return {"calls": [], "events": [], "notes": cedar_notes(), "stats": _empty_stats()}
+    return {"calls": [], "events": [], "notes": [], "stats": _empty_stats()}
+
+
+def _format_duration(seconds: int | None) -> str:
+    """lib/analytics.ts formatDuration()."""
+    if not seconds or seconds < 1:
+        return "0:00"
+    return f"{seconds // 60}:{round(seconds % 60):02d}"
+
+
+def activity_feed(limit: int = 40) -> list[dict]:
+    """lib/analytics.ts activityFeed(): every prospect's timeline() rows, newest first, each
+    carrying the prospect it belongs to (FeedEntry = TimelineEntry & {customerId, customerName})."""
+    entries = []
+    for customer in prospects():
+        detail = detail_for(customer["id"])
+        name = customer["profile"]["name"] or customer["businessName"] or "Unnamed"
+        who = {"customerId": customer["id"], "customerName": name}
+        for note in detail["notes"]:
+            entries.append({"at": note["at"], "kind": "note", "text": note["text"], **who})
+        for event in detail["events"]:
+            entries.append({"at": event["at"], "kind": "view", "text": "Opened the demo link", **who})
+        for call in detail["calls"]:
+            turns = call.get("turns", len(call["transcript"]))
+            length = _format_duration(call.get("durationSec"))
+            entries.append({
+                "at": call["startedAt"], "kind": "call", "callId": call["id"],
+                "text": (f"Your test call · {length} · {turns} turns" if call["isTest"]
+                         else f"Called · {length} · {turns} turns"),
+                **who,
+            })
+    entries.sort(key=lambda e: e["at"], reverse=True)
+    return entries[:limit]
 
 
 def prospects() -> list[dict]:
@@ -288,6 +345,9 @@ def prospects() -> list[dict]:
         "agentName": "Alex",
         "language": "en",
         "status": "researching",
+        # dueFollowUps() counts a followUpAt whose instant is <= now, soonest first.
+        "stage": "contacted",
+        "followUpAt": _ago(days=1),
         "createdAt": _ago(minutes=1),
         "updatedAt": _ago(minutes=1),
         "stats": _empty_stats(),
@@ -537,6 +597,9 @@ class Handler(BaseHTTPRequestHandler):
                 days = 30
             self._send(200, analytics(days, query.get("includeTests", [""])[0] == "1"))
             return
+        if path == "/api/admin/crm" and method == "GET":
+            self._send(200, {"customers": prospects(), "feed": activity_feed()})
+            return
         if path == "/api/admin/customers" and method == "GET":
             self._send(200, {"customers": prospects()})
             return
@@ -571,6 +634,9 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) == 2 and parts[1] == "calls" and method in ("GET", "PATCH"):
                 self._calls(method, parts[0])
                 return
+            if len(parts) == 2 and parts[1] == "notes" and method in ("GET", "POST"):
+                self._notes(method, parts[0])
+                return
         self._send(404, {"error": f"No fake for {method} {path}"})
 
     def _customer_route(self, method: str, wanted: str) -> None:
@@ -578,8 +644,7 @@ class Handler(BaseHTTPRequestHandler):
         if match is None:
             return
         if method == "GET":
-            detail = harbor_detail() if wanted == "pr0SPct1" else {
-                "calls": [], "events": [], "notes": [], "stats": _empty_stats()}
+            detail = detail_for(wanted)
             self._send(200, {"customer": _bare(match), "stats": detail["stats"],
                              "calls": detail["calls"], "events": detail["events"],
                              "notes": detail["notes"]})
@@ -624,6 +689,25 @@ class Handler(BaseHTTPRequestHandler):
                                                                    customer["agentName"])
         nxt["researchedAt"] = nxt["updatedAt"] = _ago(seconds=0)
         self._send(200, {"customer": nxt})
+
+    def _notes(self, method: str, wanted: str) -> None:
+        """app/api/admin/customers/[id]/notes/route.ts. POST checks the body before the customer,
+        as the real route does."""
+        if method == "GET":
+            if self._customer(wanted) is not None:
+                self._send(200, {"notes": detail_for(wanted)["notes"]})
+            return
+        body = self._json_body()
+        if body is None:
+            return
+        text = str(body.get("text") or "").strip()
+        if not text:
+            self._send(400, {"error": "Write something first."})
+            return
+        if self._customer(wanted) is None:
+            return
+        # Stateless: the note comes back as if it were stored, and isn't.
+        self._send(201, {"note": {"id": "note-new", "at": _ago(seconds=0), "text": text}})
 
     def _calls(self, method: str, wanted: str) -> None:
         if method == "GET":

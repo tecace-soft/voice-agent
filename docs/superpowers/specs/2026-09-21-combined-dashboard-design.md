@@ -22,7 +22,7 @@ One front end that combines:
 
 | Question | Decision |
 | --- | --- |
-| Which promo parts | Admin side **and** the public prospect page |
+| Which promo parts | Admin side. The public prospect page stays on the promo (decided 2026-09-22 — see §6) |
 | Promo backend | Unchanged for now; the combined app calls the promo's existing `/api` routes. Porting it into `transcribe-backend` is a later, separate piece of work |
 | Sign-in | The transcribe account. Promo screens are admin-only and need a one-time promo password unlock |
 | Styling | Keep the transcribe screens' plain CSS; add Tailwind v4 + shadcn/ui (Base UI) so promo components come over near-verbatim |
@@ -35,7 +35,6 @@ for the promo screens only. `CLAUDE.md` is updated to say so (stage 2).
 
 - `src/` starts as a copy of `transcribe-dashboard-app/src/`, unchanged.
 - `src/demos/` — promo admin screens, their components and the browser-safe promo libs.
-- `src/public-demo/` — the prospect page and its components.
 - `src/demos/components/ui/` — shadcn components, copied from the promo. All ported promo code keeps
   the promo's own layout under `src/demos/` (`components/{ui,admin,charts}`, `lib`, pages as
   `screens/`), imported via `@/` = `src/demos/`, so not one promo import is rewritten; every
@@ -55,16 +54,14 @@ for the promo screens only. `CLAUDE.md` is updated to say so (stage 2).
 
 ## 2. Routing
 
-- `main.tsx` checks `location.pathname` first:
-  - `/c/:id` and `/c/:id/scenarios` → `React.lazy` public demo, no sign-in.
-  - anything else → the signed-in dashboard.
+- Every route in this app is a dashboard route; the prospect page lives on the promo (§6).
 - Dashboard views stay in the URL hash, as in the transcribe app today. `routing.ts` gains optional
   path parameters so a view can address a record: `#/demos/overview`, `#/demos/prospects`,
   `#/demos/prospects/<id>`, `#/demos/pipeline`. The active tab on a prospect is component
   state, as in the promo (decided in 4b: not worth deviating from the source).
 - The existing bug where `apiKeys` is missing from the router's view list is fixed while in there.
-- `vercel.json` already rewrites every path to `index.html`; the `/promo-api` and `/promo-page`
-  rewrites (section 5) go before it.
+- `vercel.json` already rewrites every path to `index.html`; the `/promo-api` rewrite (§5) goes
+  before it.
 
 ## 3. Styling
 
@@ -142,20 +139,14 @@ for the promo screens only. `CLAUDE.md` is updated to say so (stage 2).
 - **promo:** `src/demos/api.ts` is the only code that knows the promo's location. Every promo
   request goes to same-origin `/promo-api/*`, so the promo's cookie works with no promo changes.
   - dev: Vite `server.proxy` maps `/promo-api` → `${PROMO_API_URL}/api` (default
-    `http://localhost:3000`) and `/promo-page/c/` → `${PROMO_API_URL}/c/` —
-    narrowed in the stage 3 review: only the public demo page, never the promo's admin UI or API
-    under another path, is served on the dashboard origin (where the dashboard's admin token
-    lives in localStorage).
-  - prod: `vercel.json` rewrites `/promo-api/:path*` → `<promo deployment>/api/:path*` and
-    `/promo-page/c/:path*` → `<promo deployment>/c/:path*` (equally narrow). Vercel rewrites can't read env vars, so the
-    promo origin is written into `vercel.json` and documented in the README.
+    `http://localhost:3000`). Nothing else of the promo is proxied (stage 5): no promo HTML runs on
+    this origin, where the dashboard's token lives in localStorage.
+  - prod: `vercel.json` rewrites `/promo-api/:path*` → `<promo deployment>/api/:path*`. Vercel
+    rewrites can't read env vars, so the promo origin is written into `vercel.json` and documented
+    in the README.
     - Deferred at stage 3 (2026-09-21): the promo's deployed URL isn't settled, so only the
-      dev/preview proxy is wired; the app README lists the two rewrites to add at first deploy.
+      dev/preview proxy is wired; the app README lists the rewrite to add at first deploy.
 - When the promo backend moves later, `src/demos/api.ts` and the proxy entries are what change.
-- **Visitor cookie.** The promo assigns its `va_vid` visitor cookie only in middleware on `/c/*`
-  page loads on its own origin. On load, the public page issues one `fetch('/promo-page/c/<id>')`
-  (response ignored), which runs that middleware and sets the cookie on our origin, before calling
-  `/promo-api/track` and `/promo-api/session`.
 - **To verify in prod, not assume:** the promo's per-IP limit on `/api/session` reads
   `x-forwarded-for`; confirm it sees the caller's IP through the rewrite rather than one shared
   Vercel address.
@@ -192,11 +183,60 @@ Each stage leaves the app working and gets its own implementation plan.
    unified theme hook, Vitest; regression check passes again; `CLAUDE.md` updated.
 3. **Promo plumbing.** `src/demos/api.ts`, Vite proxy + `vercel.json` rewrites, `PromoAuth` context,
    Unlock card, Demos sidebar group with placeholder views, router path params.
-4. **Promo admin screens** — split into 4a (foundation + Overview + Prospects), 4b (prospect
-   detail + test call), 4c (pipeline), each with its own plan. Demo overview, Prospects list + new prospect dialog, prospect detail
-   tabs + test call, Pipeline.
-5. **Public demo.** `/c/:id` and `/c/:id/scenarios`, the live call hook, call audio, orb, visitor
-   cookie priming.
+4. **Promo admin screens** — **done** (2026-09-22), split into 4a (foundation + Overview +
+   Prospects), 4b (prospect detail + test call), 4c (pipeline), each with its own plan and review.
+   The promo's admin side is fully ported: Demo overview, Prospects list + new prospect dialog,
+   prospect detail tabs + test call, and the CRM pipeline.
+### Carried into stage 5 (from the 4c review)
+
+- **Settle the stale-fetch policy first.** Every ported screen uses the same `useCallback` +
+  `useEffect` fetch with no abort and no stale guard. On an operator screen a wrong render is
+  noticed; on a public page nobody is watching. 4c fixed the one case that could write to the wrong
+  record (`CrmDrawer`); decide in 5's plan whether to fix the pattern upstream in the promo and
+  re-port, or accept and document it.
+- **Bundle size — settled by §6.** The built JS is ~1.09 MB (340 kB gzip) in one chunk. That is an
+  operator app behind a sign-in, and no prospect downloads it, because the demo page they open is
+  the promo's.
+
+### Promo bugs found while porting (worth fixing in voiceagent_promo itself)
+
+All are fixed here and logged in `src/demos/PORTING.md`; the promo repo still has them.
+- Chart.js defaults applied in an effect, so a theme toggle draws the first frame in the old colours.
+- `useLiveCall`: a dial that continues after unmount can connect a billed session with no UI.
+- `Ringtone.start()` throws if `stop()` lands during its `resume()` await.
+- `CrmDrawer`: a slow response for a previously opened prospect can overwrite the open drawer — and
+  a later save writes to the wrong prospect.
+- `PipelineScreen`: a failed stage change whose recovery reload also fails leaves the board showing
+  the move that didn't happen.
+Not fixed (verbatim, promo-side judgement): the drawer's `render={<a href=…/>}` sets `role="button"`
+on a link, and moving a card loses keyboard focus.
+
+5. **Public demo page — decided, not built (2026-09-22).** It stays on the promo deployment; this
+   app links to it (§6). What that leaves behind: `proof`, `links` and `voice-level` are ported
+   promo libs nothing in this app imports (their promo tests still run) — kept rather than deleted,
+   so a future change of course is a re-port of screens, not of libs.
+
+## 6. Why the public page stays on the promo
+
+Decided 2026-09-22, after stage 4c, when the choice was next. Options weighed: port the page into
+this app (~2,700 lines), port it but deploy it on its own origin, or leave it on the promo.
+
+Left on the promo, because:
+- **Link previews.** The promo renders it on the server with per-prospect metadata, so a demo link
+  pasted into email or Slack shows the business's name. A client-rendered port loses that, and these
+  links are sales material.
+- **Visitor counting.** The promo's middleware assigns the `va_vid` cookie on `/c/*`, which is what
+  separates "three people tried it" from "one person tried it three times". Reproducing that from
+  another origin needed a workaround.
+- **The promo's server is required either way** — it holds the OpenAI key and brokers the GPT-Live
+  session — so porting the page only moved the UI, not the dependency.
+- **Origin safety.** A public, unauthenticated page served here would sit on the origin whose
+  localStorage holds the dashboard's session token. Proxying the promo's own HTML (the earlier plan)
+  would have been worse: promo-origin script running where that token lives.
+
+Accepted costs: two origins (operators use this dashboard, prospects open the promo's link), and the
+prospect page keeps the promo's look rather than this app's. If that changes, the port is a fresh
+piece of work — the promo libs it needs are already here.
 
 ## Out of scope
 

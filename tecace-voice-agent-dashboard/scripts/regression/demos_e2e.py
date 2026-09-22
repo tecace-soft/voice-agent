@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect, sync_playwright
 
 import fake_backend
 import fake_promo
@@ -121,6 +121,30 @@ TW_CLASSES_JS = """
 }
 """
 
+# What a stale, slow read of Harbor Dental would put in the drawer if it were allowed to land.
+STALE_HARBOR = {
+    "customer": {"id": "pr0SPct1", "businessName": "Harbor Dental", "active": True,
+                 "profile": {"name": "Harbor Dental", "category": "Dentist", "address": "12 Wharf St",
+                             "hours": [], "services": [], "highlights": [], "policies": {}, "faqs": []},
+                 "dossier": "", "sources": [], "prompts": {"live": "", "backend": "", "greeting": "",
+                                                           "edited": False},
+                 "voice": "gleam", "agentName": "Alex", "stage": "interested", "status": "ready",
+                 "createdAt": "2026-09-01T00:00:00.000Z", "updatedAt": "2026-09-01T00:00:00.000Z"},
+    "stats": {"views": 0, "calls": 0, "totalSec": 0, "visitors": 0},
+    "calls": [], "events": [],
+    "notes": [{"id": "stale1", "at": "2026-09-01T00:00:00.000Z",
+               "text": "A note only the stale read has."}],
+}
+
+# The pipeline board: one entry per stage column, with its header count and the cards in it.
+BOARD_JS = """
+() => [...document.querySelectorAll('main .tw .grid-cols-5 > section')].map((column) => ({
+  stage: column.querySelector('h3').textContent.trim(),
+  count: column.querySelector('header span').textContent.trim(),
+  cards: [...column.querySelectorAll('li .ta-label-1')].map((c) => c.textContent.trim()),
+}))
+"""
+
 # A StatCard's value, found by its title (components/admin/shared.tsx).
 STAT_JS = """
 (title) => {
@@ -217,9 +241,20 @@ MIC_STATE_JS = """
 MARK_TOASTS_JS = "() => document.querySelectorAll('[data-sonner-toast]').forEach((t) => t.dataset.seen = '1')"
 
 
-def new_toast(page, text: str):
-    """Wait for a toast with `text` that wasn't on screen at the last MARK_TOASTS_JS."""
-    page.locator("main .tw [data-sonner-toast]:not([data-seen])", has_text=text).first.wait_for()
+def new_toast(page, text: str, timeout: float | None = None, required: bool = True) -> bool:
+    """Wait for a toast with `text` that wasn't on screen at the last MARK_TOASTS_JS.
+
+    With `required=False` a toast that never arrives is a failed check (False) rather than a
+    harness error — for the checks whose whole point is that something gets said.
+    """
+    toast = page.locator("main .tw [data-sonner-toast]:not([data-seen])", has_text=text).first
+    if required:
+        toast.wait_for(timeout=timeout) if timeout else toast.wait_for()
+        return True
+    try:
+        toast.wait_for(timeout=timeout or 10000)
+    except PlaywrightTimeout:
+        return False
     return True
 
 
@@ -773,6 +808,253 @@ def run() -> int:
                     check("a malformed prospect id shows the list and asks the promo nothing else",
                           page.get_by_role("heading", name="Prospects", level=1).is_visible() and stray == [],
                           str(reqs))
+
+                    # --- The CRM pipeline ---
+                    page.get_by_role("button", name="Pipeline", exact=True).click()
+                    page.get_by_role("heading", name="CRM", level=1).wait_for()
+                    main_tw.get_by_text("Left a voicemail with the owner.").wait_for()
+                    board = page.evaluate(BOARD_JS)
+                    check("pipeline: a column per stage, with the fake's counts and cards",
+                          board == [{"stage": "New", "count": "0", "cards": []},
+                                    {"stage": "Contacted", "count": "1", "cards": ["Cedar Bakery"]},
+                                    {"stage": "Interested", "count": "1", "cards": ["Harbor Dental"]},
+                                    {"stage": "Won", "count": "0", "cards": []},
+                                    {"stage": "Lost", "count": "0", "cards": []}], str(board))
+                    due = main_tw.locator("div", has=page.get_by_text("Due now", exact=True)).last
+                    check("pipeline: the due-follow-up section names Cedar Bakery",
+                          due.get_by_role("button", name="Cedar Bakery").count() == 1
+                          and page.evaluate(STAT_JS, "Follow-ups due") == "1", due.inner_text())
+                    feed = main_tw.locator("ul", has=page.get_by_text("Opened the demo link").first).last
+                    rows = feed.locator("li")
+                    top = [" ".join(rows.nth(i).inner_text().split()) for i in range(4)]
+                    check("pipeline: the activity feed lists both prospects, newest first",
+                          rows.count() == 20
+                          and top[0].startswith("Harbor Dental Your test call · 1:00 · 4 turns")
+                          and top[1].startswith("Harbor Dental Called · 4:00 · 18 turns")
+                          and top[2].startswith("Harbor Dental Opened the demo link")
+                          and top[3].startswith("Cedar Bakery Left a voicemail with the owner.")
+                          and rows.filter(has_text="Cedar Bakery").count() == 1,
+                          f"{rows.count()} rows; first four: {top}")
+                    per_state["pipeline"] = set(page.evaluate(TW_CLASSES_JS))
+
+                    # The board moves a card before its PATCH is answered, so every move check
+                    # holds the request and decides the answer itself.
+                    held.clear()
+
+                    def hold_patch(route):
+                        if route.request.method == "PATCH":
+                            held.append(route)
+                        else:
+                            route.fallback()
+
+                    def answer_held(status: int, body: dict):
+                        for _ in range(50):
+                            if held:
+                                break
+                            page.wait_for_timeout(100)
+                        if not held:
+                            raise HarnessError("the board never sent its PATCH")
+                        held[0].fulfill(status=status, content_type="application/json",
+                                        body=json.dumps(body))
+                        return json.loads(held[0].request.post_data or "{}")
+
+                    # A refused move: the card goes back where it was, and it says why.
+                    page.route("**/promo-api/admin/customers/pr0SPct1", hold_patch)
+                    page.evaluate(MARK_TOASTS_JS)
+                    main_tw.get_by_role("button", name="Move on to Won").click()
+                    page.wait_for_function(
+                        "() => [...document.querySelectorAll('main .tw .grid-cols-5 > section')][3]"
+                        ".innerText.includes('Harbor Dental')")
+                    answer_held(500, {"error": "The store is read-only."})
+                    new_toast(page, "The store is read-only.")
+                    page.wait_for_function(
+                        "() => [...document.querySelectorAll('main .tw .grid-cols-5 > section')][2]"
+                        ".innerText.includes('Harbor Dental')")
+                    check("pipeline: a refused stage move says so and puts the card back",
+                          page.evaluate(BOARD_JS)[2]["cards"] == ["Harbor Dental"]
+                          and page.evaluate(BOARD_JS)[3]["cards"] == [])
+
+                    # Both the move and the reload behind it fail: the board is now showing a
+                    # stage the promo never accepted, so the reload's failure has to be said out
+                    # loud rather than left on screen as a silent lie.
+                    held.clear()
+                    page.route("**/promo-api/admin/crm", lambda route: route.fulfill(
+                        status=500, content_type="application/json",
+                        body=json.dumps({"error": "The CRM is unavailable."})))
+                    page.evaluate(MARK_TOASTS_JS)
+                    main_tw.get_by_role("button", name="Move on to Won").click()
+                    answer_held(500, {"error": "The store is read-only."})
+                    check("pipeline: a failed move whose reload also fails still reports it",
+                          new_toast(page, "The CRM is unavailable.", required=False))
+                    page.unroute("**/promo-api/admin/crm")
+                    held.clear()
+
+                    # Back to a board that matches the fake for the rest of the checks.
+                    page.get_by_role("button", name="Prospects", exact=True).click()
+                    harbor_link.wait_for()
+                    page.get_by_role("button", name="Pipeline", exact=True).click()
+                    main_tw.get_by_text("Left a voicemail with the owner.").wait_for()
+
+                    page.evaluate(MARK_TOASTS_JS)
+                    main_tw.get_by_role("button", name="Move on to Won").click()
+                    page.wait_for_function(
+                        "() => [...document.querySelectorAll('main .tw .grid-cols-5 > section')][3]"
+                        ".innerText.includes('Harbor Dental')")
+                    moved_early = page.evaluate(BOARD_JS)
+                    body = answer_held(200, {"customer": {"id": "pr0SPct1", "stage": "won"}})
+                    check("pipeline: a stage move PATCHes {stage} and moves the card before the answer",
+                          body == {"stage": "won"}
+                          and moved_early[3]["cards"] == ["Harbor Dental"]
+                          and moved_early[2]["cards"] == [],
+                          f"body={body} board={moved_early}")
+                    check("pipeline: ... and says where it went", new_toast(page, "Moved to Won."))
+                    page.unroute("**/promo-api/admin/customers/pr0SPct1")
+
+                    # The drawer: one prospect's CRM, over the board. Three ways in.
+                    drawer = page.locator("[data-tw-portal] [role=dialog]")
+                    feed.locator("li", has_text="Left a voicemail with the owner.").first.click()
+                    drawer.get_by_role("heading", name="Cedar Bakery").wait_for()
+                    check("pipeline: an activity-feed row opens that prospect's drawer",
+                          drawer.get_by_text("Left a voicemail with the owner.").count() >= 1)
+                    page.keyboard.press("Escape")
+                    drawer.wait_for(state="detached")
+                    due.get_by_role("button", name="Cedar Bakery").click()
+                    drawer.get_by_role("heading", name="Cedar Bakery").wait_for()
+                    check("pipeline: a Due now chip opens that prospect's drawer",
+                          drawer.get_by_label("Deal stage").inner_text().strip() == "Contacted",
+                          drawer.get_by_label("Deal stage").inner_text())
+                    page.keyboard.press("Escape")
+                    drawer.wait_for(state="detached")
+
+                    main_tw.get_by_role("button", name="Harbor Dental").first.click()
+                    drawer.wait_for()
+                    drawer.get_by_text("Asked for a follow-up after the expo.").wait_for()
+                    open_link = drawer.locator(':is(a, button):has-text("Open the customer")').last
+                    check("pipeline: the card opens the drawer inside [data-tw-portal], with the timeline",
+                          page.locator("[role=dialog]").count() == 1
+                          and drawer.get_by_role("heading", name="Harbor Dental").is_visible()
+                          and drawer.get_by_text("Called · 4:00 · 18 turns").count() == 1
+                          and drawer.get_by_text("Opened the demo link").count() == 14)
+                    # The ported Button renders the link as <a role="button"> (verbatim promo
+                    # markup), so this looks for the anchor rather than the "link" role.
+                    opener = page.evaluate("""() => {
+                        const el = [...document.querySelectorAll('[data-tw-portal] [role=dialog] a')]
+                          .find((n) => n.textContent.trim().startsWith('Open the customer'));
+                        return el ? { href: el.getAttribute('href'), role: el.getAttribute('role') } : null;
+                    }""")
+                    check("pipeline: the drawer links to the prospect page",
+                          opener is not None and opener["href"] == "#/demos/prospects/pr0SPct1",
+                          str(opener))
+                    per_state["pipeline + drawer"] = set(page.evaluate(TW_CLASSES_JS))
+
+                    # The drawer's own writes. Its Stage select is a second portal surface: a
+                    # popover portalled into the shared .tw container beside the modal sheet, so
+                    # it has to be reachable and clickable from inside the sheet.
+                    # (The fake is stateless, so the board behind can't be asserted to follow:
+                    # its next read of /api/admin/crm returns the original stages.)
+                    drawer.get_by_label("Deal stage").click()
+                    listbox = page.locator("[data-tw-portal] [role=listbox]")
+                    listbox.wait_for()
+                    lost = listbox.get_by_role("option", name="Lost")
+                    check("drawer: the stage select opens inside [data-tw-portal]",
+                          page.locator("[role=listbox]").count() == 1 and lost.is_visible())
+                    with page.expect_request(lambda r: r.method == "PATCH"
+                                             and "/promo-api/admin/customers/" in r.url) as req:
+                        lost.click()
+                    body = req.value.post_data_json
+                    check("drawer: picking a stage PATCHes {stage}",
+                          body == {"stage": "lost"}
+                          and req.value.url.endswith("/promo-api/admin/customers/pr0SPct1"),
+                          f"{body} {req.value.url}")
+                    with page.expect_request(lambda r: r.method == "PATCH"
+                                             and "/promo-api/admin/customers/" in r.url) as req:
+                        drawer.get_by_label("Follow up on").fill("2026-10-01")
+                    body = req.value.post_data_json
+                    check("drawer: setting the follow-up date PATCHes {followUpAt}",
+                          body == {"followUpAt": "2026-10-01"}, str(body))
+
+                    note = drawer.get_by_label("Add a note")
+                    add_note = drawer.get_by_role("button", name="Add note")
+                    reqs.clear()
+                    note.fill("   ")
+                    page.wait_for_timeout(300)
+                    check("pipeline: a blank note can't be sent (the button stays disabled)",
+                          add_note.is_disabled()
+                          and [r for r in reqs if r.endswith("/notes")] == [], str(reqs))
+                    note.fill("Called back, wants pricing.")
+                    page.evaluate(MARK_TOASTS_JS)
+                    with page.expect_request(lambda r: r.method == "POST"
+                                             and r.url.endswith("/promo-api/admin/customers/pr0SPct1/notes")) as req:
+                        add_note.click()
+                    body = req.value.post_data_json
+                    # expect_request fires when the request goes out; the box is cleared when the
+                    # answer comes back, so wait for that before reading the toasts.
+                    expect(note).to_have_value("", timeout=10000)
+                    check("pipeline: adding a note POSTs {text}, clears the box and reports nothing",
+                          body == {"text": "Called back, wants pricing."}
+                          and page.locator("main .tw [data-sonner-toast]:not([data-seen])").count() == 0,
+                          f"body={body} draft={note.input_value()!r}")
+                    page.keyboard.press("Escape")
+                    drawer.wait_for(state="detached")
+
+                    # A slow read for a prospect the operator has already closed must not land in
+                    # the drawer they are looking at now — nor let its next save go to the wrong
+                    # record (the drawer keeps the id it is *currently* on).
+                    held.clear()
+
+                    def hold_harbor_get(route):
+                        if route.request.method == "GET":
+                            held.append(route)
+                        else:
+                            route.fallback()
+
+                    page.route("**/promo-api/admin/customers/pr0SPct1", hold_harbor_get)
+                    main_tw.get_by_role("button", name="Harbor Dental").first.click()
+                    drawer.wait_for()
+                    for _ in range(50):
+                        if held:
+                            break
+                        page.wait_for_timeout(100)
+                    if not held:
+                        raise HarnessError("the drawer never read the prospect")
+                    page.keyboard.press("Escape")
+                    drawer.wait_for(state="detached")
+                    main_tw.get_by_role("button", name="Cedar Bakery").first.click()
+                    drawer.get_by_text("Left a voicemail with the owner.").wait_for()
+                    held[0].fulfill(status=200, content_type="application/json",
+                                    body=json.dumps(STALE_HARBOR))
+                    page.wait_for_timeout(1000)
+                    check("drawer: a stale read for a closed prospect can't take over the open one",
+                          drawer.get_by_role("heading", name="Cedar Bakery").is_visible()
+                          and drawer.get_by_text("A note only the stale read has.").count() == 0
+                          and drawer.get_by_text("Left a voicemail with the owner.").count() >= 1,
+                          drawer.inner_text()[:400])
+                    drawer.get_by_label("Deal stage").click()
+                    listbox.wait_for()
+                    with page.expect_request(lambda r: r.method == "PATCH"
+                                             and "/promo-api/admin/customers/" in r.url) as req:
+                        listbox.get_by_role("option", name="Interested").click()
+                    check("drawer: ... and the next save still goes to the prospect on screen",
+                          req.value.url.endswith("/promo-api/admin/customers/cedar42")
+                          and req.value.post_data_json == {"stage": "interested"},
+                          f"{req.value.url} {req.value.post_data_json}")
+                    page.unroute("**/promo-api/admin/customers/pr0SPct1")
+                    page.keyboard.press("Escape")
+                    drawer.wait_for(state="detached")
+
+                    for label in ("pipeline", "pipeline + drawer"):
+                        bad, _ = legacy_collisions(css, per_state[label])
+                        check(f"no @layer legacy class name on promo markup: {label}",
+                              bool(per_state[label]) and bad == [], f"collisions: {bad}")
+
+                    main_tw.get_by_role("button", name="Harbor Dental").first.click()
+                    drawer.wait_for()
+                    open_link = drawer.locator(':is(a, button):has-text("Open the customer")').last
+                    open_link.click()
+                    page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
+                    check("pipeline: following the drawer's link lands on the prospect page",
+                          page.evaluate("location.hash") == "#/demos/prospects/pr0SPct1",
+                          page.evaluate("location.hash"))
 
                     page.goto(base + "#/apiKeys")
                     page.reload()

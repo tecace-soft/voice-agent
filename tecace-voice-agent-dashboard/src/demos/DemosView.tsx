@@ -1,7 +1,7 @@
 import type { ViewId } from "../components/Sidebar";
 import { DemosGate } from "./DemosGate";
-import { DemoPlaceholderPage } from "./pages/DemoPlaceholderPage";
 import { OverviewScreen } from "./screens/OverviewScreen";
+import { PipelineScreen } from "./screens/PipelineScreen";
 import { ProspectScreen } from "./screens/ProspectScreen";
 import { ProspectsScreen } from "./screens/ProspectsScreen";
 import { isPromoId } from "./routes";
@@ -22,12 +22,7 @@ export function DemosView({
       {/* Only a well-formed id reaches ProspectScreen (kept verbatim), which puts it in a promo path. */}
       {view === "demoProspect" &&
         (id && isPromoId(id) ? <ProspectScreen key={id} id={id} /> : <ProspectsScreen />)}
-      {view === "demoPipeline" && (
-        <DemoPlaceholderPage
-          title="Pipeline"
-          body="Coming soon: the CRM board, every prospect by stage with the activity feed beside it."
-        />
-      )}
+      {view === "demoPipeline" && <PipelineScreen />}
     </DemosGate>
   );
 }

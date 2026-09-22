@@ -7,14 +7,15 @@ import { defineConfig, loadEnv } from "vite";
 // three can run at once).
 //
 // /promo-api goes to voiceagent_promo's /api (PROMO_API_URL — server-side only, so no VITE_
-// prefix; default a local `npm run dev` on :3000). /promo-page/c/ goes to the promo's public demo
-// page only — deliberately narrower than the whole app: this origin also holds the dashboard's
-// admin bearer token in localStorage, so proxying the promo's own admin UI or API here (anything
-// outside /c/) would put that token on the same origin as promo surfaces we don't control.
-// Proxying rather than calling it cross-origin keeps the promo's httpOnly admin cookie same-origin
-// with no change to the promo. `vite preview` uses the same proxy. A deployed build needs the same
-// two paths as Vercel rewrites (added at first deploy — see README): /promo-api/:path* and, just
-// as narrow, /promo-page/c/:path* — never a bare /promo-page/:path*.
+// prefix; default a local `npm run dev` on :3000). Proxying rather than calling it cross-origin
+// keeps the promo's httpOnly admin cookie same-origin with no change to the promo, and `vite
+// preview` uses the same proxy. A deployed build needs that one path as a Vercel rewrite (added at
+// first deploy — see README).
+//
+// Nothing else of the promo is proxied. The prospect-facing demo page (/c/<id>) stays on the promo
+// and is only ever linked to (VITE_PUBLIC_DEMO_BASE_URL) — decided in stage 5. Promo HTML must not
+// run on this origin: the dashboard's admin bearer token lives in localStorage here, and that page
+// is public.
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const promo = (env.PROMO_API_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -33,11 +34,6 @@ export default defineConfig(({ command, mode }) => {
       target: promo,
       changeOrigin: true,
       rewrite: (path: string) => path.replace(/^\/promo-api/, "/api"),
-    },
-    "/promo-page/c/": {
-      target: promo,
-      changeOrigin: true,
-      rewrite: (path: string) => path.replace(/^\/promo-page/, ""),
     },
   };
   return {
