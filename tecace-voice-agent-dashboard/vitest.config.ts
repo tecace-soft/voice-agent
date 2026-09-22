@@ -16,5 +16,5 @@ export default defineConfig({
   },
   // vite.config.ts defines this for the app build; a future component test would otherwise hit a
   // ReferenceError the moment it imports anything that reads __PROMO_TARGET__.
-  define: { __PROMO_TARGET__: '""' },
+  define: { __BACKEND_URL__: '""', __PROMO_TARGET__: '""' },
 });

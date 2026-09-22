@@ -27,10 +27,10 @@ unauthenticated public page on the same origin as this app's session token.
 Set in `.env` for local dev, and in the Vercel project's environment variables for production.
 Source: `.env.example`, `vite.config.ts`, `src/api/backend.ts`, `src/demos/lib/share.ts`.
 
-- **`VITE_BACKEND_URL`** — base URL of `transcribe-backend` (no trailing slash), e.g.
+- **`BACKEND_URL`** — base URL of `transcribe-backend` (no trailing slash), e.g.
   `https://transcribe-backend.example.com`. Everything the transcribe screens do — sign-in, stats,
   business profile, calls, api-keys — goes through this. If it's unset, `src/api/backend.ts` throws
-  `"Backend URL is not configured (set VITE_BACKEND_URL)."` on the first call and the app is
+  `"Backend URL is not configured (set BACKEND_URL)."` on the first call and the app is
   unusable (can't even sign in).
 - **`VITE_PUBLIC_DEMO_BASE_URL`** — the promo's public origin (no trailing slash), e.g.
   `https://demo.tecace.com`. This is what the Prospects and Share screens use to build the `/c/<id>`
@@ -120,7 +120,7 @@ answers with `index.html` instead of JSON, `promoRequest` classifies that as `un
 After deploying, in order:
 
 1. Sign in to the dashboard (`transcribe-backend` sign-in).
-2. Confirm a transcribe view loads (e.g. Overview stats) — proves `VITE_BACKEND_URL` and
+2. Confirm a transcribe view loads (e.g. Overview stats) — proves `BACKEND_URL` and
    `CORS_ORIGIN` are both right.
 3. Open **Demos**. It should ask to unlock with the promo's `ADMIN_PASSWORD`, then list prospects —
    proves the `/promo-api` rewrite (§4) is in place and pointed at a live promo.

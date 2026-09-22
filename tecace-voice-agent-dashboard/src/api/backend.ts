@@ -21,9 +21,10 @@ import type {
   TranscribeStats,
 } from "./types";
 
-// Single place that talks to the backend API. Base URL comes from VITE_BACKEND_URL (set in .env
-// locally and in the Vercel project for production).
-const BASE_URL: string = (import.meta.env.VITE_BACKEND_URL ?? "").replace(/\/$/, "");
+// Single place that talks to the backend API. Base URL comes from BACKEND_URL (set in .env locally
+// and in the Vercel project for production), injected by vite.config.ts as __BACKEND_URL__ — see
+// the comment there for why it isn't a VITE_ name.
+const BASE_URL: string = __BACKEND_URL__;
 
 // The session token lives in localStorage so a reload (or a new tab) keeps you signed in. The
 // backend's token is stateless and expires on its own; `GET /auth/me` on boot confirms it is still
@@ -77,7 +78,7 @@ async function request<T>(
   options: { body?: unknown; anonymous?: boolean } = {},
 ): Promise<T> {
   if (!BASE_URL) {
-    throw new BackendError("Backend URL is not configured (set VITE_BACKEND_URL).", 0);
+    throw new BackendError("Backend URL is not configured (set BACKEND_URL).", 0);
   }
   const headers: Record<string, string> = { accept: "application/json" };
   if (options.body !== undefined) headers["content-type"] = "application/json";

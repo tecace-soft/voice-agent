@@ -135,7 +135,10 @@ for the promo screens only. `CLAUDE.md` is updated to say so (stage 2).
 
 ## 5. Backends
 
-- **transcribe-backend:** unchanged — `VITE_BACKEND_URL`, Bearer token, `src/api/backend.ts`.
+- **transcribe-backend:** `BACKEND_URL`, Bearer token, `src/api/backend.ts`. The name is
+  deliberately un-prefixed (2026-09-22): Vite only exposes `VITE_*` to browser code, so
+  `vite.config.ts` injects it as `__BACKEND_URL__` instead. It is still public — the browser
+  makes the calls — but the deployment's settings no longer name the build tool.
 - **promo:** `src/demos/api.ts` is the only code that knows the promo's location. Every promo
   request goes to same-origin `/promo-api/*`, so the promo's cookie works with no promo changes.
   - dev: Vite `server.proxy` maps `/promo-api` → `${PROMO_API_URL}/api` (default

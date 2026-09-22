@@ -9,7 +9,7 @@ Conventions: `CLAUDE.md`. Design: `../docs/superpowers/specs/2026-09-21-combined
 ## Run
 
 ```sh
-cp .env.example .env   # set VITE_BACKEND_URL (transcribe-backend) and PROMO_API_URL (voiceagent_promo)
+cp .env.example .env   # set BACKEND_URL (transcribe-backend) and PROMO_API_URL (voiceagent_promo)
 npm install
 npm run dev            # http://localhost:5175
 ```
@@ -54,7 +54,7 @@ but not the conversation itself. To hear one:
 
 1. In the voiceagent_promo repo: `.env.local` with `OPENAI_API_KEY`, `ADMIN_PASSWORD` and
    `ADMIN_SESSION_SECRET`, then `npm run dev` (port 3000).
-2. Here: `PROMO_API_URL=http://localhost:3000` (and `VITE_BACKEND_URL` for the dashboard sign-in),
+2. Here: `PROMO_API_URL=http://localhost:3000` (and `BACKEND_URL` for the dashboard sign-in),
    then `npm run dev` and open http://localhost:5175.
 3. Sign in as an admin, open **Demos**, unlock with the promo's `ADMIN_PASSWORD`, open a *ready*
    prospect and press the test call. Allow the microphone.
