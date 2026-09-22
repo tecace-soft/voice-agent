@@ -76,8 +76,25 @@ _SYSTEM = (
     "You are given a voicemail recording a caller left for a business — they may be asking to "
     "book an appointment, requesting a callback, or leaving a question. First transcribe the "
     "audio verbatim into `transcript`, then fill in the other fields using only what the caller "
-    "actually said — use null for anything not mentioned. Do not invent details."
+    "actually said — use null for anything not mentioned. Do not invent details. "
+    "Some recordings are only a few seconds of hesitation, background noise or silence. If there "
+    "is nothing intelligible to transcribe, write the little you can hear, mark the rest "
+    "[unintelligible], and stop. Never repeat a word or phrase over and over: if you find "
+    "yourself repeating, the recording has nothing further in it and the transcript is finished."
 )
+
+# Greedy decoding transcribes most accurately, so it goes first. It is also what makes a repetition
+# loop inescapable: at temperature 0 the next token is always the same one, so a model that has
+# begun saying "uh, uh, uh" can never stop, and it says it until the output ceiling. A warmer
+# second pass breaks the tie. Two attempts and no more — a third only spends money on a recording
+# that has nothing in it.
+_TEMPERATURES = (0.0, 0.4)
+
+# What goes in the Summary column when neither pass produced usable text. Whoever works the sheet
+# needs to know the recording exists and that a machine could not read it, rather than wonder why
+# a row is blank. The caller's number and the link to the email are on the row either way, so the
+# voicemail can still be listened to and returned.
+_UNTRANSCRIBABLE = "Could not be transcribed automatically — open the email to listen."
 
 
 def _hit_token_ceiling(response) -> bool:
@@ -112,6 +129,18 @@ def _truncation_report(response, attachment, text: str) -> str:
         f"of {getattr(usage, 'prompt_token_count', None)} in"
         f" | STARTS: {flat[:200]}"
         f" | ENDS: {flat[-200:]}"
+    )
+
+
+def _empty(summary: str = "") -> VoicemailInfo:
+    """A record with no model output in it, still traceable by caller ID, filename and email link.
+
+    Keyword arguments on purpose: the positional form of this was passing one argument too many,
+    which landed the boolean False in the Summary column of every blocked voicemail.
+    """
+    return VoicemailInfo(
+        caller_name=None, phone_number=None, requested_time=None,
+        callback_requested=False, summary=summary, transcript="",
     )
 
 
@@ -153,24 +182,15 @@ class Extractor:
             )
         return self._client
 
-    def extract(self, attachment: AudioAttachment) -> VoicemailInfo:
-        """Transcribe and extract one voicemail in a single Gemini call: the audio goes in, a
-        transcript plus the structured fields come back. Empty audio short-circuits to an empty
-        record so we don't spend a model call on nothing."""
-        if not attachment.data:
-            return VoicemailInfo(None, None, None, None, False, "")
-        log.info(
-            "transcribing %s (%d bytes) with %s ...",
-            attachment.filename, len(attachment.data), self._cfg.extract_model,
-        )
-        audio = types.Part.from_bytes(data=attachment.data, mime_type=attachment.content_type)
-        response = self._gemini().models.generate_content(
+    def _generate(self, audio, temperature: float):
+        """One call. Split out so the retry differs in exactly one argument and nothing else."""
+        return self._gemini().models.generate_content(
             model=self._cfg.extract_model,
             contents=[audio],
             config=types.GenerateContentConfig(
                 system_instruction=_SYSTEM,
-                temperature=0,
-                # Room for the full transcript plus the fields.
+                temperature=temperature,
+                # Room for the full transcript plus the fields, and a stop on a runaway.
                 max_output_tokens=_MAX_OUTPUT_TOKENS,
                 # Transcription + copying stated facts needs no deliberation — disable Gemini's
                 # "thinking" to keep it fast and cheap.
@@ -180,34 +200,55 @@ class Extractor:
                 response_schema=_SCHEMA,
             ),
         )
-        # If Gemini blocked the response (e.g. a safety filter), `.text` is empty/raises — record
-        # an empty row (still traceable by sender + filename) rather than dropping the voicemail.
-        try:
-            text = response.text
-        except Exception:  # noqa: BLE001 — any access failure means "no usable content"
-            text = None
-        if not text:
-            log.warning("extraction returned no content (blocked or empty); storing empty row")
-            return VoicemailInfo(None, None, None, None, False, "")
-        # A response that ran out of room is still returned, just not finished: the JSON stops
-        # mid-transcript with the string open. json.loads then reports "Unterminated string
-        # starting at: line 2 column 17 (char 18)", which tells whoever reads it on the dashboard
-        # nothing about what went wrong. Say it plainly instead. This still fails the attachment,
-        # which leaves it unprocessed for the next pass — the right outcome, because a partial
-        # transcript written into the sheet would look complete to the person ringing the caller
-        # back.
-        if _hit_token_ceiling(response):
-            # The detail goes to the log, not into the exception: that message is stored in a
-            # database column and shown on a dashboard card, where 500 characters of raw model
-            # output would bury the sentence that explains the failure.
+
+    def extract(self, attachment: AudioAttachment) -> VoicemailInfo:
+        """Transcribe and extract one voicemail: the audio goes in, a transcript plus the
+        structured fields come back. Empty audio short-circuits to an empty record so we don't
+        spend a model call on nothing.
+
+        Normally this is one call. A second happens only when the first ran to the output ceiling,
+        which on a short recording means the model got stuck repeating itself rather than that it
+        had that much to say.
+        """
+        if not attachment.data:
+            return _empty()
+        log.info(
+            "transcribing %s (%d bytes) with %s ...",
+            attachment.filename, len(attachment.data), self._cfg.extract_model,
+        )
+        audio = types.Part.from_bytes(data=attachment.data, mime_type=attachment.content_type)
+
+        for temperature in _TEMPERATURES:
+            response = self._generate(audio, temperature)
+            # If Gemini blocked the response (e.g. a safety filter), `.text` is empty/raises —
+            # record an empty row (still traceable by sender + filename) rather than dropping the
+            # voicemail. A different temperature would not unblock it, so this returns rather than
+            # spending the second attempt.
+            try:
+                text = response.text
+            except Exception:  # noqa: BLE001 — any access failure means "no usable content"
+                text = None
+            if not text:
+                log.warning("extraction returned no content (blocked or empty); storing empty row")
+                return _empty()
+            # A response that ran out of room is still returned, just not finished: the JSON stops
+            # mid-transcript with the string still open, and parsing it reports an unterminated
+            # string at a character offset that explains nothing. Name it, and try once more.
+            if not _hit_token_ceiling(response):
+                return VoicemailInfo.from_dict(json.loads(text))
             log.warning(
-                "output ran to the ceiling on %s — %s",
-                attachment.filename, _truncation_report(response, attachment, text),
+                "output ran to the ceiling on %s at temperature %s — %s",
+                attachment.filename, temperature,
+                _truncation_report(response, attachment, text),
             )
-            raise RuntimeError(
-                f"Gemini stopped at its {_MAX_OUTPUT_TOKENS}-token output limit, so the transcript "
-                f"was cut off mid-sentence and the JSON it returned never closed. Either this "
-                f"recording is longer than that allows, or the model looped on low-information "
-                f"audio (silence, hold music, a hang-up)."
-            )
-        return VoicemailInfo.from_dict(json.loads(text))
+
+        # Both passes ran away, so this recording has nothing a model can read. Write the row and
+        # let it go: raising here would leave the voicemail unprocessed, and the poller would send
+        # the same few seconds of noise to Gemini every quarter of an hour for ever. A row with the
+        # caller's number, the filename and the link to the email is something a person can act on;
+        # a voicemail that never appears is not.
+        log.error(
+            "could not transcribe %s after %d attempts — writing a row that says so",
+            attachment.filename, len(_TEMPERATURES),
+        )
+        return _empty(_UNTRANSCRIBABLE)
