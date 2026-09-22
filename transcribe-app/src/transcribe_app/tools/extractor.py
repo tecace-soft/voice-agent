@@ -63,12 +63,35 @@ _SCHEMA = {
     ],
 }
 
+# How much room the model gets for its answer. The transcript is the whole of it in practice —
+# the five other fields are a line each — and 2048 was not enough: that is roughly 1,200 English
+# words, and Korean or mixed-language speech tokenises several times denser, so a couple of minutes
+# of it runs out of room mid-sentence. The model stops where it stops and the JSON never closes,
+# which surfaces as an unterminated-string parse error that names nothing useful. The model's own
+# ceiling is far higher than this; 8192 is headroom for a real voicemail while still being a stop
+# on a model that has started repeating itself on low-information audio.
+_MAX_OUTPUT_TOKENS = 8192
+
 _SYSTEM = (
     "You are given a voicemail recording a caller left for a business — they may be asking to "
     "book an appointment, requesting a callback, or leaving a question. First transcribe the "
     "audio verbatim into `transcript`, then fill in the other fields using only what the caller "
     "actually said — use null for anything not mentioned. Do not invent details."
 )
+
+
+def _hit_token_ceiling(response) -> bool:
+    """True when the model stopped because it ran out of output budget, not because it was done.
+
+    Read by name rather than compared against an imported enum member: the SDK has moved these
+    around between versions, and a missing attribute here must not become a second failure on top
+    of the one we are trying to explain.
+    """
+    try:
+        reason = response.candidates[0].finish_reason
+    except (AttributeError, IndexError, TypeError):
+        return False
+    return "MAX_TOKENS" in str(getattr(reason, "name", reason) or "")
 
 
 @dataclass(frozen=True)
@@ -127,7 +150,7 @@ class Extractor:
                 system_instruction=_SYSTEM,
                 temperature=0,
                 # Room for the full transcript plus the fields.
-                max_output_tokens=2048,
+                max_output_tokens=_MAX_OUTPUT_TOKENS,
                 # Transcription + copying stated facts needs no deliberation — disable Gemini's
                 # "thinking" to keep it fast and cheap.
                 thinking_config=types.ThinkingConfig(thinking_budget=0),
@@ -145,4 +168,18 @@ class Extractor:
         if not text:
             log.warning("extraction returned no content (blocked or empty); storing empty row")
             return VoicemailInfo(None, None, None, None, False, "")
+        # A response that ran out of room is still returned, just not finished: the JSON stops
+        # mid-transcript with the string open. json.loads then reports "Unterminated string
+        # starting at: line 2 column 17 (char 18)", which tells whoever reads it on the dashboard
+        # nothing about what went wrong. Say it plainly instead. This still fails the attachment,
+        # which leaves it unprocessed for the next pass — the right outcome, because a partial
+        # transcript written into the sheet would look complete to the person ringing the caller
+        # back.
+        if _hit_token_ceiling(response):
+            raise RuntimeError(
+                f"Gemini stopped at its {_MAX_OUTPUT_TOKENS}-token output limit, so the transcript "
+                f"was cut off mid-sentence and the JSON it returned never closed. Either this "
+                f"recording is longer than that allows, or the model looped on low-information "
+                f"audio (silence, hold music, a hang-up)."
+            )
         return VoicemailInfo.from_dict(json.loads(text))
