@@ -277,6 +277,13 @@ def legacy_collisions(css: dict, classes: set[str]) -> tuple[list[str], list[str
     return [c for c in hits if c not in shadowed], shadowed
 
 
+def demo_nav(page, label: str):
+    """A nav button in the Demo group. Scoped to the group on purpose: the Demo tabs now carry the
+    promo's own names, so "Overview" matches the Dashboard group's item as well."""
+    return page.locator('.sidebar-group[data-group="demos"]').get_by_role(
+        "button", name=label, exact=True)
+
+
 def open_page(browser, token: str | None, url: str, promo_requests: list[str], page_errors: list[str]):
     ctx = browser.new_context(viewport={"width": 1440, "height": 900}, reduced_motion="reduce")
     init = ["try { localStorage.clear(); } catch (e) {}", "localStorage.setItem('theme', 'light');",
@@ -327,7 +334,7 @@ def run() -> int:
                     # without the promo ever being contacted.
                     reqs: list[str] = []
                     ctx, page = open_page(browser, "tok-user", base + "#/demos/prospects", reqs, page_errors)
-                    check("user: no Demos group in the sidebar",
+                    check("user: no Demo group in the sidebar",
                           page.locator('.sidebar-group[data-group="demos"]').count() == 0)
                     check("user: a Demos URL is refused",
                           "Only an admin can see the demos." in page.locator("main").inner_text())
@@ -337,17 +344,17 @@ def run() -> int:
                     # Admin: the group is there, and a transcribe view doesn't touch the promo.
                     reqs = []
                     ctx, page = open_page(browser, "tok-admin", base + "#/overview", reqs, page_errors)
-                    check("admin: Demos group with three items",
+                    check("admin: Demo group with three items",
                           page.locator('.sidebar-group[data-group="demos"] .nav-item').count() == 3)
                     check("admin: no promo request on a transcribe view", reqs == [], str(reqs))
 
-                    page.get_by_role("button", name="Prospects", exact=True).click()
+                    demo_nav(page, "Customers").click()
                     page.get_by_role("heading", name="Unlock demos").wait_for()
                     check("Prospects opens #/demos/prospects", page.evaluate("location.hash") == "#/demos/prospects")
                     check("locked: the unlock card is shown", True)
                     check("only the health probe was sent while locked",
                           reqs == ["GET /promo-api/admin/health"], str(reqs))
-                    check("breadcrumb says Demos", page.locator(".crumbs").inner_text().startswith("Demos"))
+                    check("breadcrumb says Demo", page.locator(".crumbs").inner_text().startswith("Demo"))
                     check("no mailbox picker or Refresh on Demos views",
                           page.locator(".mailbox-picker").count() == 0
                           and page.get_by_role("button", name="Refresh").count() == 0)
@@ -439,7 +446,7 @@ def run() -> int:
                     check("prospects: resuming a paused demo says so", True)
 
                     # --- Demo overview: KPIs, charts, recent calls ---
-                    page.get_by_role("button", name="Demo overview", exact=True).click()
+                    demo_nav(page, "Overview").click()
                     page.get_by_text("Recent calls").wait_for()
                     page.wait_for_function("() => document.querySelectorAll('main .tw canvas').length === 2")
                     stats = {t: page.evaluate(STAT_JS, t) for t in ("Customers", "Tested", "Calls", "Minutes")}
@@ -517,15 +524,15 @@ def run() -> int:
                         print(f"       (fully shadowed by the promo's own copy: {', '.join(shadowed)})")
 
                     # --- The prospect page (the promo's real customer page) ---
-                    page.get_by_role("button", name="Prospects", exact=True).click()
+                    demo_nav(page, "Customers").click()
                     harbor_link.wait_for()
                     harbor_link.click()
                     page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
                     check("a prospect gets its own URL",
                           page.evaluate("location.hash") == "#/demos/prospects/pr0SPct1",
                           page.evaluate("location.hash"))
-                    check("Prospects stays highlighted on a prospect",
-                          page.locator(".nav-item.is-active").inner_text().strip() == "Prospects")
+                    check("Customers stays highlighted on a prospect",
+                          page.locator(".nav-item.is-active").inner_text().strip() == "Customers")
 
                     main_tw = page.locator("main .tw")
                     stats = {t: page.evaluate(STAT_JS, t)
@@ -711,7 +718,7 @@ def run() -> int:
                     page.evaluate("() => { window.__holdMic = true; }")
                     call_now.click()
                     page.wait_for_function("() => window.__micHeld === true")
-                    page.get_by_role("button", name="Prospects", exact=True).click()
+                    demo_nav(page, "Customers").click()
                     harbor_link.wait_for()
                     after_leave = len(reqs)
                     page.evaluate("() => { window.__holdMic = false; window.__releaseMic(); }")
@@ -754,7 +761,7 @@ def run() -> int:
                         page.wait_for_timeout(100)
                     if not held:
                         raise HarnessError("the test call never sent its session request")
-                    page.get_by_role("button", name="Prospects", exact=True).click()
+                    demo_nav(page, "Customers").click()
                     harbor_link.wait_for()
                     held[0].fulfill(status=200, content_type="application/json",
                                     body=json.dumps({"callId": "held42", "sdp": "v=0\r\n", "greeting": "Hi."}))
@@ -806,11 +813,11 @@ def run() -> int:
                     stray = [r for r in reqs if not re.fullmatch(
                         r"/promo-api/admin/customers(/[A-Za-z0-9_-]+(/[a-z]+)?)?", r.split(" ", 1)[1])]
                     check("a malformed prospect id shows the list and asks the promo nothing else",
-                          page.get_by_role("heading", name="Prospects", level=1).is_visible() and stray == [],
+                          page.get_by_role("heading", name="Customers", level=1).is_visible() and stray == [],
                           str(reqs))
 
                     # --- The CRM pipeline ---
-                    page.get_by_role("button", name="Pipeline", exact=True).click()
+                    demo_nav(page, "CRM").click()
                     page.get_by_role("heading", name="CRM", level=1).wait_for()
                     main_tw.get_by_text("Left a voicemail with the owner.").wait_for()
                     board = page.evaluate(BOARD_JS)
@@ -890,9 +897,9 @@ def run() -> int:
                     held.clear()
 
                     # Back to a board that matches the fake for the rest of the checks.
-                    page.get_by_role("button", name="Prospects", exact=True).click()
+                    demo_nav(page, "Customers").click()
                     harbor_link.wait_for()
-                    page.get_by_role("button", name="Pipeline", exact=True).click()
+                    demo_nav(page, "CRM").click()
                     main_tw.get_by_text("Left a voicemail with the owner.").wait_for()
 
                     page.evaluate(MARK_TOASTS_JS)

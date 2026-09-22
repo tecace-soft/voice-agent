@@ -51,7 +51,7 @@ Copied (LF, `"use client"` removed): `components/admin/{shared,CustomerTable,New
 - `components/charts/CallsPerDayChart.tsx`, `components/charts/TopCustomersChart.tsx`: `import { useTheme } from "next-themes"` → `import { useDocumentTheme } from "@/theme"`; `const { resolvedTheme } = useTheme()` → `const resolvedTheme = useDocumentTheme()` (the `[resolvedTheme]` effect dependency and `key={resolvedTheme}` are unchanged). (theme)
 - `screens/OverviewScreen.tsx`: new first import `import { promoFetch } from "@/api"`; `:73` `fetch(
   `/api/admin/analytics?days=…`, …)` → `promoFetch(…)`. `import Link from "next/link"` removed; `import { demoHref } from "@/routes"` added after the `@/lib/http` import; `:223` `<Link href={`/admin/customers/${call.customerId}`} …>` → `<a href={demoHref("demoProspect", call.customerId)} …>`. `export default function OverviewPage()` → `export function OverviewScreen()` (named export, app convention). (fetch, next/link, naming)
-- `screens/ProspectsScreen.tsx`: new first import `import { promoFetch } from "@/api"`; `:20` `fetch("/api/admin/customers", { cache: "no-store" })` → `promoFetch(…)`. `export default function CustomersPage()` → `export function ProspectsScreen()`; `PageHeader` `title="Customers"` → `title="Prospects"` (matches the sidebar; subtitle and all other wording unchanged). (fetch, naming)
+- `screens/ProspectsScreen.tsx`: new first import `import { promoFetch } from "@/api"`; `:20` `fetch("/api/admin/customers", { cache: "no-store" })` → `promoFetch(…)`. `export default function CustomersPage()` → `export function ProspectsScreen()`. The `PageHeader` `title` is the promo's own `"Customers"`: it was briefly `"Prospects"` to match the old sidebar label, and was put back when the Demo tabs took the promo's names (see "Demo tabs" below). (fetch, naming)
 
 No `tsc` strictness fixes were needed for these 7 files (`npx tsc --noEmit` clean).
 
@@ -108,3 +108,27 @@ This is the last promo admin screen — every Demos view is now a ported screen.
 - `components/admin/CrmDrawer.tsx`: new import `useRef` added to the `react` import; new `const wantedIdRef = useRef(customerId)` after the `error` state; in `load()`, new `const wanted = customerId;` right after the `if (!customerId) return;` guard, the response is read into a local `const payload = await readJson<Payload>(response);`, and `if (wanted !== wantedIdRef.current) return;` runs before `setData(payload)` (the following `setError(null)` is skipped too, since it's after the early return — the catch block is unchanged); the effect that clears `data`/`error` and calls `load()` now sets `wantedIdRef.current = customerId;` as its first line. Fixes an upstream bug found in review: a slower `GET` for a previously open prospect (e.g. Harbor) resolving after the drawer has since been reopened on a different one (e.g. Cedar) unconditionally overwrote the open drawer with the stale prospect's data, so `save()` would then `PATCH` the wrong prospect's id and "Open the customer" would link to the wrong record. A plain `customerId` re-check inside `load()` can't catch this — that identifier is a parameter captured once per closure and is invariant for the lifetime of that particular `load()` call, so it can never differ from its own snapshot; `wantedIdRef` is the mutable, always-current source of truth the guard needs, updated synchronously in the effect (i.e. before any pending fetch's continuation can run, since JS is single-threaded). (bug fix, upstream too)
 - `screens/PipelineScreen.tsx`: new import `useRef` added to the `react` import; new `const hasLoadedRef = useRef(false)` before `load`; in `load()`'s success branch, `hasLoadedRef.current = true;` added after `setError(null)`; in the catch branch, the message is captured into a local `const message = …` (used for both `setError(message)` and, only `if (hasLoadedRef.current)`, `toast.error(message)`). Fixes an upstream bug found in review: `error` is rendered only in the `if (!data)` skeleton branch, so once the board has loaded once, a failed refresh (e.g. `move()`'s recovery `void load()` after a failed `PATCH`) set `error` somewhere nothing ever displays it — a stage-move failure that also failed to reload silently left the card parked in the wrong column with no visible message. `hasLoadedRef` keeps the first-load failure path identical (skeleton's `error` block still fires, no toast) while surfacing every later failure as a toast too. (bug fix, upstream too)
 - `components/admin/CrmDrawer.tsx`: the same stale-read guard added to `load()`'s CATCH path (`if (wanted !== wantedIdRef.current) return;` before `setError`). Without it a stale prospect's failure is painted over the prospect now on screen, which loaded fine — cosmetic, but it reports a failure that didn't happen to the record being looked at. Found in the stage-4c re-review. (bug fix, upstream too)
+
+### Demo tabs renamed to the promo's own (2026-09-22)
+
+The Demo section's three tabs are the promo's three admin tabs, named as `components/admin/AppSidebar.tsx`
+names them, and the group now sits below Settings:
+
+| was | now | promo route |
+| --- | --- | --- |
+| Demos → Demo overview | **Demo → Overview** | `/admin` |
+| Demos → Prospects | **Demo → Customers** | `/admin/customers` |
+| Demos → Pipeline | **Demo → CRM** | `/admin/crm` |
+
+Changed: `components/Sidebar.tsx` (group moved after Settings, group label `Demo`, three item labels),
+`App.tsx` (`VIEW_TITLES` for the four demo views — one customer is `Detail`, as the promo's
+`AdminBreadcrumb` calls it — and the breadcrumb's section word), `screens/ProspectsScreen.tsx`
+(`title` back to `"Customers"`).
+
+The route hashes are unchanged (`#/demos/overview`, `#/demos/prospects`, `#/demos/prospects/<id>`,
+`#/demos/pipeline`), so existing links still work, and the `ViewId`s keep their `demo…` names.
+
+One consequence worth knowing: the sidebar now has **two "Overview" items**, one in Dashboard and one
+in Demo. That is what the promo's naming gives; the group labels tell them apart. `demos_e2e.py` gained
+a `demo_nav()` helper that scopes a nav lookup to the Demo group, because `get_by_role("button",
+name="Overview")` is now ambiguous.

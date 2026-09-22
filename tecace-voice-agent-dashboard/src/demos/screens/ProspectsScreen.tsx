@@ -58,7 +58,7 @@ export function ProspectsScreen() {
   return (
     <>
       <PageHeader
-        title="Prospects"
+        title="Customers"
         subtitle="Each customer gets their own demo link."
         actions={<NewCustomerDialog onCreated={load} />}
       />

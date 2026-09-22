@@ -228,3 +228,69 @@ from its Accounts page.
 `voicemail_runs` is independent of the main backend's `intakes`. Point `DATABASE_URL` at a fresh
 database for a clean split, or at the main backend's database to keep any rows already recorded
 there.
+
+## Demo data (the promo's Redis export)
+
+The `demo_*` tables hold the voiceagent-promo demo data — prospects, their demo calls with full
+transcripts, page-view events and CRM notes — imported from the promo's final Upstash Redis export
+of 2026-09-22. The promo has stopped collecting, so this database is the system of record for it.
+
+Nothing serves these tables yet: the dashboard's Demo tabs still read the promo through the
+`/promo-api` proxy. The import is safe to run at any time and safe to re-run.
+
+### Where the file lives
+
+Put the export in `data/` — **git-ignored** (the repo root ignores `data/`, and `data/.gitignore`
+repeats it), because it holds real business names, addresses, phone numbers and complete call
+transcripts. Keep it out of the repo and out of any deploy bundle.
+
+```bash
+mkdir -p data
+unzip -o ~/Downloads/redis-transcripts-2026-09-22.zip redis-full-dump-2026-09-22.json -d data/
+```
+
+The zip also carries three CSVs and a Markdown transcript rendering. The importer reads only the
+JSON, which is a superset of all of them.
+
+### Running it
+
+The tables are created on the next cold start by the schema probe, or eagerly with
+`bun run db:migrate`. `demo:import` also calls `initDb()` itself, so a first run needs no setup.
+
+```bash
+bun run demo:import data/redis-full-dump-2026-09-22.json --dry-run   # look first
+bun run demo:import data/redis-full-dump-2026-09-22.json
+```
+
+Against production, pass the connection string inline, the same way `db:clear` is run:
+
+```bash
+DATABASE_URL="<production connection string>" bun run demo:import data/redis-full-dump-2026-09-22.json --dry-run
+DATABASE_URL="<production connection string>" bun run demo:import data/redis-full-dump-2026-09-22.json
+```
+
+The 2026-09-22 export should report **10 customers, 21 calls, 51 events, 0 notes**. Different
+numbers mean a different file — stop and check which one you have.
+
+`--dry-run` performs the entire import and then rolls the transaction back, so its counts are the
+counts a real run would produce, including constraint failures. It is not a file inspection: it
+will tell you that 10 customers are already present and only 2 would be new.
+
+### Re-running, and what the counts mean
+
+Every write is an upsert keyed on the promo's own ids, so importing the same file twice is a no-op:
+the second run reports **0 inserted** and leaves the row count unchanged. "Inserted" counts only new
+rows — a record already present is updated in place and not counted. Re-running after a run that
+failed halfway needs no cleanup; the whole import is one transaction, so a failure leaves nothing
+behind.
+
+To confirm an import landed, run it again with `--dry-run`: all zeros means the database already
+holds everything in the file.
+
+### If it refuses
+
+- `❌ not a Redis export: expected an object with a 'data' object` — wrong file (a CSV, or the zip
+  itself rather than the JSON inside it).
+- `❌ N record(s) name a customer the dump does not contain:` followed by the offending ids — the
+  export is internally inconsistent. Nothing is written. This is checked before any database work,
+  so it costs nothing and cannot half-apply.

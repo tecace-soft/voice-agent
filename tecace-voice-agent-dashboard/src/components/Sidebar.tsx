@@ -62,15 +62,6 @@ const NAV: {
     ],
   },
   {
-    key: "demos",
-    group: "Demos",
-    items: [
-      { id: "demoOverview", label: "Demo overview", icon: IconPresentation, adminOnly: true },
-      { id: "demoProspects", label: "Prospects", icon: IconTable, adminOnly: true },
-      { id: "demoPipeline", label: "Pipeline", icon: IconColumns, adminOnly: true },
-    ],
-  },
-  {
     key: "feedback",
     group: "Feedback",
     items: [
@@ -87,6 +78,15 @@ const NAV: {
       { id: "numbers", label: "Agent numbers", icon: IconPhone, adminOnly: true },
       { id: "apiKeys", label: "API keys", icon: IconKey, adminOnly: true },
       { id: "accounts", label: "Accounts", icon: IconUsers, adminOnly: true },
+    ],
+  },
+  {
+    key: "demos",
+    group: "Demo",
+    items: [
+      { id: "demoOverview", label: "Overview", icon: IconPresentation, adminOnly: true },
+      { id: "demoProspects", label: "Customers", icon: IconTable, adminOnly: true },
+      { id: "demoPipeline", label: "CRM", icon: IconColumns, adminOnly: true },
     ],
   },
 ];

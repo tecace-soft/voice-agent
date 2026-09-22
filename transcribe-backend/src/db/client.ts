@@ -294,6 +294,102 @@ export async function initDb(): Promise<void> {
     ALTER TABLE feedback ADD CONSTRAINT feedback_status_check
     CHECK (status IN ('open', 'resolved'))
   `;
+
+  // ---- Demo data, imported from the promo's final Redis export (2026-09-22). ----
+  // A different product sharing this database, hence the demo_ prefix. The ids are the promo's own
+  // nanoids: they are in the demo links, the transcripts and the CSV exports, so renumbering them
+  // would break links for no gain.
+  await sql`
+    CREATE TABLE IF NOT EXISTS demo_customers (
+      id                TEXT PRIMARY KEY,
+      active            BOOLEAN NOT NULL DEFAULT true,
+      business_name     TEXT NOT NULL,
+      label             TEXT,
+      contact_name      TEXT,
+      contact_email     TEXT,
+      operator_notes    TEXT,          -- the promo's Customer.notes, not the CRM note list
+      website_url       TEXT,
+      maps_url          TEXT,
+      resolved_maps_url TEXT,
+      research_notes    TEXT,
+      profile           JSONB NOT NULL DEFAULT '{}'::jsonb,
+      dossier           TEXT NOT NULL DEFAULT '',   -- markdown, not JSON
+      sources           JSONB NOT NULL DEFAULT '[]'::jsonb,
+      prompts           JSONB NOT NULL DEFAULT '{}'::jsonb,
+      call_sound        JSONB,
+      voice             TEXT,
+      agent_name        TEXT,
+      language          TEXT,          -- absent means English
+      demo_minutes      INTEGER,
+      stage             TEXT CHECK (stage IS NULL OR stage IN ('new','contacted','interested','won','lost')),
+      status            TEXT NOT NULL,
+      error             TEXT,
+      last_contacted_at TIMESTAMPTZ,
+      follow_up_at      TIMESTAMPTZ,
+      researched_at     TIMESTAMPTZ,
+      created_at        TIMESTAMPTZ NOT NULL,   -- the promo's own timestamps, not the import's
+      updated_at        TIMESTAMPTZ NOT NULL,
+      imported_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_demo_customers_stage ON demo_customers (stage)`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS demo_calls (
+      id              TEXT PRIMARY KEY,
+      customer_id     TEXT NOT NULL REFERENCES demo_customers(id) ON DELETE CASCADE,
+      live_session_id TEXT,
+      started_at      TIMESTAMPTZ NOT NULL,
+      ended_at        TIMESTAMPTZ,
+      status          TEXT NOT NULL CHECK (status IN ('started','completed','failed','abandoned')),
+      duration_sec    INTEGER CHECK (duration_sec IS NULL OR duration_sec >= 0),
+      turns           INTEGER CHECK (turns IS NULL OR turns >= 0),
+      end_reason      TEXT,
+      is_test         BOOLEAN NOT NULL DEFAULT false,
+      visitor_id      TEXT,
+      ip_hash         TEXT,
+      user_agent      TEXT,
+      transcript      JSONB NOT NULL DEFAULT '[]'::jsonb,
+      review          JSONB,
+      imported_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_demo_calls_customer_started ON demo_calls (customer_id, started_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_demo_calls_started ON demo_calls (started_at)`;
+
+  // The source has no event id, so identity is the tuple below. `source` keeps the distinction the
+  // promo's own readEvents makes between its legacy global list and the per-customer ones.
+  await sql`
+    CREATE TABLE IF NOT EXISTS demo_call_events (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      customer_id TEXT NOT NULL REFERENCES demo_customers(id) ON DELETE CASCADE,
+      type        TEXT NOT NULL,
+      at          TIMESTAMPTZ NOT NULL,
+      visitor_id  TEXT,
+      ip_hash     TEXT,
+      source      TEXT NOT NULL CHECK (source IN ('legacy','customer')),
+      imported_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  // What makes a re-import idempotent. COALESCE because NULL never equals NULL in an index either.
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_demo_call_events_identity
+      ON demo_call_events (customer_id, type, at, COALESCE(visitor_id, ''), COALESCE(ip_hash, ''))
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_demo_call_events_customer_at ON demo_call_events (customer_id, at)`;
+
+  // Empty in the 2026-09-22 export — no note was ever written. It exists because the CRM tab writes
+  // notes, and the schema should not need changing the day it does.
+  await sql`
+    CREATE TABLE IF NOT EXISTS demo_notes (
+      id          TEXT PRIMARY KEY,
+      customer_id TEXT NOT NULL REFERENCES demo_customers(id) ON DELETE CASCADE,
+      at          TIMESTAMPTZ NOT NULL,
+      text        TEXT NOT NULL,
+      imported_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_demo_notes_customer_at ON demo_notes (customer_id, at DESC)`;
 }
 
 // Ensure the schema is ready before serving requests, at most once per process (cached promise).
@@ -330,6 +426,10 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM agent_call_minutes LIMIT 1`;
     await sql`SELECT 1 FROM agent_call_sessions LIMIT 1`;
     await sql`SELECT 1 FROM api_keys LIMIT 1`;
+    await sql`SELECT 1 FROM demo_customers LIMIT 1`;
+    await sql`SELECT 1 FROM demo_calls LIMIT 1`;
+    await sql`SELECT 1 FROM demo_call_events LIMIT 1`;
+    await sql`SELECT 1 FROM demo_notes LIMIT 1`;
     return;
   } catch {
     await initDb();

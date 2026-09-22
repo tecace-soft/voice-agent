@@ -67,10 +67,10 @@ const VIEW_TITLES: Record<ViewId, string> = {
   numbers: "Agent numbers",
   apiKeys: "API keys",
   accounts: "Accounts",
-  demoOverview: "Demo overview",
-  demoProspects: "Prospects",
-  demoProspect: "Prospect",
-  demoPipeline: "Pipeline",
+  demoOverview: "Overview",
+  demoProspects: "Customers",
+  demoProspect: "Detail",
+  demoPipeline: "CRM",
 };
 
 // One fetch of GET /transcribe/stats, shared by every view, with a manual refresh that keeps the
@@ -205,7 +205,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
               <IconPanelLeft size={16} />
             </button>
             <nav className="crumbs ta-label-1" aria-label="Breadcrumb">
-              <span className="muted">{isDemoView ? "Demos" : "Transcribe"}</span>
+              <span className="muted">{isDemoView ? "Demo" : "Transcribe"}</span>
               <span className="muted" aria-hidden="true">
                 /
               </span>
