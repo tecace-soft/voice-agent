@@ -235,8 +235,9 @@ The `demo_*` tables hold the voiceagent-promo demo data — prospects, their dem
 transcripts, page-view events and CRM notes — imported from the promo's final Upstash Redis export
 of 2026-09-22. The promo has stopped collecting, so this database is the system of record for it.
 
-Nothing serves these tables yet: the dashboard's Demo tabs still read the promo through the
-`/promo-api` proxy. The import is safe to run at any time and safe to re-run.
+The dashboard's Demo tabs read and write these tables through this backend's `/demo/*` routes,
+guarded by the dashboard's own admin session — the `/promo-api` proxy is gone. The import is safe
+to run at any time and safe to re-run.
 
 ### Where the file lives
 
@@ -313,3 +314,27 @@ holds everything in the file.
 - `❌ N record(s) name a customer the dump does not contain:` followed by the offending ids — the
   export is internally inconsistent. Nothing is written. This is checked before any database work,
   so it costs nothing and cannot half-apply.
+
+### The test call
+
+The "Call now" panel on a prospect's Demo page dials that prospect's agent from the browser over
+OpenAI's live API, and the post-call review is what puts a summary on the call in the Activity tab.
+It reads six variables, all optional (`.env.example` has them under `# ---- Demo test call ----`):
+
+| Variable | Default | What it is |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | — | Enables the dial. **Unset = only the dial is refused** |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | For a proxy or compatible endpoint |
+| `OPENAI_LIVE_MODEL` | `gpt-live-1` | The voice model on the call |
+| `OPENAI_BACKEND_MODEL` | `gpt-5.6-terra` | The text model it hands tool calls to |
+| `CALL_REVIEW_MODEL` | `gpt-5.6-terra` | Writes the post-call review |
+| `DEFAULT_TIMEZONE` | `America/Los_Angeles` | Used when the browser sends no usable timezone |
+
+The names match openai-agent-app's, so the same key and model serve both.
+
+`OPENAI_API_KEY` is deliberately **not** required at startup, unlike `DATABASE_URL` and
+`AUTH_SECRET`. A deployment without it boots and serves every other Demo route normally; only a
+test call is refused, at the moment it is placed, with `OPENAI_API_KEY is not set on the server.`
+So set it in the Vercel project (and redeploy) when you want test calls, and simply leave it out
+when you don't. A test call spends real realtime minutes against that key with no allowance behind
+it — admin auth and 5 calls a minute per IP are the only limits.

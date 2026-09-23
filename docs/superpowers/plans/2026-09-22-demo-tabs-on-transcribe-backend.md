@@ -451,3 +451,34 @@ points at transcribe-backend, so no new environment variable is needed; the `/pr
 that was missing from `vercel.json` is no longer needed at all.
 
 **Stage done.**
+
+---
+
+## Post-ship defect: every JSONB column was stored double-encoded (2026-09-23)
+
+**Symptom.** The live Customers tab showed ten rows of "Unnamed" while every other field — status,
+Live toggles, per-customer calls and minutes, the Korean `label` — was correct.
+
+**Cause, not in the data but in the binding.** postgres.js learns a parameter's type from the
+server's ParameterDescription, so `$1::jsonb` marks it OID 3802; `types.js` registers the json
+serializer (`JSON.stringify`) for that OID, and `connection.js` applies it:
+`parameters[i] = type in options.serializers ? options.serializers[type](x) : '' + x`.
+`demoImport.ts` and `demoWrite.ts` both pre-stringified, so the value was encoded twice and Postgres
+stored a JSON **string**. `profile.name` was therefore `undefined` for every customer, and the same
+was true of `sources`, `prompts`, `call_sound`, `transcript` and `review`.
+
+**Why the tests missed it, which is the part worth remembering.** The PGlite shim handed values
+straight to the database and never ran postgres.js's serializer — so the single component that
+broke was the single component no test exercised. A test double that omits the step where the bug
+lives cannot find the bug, however many assertions are built on top of it.
+
+**Fixed:** both writers bind through `sql.json()`, postgres.js's documented API, and the `::jsonb`
+casts are gone (the parameter is typed already). The shim in `demoImport.pg.test.ts` and
+`demo.pg.test.ts` now serializes through the driver's own table, which was mutation-checked —
+reintroducing the double-encode fails "stores the blobs as JSON that can be read back". New
+`src/db/jsonbBinding.test.ts` pins the mechanism against postgres.js's serializers and guards the
+source shape the shim still cannot model (a bare string plus a `::jsonb` cast, whose type only
+becomes jsonb at the server).
+
+**Production repaired** by re-running `bun run demo:import` — the upsert rewrote all ten customers
+and twenty-one calls in place; `data/diagnose-demo.ts` then reported `profile=object` for all ten.

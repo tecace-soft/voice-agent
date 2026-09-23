@@ -1,5 +1,6 @@
 import { Elysia, t } from "elysia";
 import { authenticateAdmin } from "../auth/guard.js";
+import { env } from "../config/env.js";
 import {
   activityFeed,
   callsPerDay,
@@ -13,10 +14,15 @@ import {
   testCalls,
   withinDays,
 } from "../demo/analytics.js";
+import { callClock, safeTimeZone } from "../demo/callClock.js";
+import { reviewCall } from "../demo/callReview.js";
+import { OpenAIError, createLiveSession } from "../demo/openai.js";
 import type {
   BusinessProfile,
   CallLog,
+  CallReview,
   CallSound,
+  CallStatus,
   CrmNote,
   Customer,
   CustomerPrompts,
@@ -24,6 +30,7 @@ import type {
   CustomerStats,
   Engagement,
   TrackEvent,
+  TranscriptEntry,
 } from "../demo/types.js";
 import { CUSTOMER_STAGES } from "../demo/types.js";
 import {
@@ -37,10 +44,15 @@ import {
 import type { CustomerPatch } from "../db/demoWrite.js";
 import {
   addNote,
+  attachLiveSession,
+  attachReview,
   createCustomer,
+  deleteCall,
   deleteCustomer,
+  finishCall,
   patchCall,
   patchCustomer,
+  startCall,
 } from "../db/demoWrite.js";
 
 // The Demo tabs' reads. Each handler is the promo's own route handler
@@ -139,6 +151,74 @@ const LIVE_VOICES: string[] = [
   "bossa",
   "tempo",
 ];
+
+// ---------------------------------------------------------------------------------------------
+// The test call's rate limit, copied from the promo's `app/api/session/route.ts`.
+//
+// The promo had two other ceilings alongside this one — a per-demo concurrency reservation and a
+// global `LIVE_SESSION_LIMIT` seat — plus the demo allowance itself. All three sit behind
+// `if (!isTest)` there, because they exist to protect the *public* demo from a prospect's
+// colleagues and from OpenAI's per-organisation session cap. The public demo stays on the promo,
+// so none of that comes across: an admin test call skipped every one of them in the promo too.
+//
+// What is left is the cheap one, kept for the reason it was cheap: an operator can still leave a
+// retry loop running, and five dials a minute is far more than a person tests by hand.
+const RATE_LIMIT = 5;
+const RATE_WINDOW_MS = 60_000;
+
+/**
+ * A per-instance memory of who has dialled recently. Serverless runs many
+ * instances, so this thins out bursts rather than enforcing an exact number;
+ * the real protection against one prospect running up the bill is the demo
+ * allowance, which is stored and shared.
+ */
+const recentByIp = new Map<string, number[]>();
+
+function rateLimited(key: string): boolean {
+  const now = Date.now();
+  const hits = (recentByIp.get(key) ?? []).filter((at) => now - at < RATE_WINDOW_MS);
+  hits.push(now);
+  recentByIp.set(key, hits);
+
+  // Without this the map keeps every address this instance has ever seen.
+  if (recentByIp.size > 5000) {
+    for (const [ip, times] of recentByIp) {
+      if (times.every((at) => now - at >= RATE_WINDOW_MS)) recentByIp.delete(ip);
+    }
+  }
+
+  return hits.length > RATE_LIMIT;
+}
+
+/** The promo read this off the `Request`; Elysia has already parsed the headers. */
+function clientIp(headers: Record<string, string | undefined>): string {
+  const forwarded = headers["x-forwarded-for"];
+  return forwarded?.split(",")[0]?.trim() || "local";
+}
+
+/**
+ * How a call is allowed to have ended, the promo's `VALID`. Anything else — a stale client, a
+ * truncated beacon, a `"started"` sent back at us — is recorded as `"abandoned"` rather than
+ * refused, because the call did end and the report is the only chance to say so.
+ */
+const REPORTABLE: CallStatus[] = ["completed", "failed", "abandoned"];
+
+/**
+ * A transcript entry as the browser should have sent it. `speaker` and `text` are what every later
+ * reader touches, so an entry without them is not repairable and is dropped; `id` and the two
+ * timestamps only have to exist in the right shape.
+ */
+function isTranscriptEntry(entry: unknown): entry is TranscriptEntry {
+  if (typeof entry !== "object" || entry === null) return false;
+  const e = entry as Record<string, unknown>;
+  return (
+    (e.speaker === "caller" || e.speaker === "receptionist") &&
+    typeof e.text === "string" &&
+    typeof e.id === "string" &&
+    typeof e.startMs === "number" &&
+    typeof e.endMs === "number"
+  );
+}
 
 export const demo = new Elysia({ prefix: "/demo" })
   // The Overview tab: the KPIs, the calls-per-day chart, the busiest prospects, the latest calls.
@@ -597,6 +677,229 @@ export const demo = new Elysia({ prefix: "/demo" })
         // analyze." instead of a 422.
         isTest: t.Optional(t.Unknown()),
         analyze: t.Optional(t.Unknown()),
+      }),
+    },
+  )
+
+  /**
+   * Place a test call: the browser's SDP offer goes out to OpenAI's live API and the answer comes
+   * back, with a `demo_calls` row opened for it.
+   *
+   * This is the promo's `app/api/session/route.ts`, reduced to the path it took when `isTest` was
+   * true. Everything the promo did behind `if (!isTest)` — the demo allowance, the per-customer
+   * concurrency reservation, the global live-session seat, and the `markLive` / `listLiveSessions`
+   * bookkeeping those two needed — protects the *public* demo, which stays on the promo; an admin
+   * test call skipped all of it there and there is no prospect-facing dial here to protect. The
+   * `visitorId()` cookie goes with them: it identified an anonymous visitor, and the caller here is
+   * a signed-in admin. What is left is the rate limit, the customer checks, and the work itself.
+   *
+   * The promo authorised the test flag with `body.isTest === true && isAdminRequest()`. The admin
+   * guard below is that check, which is why the row is written `is_test = true` unconditionally:
+   * every call reachable from this route is one the operator placed from the test panel.
+   *
+   * A test call spends real live-API minutes with nothing but this guard and the rate limit in
+   * front of it — there is no allowance behind an admin, by design.
+   */
+  .post(
+    "/session",
+    async ({ body, headers, status }) => {
+      const caller = await authenticateAdmin(headers.authorization, DEMO_IS_ADMIN);
+      if ("denied" in caller) return status(caller.denied, caller.body);
+
+      const { customerId, sdp } = body;
+      if (!customerId || !sdp) {
+        return status(400, { error: "Missing customerId or sdp." });
+      }
+
+      const ip = clientIp(headers);
+      if (rateLimited(ip)) {
+        return status(429, { error: "Too many calls in a row. Wait a minute and try again." });
+      }
+
+      let customer: Customer | null;
+      try {
+        customer = await getCustomer(customerId);
+      } catch (error) {
+        return status(500, jsonError(error));
+      }
+      if (!customer) {
+        return status(404, { error: "This demo isn't available." });
+      }
+      if (!customer.active) {
+        return status(403, { error: "This demo is paused." });
+      }
+      if (customer.status !== "ready") {
+        return status(409, { error: "This demo is still being prepared." });
+      }
+
+      // The record is written before OpenAI is asked for a session, so that the
+      // next person to dial can see this call already counting. Creating it
+      // afterwards left a window the width of an OpenAI round trip in which every
+      // simultaneous caller read an empty demo and was waved through.
+      let call: CallLog;
+      try {
+        call = await startCall({ customerId: customer.id, userAgent: headers["user-agent"] });
+      } catch (error) {
+        return status(500, jsonError(error));
+      }
+
+      // The stored prompts cannot know what day it is, so the date goes on here,
+      // per call, and onto both: the voice hears "tomorrow" and the model it
+      // delegates to is the one that takes the booking.
+      const clock = callClock(
+        new Date(),
+        safeTimeZone(body.timeZone, env.defaultTimezone),
+        customer.profile.hours,
+      );
+
+      try {
+        const session = await createLiveSession(
+          {
+            model: env.openaiLiveModel,
+            instructions: `${customer.prompts.live}\n\n${clock}`,
+            audio: { output: { voice: customer.voice } },
+            delegation: {
+              type: "responses",
+              responses: {
+                model: env.openaiBackendModel,
+                instructions: `${customer.prompts.backend}\n\n${clock}`,
+              },
+            },
+            store: false,
+          },
+          sdp,
+        );
+
+        await attachLiveSession(call.id, session.id);
+
+        return {
+          callId: call.id,
+          sessionId: session.id,
+          sdp: session.sdp,
+          greeting: customer.prompts.greeting,
+        };
+      } catch (error) {
+        // No session means no call. Take the record back rather than leaving one that sits in the
+        // Activity tab as a call that never happened and counts as in flight for ten minutes.
+        await deleteCall(customer.id, call.id).catch(() => undefined);
+        const message = error instanceof Error ? error.message : String(error);
+        const code = error instanceof OpenAIError ? error.status : 500;
+        console.error("[demo]", error);
+        return status(code, { error: message });
+      }
+    },
+    {
+      // Loose, like the other bodies here: a missing `customerId` or `sdp` must reach the handler
+      // to become the promo's own 400 rather than the framework's 422. `timeZone` is unknown
+      // because `safeTimeZone` is the thing that decides whether it is a timezone.
+      body: t.Object({
+        customerId: t.Optional(t.String()),
+        sdp: t.Optional(t.String()),
+        timeZone: t.Optional(t.Unknown()),
+      }),
+    },
+  )
+
+  /**
+   * Report how a test call ended: the promo's `app/api/calls/[callId]/route.ts`.
+   *
+   * The client reports twice by design — once when the call ends normally, and again from the
+   * unload path when the operator closes the tab mid-call — so **the first report wins and the
+   * second changes nothing**. That decision is made inside `finishCall`, on the locked row: a
+   * report of a call that is no longer `"started"` comes straight back as `alreadyReported`, the
+   * stored transcript and duration untouched and, just as importantly, no second review asked for.
+   *
+   * Nothing the client sends is refused. A status outside the three is recorded as `"abandoned"`,
+   * a missing duration as none at all: the call is over either way, and this is the only moment
+   * anything can be written down about it.
+   *
+   * The promo also called `clearLive(call)` here, handing back the global live-session seat. That
+   * seat belongs to the public demo's concurrency bookkeeping, which `POST /demo/session` does not
+   * keep — see the note there — so there is nothing to hand back.
+   */
+  .post(
+    "/calls/:callId",
+    async ({ body, headers, params, status }) => {
+      const caller = await authenticateAdmin(headers.authorization, DEMO_IS_ADMIN);
+      if ("denied" in caller) return status(caller.denied, caller.body);
+
+      const reported = body.status as CallStatus;
+      const ended = REPORTABLE.includes(reported) ? reported : "abandoned";
+      // Capped because this is written straight into a JSONB column from the browser; a runaway
+      // transcript is a bad row, not a bad request.
+      //
+      // Each entry is also checked rather than cast. The promo cast the array and got away with it
+      // because Redis held the record loosely; here the entries are stored permanently and then read
+      // back by `analytics.ts` (`gapRollup`, `callerSaid`) and by `callReview`, which reach straight
+      // into `entry.text` and `entry.speaker`. One malformed entry from a browser would be a row
+      // that makes a later read throw, long after the call it came from. A bad entry is dropped, not
+      // rejected: the recorded call matters more than a line of it.
+      const transcript = Array.isArray(body.transcript)
+        ? body.transcript.slice(0, 500).filter(isTranscriptEntry)
+        : [];
+      const durationSec =
+        typeof body.durationSec === "number" && body.durationSec >= 0
+          ? Math.round(body.durationSec)
+          : undefined;
+      const endReason =
+        typeof body.endReason === "string" ? body.endReason.slice(0, 120) : undefined;
+
+      let outcome: Awaited<ReturnType<typeof finishCall>>;
+      try {
+        outcome = await finishCall(
+          params.callId,
+          {
+            status: ended,
+            endedAt: new Date().toISOString(),
+            durationSec,
+            endReason,
+            turns: transcript.length,
+            transcript,
+          },
+          // The promo read `body.customerId` first so its lookup could go straight to the right
+          // record rather than walking every customer. A primary key needs no such help, so here
+          // it is only a narrowing filter: sent, it still has to match.
+          body.customerId,
+        );
+      } catch (error) {
+        return status(500, jsonError(error));
+      }
+
+      if (outcome.outcome === "missing") {
+        return status(404, { error: "Call not found." });
+      }
+      if (outcome.outcome === "alreadyReported") {
+        return { ok: true, alreadyReported: true };
+      }
+
+      // Read what the call says about the product while the transcript is in hand. Nobody is
+      // waiting on this — the client reports and moves on — but the answer cannot go out before it
+      // has been stored, so it is awaited here rather than left running.
+      //
+      // Everything about it is contained: `reviewCall` is documented never to throw and returns
+      // null on any failure, and saving it is caught as well. The call is already recorded, and a
+      // review problem must never be able to un-record it — the review can be asked for again.
+      let review: CallReview | null = null;
+      try {
+        review = await reviewCall(outcome.call);
+        if (review) await attachReview(outcome.call.id, review);
+      } catch (error) {
+        console.error("[demo]", error);
+      }
+
+      return { ok: true, reviewed: Boolean(review) };
+    },
+    {
+      params: t.Object({ callId: t.String({ maxLength: 64 }) }),
+      // Unknown throughout, deliberately: every field above decides for itself what it will accept,
+      // and a report that fails validation is a call that goes unrecorded — the one outcome this
+      // route has no way to recover from.
+      body: t.Object({
+        customerId: t.Optional(t.String()),
+        status: t.Optional(t.Unknown()),
+        durationSec: t.Optional(t.Unknown()),
+        endReason: t.Optional(t.Unknown()),
+        transcript: t.Optional(t.Unknown()),
       }),
     },
   );

@@ -24,12 +24,15 @@ import { fromCallRow, fromCustomerRow, fromNoteRow } from "../demo/rows.js";
 import type {
   BusinessProfile,
   CallLog,
+  CallReview,
   CallSound,
+  CallStatus,
   CrmNote,
   Customer,
   CustomerPrompts,
   CustomerStage,
   CustomerStatus,
+  TranscriptEntry,
 } from "../demo/types.js";
 import { sql } from "./client.js";
 
@@ -422,5 +425,152 @@ export async function patchCall(
           SELECT ${callColumns()} FROM demo_calls l
           WHERE l.id = ${callId} AND l.customer_id = ${customerId}
         `;
+  return row ? fromCallRow(row as unknown as DemoCallRow) : null;
+}
+
+/**
+ * Open a call record — the promo's `saveCall` of a freshly minted `CallLog`, at the top of
+ * `app/api/session/route.ts`: a 12-character id, the instant it started, an empty transcript, and
+ * `status: "started"` until a report comes in.
+ *
+ * `isTest` is not a parameter, because it is not a choice. The promo decided it per request
+ * (`body.isTest === true && isAdminRequest()`) since the same route also served a prospect
+ * following their own demo link; here the only caller is the operator's test panel behind the
+ * admin guard, so every call this backend places is a test call and is written as one.
+ *
+ * `visitorId` is likewise absent: it identified an anonymous visitor to the public demo, and the
+ * caller here is a signed-in admin.
+ *
+ * `liveSessionId` starts empty because the row is written *before* OpenAI is asked for a session —
+ * see the ordering comment in the route. `attachLiveSession` fills it in once there is one.
+ */
+export async function startCall(input: {
+  customerId: string;
+  userAgent?: string;
+}): Promise<CallLog> {
+  const [row] = await sql`
+    INSERT INTO demo_calls AS l (
+      id, customer_id, live_session_id, started_at, status, is_test, user_agent, transcript
+    ) VALUES (
+      ${newId(12)}, ${input.customerId}, ${""}, ${new Date().toISOString()},
+      ${"started" satisfies CallStatus}, ${true}, ${input.userAgent ?? null}, ${jsonb([])}
+    )
+    RETURNING ${callColumns()}
+  `;
+  return fromCallRow(row as unknown as DemoCallRow);
+}
+
+/**
+ * Record which live session a started call is holding — the promo's second `saveCall`, the one
+ * that runs after `createLiveSession` comes back. `null` when the row is no longer there.
+ */
+export async function attachLiveSession(
+  callId: string,
+  liveSessionId: string,
+): Promise<CallLog | null> {
+  const [row] = await sql`
+    UPDATE demo_calls AS l SET live_session_id = ${liveSessionId}
+    WHERE l.id = ${callId}
+    RETURNING ${callColumns()}
+  `;
+  return row ? fromCallRow(row as unknown as DemoCallRow) : null;
+}
+
+/**
+ * Take a started call back — the promo's `deleteCall`, used on its failure paths. `false` when
+ * that customer has no call with that id.
+ *
+ * A session that never opened is not a call: left behind, the `started` row shows up in the
+ * Activity tab and `inFlightCalls` counts it for the ten minutes it takes to age out.
+ */
+export async function deleteCall(customerId: string, callId: string): Promise<boolean> {
+  const rows = await sql`
+    DELETE FROM demo_calls WHERE id = ${callId} AND customer_id = ${customerId} RETURNING id
+  `;
+  return rows.length > 0;
+}
+
+/** What a report says about a call that has ended, already normalised by the route. */
+export interface CallReport {
+  status: CallStatus;
+  endedAt: string;
+  durationSec?: number;
+  endReason?: string;
+  turns: number;
+  transcript: TranscriptEntry[];
+}
+
+/**
+ * Why this is a union rather than `CallLog | null`: the report route has three answers, and two of
+ * them are not errors. `missing` is its 404; `alreadyReported` is the call that has already been
+ * reported once and must not be rewritten; `finished` carries the row as it now stands, which is
+ * what the review then reads.
+ */
+export type CallOutcome =
+  | { outcome: "finished"; call: CallLog }
+  | { outcome: "alreadyReported" }
+  | { outcome: "missing" };
+
+/**
+ * Close a started call — the promo's `saveCall(ended)` at the end of
+ * `app/api/calls/[callId]/route.ts`.
+ *
+ * The status check lives *inside* the transaction, on a `FOR UPDATE` row, because the client
+ * reports twice by design: the ordinary end-of-call POST, and the unload beacon that may land
+ * after it. The promo read the call, checked `status !== "started"` in the route and then saved,
+ * which leaves a window the width of that gap in which both reports read `started` and the second
+ * overwrites the first — the stored transcript then being whichever request happened to commit
+ * last. Here the second report finds the row locked, reads the status the first one wrote and is
+ * told `alreadyReported`. The first result wins, which is the whole point of the check.
+ *
+ * `customerId` is an optional narrowing filter, not a requirement: the promo passed `body.customerId`
+ * so its lookup could go straight to the right record instead of walking every customer, and a
+ * primary-key select needs no such help. Sent, it still has to match — a report naming the wrong
+ * prospect is not a report of this call.
+ */
+export async function finishCall(
+  callId: string,
+  report: CallReport,
+  customerId?: string,
+): Promise<CallOutcome> {
+  return (await sql.begin(async (tx) => {
+    const [existing] = await tx`
+      SELECT l.id, l.status FROM demo_calls l
+      WHERE l.id = ${callId} ${customerId ? sql`AND l.customer_id = ${customerId}` : sql``}
+      FOR UPDATE
+    `;
+    if (!existing) return { outcome: "missing" };
+    if ((existing as { status: string }).status !== "started") {
+      return { outcome: "alreadyReported" };
+    }
+
+    const [row] = await tx`
+      UPDATE demo_calls AS l SET
+        status       = ${report.status},
+        ended_at     = ${report.endedAt},
+        duration_sec = ${report.durationSec ?? null},
+        end_reason   = ${report.endReason ?? null},
+        turns        = ${report.turns},
+        transcript   = ${jsonb(report.transcript)}
+      WHERE l.id = ${callId}
+      RETURNING ${callColumns()}
+    `;
+    return { outcome: "finished", call: fromCallRow(row as unknown as DemoCallRow) };
+  })) as CallOutcome;
+}
+
+/**
+ * Store the review a reported call was given — the promo's `saveCall({ ...ended, review })`.
+ *
+ * Separate from `finishCall` because it happens after it and may not happen at all: the review is
+ * asked for once the call is already safely recorded, and a call with no review is a call the model
+ * was not asked about or could not answer on. `null` when the row is no longer there.
+ */
+export async function attachReview(callId: string, review: CallReview): Promise<CallLog | null> {
+  const [row] = await sql`
+    UPDATE demo_calls AS l SET review = ${jsonb(review)}
+    WHERE l.id = ${callId}
+    RETURNING ${callColumns()}
+  `;
   return row ? fromCallRow(row as unknown as DemoCallRow) : null;
 }

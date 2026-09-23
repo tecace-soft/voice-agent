@@ -42,6 +42,12 @@ const agentConfigKey = process.env.AGENT_CONFIG_KEY?.trim() ?? "";
 const geminiApiKey = process.env.GEMINI_API_KEY?.trim() ?? "";
 const businessExtractModel = process.env.BUSINESS_EXTRACT_MODEL?.trim() || "gemini-2.5-flash-lite";
 
+// The Demo test call runs on OpenAI's live API, the same key and model openai-agent-app uses
+// (its .env.example: OPENAI_API_KEY, OPENAI_LIVE_MODEL=gpt-live-1). Optional here on purpose: a
+// deployment without it serves every other Demo route normally and refuses only the dial, with
+// the message the promo used.
+const openaiApiKey = process.env.OPENAI_API_KEY?.trim() || undefined;
+
 const nodeEnv = process.env.NODE_ENV ?? "development";
 
 // Monthly transcription allowance, above which the account is billed extra. 0 (the default) means
@@ -124,6 +130,13 @@ export const env = {
   agentConfigKey,
   geminiApiKey,
   businessExtractModel,
+  openaiApiKey,
+  openaiBaseUrl: (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, ""),
+  openaiLiveModel: process.env.OPENAI_LIVE_MODEL || "gpt-live-1",
+  openaiBackendModel: process.env.OPENAI_BACKEND_MODEL || "gpt-5.6-terra",
+  callReviewModel: process.env.CALL_REVIEW_MODEL || "gpt-5.6-terra",
+  // A browser that sends no timezone, or a value that is not one.
+  defaultTimezone: process.env.DEFAULT_TIMEZONE || "America/Los_Angeles",
   monthlyCap,
   capWarnAt,
   overageRate,
