@@ -17,6 +17,7 @@ import { SourcesPanel } from "@/components/research/SourcesPanel";
 import { PageHeader, StatCard, StatusBadge, statusKind } from "@/components/admin/shared";
 import { CallPanel } from "@/components/call/CallPanel";
 import { Transcript } from "@/components/call/Transcript";
+import { VoiceOrb } from "@/components/call/VoiceOrb";
 import { useLiveCall } from "@/hooks/useLiveCall";
 import { formatDuration, isResearchStalled } from "@/lib/analytics";
 import { readJson } from "@/lib/http";
@@ -316,6 +317,11 @@ export function ProspectScreen({ id }: { id: string }) {
             <CardTitle className="ta-headline-2">Test call</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-1 flex-col gap-4">
+            {/* The orb sits above the panel rather than inside it: CallPanel is a verbatim port
+                and takes no `meters`, so the live analysers are wired here, where `call` lives. */}
+            <div className="flex justify-center">
+              <VoiceOrb state={call.state} meters={call.meters} size={64} />
+            </div>
             <CallPanel
               compact
               state={call.state}

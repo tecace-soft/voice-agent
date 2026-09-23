@@ -137,6 +137,15 @@ code {
   background: var(--primary);
   color: #fff;
 }
+/* The sidebar's mark is the voice orb (src/demos/components/call/VoiceOrb.tsx): an opaque circle
+   that fills the whole 28px box, so the tinted square behind it would only ever show as four
+   corners. The box itself is kept — same slot, same size, same centring as the icon it replaced.
+   The login and setup pages still use plain .brand-mark with the icon and are untouched. */
+.brand-mark-orb {
+  background: none;
+  color: inherit;
+  border-radius: 999px;
+}
 .brand-text {
   display: flex;
   flex-direction: column;

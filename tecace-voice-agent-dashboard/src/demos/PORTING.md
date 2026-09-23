@@ -410,3 +410,151 @@ stalled banner).
 vitest test asserted the call panel's absence or a single-column grid, so none needed changing.
 `scripts/regression/demos_e2e.py` is **not** run at this point: the stage's next task reworks it,
 and until `fake_backend.py` learns `/demo/session` the test-call checks cannot pass.
+
+### The orb (2026-09-23)
+
+The TecAce voice-orb kit, applied the way the promo applies it. The kit ships a `voice-agent-orb.js`
+web component, a `preview.html` and a GIF/WebP; **none of them are used**, here or in the promo. What
+is used is the film, and the promo's React component that plays it.
+
+Ported (`"use client"` removed, no other edit): `components/call/VoiceOrb.tsx`. Its `@/lib/…`
+specifiers are unchanged — `@/` is `src/demos/`, so they resolve as they do in the promo. The
+playback logic, the reduced-motion early return, the `pointerdown` autoplay fallback and the
+`RATE_STEP` throttle are all verbatim.
+
+**Source commit.** `a4ee3b4` ("Make the orb the TecAce ribbon, and the ribbon the logo"), not the
+`f482848` at the top of this file — the same reason `hooks/useLiveCall.ts` came from `cf5473b`.
+
+**`lib/voice-level.ts` needed the rest of itself.** `a4ee3b4` added `OrbMode`, `orbMode()`, the
+`PLAYBACK` table and `orbPlaybackRate()` to that file, and `VoiceOrb` imports two of them, so the
+port was incomplete without them. Appended verbatim from the promo (no strictness fix needed; the
+existing `levelFromSamples` non-null assertions are untouched). `tests/promo/voice-level.test.ts`
+was re-taken from the promo at the same commit, with this repo's usual `"../lib/` →
+`"../../src/demos/lib/` rewrite — the same 13 tests as before plus the 6 the commit added for
+`orbMode`/`orbPlaybackRate`, so vitest goes from 226 to 232.
+
+#### Assets
+
+`public/` is new (this app had none). Two files, both served at the root by Vite, so the
+component's `/voice-orb.mp4` and `/voice-orb.png` work with no edit:
+
+- `public/voice-orb.mp4` — the kit's `tecace-hero.mp4`, byte-identical to the promo's
+  `public/voice-orb.mp4` (md5 `7ccc8123e52aa7e3d392f50ba43cfcca`).
+- `public/voice-orb.png` — **the promo's poster, not the kit's `voice-agent-poster.png`.** It is the
+  still the source pairs with this film, and at 55 KB it is a third of the kit's 171 KB. The poster
+  is the one asset fetched on every page load (see "What it costs" below), so the smaller of two
+  correct files wins.
+
+`vercel.json` rewrites `/(.*)` to `/index.html`, which does not shadow these: Vercel checks the
+filesystem before applying `rewrites`.
+
+#### Where it is used
+
+**Two places, one of them a deliberate deviation from the promo's admin layout.**
+
+1. `screens/ProspectScreen.tsx`, the "Test call" card: `<VoiceOrb state={call.state}
+   meters={call.meters} size={64} />` centred in a `<div className="flex justify-center">` above
+   `<CallPanel>`. The promo has no orb on this page — its live orbs are on the public hero and the
+   sticky bar. It goes in the screen and not in `CallPanel.tsx` because that file is a verbatim
+   port that takes no `meters` prop; keeping the orb one level up leaves it untouched. The card is
+   inside `.tw`, so the component's Tailwind classes work with nothing extra.
+2. `src/components/Sidebar.tsx`, the brand mark: `<VoiceOrb state="idle" size={28} />` in place of
+   `<IconVoicemail size={16} />`, matching the promo's `BrandMark` (`components/public/Logo.tsx`,
+   which its own `AppSidebar` renders at 32). `IconVoicemail` is dropped from the icon import — it
+   had no other use in that file.
+
+#### The `.tw` island, and the square behind it
+
+The sidebar is **outside** the `.tw` boundary. Utilities live in `@layer utilities { @scope (.tw)
+{ … } }`, and inside `@scope` a plain selector is relative to the scope root with an implied
+descendant combinator — so `rounded-full`, `object-cover` and `shrink-0` reach descendants of a
+`.tw` element and nothing else. The mark therefore wraps the orb in a `.tw` island of its own:
+
+```jsx
+<span className="brand-mark brand-mark-orb" aria-hidden="true">
+  <span className="tw">
+    <VoiceOrb state="idle" size={28} />
+  </span>
+</span>
+```
+
+Measured in Edge against a production build, rather than judged by eye — the video's own computed
+style, and the same video moved out of the island as a negative control:
+
+| | in the island | moved out of it |
+| --- | --- | --- |
+| `border-radius` | `3.35544e+07px` (Tailwind's `rounded-full`) | `0px` |
+| `object-fit` | `cover` | `contain` |
+| `flex-shrink` | `0` | `1` |
+| box | 28 × 28 | 28 × 28 |
+
+So without the island it is a square with the whole 1280-wide frame letterboxed into it (`contain`
+is the browser's default for `<video>`, so it letterboxes rather than stretches), and with it the
+centre 720 of the frame in a circle. `demos_e2e.py` asserts the first column.
+
+**The `--primary` square is gone under the sidebar's mark.** `.brand-mark` is a 28×28 box with
+`border-radius: 8px` and a `--primary` background, drawn as a tile behind a white icon. The orb is
+an opaque circle that fills that box, so the tint could only ever show as four blue corners.
+`legacy.css` gains a four-line `.brand-mark-orb` modifier (`background: none; color: inherit;
+border-radius: 999px`) — the box itself is kept, so the orb occupies the same slot, at the same
+size, centred the same way, and `.brand-mark` is unchanged for the login and setup pages, which
+still show the icon on the tile. Measured: `.brand-mark` background-color `rgba(0, 0, 0, 0)`,
+28 × 28.
+
+#### What it costs, and what happens when autoplay is blocked
+
+- **Reduced motion: nothing plays and the film is never fetched.** The component's effect returns
+  before `preload`/`play()` when `(prefers-reduced-motion: reduce)` matches, and the element's own
+  attribute is `preload="none"`, so only the 55 KB poster is requested and it stays up as a still.
+  Verified in the harness, not assumed: `demos_e2e.py`'s `brand orb (reduce)` check records every
+  request the page makes and asserts `/voice-orb.mp4` is not among them while `/voice-orb.png` is,
+  with the element `paused` and its `playbackRate` still 1 (untouched). This is also the state
+  `compare.py` runs in, which is why the film costs those 44 captures nothing.
+- **Motion allowed: it autoplays muted at 0.65×**, the idle rate from `orbPlaybackRate("idle", 0)`.
+  Asserted by the `brand orb (no-preference)` check.
+- **Autoplay blocked: the poster stays up and the first press starts it.** `video.play()`'s
+  rejection is swallowed, so a blocked autoplay is not an error — the still simply remains, and the
+  component registers a one-shot `pointerdown` listener on `window`, so the next press anywhere
+  (including the press that starts the call) starts the film. Chromium allows muted autoplay, so
+  this is the fallback rather than the norm.
+
+#### The harness
+
+- `compare.py`: `'.sidebar-brand .brand-mark'` added to `HIDE`. The brand mark is in the sidebar,
+  so it is on **all 44** transcribe captures; left visible, one change would end the "IDENTICAL"
+  guarantee wholesale. Hidden in both apps, so the brand row lays out identically on each side and
+  the fingerprint skips that subtree. Scoped to the sidebar on purpose: the sign-in page's
+  `.brand-mark` still holds the icon in both apps and is still compared. Result: `IDENTICAL`.
+- `demos_e2e.py`: four new checks on the orbs themselves (`ORB_JS`, `ORB_CENTRED_JS`) — the Test
+  call orb at 64 px, circular, `object-fit: cover`, `aria-hidden`, muted, looping, on
+  `/voice-orb.mp4` with the `/voice-orb.png` poster, centred in the card and above the panel; the
+  sidebar orb at 28 px with the same utilities applied, inside a `.tw` parent, with no tint behind
+  it — plus the two `brand orb (…)` checks above. All pass.
+- `tw_probe.py`: untouched, 19 checks, all pass.
+
+### CRM layout: no deviation, and why it can look like one (2026-09-23)
+
+`screens/PipelineScreen.tsx` keeps the promo's `2xl:grid-cols-3` / `2xl:col-span-2` exactly. This
+note exists because the Pipeline and Activity cards were reported as stacked where the source shows
+them side by side, and the answer is worth writing down so it is not investigated twice.
+
+**The markup is identical and behaves identically.** `2xl` is a *viewport* media query, so at any
+given window width this page splits or stacks exactly as the promo's does. Measured: 1440px → one
+track, 1536px → three. Screenshots taken at 1440px are below the threshold, which is what made it
+look like a porting difference.
+
+**What is genuinely different is the room, not the code.** This dashboard has a permanent ~232px
+sidebar the promo's layout was not tuned against, so the same threshold buys ~232px less content
+width here.
+
+**Two fixes were tried and both rejected**, on the user's instruction that parity with the source
+matters more than the split:
+
+- `2xl` → `xl` reproduces exactly the bug the promo's own comment above that line warns about — at
+  two thirds of a 1440px window the board is narrower than its `min-w-[52rem]`, so Won and Lost go
+  behind the `overflow-x-auto`. Confirmed by measurement (`scrollWidth > clientWidth`), not by eye.
+- A 3:1 split at `min-[1440px]` does work — the board clears its minimum at ~870px and the feed
+  still reads at ~278px — but it is a real deviation from the source's proportions.
+
+**If the split is ever wanted at ordinary widths**, the second option is the one that works, and it
+is three class names. It was removed, not lost.

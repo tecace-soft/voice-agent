@@ -200,6 +200,58 @@ TABS_CARD_JS = """
 }
 """
 
+# One orb (components/call/VoiceOrb.tsx), measured rather than eyeballed. The sidebar's copy is
+# the interesting one: it sits in legacy markup, outside the Demos `.tw` wrapper, so it only gets
+# `rounded-full object-cover shrink-0` because the brand mark wraps it in a `.tw` island of its
+# own. A missing island shows up here as border-radius 0 and object-fit "fill" — an unrounded,
+# stretched square — not as a crash, which is why it is asserted and not looked at.
+ORB_JS = """
+(selector) => {
+  const video = document.querySelector(selector);
+  if (!video) return { found: false };
+  const style = getComputedStyle(video);
+  const box = video.getBoundingClientRect();
+  const parent = video.parentElement;
+  return {
+    found: true,
+    tag: video.tagName,
+    src: new URL(video.getAttribute('src'), location.href).pathname,
+    poster: new URL(video.getAttribute('poster'), location.href).pathname,
+    muted: video.muted,
+    loop: video.loop,
+    ariaHidden: video.getAttribute('aria-hidden'),
+    w: Math.round(box.width),
+    h: Math.round(box.height),
+    radius: style.borderTopLeftRadius,
+    radiusPx: parseFloat(style.borderTopLeftRadius) || 0,
+    objectFit: style.objectFit,
+    shrink: style.flexShrink,
+    inTw: Boolean(video.closest('.tw')),
+    parentClass: parent ? parent.className : null,
+  };
+}
+"""
+
+# Where the Test call card's orb sits: centred across the card's content, and above the panel's
+# own controls rather than beside or below them.
+ORB_CENTRED_JS = """
+() => {
+  const video = document.querySelector('main .tw video');
+  const content = video.parentElement.parentElement;
+  const button = content.querySelector('button');
+  const orb = video.getBoundingClientRect();
+  const box = content.getBoundingClientRect();
+  const panel = button.getBoundingClientRect();
+  const left = orb.left - box.left;
+  const right = box.right - orb.right;
+  return {
+    centred: Math.abs(left - right) <= 1,
+    abovePanel: orb.bottom <= panel.top,
+    left: Math.round(left), right: Math.round(right),
+  };
+}
+"""
+
 # The resolved --ui-popover colour as the browser would paint it (rgb(...)), read from `el`.
 POPOVER_COLOR_JS = """
 (el) => {
@@ -596,6 +648,32 @@ def run() -> int:
                           # 3 * card == 2 * grid - gap.
                           and abs(layout["card"] * 3 - (layout["grid"] * 2 - 16)) <= 6,
                           str(layout))
+                    # The orb above the call panel, and the one that replaced the sidebar's
+                    # voicemail icon. Both are the same component and the same film; what is
+                    # asserted is that the scoped utilities actually reached each of them — a
+                    # 64/28px circle showing the centre of the frame, not a stretched square.
+                    orb = page.evaluate(ORB_JS, 'main .tw video')
+                    check("prospect: the orb sits above the call panel, circular and 64px",
+                          orb["found"] and orb["tag"] == "VIDEO" and orb["w"] == 64 and orb["h"] == 64
+                          and orb["radiusPx"] >= orb["w"] / 2 and orb["objectFit"] == "cover"
+                          and orb["src"] == "/voice-orb.mp4" and orb["poster"] == "/voice-orb.png"
+                          and orb["muted"] and orb["loop"] and orb["ariaHidden"] == "true",
+                          str(orb))
+                    centred = page.evaluate(ORB_CENTRED_JS)
+                    check("prospect: ... centred in the Test call card, above the panel",
+                          centred["centred"] and centred["abovePanel"], str(centred))
+                    brand = page.evaluate(ORB_JS, '.sidebar-brand video')
+                    check("sidebar: the brand mark is the orb, in a .tw island so the utilities apply",
+                          brand["found"] and brand["inTw"] and brand["parentClass"] == "tw"
+                          and brand["w"] == 28 and brand["h"] == 28
+                          and brand["radiusPx"] >= brand["w"] / 2 and brand["objectFit"] == "cover"
+                          and brand["shrink"] == "0" and brand["src"] == "/voice-orb.mp4",
+                          str(brand))
+                    tint = page.evaluate(
+                        "() => getComputedStyle(document.querySelector('.sidebar-brand .brand-mark'))"
+                        ".backgroundColor")
+                    check("sidebar: ... and the tinted square behind it is gone",
+                          tint in ("rgba(0, 0, 0, 0)", "transparent"), tint)
                     per_state: dict[str, set[str]] = {}
 
                     def snapshot(label: str) -> None:
@@ -1207,6 +1285,39 @@ def run() -> int:
                           and page.locator('.sidebar-group[data-group="demos"]').count() == 0
                           and reqs == [], str(reqs))
                     ctx.close()
+
+                    # The brand orb is on every page of the app, so what it costs on load matters.
+                    # Both of the component's escapes are measured rather than assumed: with
+                    # reduced motion the poster is all that is fetched and the film never is (that
+                    # is the state every check above ran in), and with motion allowed the muted
+                    # film autoplays at the idle rate of 0.65 rather than at 1.
+                    for motion, plays in (("reduce", False), ("no-preference", True)):
+                        asked: list[str] = []
+                        mctx = browser.new_context(viewport={"width": 1440, "height": 900},
+                                                   reduced_motion=motion)
+                        mctx.add_init_script(
+                            "try { localStorage.clear(); } catch (e) {} "
+                            "localStorage.setItem('theme', 'light'); "
+                            "localStorage.setItem('transcribe.token', 'tok-admin');")
+                        mpage = mctx.new_page()
+                        mpage.route("**/favicon.ico", lambda r: r.fulfill(status=204))
+                        mpage.on("request", lambda r, a=asked: a.append(urlparse(r.url).path))
+                        mpage.on("pageerror", lambda e: page_errors.append(str(e)))
+                        mpage.goto(base + "#/overview")
+                        settle(mpage)
+                        mpage.wait_for_timeout(1500)
+                        film = mpage.evaluate(
+                            "() => { const v = document.querySelector('.sidebar-brand video');"
+                            " return { paused: v.paused, rate: v.playbackRate }; }")
+                        fetched = "/voice-orb.mp4" in asked
+                        check(f"brand orb ({motion}): the film is "
+                              + ("fetched and playing at the idle rate" if plays
+                                 else "never fetched and the still stays up"),
+                              fetched is plays and film["paused"] is not plays
+                              and (abs(film["rate"] - 0.65) < 0.001 if plays else film["rate"] == 1)
+                              and "/voice-orb.png" in asked,
+                              f"{film} fetched={fetched} poster={'/voice-orb.png' in asked}")
+                        mctx.close()
 
                     check("no page errors", page_errors == [], str(page_errors))
                     browser.close()

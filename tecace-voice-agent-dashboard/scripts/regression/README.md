@@ -56,8 +56,10 @@ and reduced motion. It then compares old vs new.
 Two lists at the top of `compare.py` cover changes made on purpose:
 
 - `HIDE` — selectors for elements that exist only in the new app (e.g. the admin-only Demos nav
-  group). They get `display:none` before every capture in both runs — which removes them from
-  layout, so the rest of the page lays out as in the old app — and the fingerprint skips them.
+  group), or that the new app deliberately rebuilt (the sidebar's brand mark, now the voice-orb
+  film instead of the voicemail icon — it is in the sidebar, so it is on all 44 captures). They get
+  `display:none` before every capture in both runs — which removes them from layout, so the rest of
+  the page lays out as in the old app — and the fingerprint skips them and their subtrees.
 - `EXPECTED_CHANGES` — capture ids that must differ, each with a marker text that must be in the
   new app's text and not the old app's. A proven change, not a skipped capture.
 
@@ -169,6 +171,14 @@ What it checks:
   no session request afterwards and still stops the microphone it gets later; and a session
   *granted* after the admin has left is handed straight back — one `abandoned` / `unmounted`
   report, nothing else, and no page error;
+- the voice orb, measured rather than eyeballed: the Test call card's orb at 64px, circular
+  (`rounded-full`), `object-fit: cover`, muted, looping, `aria-hidden`, on `/voice-orb.mp4` with
+  the `/voice-orb.png` poster, centred in the card and above the panel; the sidebar's brand mark at
+  28px with the same utilities applied, which only happens because it is wrapped in a `.tw` island
+  of its own (the sidebar is legacy markup, outside the Demos `.tw` wrapper), and with the tinted
+  `.brand-mark` square behind it gone; and what the film costs on load — with reduced motion only
+  the poster is fetched and the element stays paused at rate 1, with motion allowed the film is
+  fetched and autoplays muted at the idle 0.65×;
 - a runtime check that no class used in `@layer legacy` lands on promo markup (bar `sr-only`,
   `grid`, and the `.ta-*` type scale where the promo's unlayered copy fully shadows the transcribe
   one) — over Overview, Prospects, the menu, the dialog, and each prospect tab, the transcript

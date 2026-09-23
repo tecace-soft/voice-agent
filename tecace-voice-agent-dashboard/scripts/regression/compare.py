@@ -93,6 +93,13 @@ INTERACTIONS = [
 # exactly as in the old app — and the fingerprint skips them. Everything else must still match.
 HIDE = [
     '.sidebar-group[data-group="demos"]',  # stage 3: the admin-only Demos nav group
+    # voice-orb stage: the sidebar brand mark is now the orb film (a <video> in a .tw island)
+    # instead of the voicemail icon, and its tinted square is gone. It sits in the sidebar, so it
+    # is on every capture — left visible it would turn all 44 into differences, which is exactly
+    # the "IDENTICAL" guarantee this script exists to keep. Hidden in BOTH apps, so the brand row
+    # lays out the same on each side and everything below it is still compared. Only the sidebar
+    # one: the sign-in page's .brand-mark still holds the icon and is compared as before.
+    '.sidebar-brand .brand-mark',
 ]
 
 # Captures that are MEANT to differ: id -> (why, marker). The marker must appear in the new app's

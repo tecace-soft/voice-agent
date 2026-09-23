@@ -15,8 +15,8 @@ import {
   IconPhone,
   IconTable,
   IconUsers,
-  IconVoicemail,
 } from "../icons";
+import { VoiceOrb } from "../demos/components/call/VoiceOrb";
 import { formatDateTime } from "../lib";
 
 export type ViewId =
@@ -128,8 +128,19 @@ export function Sidebar({
   return (
     <nav className="sidebar" aria-label="Dashboard sections">
       <div className="sidebar-brand">
-        <span className="brand-mark" aria-hidden="true">
-          <IconVoicemail size={16} />
+        {/* The brand mark is the voice orb, idling — the same film the Demo test call plays, so
+            the thing that listens on a call is the thing on the letterhead (the promo does this in
+            components/public/Logo.tsx's BrandMark). The inner `.tw` span is the boundary the
+            promo's scoped Tailwind needs: the sidebar is legacy markup, and without it the
+            component's `rounded-full object-cover shrink-0` would match nothing — measured, that
+            is border-radius 0 and object-fit `contain`, i.e. the whole frame letterboxed into a
+            square. `.brand-mark-orb` drops the tinted square behind it —
+            the orb is an opaque circle filling the box, so the tint would only ever show as four
+            corners. */}
+        <span className="brand-mark brand-mark-orb" aria-hidden="true">
+          <span className="tw">
+            <VoiceOrb state="idle" size={28} />
+          </span>
         </span>
         <span className="brand-text">
           <span className="brand-name">TecAce</span>
