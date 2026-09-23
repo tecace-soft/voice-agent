@@ -177,18 +177,25 @@ STAT_JS = """
 }
 """
 
-# The prospect page's tabs card, its grid and the column it sits in. The call panel used to take a
-# column beside it; with "Call now" gone the card has the width to itself.
+# The prospect page's detail grid: the tabs card, how far it spans, and what is in the column
+# beside it. The promo's layout is three tracks with the tabs card over two of them and the
+# "Test call" card in the third — restored with the test call on 2026-09-23.
 TABS_CARD_JS = """
 () => {
   const card = document.querySelector('main .tw [role=tablist]').closest('.rounded-xl');
   const grid = card.parentElement;
-  const column = document.querySelector('main .tw > div');
+  const cards = [...grid.children];
+  const panel = grid.querySelector('button[aria-label="Call now"],'
+    + ' button[aria-label="Start a new call"], button[aria-label="End the call"]');
   return {
     card: Math.round(card.getBoundingClientRect().width),
-    column: Math.round(column.getBoundingClientRect().width),
-    tracks: getComputedStyle(grid).gridTemplateColumns.trim(),
-    siblings: grid.children.length,
+    grid: Math.round(grid.getBoundingClientRect().width),
+    tracks: getComputedStyle(grid).gridTemplateColumns.trim().split(/\\s+/).length,
+    span: getComputedStyle(card).gridColumnStart,
+    siblings: cards.length,
+    tabsIndex: cards.indexOf(card),
+    panelIndex: panel ? cards.indexOf(panel.closest('.rounded-xl')) : -1,
+    panelTitle: panel ? panel.closest('.rounded-xl').querySelector('.ta-headline-2').textContent.trim() : null,
   };
 }
 """
@@ -207,6 +214,9 @@ POPOVER_COLOR_JS = """
 
 
 DEMO_BASE_URL = "http://promo.example"
+# src/routes/demo.ts, POST /demo/session: the only refusal past the admin guard that the panel can
+# be made to show. The fake can't hold a per-IP rate limit, so the harness stages the 429 itself.
+RATE_LIMITED = "Too many calls in a row. Wait a minute and try again."
 # Where the dark Overview is saved, so the chart colours can be looked at (DEMOS_E2E_SCREENSHOT).
 SCREENSHOT = Path(os.environ.get("DEMOS_E2E_SCREENSHOT")
                   or Path(tempfile.gettempdir()) / "demos-e2e-chart-dark.png")
@@ -241,6 +251,35 @@ CANVAS_PIXELS_JS = """
   }
   return { near, black };
 }
+"""
+
+# Keeps every stream getUserMedia hands the page, so the harness can see the test call stop the
+# microphone afterwards (every track "ended"). With window.__holdMic = true, getUserMedia waits
+# (like a permission prompt left open) until the harness calls window.__releaseMic(); window.__micHeld
+# says it is waiting. Behaviour is otherwise unchanged.
+MIC_HOOK_JS = """
+(() => {
+  const md = navigator.mediaDevices;
+  if (!md || !md.getUserMedia) return;
+  const original = md.getUserMedia.bind(md);
+  window.__micStreams = [];
+  window.__holdMic = false;
+  window.__micHeld = false;
+  md.getUserMedia = async (constraints) => {
+    if (window.__holdMic) {
+      window.__micHeld = true;
+      await new Promise((resolve) => { window.__releaseMic = resolve; });
+      window.__micHeld = false;
+    }
+    const stream = await original(constraints);
+    window.__micStreams.push(stream);
+    return stream;
+  };
+})();
+"""
+
+MIC_STATE_JS = """
+() => (window.__micStreams || []).map((s) => s.getTracks().map((t) => t.kind + ':' + t.readyState))
 """
 
 # Marks the toasts on screen now, so a wait can tell a new toast from one still fading out.
@@ -292,13 +331,15 @@ def demo_nav(page, label: str):
 
 def open_page(browser, token: str | None, url: str, demo_requests: list[str], page_errors: list[str]):
     ctx = browser.new_context(viewport={"width": 1440, "height": 900}, reduced_motion="reduce")
-    init = ["try { localStorage.clear(); } catch (e) {}", "localStorage.setItem('theme', 'light');"]
+    init = ["try { localStorage.clear(); } catch (e) {}", "localStorage.setItem('theme', 'light');",
+            MIC_HOOK_JS]
     if token:
         init.append(f"localStorage.setItem('transcribe.token', '{token}');")
     ctx.add_init_script("\n".join(init))
     # "Copy link" / "Copy email" write to the clipboard; without the grant the write is refused
-    # and the (unawaited) promise rejection would surface as a page error.
-    ctx.grant_permissions(["clipboard-read", "clipboard-write"])
+    # and the (unawaited) promise rejection would surface as a page error. The microphone is
+    # Edge's fake device (launch flags), granted so the test call's getUserMedia needs no prompt.
+    ctx.grant_permissions(["microphone", "clipboard-read", "clipboard-write"])
     page = ctx.new_page()
     page.route("**/favicon.ico", lambda r: r.fulfill(status=204))
     # Every request the Demo screens make, by path. The CORS preflights the browser sends first
@@ -330,7 +371,10 @@ def run() -> int:
             base = f"http://127.0.0.1:{NEW_PORT}/"
             try:
                 with sync_playwright() as p:
-                    browser = p.chromium.launch(channel="msedge")
+                    # A fake microphone (a generated tone), with no permission prompt, so the test
+                    # call builds a real WebRTC offer.
+                    browser = p.chromium.launch(channel="msedge", args=[
+                        "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"])
 
                     # A signed-in user never sees the Demos section, asking for it by URL is
                     # refused, and the data behind it is refused to their token as well.
@@ -541,12 +585,17 @@ def run() -> int:
                     check("prospect: the stat cards show the backend's numbers",
                           stats == {"Link opens": "14", "Calls": "3", "Minutes": "9", "Average call": "3:00"},
                           str(stats))
-                    # The test call went with the promo, and the column that held its panel with
-                    # it: the tabs card now has the page width to itself.
+                    # The promo's three-column detail grid, back with the test call: the tabs card
+                    # over two tracks and the "Test call" panel in the third.
                     layout = page.evaluate(TABS_CARD_JS)
-                    check("prospect: the tabs card fills the width (no call-panel column beside it)",
-                          layout["siblings"] == 1 and " " not in layout["tracks"]
-                          and abs(layout["card"] - layout["column"]) <= 1, str(layout))
+                    check("prospect: three grid tracks, the tabs card spanning two, the call panel in the third",
+                          layout["tracks"] == 3 and layout["siblings"] == 2
+                          and layout["span"] == "span 2" and layout["tabsIndex"] == 0
+                          and layout["panelIndex"] == 1 and layout["panelTitle"] == "Test call"
+                          # Two of three equal tracks plus the 16px gap between them:
+                          # 3 * card == 2 * grid - gap.
+                          and abs(layout["card"] * 3 - (layout["grid"] * 2 - 16)) <= 6,
+                          str(layout))
                     per_state: dict[str, set[str]] = {}
 
                     def snapshot(label: str) -> None:
@@ -584,6 +633,20 @@ def run() -> int:
                     check("activity: marking a call as a test PATCHes {callId, isTest}",
                           body == {"callId": "call2", "isTest": True}, str(body))
                     check("activity: ... and says so", new_toast(page, "Counted as your test."))
+
+                    # "Analyze" is back (it reviews for real again — see PORTING.md). It shows on
+                    # the two calls the fixtures leave unreviewed, and on no other.
+                    analyze = main_tw.get_by_role("button", name="Analyze")
+                    unreviewed = analyze.count()
+                    page.evaluate(MARK_TOASTS_JS)
+                    with page.expect_request(lambda r: r.method == "PATCH"
+                                             and r.url.endswith("/demo/customers/pr0SPct1/calls")) as req:
+                        analyze.first.click()
+                    body = req.value.post_data_json
+                    check("activity: Analyze is on the unreviewed calls and PATCHes {callId, analyze}",
+                          unreviewed == 2 and body == {"callId": "call1", "analyze": True},
+                          f"{unreviewed} buttons, {body}")
+                    check("activity: ... and says Reviewed.", new_toast(page, "Reviewed."))
 
                     # Knowledge
                     main_tw.get_by_role("tab", name="Knowledge").click()
@@ -670,6 +733,178 @@ def run() -> int:
                           "Harbor Dental" in subject and "Harbor Dental" in email
                           and f"{DEMO_BASE_URL}/c/pr0SPct1" in email, subject)
                     snapshot("share")
+
+                    # --- The test call ---
+                    #
+                    # A real WebRTC offer, built in Edge from its fake microphone, against
+                    # fake_backend's POST /demo/session. The promo's version of these checks could
+                    # only ever see a refused dial — the fake promo answered "all the demo lines are
+                    # busy" because it had no way to mint an SDP answer. This fake writes one from
+                    # the offer, so the granted path is walked too: the answer is taken, the line
+                    # rings (nothing is listening on the candidates, so it rings until it is hung
+                    # up), and hanging up reports the call to POST /demo/calls/<callId>.
+                    call_now = main_tw.get_by_role("button", name="Call now")
+                    end_call = main_tw.get_by_role("button", name="End the call")
+                    again = main_tw.get_by_role("button", name="Start a new call")
+                    with page.expect_request(lambda r: r.method == "POST"
+                                             and r.url.endswith("/demo/session"),
+                                             timeout=20000) as req:
+                        call_now.click()
+                    body = req.value.post_data_json or {}
+                    check("test call: POST /demo/session with customerId, isTest, timeZone and a real SDP offer",
+                          body.get("customerId") == "pr0SPct1" and body.get("isTest") is True
+                          and isinstance(body.get("timeZone"), str) and bool(body.get("timeZone"))
+                          and str(body.get("sdp", "")).startswith("v=0"),
+                          str({k: (v[:12] + "…" if isinstance(v, str) and len(v) > 12 else v)
+                               for k, v in body.items()}))
+                    granted = req.value.response()
+                    # The panel says "Ringing" before the request even goes out, so the answer has
+                    # to have been taken for this to mean anything: a rejected SDP throws out of
+                    # `dial` within the moment below, and leaves "Call failed" and an error
+                    # paragraph behind instead.
+                    page.wait_for_timeout(1000)
+                    refused = main_tw.locator("p[role=alert]").all_inner_texts()
+                    ringing = (granted.status == 200 and not refused
+                               and main_tw.get_by_text("Ringing").count() == 1
+                               and end_call.count() == 1)
+                    check("test call: the granted answer is accepted and the line is ringing",
+                          ringing
+                          and main_tw.get_by_text("Call to hear how the receptionist answers.").is_visible(),
+                          f"{granted.status} {refused}")
+                    # "End call" sends session.close over a data channel that never opened, so the
+                    # hook's own five-second timeout is what ends it: the report is the proof the
+                    # call was hung up rather than left on the line.
+                    if ringing:
+                        with page.expect_request(lambda r: r.method == "POST"
+                                                 and "/demo/calls/" in r.url, timeout=20000) as req:
+                            end_call.click()
+                        report = req.value.post_data_json or {}
+                        check("test call: hanging up reports it to POST /demo/calls/<callId>",
+                              urlparse(req.value.url).path
+                              == f"/demo/calls/{fake_backend.SESSION_CALL_ID}"
+                              and report.get("customerId") == "pr0SPct1"
+                              and report.get("status") == "completed"
+                              and report.get("endReason") == "close_timeout"
+                              and report.get("transcript") == [],
+                              f"{urlparse(req.value.url).path} "
+                              + str({k: v for k, v in report.items() if k != "transcript"}))
+                    else:
+                        # A dial that failed instead of ringing has already reported itself, so
+                        # there is no hang-up left to watch. Say so and carry on: the checks after
+                        # this one are about the refusal and the unload paths, which still stand.
+                        check("test call: hanging up reports it to POST /demo/calls/<callId>", False,
+                              "the line never reached Ringing — see the check above")
+                    again.wait_for()
+                    mics = page.evaluate(MIC_STATE_JS)
+                    check("test call: the fake microphone was opened and is stopped again",
+                          len(mics) == 1 and mics[0] and all(t.endswith(":ended") for t in mics[0]),
+                          str(mics))
+                    again.click()
+                    call_now.wait_for()
+                    check("test call: 'Call again' returns to a callable state",
+                          call_now.is_enabled() and main_tw.locator("p[role=alert]").count() == 0)
+
+                    # A refused dial. The promo refused with "All the demo lines are busy right now"
+                    # — its demo allowance and live-session concurrency, neither of which
+                    # transcribe-backend's admin route keeps (see the design doc's table). Its one
+                    # refusal past the admin guard is the per-IP rate limit, and a stateless fake
+                    # cannot hold a rate limit, so the harness stages the 429 itself.
+                    page.route("**/demo/session",
+                               lambda route: fulfill_json(route, 429, {"error": RATE_LIMITED})
+                               if route.request.method == "POST" else route.fallback())
+                    with page.expect_request(lambda r: r.method == "POST"
+                                             and r.url.endswith("/demo/session"),
+                                             timeout=20000) as req:
+                        call_now.click()
+                    refusal = main_tw.locator("p[role=alert]").filter(has_text=RATE_LIMITED)
+                    refusal.wait_for()
+                    again.wait_for()
+                    check("test call: a refused dial shows the backend's message, and 'Call failed'",
+                          refusal.is_visible() and main_tw.get_by_text("Call failed").is_visible())
+                    snapshot("test call refused")
+                    mics = page.evaluate(MIC_STATE_JS)
+                    check("test call: a retry dials again and stops its microphone too",
+                          len(mics) == 2 and all(all(t.endswith(":ended") for t in s) for s in mics),
+                          str(mics))
+                    page.unroute("**/demo/session")
+                    again.click()
+                    call_now.wait_for()
+
+                    # Leaving the page while the microphone prompt is still open must not let the
+                    # call carry on behind it (mic, ringtone, a session nobody hears or reports).
+                    page.evaluate("() => { window.__holdMic = true; }")
+                    call_now.click()
+                    page.wait_for_function("() => window.__micHeld === true")
+                    demo_nav(page, "Customers").click()
+                    harbor_link.wait_for()
+                    after_leave = len(reqs)
+                    page.evaluate("() => { window.__holdMic = false; window.__releaseMic(); }")
+                    page.wait_for_function("() => window.__micStreams.length === 3")
+                    page.wait_for_timeout(3000)  # time for a runaway dial to reach /demo/session
+                    late = [r for r in reqs[after_leave:] if r.endswith("/demo/session")]
+                    check("test call: leaving mid-dial sends no session request afterwards", late == [],
+                          str(late))
+                    mics = page.evaluate(MIC_STATE_JS)
+                    check("test call: ... and the microphone it got after leaving is stopped",
+                          len(mics) == 3 and all(t.endswith(":ended") for t in mics[2]), str(mics))
+                    harbor_link.click()
+                    page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
+
+                    # The billed case: the backend GRANTS the session after the admin has left. The
+                    # session request is held (not answered) until the page is gone, then answered
+                    # with a grant; the call must be handed back with one "abandoned / unmounted"
+                    # report and go no further (the unusable SDP in the grant would make
+                    # setRemoteDescription throw if it did).
+                    held: list = []
+                    reports: list[dict] = []
+
+                    def record_report(route):
+                        if route.request.method != "POST":
+                            route.fallback()  # the preflight goes to the fake, or the POST is dropped
+                            return
+                        try:
+                            body = json.loads(route.request.post_data or "{}")
+                        except ValueError:
+                            body = {"unparsable": route.request.post_data}
+                        reports.append({"path": urlparse(route.request.url).path, **body})
+                        fulfill_json(route, 200, {"ok": True, "reviewed": False})
+
+                    page.route("**/demo/session",
+                               lambda route: held.append(route)
+                               if route.request.method == "POST" else route.fallback())
+                    page.route("**/demo/calls/**", record_report)
+                    errors_before = len(page_errors)
+                    call_now.click()
+                    for _ in range(150):  # up to 15 s for the mic, the offer and ICE gathering
+                        if held:
+                            break
+                        page.wait_for_timeout(100)
+                    if not held:
+                        raise HarnessError("the test call never sent its session request")
+                    demo_nav(page, "Customers").click()
+                    harbor_link.wait_for()
+                    fulfill_json(held[0], 200, {"callId": "held42", "sessionId": "sess_held42",
+                                                "sdp": "v=0\r\n", "greeting": "Hi."})
+                    for _ in range(50):
+                        if reports:
+                            break
+                        page.wait_for_timeout(100)
+                    page.wait_for_timeout(3000)  # time for a second report to show up
+                    check("test call: a session granted after leaving is reported once as abandoned/unmounted",
+                          len(reports) == 1 and reports[0]["path"] == "/demo/calls/held42"
+                          and reports[0].get("customerId") == "pr0SPct1"
+                          and reports[0].get("status") == "abandoned"
+                          and reports[0].get("endReason") == "unmounted",
+                          str([{k: v for k, v in rep.items() if k != "transcript"} for rep in reports]))
+                    mics = page.evaluate(MIC_STATE_JS)
+                    check("test call: ... its microphone is stopped and nothing threw",
+                          len(mics) == 4 and all(t.endswith(":ended") for t in mics[3])
+                          and len(page_errors) == errors_before,
+                          f"{mics} {page_errors[errors_before:]}")
+                    page.unroute("**/demo/session")
+                    page.unroute("**/demo/calls/**")
+                    harbor_link.click()
+                    page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
 
                     for label, classes in per_state.items():
                         bad, _ = legacy_collisions(css, classes)

@@ -393,7 +393,6 @@ export async function addNote(customerId: string, text: string): Promise<CrmNote
 export interface CallPatch {
   isTest?: boolean;
   /** Retired. Accepted and ignored — see below. */
-  analyze?: boolean;
 }
 
 /**
@@ -404,10 +403,11 @@ export interface CallPatch {
  * the numbers. This is how those get counted again, one at a time, by the person who knows which
  * was which.
  *
- * `analyze` asked the promo's research pipeline to write the review a call reported before reviews
- * existed. That pipeline is retired, so the request is accepted and the call comes back unchanged
- * rather than failing: the button is being removed from the dashboard, and a 500 in the meantime
- * would say something is broken when nothing is.
+ * Reclassifying is all this does. `analyze` is **not** handled here: the route owns that branch,
+ * because it has to refuse a call that is too short (400) or a model that cannot be read back (502)
+ * before anything is written, and it saves the result through `attachReview`. An earlier version of
+ * this comment said the analyze pipeline was retired — it was, and then it came back with
+ * `src/demo/callReview.ts`.
  */
 export async function patchCall(
   customerId: string,

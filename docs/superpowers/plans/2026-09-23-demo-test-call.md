@@ -49,7 +49,7 @@
 
 **Files:** modify `src/config/env.ts`, `.env.example`, `README.md`
 
-- [ ] **Step 1: Add the settings**
+- [x] **Step 1: Add the settings**
 
 In `src/config/env.ts`, following the existing `geminiApiKey` precedent (optional, no throw at
 import — the other Demo tabs must keep working on a deployment with no key):
@@ -74,13 +74,13 @@ and in the exported `env` object:
   defaultTimezone: process.env.DEFAULT_TIMEZONE || "America/Los_Angeles",
 ```
 
-- [ ] **Step 2: Document them**
+- [x] **Step 2: Document them**
 
 Add all six to `.env.example` with comments in that file's voice, grouped under a
 `# ---- Demo test call ----` heading, saying plainly that without `OPENAI_API_KEY` the Demo tabs
 work and only the test call is refused. Add a short subsection to the README's Demo data section.
 
-- [ ] **Step 3: Verify** — `bun run typecheck` silent, `bun test` still passing.
+- [x] **Step 3: Verify** — `bun run typecheck` silent, `bun test` still passing.
 
 ---
 
@@ -88,7 +88,7 @@ work and only the test call is refused. Add a short subsection to the README's D
 
 **Files:** create `src/demo/openai.ts`; rename `src/demo/analytics.parity.test.ts` → `src/demo/parity.test.ts`; modify `src/demo/PORTING.md`
 
-- [ ] **Step 1: Copy `lib/openai.ts` verbatim**
+- [x] **Step 1: Copy `lib/openai.ts` verbatim**
 
 Copy to `src/demo/openai.ts`. The only permitted changes:
 - `process.env.OPENAI_BASE_URL` / `OPENAI_API_KEY` reads become `env.openaiBaseUrl` / `env.openaiApiKey`, with `import { env } from "../config/env.js"` added;
@@ -98,7 +98,7 @@ Copy to `src/demo/openai.ts`. The only permitted changes:
 Change nothing else — not a comment, not the `OpenAIError` shape, not the SDP-answer fallback
 (`data.transport?.sdp ?? data.sdp`), not the timeouts.
 
-- [ ] **Step 2: Generalise the parity test**
+- [x] **Step 2: Generalise the parity test**
 
 Rename the file and replace its single hard-coded path with a table, keeping the existing mechanism
 (compare line by line; every differing line number must appear in `PORTING.md`):
@@ -133,10 +133,10 @@ describe("ported promo modules stay verbatim copies", () => {
 The existing `analytics.ts:9` / `analytics.ts:10` entries in `PORTING.md` must keep working
 unchanged — do not renumber or reword them.
 
-- [ ] **Step 3: Record the deviations** in `PORTING.md` as `openai.ts:<line> — <why>`, then run
+- [x] **Step 3: Record the deviations** in `PORTING.md` as `openai.ts:<line> — <why>`, then run
 `bun test src/demo/parity.test.ts`, `bun run typecheck`, and the full `bun test`.
 
-- [ ] **Step 4: Prove the new entry is not vacuous** — change one character in `src/demo/openai.ts`,
+- [x] **Step 4: Prove the new entry is not vacuous** — change one character in `src/demo/openai.ts`,
 confirm the test fails naming the line, restore. Report the message.
 
 ---
@@ -145,7 +145,7 @@ confirm the test fails naming the line, restore. Report the message.
 
 **Files:** create `src/demo/callClock.ts`; modify `src/demo/parity.test.ts`, `PORTING.md`
 
-- [ ] **Step 1: Copy `lib/call-clock.ts` verbatim**, adding `.js` to import specifiers and routing
+- [x] **Step 1: Copy `lib/call-clock.ts` verbatim**, adding `.js` to import specifiers and routing
 any `process.env` read through `env`.
 
 Put the imports in a **header**: the parity test (generalised in Task 2, then extended during its
@@ -158,9 +158,9 @@ It exports `callClock` and `safeTimeZone`; it reads
 `profile.hours`, whose type comes from `src/demo/types.ts` — check the import resolves there rather
 than copying the type again.
 
-- [ ] **Step 2: Add it to `PORTED`**, record deviations in `PORTING.md`, run the parity test.
+- [x] **Step 2: Add it to `PORTED`**, record deviations in `PORTING.md`, run the parity test.
 
-- [ ] **Step 3: Verify** — `bun run typecheck`, full `bun test`.
+- [x] **Step 3: Verify** — `bun run typecheck`, full `bun test`.
 
 ---
 
@@ -168,7 +168,7 @@ than copying the type again.
 
 **Files:** create `src/demo/callReview.ts`; modify `src/demo/parity.test.ts`, `PORTING.md`
 
-- [ ] **Step 1: Copy `lib/call-review.ts` verbatim.** It needs two helpers from elsewhere in the
+- [x] **Step 1: Copy `lib/call-review.ts` verbatim.** It needs two helpers from elsewhere in the
 promo, which come across as verbatim copies too, at the bottom of the same file (noting their origin
 in a comment, as Task 1 of the previous stage did for `AmbienceLevel`):
 - `extractJson` from `lib/claude-cli.ts` (nothing else from that module);
@@ -179,10 +179,10 @@ it to `PORTED` with a marker meaning "compare only up to the copied-helpers boun
 out of `PORTED` and say in `PORTING.md` exactly which promo lines it contains. Choose one, implement
 it, and say which you chose and why.
 
-- [ ] **Step 2: Route the model name** through `env.callReviewModel`, and keep the two guards
+- [x] **Step 2: Route the model name** through `env.callReviewModel`, and keep the two guards
 exactly: `MIN_CALLER_LINES`, and returning `null` when there is no API key.
 
-- [ ] **Step 3: Verify** — `bun run typecheck`, full `bun test`.
+- [x] **Step 3: Verify** — `bun run typecheck`, full `bun test`.
 
 ---
 
@@ -190,12 +190,12 @@ exactly: `MIN_CALLER_LINES`, and returning `null` when there is no API key.
 
 **Files:** modify `src/routes/demo.ts`
 
-- [ ] **Step 1: Read the promo's route first**
+- [x] **Step 1: Read the promo's route first**
 
 `app/api/session/route.ts`. Reproduce the body for the `isTest === true` path only. The design doc's
 table says what drops out; everything it marks **Skipped** or **Not needed** must not appear here.
 
-- [ ] **Step 2: Write it**
+- [x] **Step 2: Write it**
 
 ```
 POST /demo/session   body { customerId, sdp, timeZone? }  ->  { callId, sessionId, sdp, greeting }
@@ -224,7 +224,7 @@ add `startCall(...)`, `finishCall(...)` and `deleteCall(...)` there rather than 
 the route — every other route in this file delegates. Bind JSONB with `sql.json()` (see
 `jsonbBinding.test.ts`; pre-stringifying is the bug that shipped once already).
 
-- [ ] **Step 3: Verify** — `bun run typecheck`, full `bun test`.
+- [x] **Step 3: Verify** — `bun run typecheck`, full `bun test`.
 
 ---
 
@@ -232,7 +232,7 @@ the route — every other route in this file delegates. Bind JSONB with `sql.jso
 
 **Files:** modify `src/routes/demo.ts`, `src/db/demoWrite.ts`
 
-- [ ] **Step 1: Read `app/api/calls/[callId]/route.ts`**, then reproduce it:
+- [x] **Step 1: Read `app/api/calls/[callId]/route.ts`**, then reproduce it:
 
 ```
 POST /demo/calls/:callId  body { customerId?, status, durationSec, endReason, transcript }
@@ -248,7 +248,7 @@ POST /demo/calls/:callId  body { customerId?, status, durationSec, endReason, tr
 - Then `reviewCall(ended)`; if it returns a review, save it. **A failed review is saved as no
   review** — never a failed call. Answer `{ ok: true, reviewed: Boolean(review) }`.
 
-- [ ] **Step 2: Verify** — `bun run typecheck`, full `bun test`.
+- [x] **Step 2: Verify** — `bun run typecheck`, full `bun test`.
 
 ---
 
@@ -256,7 +256,7 @@ POST /demo/calls/:callId  body { customerId?, status, durationSec, endReason, tr
 
 **Files:** create `src/routes/demoCall.pg.test.ts`
 
-- [ ] **Step 1: Write it**
+- [x] **Step 1: Write it**
 
 Reuse the shim from `src/routes/demo.pg.test.ts` **including its `bind()`/`sql.json` handling** —
 that is what makes JSONB faithful. Stub `globalThis.fetch` so no request leaves the process; assert
@@ -274,7 +274,7 @@ Cover:
 8. A review is saved when the stubbed model returns one; a failing review still completes the call.
 9. A non-admin gets 403 on both routes.
 
-- [ ] **Step 2: Prove three are not vacuous**
+- [x] **Step 2: Prove three are not vacuous**
 
 Break each, confirm the named test fails, restore, re-run:
 1. Delete the row-cleanup in the session route's failure path → check 3 fails.
@@ -283,7 +283,7 @@ Break each, confirm the named test fails, restore, re-run:
 
 Record all three failure messages.
 
-- [ ] **Step 3: Verify** — `bun run typecheck`, full `bun test`, and confirm **no test performed a
+- [x] **Step 3: Verify** — `bun run typecheck`, full `bun test`, and confirm **no test performed a
 real network call** (the stub should record every attempted URL; assert the list is empty of
 `api.openai.com`).
 
@@ -293,7 +293,7 @@ real network call** (the stub should record every attempted URL; assert the list
 
 **Files:** re-port `src/demos/hooks/useLiveCall.ts`, `src/demos/components/call/CallPanel.tsx`, `src/demos/lib/ringtone.ts`; modify `src/demos/screens/ProspectScreen.tsx`, `src/demos/components/admin/ActivityTab.tsx`, `src/demos/PORTING.md`
 
-- [ ] **Step 1: Re-port the three files** from the promo, applying the porting rules already in
+- [x] **Step 1: Re-port the three files** from the promo, applying the porting rules already in
 `PORTING.md`: `fetch("/api/…")` → `demoFetch("/…")` (so `/api/session` → `/session` and
 `/api/calls/${callId}` → `/calls/${callId}`), `next/link` → `demoHref`, `next-themes` →
 `useDocumentTheme`, pop-ups into `twPortalContainer()`, `process.env.NEXT_PUBLIC_*` →
@@ -304,15 +304,15 @@ real network call** (the stub should record every attempted URL; assert the list
 how the unload report is sent now — `fetch(..., { keepalive: true })` with the auth header is the
 obvious candidate — implement it, and **write down the trade-off** in `PORTING.md`.
 
-- [ ] **Step 2: Restore the layout.** `ProspectScreen`'s wrapper goes back to
+- [x] **Step 2: Restore the layout.** `ProspectScreen`'s wrapper goes back to
 `grid grid-cols-1 gap-4 lg:grid-cols-3` with the tabs card regaining `lg:col-span-2` and
 `<CallPanel>` in the third column — as the promo has it.
 
-- [ ] **Step 3: Restore "Analyze"** in `ActivityTab.tsx`: the button, its `onAnalyze` prop and type,
+- [x] **Step 3: Restore "Analyze"** in `ActivityTab.tsx`: the button, its `onAnalyze` prop and type,
 the `Sparkles` and `Button` imports, and the fuller "Not reviewed — …" sentence. The
 `PORTING.md` section that recorded its removal gains a line saying it came back and why.
 
-- [ ] **Step 4: Verify** — `npx tsc --noEmit`, `npx vitest run`, `npm run build`, all clean.
+- [x] **Step 4: Verify** — `npx tsc --noEmit`, `npx vitest run`, `npm run build`, all clean.
 
 ---
 
@@ -320,11 +320,11 @@ the `Sparkles` and `Button` imports, and the fuller "Not reviewed — …" sente
 
 **Files:** modify `scripts/regression/fake_backend.py`, `demos_e2e.py`, `README.md`
 
-- [ ] **Step 1: Answer the two new routes in `fake_backend.py`** — `POST /demo/session` returning a
+- [x] **Step 1: Answer the two new routes in `fake_backend.py`** — `POST /demo/session` returning a
 plausible `{ callId, sessionId, sdp, greeting }`, and `POST /demo/calls/<id>` returning
 `{ ok: true, reviewed: false }`, both behind the admin token, in the same fixture style as the rest.
 
-- [ ] **Step 2: Bring back the test-call checks** `demos_e2e.py` lost when the panel was removed —
+- [x] **Step 2: Bring back the test-call checks** `demos_e2e.py` lost when the panel was removed —
 they are in git history at the commit before that change, and are the best statement of what to
 re-assert: the session POST and its SDP, the busy refusal, the microphone opened and stopped, "Call
 again", the retry, leaving mid-dial, the late microphone, the abandoned/unmounted report, and that
@@ -334,14 +334,14 @@ and say which.
 Edge's fake microphone comes back with them: `--use-fake-device-for-media-stream`,
 `--use-fake-ui-for-media-stream`, and the `microphone` permission grant.
 
-- [ ] **Step 3: Run all three** — `compare.py` IDENTICAL, `tw_probe.py` 19, `demos_e2e.py` all pass —
+- [x] **Step 3: Run all three** — `compare.py` IDENTICAL, `tw_probe.py` 19, `demos_e2e.py` all pass —
 and update `scripts/regression/README.md`.
 
 ---
 
 ### Task 10: Final verification
 
-- [ ] **Step 1**
+- [x] **Step 1**
 
 ```bash
 cd transcribe-backend && bun test && bun run typecheck
@@ -349,10 +349,10 @@ cd ../tecace-voice-agent-dashboard && npx tsc --noEmit && npx vitest run && npm 
 python scripts/regression/compare.py && python scripts/regression/tw_probe.py && python scripts/regression/demos_e2e.py
 ```
 
-- [ ] **Step 2: Screenshot** the prospect detail page and confirm the call panel is back in the
+- [x] **Step 2: Screenshot** the prospect detail page and confirm the call panel is back in the
 right-hand column with the tabs at two thirds, and that "Analyze" is on an unreviewed call.
 
-- [ ] **Step 3: Report** — results, the file list, the three mutation messages from Task 7, and the
+- [x] **Step 3: Report** — results, the file list, the three mutation messages from Task 7, and the
 deployment note: **`OPENAI_API_KEY` must be set on transcribe-backend's Vercel project** or the dial
 is refused with `"OPENAI_API_KEY is not set on the server."` while every other Demo tab keeps
 working; `OPENAI_LIVE_MODEL` defaults to `gpt-live-1`. Say plainly that **no test made a real

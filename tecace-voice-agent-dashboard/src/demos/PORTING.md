@@ -186,13 +186,16 @@ user's choice):
   realtime session. Gone from `screens/ProspectScreen.tsx`: the whole "Test call" `<Card>`, the
   `useLiveCall(...)` call, the "refresh the call list once a test call finishes" effect, and the
   `CallPanel` / `Transcript` / `useLiveCall` imports (`CardHeader` and `CardTitle` with them — that
-  card was their only user).
+  card was their only user). **Reversed on 2026-09-23** — transcribe-backend serves the session
+  itself now; see "The test call comes back" below.
 
 Files **deleted** because nothing reaches them any more (every other importer checked first):
 
 - `hooks/useLiveCall.ts` — only `ProspectScreen` used it (the `hooks/` folder is now empty and gone).
 - `components/call/CallPanel.tsx` — same.
 - `lib/ringtone.ts` — only `useLiveCall` used it, and no ported test covers it.
+
+All three were **re-ported on 2026-09-23** — see "The test call comes back" below.
 
 **Kept** although the live call was their only caller in the app: `components/call/Transcript.tsx`
 (still rendered by `components/admin/ActivityTab.tsx` for a recorded call's transcript),
@@ -216,14 +219,15 @@ component changed in this step.
   (the rest of the sentence is unchanged). It told the reader to press a button that no longer
   exists. The `isResearchStalled` check and the "Stalled" status badge are untouched — a record
   stuck mid-research is still worth flagging, even though this app can no longer restart one.
-- `screens/ProspectScreen.tsx` layout: the detail grid was
-  `grid grid-cols-1 gap-4 lg:grid-cols-3` with the tabs card at `lg:col-span-2` and the test-call
-  card in the third column. With the call card gone the grid is a single full-width column
-  (`grid grid-cols-1 gap-4`, and the card loses `lg:col-span-2`). Chosen over inventing a new right
-  column: everything such a column could hold is already a tab, and the wide tabs genuinely read
-  better — the Activity table, the Knowledge hours editor and the Prompt editor were all cramped at
-  two thirds. The wrapper `div` is kept as a one-column grid rather than deleted, so the page's
-  vertical rhythm (`gap-4`) and the structure around it are untouched.
+- `screens/ProspectScreen.tsx` layout: **this deviation no longer exists.** It was: with the call
+  card gone the detail grid collapsed from `grid grid-cols-1 gap-4 lg:grid-cols-3` (tabs card at
+  `lg:col-span-2`, the test-call card in the third column) to a single full-width column
+  (`grid grid-cols-1 gap-4`, no `lg:col-span-2`), on the grounds that the wide tabs read better.
+  The test call came back on 2026-09-23, so the grid is the promo's three-column one again and the
+  tabs card carries `lg:col-span-2` again — the file matches the promo here line for line. The
+  "wide tabs read better" observation still holds and is the one thing given up by restoring the
+  promo's layout; it was not worth diverging from the promo over, now that the third column has its
+  real occupant back.
 - `DemosGate.tsx`'s error card is now "Backend URL not set", not "Demo service unreachable". There
   is no probe left to detect "unreachable" — each ported screen already catches its own failure and
   shows the message (`demoFetch` throws `Couldn't reach the server.`). The one failure a screen
@@ -253,7 +257,7 @@ component changed in this step.
   in its "The Demos section (promo)" block, and `scripts/regression/` still has `fake_promo.py`.
   Both left alone here: the harness is Task 10, and `CLAUDE.md` is the user's to change.
 
-### "Analyze" removed (2026-09-22, review of Tasks 8–10)
+### "Analyze" removed (2026-09-22, review of Tasks 8–10), and back (2026-09-23)
 
 `components/admin/ActivityTab.tsx`: the per-call **Analyze** button, its `onAnalyze` prop and type,
 and the `Sparkles` / `Button` imports are gone.
@@ -271,3 +275,138 @@ it in full; this only affects calls that never got one.
 
 The backend still accepts `analyze: true` and ignores it (see the Task 4/6 notes) — nothing in the
 UI sends it now, but the route stays tolerant rather than newly rejecting a field it used to take.
+
+**Put back on 2026-09-23** (stage "demo test call", Task 8 Step 3). Reviews exist again: transcribe-backend
+ports the promo's `lib/call-review.ts` as `src/demo/callReview.ts` and runs it from
+`POST /demo/calls/:callId`, so a call placed from the restored Test call panel comes back with its
+review and the "Not reviewed" branch is once more about a call that *happened* to miss one rather
+than about a retired pipeline. `components/admin/ActivityTab.tsx` is therefore the promo's file
+again, line for line, apart from the one `demoFetch` line: the per-call **Analyze** button, its
+`onAnalyze` prop and type, the `Sparkles` / `Button` imports and the fuller sentence
+"Not reviewed — this call happened before reviews, or the model was unreachable." are all back.
+
+**It does what it says, as of Task 8b.** When this was first restored it did not: `analyze` was
+still the no-op it became when the promo's pipeline was dropped, so pressing it on an older call
+returned that call unchanged and raised the "Reviewed." toast anyway — the confirmation-of-nothing
+the 2026-09-22 removal named. That gap was closed the same day. `PATCH /demo/customers/:id/calls`
+now runs the promo's own branch: an existing review is never redone (it costs money and the operator
+has already read the old wording), a call with too little of a caller in it is refused with 400
+`"This call is too short to say anything about."`, a model that cannot be read back gives 502
+`"The review could not be read back. Try again in a moment."`, and nothing is written until every
+refusal is past. `transcribe-backend/src/routes/demoCall.pg.test.ts` pins all five cases.
+
+### The test call comes back (2026-09-23)
+
+transcribe-backend now serves the call itself — `POST /demo/session` (the promo's
+`app/api/session/route.ts`, reduced to its `isTest` path) and `POST /demo/calls/:callId` (the
+promo's `app/api/calls/[callId]/route.ts`) — so the three files deleted in "Demo tabs served from
+transcribe-backend" are **re-ported from the promo**, the "Test call" card is back in the prospect
+detail's third column, and "Analyze" is back on a call card (see the section above it).
+
+Re-ported (`"use client"` removed): `hooks/useLiveCall.ts`, `components/call/CallPanel.tsx`,
+`lib/ringtone.ts` — the `hooks/` folder exists again.
+
+**Source commit.** These three come from the promo's current HEAD `cf5473b`, not the `f482848` at
+the top of this file. Only `useLiveCall.ts` differs between the two: promo `6437467` ("Tell the
+receptionist what day it is") added the three `timeZone` lines in the session body, and they are
+wanted here — `POST /demo/session` reads `body.timeZone` through `safeTimeZone(...)` to date the
+`callClock` text it appends to the prompt. `CallPanel.tsx` and `lib/ringtone.ts` are byte-identical
+between `f482848` and `cf5473b`.
+
+The two review fixes this file recorded under "Stage 4b review fixes" are **re-applied**, because
+they are still true of this app and the deleted files carried them: `useLiveCall`'s `aliveRef`
+(every `await` in `dial` is a point where the page may be gone, and in this hash-routed SPA a
+sidebar click unmounts the page without a pagehide) and `Ringtone.start`'s `if (!this.context)
+return;` after the `resume()` try/catch. Read those entries for the reasoning; nothing about them
+changed.
+
+#### Per-file edits
+
+- `components/call/CallPanel.tsx`: no edits beyond the directive. No `var(--…)`, no
+  `getPropertyValue(`, no `next/link`, no `next-themes`, no portal, no `process.env`.
+- `lib/ringtone.ts`: no promo directive to remove; the one edit is the re-applied stage-4b fix
+  (`start()`, after the `context.resume()` try/catch: `if (!this.context) return;`). Browser-only,
+  no fetch, no CSS.
+- `hooks/useLiveCall.ts`:
+  - new first import `import { demoFetch } from "@/api";` (was `promoFetch, promoUrl`);
+  - `:160` the `url` local drops the prefix: `/api/calls/<callId>` → `/calls/<callId>` (`demoFetch`'s
+    own base carries `/demo`, as everywhere else in this file's table);
+  - `:315` `fetch("/api/session", {…})` → `demoFetch("/session", {…})`, same arguments;
+  - `:162-171` the `sendBeacon` branch is **gone** and `report`'s third parameter with it — see
+    "The unload report" below;
+  - `:408`, and the `aliveRef` unmount path, `report("abandoned", "page_hidden", true)` /
+    `report("abandoned", "unmounted", true)` → the same calls without the third argument.
+  - **Kept verbatim on purpose:** the body still sends `isTest`, and `useLiveCall(id,
+    draft?.callSound, { isTest: true })` still passes the option. `POST /demo/session` does not
+    read it — every call reachable through that admin-guarded route is a test call and the row is
+    written `is_test = true` unconditionally — and Elysia 1.4 normalises unknown body keys away
+    rather than refusing them, so the field is simply dropped server-side. Removing it would have
+    meant editing the hook's public options type and its one call site for no behaviour change.
+
+No `tsc` strictness fixes were needed for these three files (`npx tsc --noEmit` clean), and no
+legacy class name appears in `CallPanel.tsx` (`flex`, `grid`-free; the `bg-success` /
+`bg-destructive` / `bg-warning` / `bg-primary/30` / `hover:bg-primary-strong` utilities are the
+promo theme's own tokens, already in this app's scoped Tailwind build).
+
+#### The unload report
+
+The promo reported an abandoned call from `pagehide` with
+`navigator.sendBeacon(url, new Blob([payload], { type: "application/json" }))`, falling back to
+`fetch(url, { keepalive: true })`. **That beacon cannot survive the move to transcribe-backend**,
+for two independent reasons:
+
+1. `sendBeacon` takes a URL and a body and nothing else — there is no way to set a header on it, so
+   it cannot carry the `Authorization: Bearer <dashboard token>` that `demoFetch` adds and that
+   `authenticateAdmin` on `POST /demo/calls/:callId` requires. It would arrive unauthenticated and
+   be answered 401/403.
+2. The backend is a different origin now, so the request is cross-origin; a beacon whose Blob type
+   is `application/json` is not a CORS-safelisted request and needs a preflight it cannot usefully
+   wait for, on top of carrying no credentials this backend recognises.
+
+**Decision: one request for both paths — `demoFetch(url, { method: "POST", …, keepalive: true })`.**
+`demoFetch` is an `async` function whose body runs synchronously up to its `await fetch(...)`, so
+the request really is issued inside the `pagehide` handler, and `keepalive: true` is what lets it
+outlive the document. `report`'s `beacon` parameter is deleted rather than left unused (this repo
+compiles with `noUnusedParameters`), and its two call sites drop the `true`.
+
+**The trade-off, stated plainly.** `keepalive` is weaker than a beacon:
+
+- it is a newer guarantee than `sendBeacon` (Firefox only shipped `fetch` + `keepalive` in 133), so
+  an old browser may drop the request at unload where a beacon would have gone;
+- the `authorization` header makes it a preflighted cross-origin POST, so the report needs an
+  `OPTIONS` round trip *and then* the POST after the page is already gone, where a beacon was one
+  packet;
+- the spec caps all in-flight `keepalive` bodies at 64 KiB. A long transcript can approach that
+  (the backend caps the stored transcript at 500 entries, not bytes), and over the cap the fetch
+  rejects and the report is lost.
+
+**What losing it costs — very little, by design.** Nothing is corrupted: the `demo_calls` row
+simply stays `status: "started"`, which the Activity tab renders as "Still on the line." and the
+backend counts as in flight for ten minutes before it stops mattering. Nothing is double-counted
+either, because the server, not the client, decides the first report wins: `POST /demo/calls/:callId`
+answers `{ ok: true, alreadyReported: true }` and changes nothing for any report of a call that is
+no longer `"started"` — so a *late* keepalive report that lands after the normal end-of-call report
+is harmless, and so is the duplicate that `reportedRef` would have suppressed anyway. The failure
+mode is a stale row, never a wrong number.
+
+#### The layout
+
+`screens/ProspectScreen.tsx` is the promo's page again in this area: the detail wrapper is
+`grid grid-cols-1 gap-4 lg:grid-cols-3`, the tabs `<Card>` carries `lg:col-span-2`, and the third
+column holds the "Test call" `<Card>` — `CardHeader` / `CardTitle` back on the card import, the
+`CallPanel` / `Transcript` / `useLiveCall` imports back, `const call = useLiveCall(id,
+draft?.callSound, { isTest: true })` back with its comment, and the "Refresh the call list once a
+test call finishes" effect back, all copied from the promo unchanged. The earlier
+single-column note under "Deviations, with reasoning" is marked as reversed there.
+
+Everything else in `ProspectScreen.tsx` is untouched, so its remaining deviations are still the
+ones already listed: the `{ id }` prop in place of Next's `params`, the named export, the four
+`demoFetch` calls, and the removed Re-research action (with `Press Re-research.` dropped from the
+stalled banner).
+
+#### Verification
+
+`npx tsc --noEmit`, `npx vitest run` (18 files, 226 tests) and `npm run build` are all clean. No
+vitest test asserted the call panel's absence or a single-column grid, so none needed changing.
+`scripts/regression/demos_e2e.py` is **not** run at this point: the stage's next task reworks it,
+and until `fake_backend.py` learns `/demo/session` the test-call checks cannot pass.

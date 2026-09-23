@@ -3,7 +3,7 @@ import { demoFetch } from "@/api";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,6 +15,9 @@ import { ResearchInputsPanel } from "@/components/admin/ResearchInputsPanel";
 import { SharePanel } from "@/components/admin/SharePanel";
 import { SourcesPanel } from "@/components/research/SourcesPanel";
 import { PageHeader, StatCard, StatusBadge, statusKind } from "@/components/admin/shared";
+import { CallPanel } from "@/components/call/CallPanel";
+import { Transcript } from "@/components/call/Transcript";
+import { useLiveCall } from "@/hooks/useLiveCall";
 import { formatDuration, isResearchStalled } from "@/lib/analytics";
 import { readJson } from "@/lib/http";
 import type {
@@ -38,6 +41,8 @@ export function ProspectScreen({ id }: { id: string }) {
   const [draft, setDraft] = useState<Customer | null>(null);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Calls from this panel are the operator's own and stay out of the numbers.
+  const call = useLiveCall(id, draft?.callSound, { isTest: true });
 
   const load = useCallback(async () => {
     try {
@@ -58,6 +63,14 @@ export function ProspectScreen({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
+
+  // Refresh the call list once a test call finishes.
+  useEffect(() => {
+    if (call.state === "ended") {
+      const timer = setTimeout(() => void load(), 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [call.state, load]);
 
   async function save(partial?: Partial<Customer>) {
     if (!draft) return;
@@ -186,8 +199,8 @@ export function ProspectScreen({ id }: { id: string }) {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
-        <Card className="rounded-xl border shadow-none">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="rounded-xl border shadow-none lg:col-span-2">
           <CardContent className="p-4 md:p-6">
             {/*
               No CRM tab. The pipeline reads across every prospect at once, so
@@ -298,6 +311,33 @@ export function ProspectScreen({ id }: { id: string }) {
           </CardContent>
         </Card>
 
+        <Card className="flex flex-col rounded-xl border shadow-none">
+          <CardHeader>
+            <CardTitle className="ta-headline-2">Test call</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-1 flex-col gap-4">
+            <CallPanel
+              compact
+              state={call.state}
+              elapsedSec={call.elapsedSec}
+              usageSec={call.usageSec}
+              muted={call.muted}
+              error={call.error}
+              disabled={draft.status !== "ready" || !draft.active}
+              onDial={call.dial}
+              onHangup={call.hangup}
+              onToggleMute={call.toggleMute}
+              onReset={call.reset}
+            />
+            <div className="min-h-64 flex-1 overflow-y-auto rounded-lg border">
+              <Transcript
+                entries={call.transcript}
+                thinking={call.thinking}
+                emptyMessage="Call to hear how the receptionist answers."
+              />
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </>
   );

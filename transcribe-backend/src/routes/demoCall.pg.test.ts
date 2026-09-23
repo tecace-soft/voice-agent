@@ -225,11 +225,17 @@ const callReviewModule = await import("../demo/callReview.js");
 // afterwards returns the replacement, and the wrapper then calls itself — which is a stack overflow,
 // not a test failure, and took a moment to recognise.
 const actualReviewCall = callReviewModule.reviewCall;
+// `mock.module` replaces the module whole, so everything else the routes import from it has to be
+// handed back or it arrives `undefined` at the call site. `reviewable` is the Analyze branch's
+// first guard, and an undefined guard is a TypeError inside a try/catch — a 500 that would look
+// like a bug in the route rather than a hole in this mock.
+const actualReviewable = callReviewModule.reviewable;
 await mock.module("../demo/callReview.js", () => ({
   reviewCall: async (call: Parameters<typeof actualReviewCall>[0]) => {
     if (reviewThrows) throw new Error("review step exploded");
     return actualReviewCall(call);
   },
+  reviewable: actualReviewable,
 }));
 
 const { demo } = await import("./demo.js");
@@ -894,6 +900,173 @@ describe("the admin guard on the call routes", () => {
   it("wrote nothing while refusing all of that", async () => {
     expect(await callsOf(A)).toBe(10); // the ten the tests above placed, and no eleventh
     expect(await callsOf(F)).toBe(0);
+  });
+});
+
+// ==============================================================================================
+// The Analyze button: the same review, asked for after the fact.
+//
+// It sits below the guard section on purpose — the call count asserted up there counts what the
+// sections above it placed, and these tests place more.
+
+describe("PATCH /demo/customers/:id/calls with analyze", () => {
+  const conversation = [
+    said("t1", "receptionist", "Harbor Dental, this is Alex."),
+    said("t2", "caller", "Do you open on Sunday?"),
+    said("t3", "receptionist", "Let me check that for you."),
+    said("t4", "caller", "And do you take my insurance?"),
+  ];
+
+  const REVIEW = {
+    tested: "Whether the practice opens on Sunday and takes their insurance.",
+    worked: "Picked the call up warmly and by name.",
+    struggled: "Could not say which insurers are accepted.",
+    gaps: ["did not know accepted insurers"],
+    sentiment: "frustrated",
+  };
+
+  /** What the model would answer, if it were asked. */
+  const answers = (review: Record<string, unknown>): Responder => () =>
+    Response.json({ output_text: JSON.stringify(review) });
+
+  const responsesAsked = () =>
+    attempts.filter((attempt) => attempt.url.endsWith("/responses")).length;
+
+  /**
+   * A finished call with a transcript and no review — one reported while the review model was
+   * unreachable, which is exactly the call the button exists for. Placed and reported through the
+   * real routes, so the row is the one the dashboard would be looking at.
+   */
+  async function unreviewed(transcript: unknown[]): Promise<string> {
+    const callId = await placeCall();
+    responders.responses = refuses(503, "The review model was unreachable at the time.");
+    const res = await asAdmin("POST", `/demo/calls/${callId}`, {
+      customerId: A,
+      status: "completed",
+      durationSec: 75,
+      endReason: "caller ended the call",
+      transcript,
+    });
+    expect(await json(res)).toEqual({ ok: true, reviewed: false });
+    expect((await callRow(callId)).review).toBe(null);
+    responders.responses = NO_REVIEW;
+    return callId;
+  }
+
+  it("writes the review the call never got, and answers with the call carrying it", async () => {
+    const callId = await unreviewed(conversation);
+    responders.responses = answers(REVIEW);
+    const before = responsesAsked();
+
+    const res = await asAdmin("PATCH", `/demo/customers/${A}/calls`, { callId, analyze: true });
+    expect(res.status).toBe(200);
+    const payload = await json(res);
+    expect(Object.keys(payload)).toEqual(["call"]);
+    expect(payload.call.id).toBe(callId);
+    expect(payload.call.review).toMatchObject({ ...REVIEW, model: "gpt-review-under-test" });
+
+    // Asked once, of the review model, with the transcript and nothing else.
+    expect(responsesAsked()).toBe(before + 1);
+    const asked = sentTo("/responses");
+    expect(asked.url).toBe("https://openai.invalid/v1/responses");
+    expect(asked.body.model).toBe(env.callReviewModel);
+    expect(asked.body.input).toBe(
+      [
+        "Receptionist: Harbor Dental, this is Alex.",
+        "Caller: Do you open on Sunday?",
+        "Receptionist: Let me check that for you.",
+        "Caller: And do you take my insurance?",
+      ].join("\n"),
+    );
+
+    // And it is on the row, not only in the answer.
+    const row = await callRow(callId);
+    expect(row.status).toBe("completed");
+    expect(row.review_kind).toBe("object"); // an object, not a JSON string of one
+    expect(row.review).toMatchObject(REVIEW);
+    expect(typeof row.review.at).toBe("string");
+  });
+
+  it("never redoes a review that is already there", async () => {
+    const callId = await placeCall();
+    responders.responses = answers(REVIEW);
+    expect(
+      await json(
+        await asAdmin("POST", `/demo/calls/${callId}`, {
+          customerId: A,
+          status: "completed",
+          durationSec: 75,
+          transcript: conversation,
+        }),
+      ),
+    ).toEqual({ ok: true, reviewed: true });
+    const stored = (await callRow(callId)).review;
+    expect(stored).toMatchObject(REVIEW);
+
+    // A second opinion costs money and the operator has already read the first one. Nothing may be
+    // asked here: `NO_REVIEW` throws if it is, and the count below says so without relying on that.
+    responders.responses = NO_REVIEW;
+    const before = responsesAsked();
+
+    const res = await asAdmin("PATCH", `/demo/customers/${A}/calls`, { callId, analyze: true });
+    expect(res.status).toBe(200);
+    expect((await json(res)).call.review).toEqual(stored);
+    expect(responsesAsked()).toBe(before);
+    expect((await callRow(callId)).review).toEqual(stored);
+  });
+
+  it("refuses a call with too little of a caller in it, and asks nothing", async () => {
+    // One caller line: `MIN_CALLER_LINES` is two, and asking anyway invents a finding.
+    const callId = await unreviewed([
+      said("t1", "receptionist", "Harbor Dental, this is Alex."),
+      said("t2", "caller", "Sorry, wrong number."),
+    ]);
+    const before = responsesAsked();
+
+    const res = await asAdmin("PATCH", `/demo/customers/${A}/calls`, { callId, analyze: true });
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({ error: "This call is too short to say anything about." });
+    expect(responsesAsked()).toBe(before);
+    expect((await callRow(callId)).review).toBe(null);
+  });
+
+  it("answers 502 when the model cannot be read back, and changes nothing", async () => {
+    const callId = await unreviewed(conversation);
+    responders.responses = refuses(500, "The review model is having a day.");
+
+    const res = await asAdmin("PATCH", `/demo/customers/${A}/calls`, { callId, analyze: true });
+    expect(res.status).toBe(502);
+    expect(await json(res)).toEqual({
+      error: "The review could not be read back. Try again in a moment.",
+    });
+
+    const row = await callRow(callId);
+    expect(row.review).toBe(null);
+    expect(row.status).toBe("completed");
+    expect(row.duration_sec).toBe(75);
+    expect(row.turns).toBe(4);
+    expect(row.is_test).toBe(true);
+  });
+
+  it("applies isTest and analyze when they arrive together", async () => {
+    const callId = await unreviewed(conversation);
+    expect((await callRow(callId)).is_test).toBe(true);
+    responders.responses = answers(REVIEW);
+
+    const res = await asAdmin("PATCH", `/demo/customers/${A}/calls`, {
+      callId,
+      isTest: false,
+      analyze: true,
+    });
+    expect(res.status).toBe(200);
+    const call = (await json(res)).call;
+    expect(call.isTest).toBe(false);
+    expect(call.review).toMatchObject(REVIEW);
+
+    const row = await callRow(callId);
+    expect(row.is_test).toBe(false);
+    expect(row.review_kind).toBe("object");
+    expect(row.review).toMatchObject(REVIEW);
   });
 });
 

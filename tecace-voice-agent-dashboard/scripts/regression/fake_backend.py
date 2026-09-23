@@ -225,6 +225,19 @@ KEYS = [
 #   blank/whitespace text -> 400 "Write something first." (checked before the customer, as the
 #   route does)
 # - an unknown <id> on any /demo/customers/<id> route -> 404 {error: "Customer not found."}
+# - POST /demo/session {customerId, sdp, isTest?, timeZone?} -> {callId, sessionId, sdp, greeting}:
+#   the test call. Missing customerId/sdp -> 400 "Missing customerId or sdp."; unknown customer ->
+#   404 "This demo isn't available."; paused -> 403 "This demo is paused."; not ready -> 409 "This
+#   demo is still being prepared.". Otherwise it grants: `callId` is always SESSION_CALL_ID (the
+#   fake stores nothing, so there is one), and `sdp` is an SDP **answer** built from the browser's
+#   own offer by sdp_answer() — the real route's answer comes from OpenAI, which this fake cannot
+#   mint, so it writes one the browser will take. The route's per-IP 429 ("Too many calls in a row.
+#   Wait a minute and try again.") is not modelled: it is state, and demos_e2e.py stages it itself
+#   with page.route when it wants to see a refused dial.
+# - POST /demo/calls/<callId> {customerId, status, durationSec, endReason, transcript} ->
+#   {ok: true, reviewed: false}; an unknown callId -> 404 "Call not found.". The report is not
+#   stored, so SESSION_CALL_ID never joins the four fixture calls and the Activity tab reads the
+#   same table before and after a test call.
 #
 # STATELESS, like the rest of this fake: writes answer as if they worked and change nothing, so
 # every run starts from the same records.
@@ -679,6 +692,10 @@ def demo_route(method: str, path: str, query: dict, raw_body: bytes):
         return 200, {"customers": prospects(), "feed": activity_feed()}
     if path == "/customers" and method == "GET":
         return 200, {"customers": prospects()}
+    if path == "/session" and method == "POST":
+        return demo_session_route(raw_body)
+    if path.startswith("/calls/") and method == "POST":
+        return demo_report_route(unquote(path[len("/calls/"):]), raw_body)
     if path == "/customers" and method == "POST":
         body = _demo_json(raw_body)
         if body is None:
@@ -761,10 +778,120 @@ def demo_calls_route(method: str, wanted: str, raw_body: bytes):
     call = next((c for c in calls if c["id"] == body["callId"]), None)
     if call is None:
         return 404, {"error": "Call not found."}
-    # `analyze` answers with the call unchanged: the promo's review pipeline is retired, and the
-    # backend's route says so in as many words.
-    return 200, {"call": dict(call, isTest=body["isTest"])
-                 if isinstance(body.get("isTest"), bool) else call}
+    if isinstance(body.get("isTest"), bool):
+        call = dict(call, isTest=body["isTest"])
+    # `analyze` reviews a call that has none, and never redoes one it already has — the route's own
+    # rule. Its two refusals (400 for a call with too little caller in it, 502 for a model that
+    # can't be read back) aren't modelled: every fixture call is long enough and this fake's
+    # "model" always answers.
+    if analyze and not call.get("review"):
+        call = dict(call, review=_review([], call["endedAt"]))
+    return 200, {"call": call}
+
+
+# The call the fake's POST /demo/session opens. Fixed, because nothing is stored: a second dial
+# gets the same id, and the id is deliberately not one of CALL_SPECS', so a test call placed in the
+# harness never disturbs the four calls the Activity tab and every count are built from.
+SESSION_CALL_ID = "tstCALL00001"
+SESSION_ID = "sess_faketestcall"
+# 32 bytes, formatted as a DTLS fingerprint. Never verified: the browser only checks it against the
+# peer certificate during the DTLS handshake, which this fake never reaches.
+FINGERPRINT = "sha-256 " + ":".join(f"{b:02X}" for b in range(32))
+ICE_UFRAG = "fake"
+ICE_PWD = "fakefakefakefakefakefakefake"
+
+
+def sdp_answer(offer: str) -> str:
+    """An SDP answer the browser will accept for `offer`.
+
+    The real `POST /demo/session` hands the browser's offer to OpenAI and returns OpenAI's answer;
+    a fake has no such peer, so it writes the answer itself. `setRemoteDescription` is strict about
+    the shape — one answer section per offered section, in order, with the offer's own mids,
+    transport protocols and (for audio) a codec the offer listed — so the answer is derived from
+    the offer rather than canned. Everything past that point (ICE, DTLS) never happens: nothing is
+    listening on the candidate, so the call sits in "Ringing" until it is hung up, which is exactly
+    the state the harness wants to drive.
+    """
+    lines = [ln.strip() for ln in offer.replace("\r\n", "\n").split("\n") if ln.strip()]
+    rtpmap = {}
+    sections: list[dict] = []
+    for line in lines:
+        if line.startswith("m="):
+            parts = line[2:].split()
+            sections.append({"media": parts[0], "proto": parts[2], "fmts": parts[3:], "mid": None,
+                             "rtcp_mux": False})
+        elif sections and line.startswith("a=mid:"):
+            sections[-1]["mid"] = line[len("a=mid:"):]
+        elif sections and line == "a=rtcp-mux":
+            sections[-1]["rtcp_mux"] = True
+        elif line.startswith("a=rtpmap:"):
+            payload, _, codec = line[len("a=rtpmap:"):].partition(" ")
+            rtpmap[payload] = codec
+    mids = [s["mid"] for s in sections if s["mid"] is not None]
+
+    out = ["v=0", "o=- 1 1 IN IP4 127.0.0.1", "s=-", "t=0 0"]
+    if any(ln.startswith("a=group:BUNDLE") for ln in lines) and mids:
+        out.append("a=group:BUNDLE " + " ".join(mids))
+    out.append("a=msid-semantic: WMS")
+    for index, section in enumerate(sections):
+        if section["media"] == "application":
+            out.append(f"m=application 9 {section['proto']} webrtc-datachannel")
+        else:
+            # The offer's Opus payload number if it offered one, else whatever it listed first.
+            payload = next((p for p in section["fmts"]
+                            if rtpmap.get(p, "").lower().startswith("opus")),
+                           section["fmts"][0] if section["fmts"] else "111")
+            out.append(f"m={section['media']} 9 {section['proto']} {payload}")
+        out.append("c=IN IP4 0.0.0.0")
+        out.append(f"a=mid:{section['mid'] if section['mid'] is not None else index}")
+        out += [f"a=ice-ufrag:{ICE_UFRAG}", f"a=ice-pwd:{ICE_PWD}", "a=ice-options:trickle",
+                f"a=fingerprint:{FINGERPRINT}",
+                # The offer says actpass, so the answer picks a side; "active" means this end would
+                # open the DTLS connection, which suits a peer that never arrives.
+                "a=setup:active"]
+        if section["media"] == "application":
+            out += ["a=sctp-port:5000", "a=max-message-size:262144"]
+        else:
+            out.append("a=rtcp:9 IN IP4 0.0.0.0")
+            if section["rtcp_mux"]:
+                out.append("a=rtcp-mux")
+            # recvonly, not sendrecv: the fake sends no media, and an answer that claimed to would
+            # leave the page waiting on a track that never comes.
+            out.append("a=recvonly")
+            out.append(f"a=rtpmap:{payload} {rtpmap.get(payload, 'opus/48000/2')}")
+    return "\r\n".join(out) + "\r\n"
+
+
+def demo_session_route(raw_body: bytes):
+    """POST /demo/session: the test call, in the route's own order of refusals."""
+    body = _demo_json(raw_body)
+    if body is None:
+        return 400, DEMO_BAD_BODY
+    if not body.get("customerId") or not body.get("sdp"):
+        return 400, {"error": "Missing customerId or sdp."}
+    match = _demo_customer(body["customerId"])
+    if match is None:
+        return 404, {"error": "This demo isn't available."}
+    if not match["active"]:
+        return 403, {"error": "This demo is paused."}
+    if match["status"] != "ready":
+        return 409, {"error": "This demo is still being prepared."}
+    return 200, {"callId": SESSION_CALL_ID, "sessionId": SESSION_ID,
+                 "sdp": sdp_answer(str(body["sdp"])),
+                 "greeting": match["prompts"]["greeting"]}
+
+
+def demo_report_route(call_id: str, raw_body: bytes):
+    """POST /demo/calls/<callId>: how a test call ended. Nothing is stored, so the review is
+    always `false` — the real route's `reviewed` is whatever its model said about the transcript."""
+    body = _demo_json(raw_body)
+    if body is None:
+        return 400, DEMO_BAD_BODY
+    known = call_id == SESSION_CALL_ID or any(c["id"] == call_id for c in harbor_calls())
+    if not known:
+        return 404, {"error": "Call not found."}
+    return 200, {"ok": True, "reviewed": False}
+
 
 # --- Dispatch -------------------------------------------------------------------------------------
 

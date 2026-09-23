@@ -15,7 +15,7 @@ import {
   withinDays,
 } from "../demo/analytics.js";
 import { callClock, safeTimeZone } from "../demo/callClock.js";
-import { reviewCall } from "../demo/callReview.js";
+import { reviewCall, reviewable } from "../demo/callReview.js";
 import { OpenAIError, createLiveSession } from "../demo/openai.js";
 import type {
   BusinessProfile,
@@ -629,12 +629,16 @@ export const demo = new Elysia({ prefix: "/demo" })
    * disappeared from the numbers. This is how those get counted again, one at a time, by the person
    * who knows which was which.
    *
-   * `analyze` asked the promo's research pipeline for the review of a call that reported before
-   * reviews existed. That pipeline is retired, so the request is accepted and the call comes back
-   * unchanged rather than failing — including the promo's "too short to say anything about" 400 and
-   * its 502, neither of which has anything left to raise it. `isTest` in the same request still
-   * applies. The guard below is kept exactly as it was, so `{ callId, analyze: true }` is still a
-   * valid request and `{ callId }` on its own is still the promo's 400.
+   * `analyze` asks for the review of a call that has none — one placed before `POST /demo/calls/:id`
+   * started asking for reviews, or one where the model was unreachable at the time. It is the
+   * promo's own branch, back verbatim now that `reviewCall` lives here: **an existing review is
+   * never redone**, because it costs money and the operator has already read the old wording; a
+   * call with too little of a caller in it is the promo's 400; a model that cannot be read back is
+   * its 502.
+   *
+   * Both fields may arrive together and both apply. Nothing is written until every refusal is past,
+   * as the promo's single `saveCall` at the end of its handler had it: a request answered 400 or
+   * 502 is one that changed nothing, the reclassification sharing it included.
    */
   .patch(
     "/customers/:id/calls",
@@ -656,14 +660,44 @@ export const demo = new Elysia({ prefix: "/demo" })
         if (!customer) {
           return status(404, { error: "Customer not found." });
         }
-        const call = await patchCall(id, body.callId, {
-          isTest: typeof body.isTest === "boolean" ? body.isTest : undefined,
-          analyze: wantsAnalysis,
-        });
-        if (!call) {
+        // An empty patch is `patchCall`'s read: the same primary-key select, scoped to this
+        // customer, that the 404 above depends on.
+        const existing = await patchCall(id, body.callId, {});
+        if (!existing) {
           return status(404, { error: "Call not found." });
         }
-        return { call };
+
+        let next =
+          typeof body.isTest === "boolean" ? { ...existing, isTest: body.isTest } : existing;
+
+        let review: CallReview | null = null;
+        if (wantsAnalysis && !next.review) {
+          if (!reviewable(next)) {
+            return status(400, { error: "This call is too short to say anything about." });
+          }
+          // `reviewCall` returns null for every failure alike — no key, a model that would not
+          // answer, an answer that was not the JSON asked for. Here, unlike the end-of-call report,
+          // there is somebody waiting on the answer and nothing else to tell them, so it is a 502
+          // rather than a silently unreviewed call.
+          review = await reviewCall(next);
+          if (!review) {
+            return status(502, {
+              error: "The review could not be read back. Try again in a moment.",
+            });
+          }
+          next = { ...next, review };
+        }
+
+        // The writes, once nothing can refuse any more. Each returns the row as it now stands, so
+        // the second carries the first; `?? next` covers the row being deleted underneath us, which
+        // leaves the caller the record it asked about rather than a 500.
+        if (typeof body.isTest === "boolean") {
+          next = (await patchCall(id, body.callId, { isTest: body.isTest })) ?? next;
+        }
+        if (review) {
+          next = (await attachReview(next.id, review)) ?? next;
+        }
+        return { call: next };
       } catch (error) {
         return status(500, jsonError(error));
       }

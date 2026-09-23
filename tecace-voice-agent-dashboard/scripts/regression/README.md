@@ -4,8 +4,12 @@ Three checks over one fake backend. `compare.py` proves a change to this app lef
 screens exactly as they were, `tw_probe.py` that Tailwind stays inside `.tw`, and `demos_e2e.py`
 that the Demo tabs still work — all three against `fake_backend.py`, which answers every route
 the dashboard calls: sign-in, `/transcribe/*`, `/business/*`, `/calls`, `/usage/*`, `/feedback`,
-`/api-keys` and the Demo tabs' `/demo/*`. It is stateless and deterministic: a write answers as
-if it worked and changes nothing, so every run starts from the same records.
+`/api-keys` and the Demo tabs' `/demo/*` — including the test call's `POST /demo/session` and
+`POST /demo/calls/<callId>`. It is stateless and deterministic: a write answers as if it worked and
+changes nothing, so every run starts from the same records. The one thing it has to compute is the
+test call's SDP: the real session route returns OpenAI's answer to the browser's offer, and the
+fake writes one from the offer itself (`sdp_answer`) that the browser will accept, so the harness
+can walk a granted dial and not only a refused one.
 
 ## compare.py
 
@@ -125,10 +129,11 @@ What it checks:
   and the canvases are actually painted in `--ui-chart-1`, not black (the dark Overview is saved to
   `DEMOS_E2E_SCREENSHOT`, default `%TEMP%/demos-e2e-chart-dark.png`); picking a reporting period
   from its portalled listbox re-reads `/demo/analytics` for that window;
-- the prospect page: header and stat cards; the tabs card now has the page width to itself (the
-  call panel went with the test call, and its column with it); Activity (a card per call, the gap
+- the prospect page: header and stat cards; the promo's three-track detail grid, with the tabs
+  card spanning two and the "Test call" panel in the third; Activity (a card per call, the gap
   roll-up count, the transcript sheet inside `[data-tw-portal]`, "count as your test" PATCHes
-  `{callId, isTest}`); Knowledge (Save PATCHes the edited profile, "Saved."); Schedule (the week
+  `{callId, isTest}`, and "Analyze" on the two unreviewed calls PATCHing `{callId, analyze}`);
+  Knowledge (Save PATCHes the edited profile, "Saved."); Schedule (the week
   grid follows the hours, says it's a mock-up); Prompt (the three prompts; an edit saves
   `prompts.edited: true`); Sources (the dossier as markdown, source links with `target="_blank"`);
   Share (link, Copy, email); a refresh keeps it; an unknown id shows "Customer not found."; a
@@ -151,6 +156,19 @@ What it checks:
   since been closed must not take over the drawer on screen, nor send its next save to that
   older record. Because the fake is stateless, none of the drawer's writes change what the next
   read returns, so the board behind it isn't asserted to follow them;
+- the test call, dialled for real from Edge's fake microphone (`--use-fake-device-for-media-stream`,
+  `--use-fake-ui-for-media-stream` and a granted `microphone` permission), so the offer the page
+  sends is a genuine one: `POST /demo/session` carries `customerId`, `isTest`, the browser's
+  `timeZone` and an `sdp` beginning `v=0`; the fake's answer is accepted (the line reaches
+  "Ringing" with no error on the panel) and hanging up reports the call to
+  `POST /demo/calls/<callId>` as `completed` / `close_timeout`; a refused dial — the harness holds
+  the route and answers the session route's own 429, since a stateless fake cannot keep a per-IP
+  rate limit — shows that message and "Call failed", and "Call again" returns the panel to a
+  callable state; every dial opens the fake microphone and stops it again (all tracks "ended"),
+  including the retry; leaving the page mid-dial, while `getUserMedia` is still held open, sends
+  no session request afterwards and still stops the microphone it gets later; and a session
+  *granted* after the admin has left is handed straight back — one `abandoned` / `unmounted`
+  report, nothing else, and no page error;
 - a runtime check that no class used in `@layer legacy` lands on promo markup (bar `sr-only`,
   `grid`, and the `.ta-*` type scale where the promo's unlayered copy fully shadows the transcribe
   one) — over Overview, Prospects, the menu, the dialog, and each prospect tab, the transcript
@@ -161,6 +179,10 @@ Because the backend is a different origin from the app (:8899 vs :5199), every r
 bearer token is preflighted, and any response the harness fulfils itself has to carry
 `Access-Control-Allow-Origin` (`fulfill_json`) or the browser drops it. Route handlers therefore
 fall back for anything that isn't the method they mean to hold, so the preflight reaches the fake.
+
+Nothing leaves the machine. The test call is a real WebRTC offer built against Edge's fake device
+and answered by `fake_backend.py`; no OpenAI request is made, and the call never gets past
+"Ringing" because there is no peer on the other end of the candidates.
 
 Exit 0/1/2 like the others. Needs ports 5199 and 8899 free — don't run it at the same time as
 `compare.py`.

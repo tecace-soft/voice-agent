@@ -661,7 +661,7 @@ describe("PATCH /demo/customers/:id/calls", () => {
     expect(back.call.isTest).toBe(true);
   });
 
-  it("accepts the retired analyze:true and returns the call unchanged", async () => {
+  it("leaves a call that already has a review alone when analyze is sent", async () => {
     const res = await asAdmin("PATCH", `/demo/customers/${A}/calls`, { callId: "c1", analyze: true });
     const payload = await json(res);
     expect(res.status).toBe(200);
