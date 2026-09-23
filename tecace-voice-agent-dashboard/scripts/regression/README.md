@@ -11,6 +11,14 @@ test call's SDP: the real session route returns OpenAI's answer to the browser's
 fake writes one from the offer itself (`sdp_answer`) that the browser will accept, so the harness
 can walk a granted dial and not only a refused one.
 
+One thing it does remember, on purpose: a demo's minutes (`DEMO_MINUTES`). `addDemoMinutes` exists
+because the new total is added to the *stored* value and never to the figure the browser was
+showing, and a stateless answer cannot show the difference — adding 30 to a fixture that always
+reads 10 gives 40 either way. Keeping the total makes the addition visible (a second top-up
+compounds) and keeps every screen agreeing with it. It lives for the life of the process, so a run
+still starts from the fixtures, which set no minutes at all: the column is null until someone
+writes it, and the client falls back to `DEFAULT_DEMO_MINUTES`.
+
 ## compare.py
 
 Proves a change to this app left the transcribe screens exactly as they were.
@@ -125,22 +133,44 @@ What it checks:
 - the Prospects screen: table, search, the "More actions" menu and the "New customer" dialog
   rendered inside `[data-tw-portal]` with promo styling, copy-link / add / pause / resume toasts,
   the backend's 400 for a blank name; "Copy link" copies `VITE_PUBLIC_DEMO_BASE_URL/c/<id>` (the
-  build sets it to `http://promo.example`);
+  build sets it to `http://promo.example`); and the row menu's "Add demo time" submenu — the three
+  `DEMO_TIME_STEPS`, a step PATCHing `{addDemoMinutes: n}` and nothing else, and a toast naming the
+  total the backend arrived at by adding that amount to what it had stored; and a created prospect
+  coming back at `status: "researching"` — `POST /demo/customers` fires the run in the background
+  and answers at once, which is what the dialog's "Research is running." is promising;
 - the Overview screen: KPI values, a `<canvas>` per chart, recent calls linking to the prospect; a
   theme toggle replaces both canvases, and in dark mode the chart colour variables are 6-digit hex
   and the canvases are actually painted in `--ui-chart-1`, not black (the dark Overview is saved to
   `DEMOS_E2E_SCREENSHOT`, default `%TEMP%/demos-e2e-chart-dark.png`); picking a reporting period
   from its portalled listbox re-reads `/demo/analytics` for that window;
 - the prospect page: header and stat cards; the promo's three-track detail grid, with the tabs
-  card spanning two and the "Test call" panel in the third; Activity (a card per call, the gap
+  card spanning two and the "Test call" panel in the third; the header's "Add time" menu (the
+  current total on the button, the three steps under an "Add demo time" label, a step PATCHing
+  `{addDemoMinutes: n}`, the new total on screen without a reload, and — staged, since the menu
+  only offers positive steps — a refused amount saying "Minutes to add must be positive." and
+  leaving the total where it was); Activity (a card per call, the gap
   roll-up count, the transcript sheet inside `[data-tw-portal]`, "count as your test" PATCHes
   `{callId, isTest}`, and "Analyze" on the two unreviewed calls PATCHing `{callId, analyze}`);
   Knowledge (Save PATCHes the edited profile, "Saved."); Schedule (the week
   grid follows the hours, says it's a mock-up); Prompt (the three prompts; an edit saves
   `prompts.edited: true`); Sources (the dossier as markdown, source links with `target="_blank"`);
-  Share (link, Copy, email); a refresh keeps it; an unknown id shows "Customer not found."; a
+  Share (link, Copy, email, and the third "Add time" menu beside the Demo minutes field — after
+  the header's top-up a second one compounds on it, 10 → 20 → 50, with the field and *both*
+  buttons following the one answer and no reload); a refresh keeps it; an unknown id shows
+  "Customer not found."; a
   malformed id (`..%2F..%2Fanalytics`) shows the list and sends no request outside
   `/demo/customers`;
+- research, walked on Cedar Bakery, the prospect the fixtures leave mid-research (so the run has
+  something visible to finish, and its table link reads "Unnamed"): the status badge saying
+  "Researching" beside an enabled **Re-research**; the button `POST`ing the promo's own body
+  (`regeneratePrompts: false` plus the four inputs) to `/demo/customers/<id>/research`, toasting
+  "Research finished." and putting the researched record on screen — badge "Ready", the new
+  address — without a reload; **ResearchInputsPanel's own run button** on the Sources tab, under
+  the dossier the run wrote, sending the inputs as edited; and a run that fails showing the
+  backend's message and re-reading the record, so the page ends up on what is stored rather than a
+  half-finished draft. The failure is staged through the notes field the operator already types
+  into (`fake_backend.RESEARCH_FAIL_MARKER`), and the message is the one a deployment with no
+  `OPENAI_API_KEY` gets — no model is called, here or anywhere in this harness;
 - the pipeline (CRM) page: the stage board's columns, counts and cards (Harbor in Interested,
   Cedar in Contacted), the "Due now" section naming Cedar, the activity feed across both
   prospects (its first four rows asserted in order), and stage moves, each with the `PATCH` held
@@ -193,6 +223,29 @@ fall back for anything that isn't the method they mean to hold, so the preflight
 Nothing leaves the machine. The test call is a real WebRTC offer built against Edge's fake device
 and answered by `fake_backend.py`; no OpenAI request is made, and the call never gets past
 "Ringing" because there is no peer on the other end of the candidates.
+
+### Not covered here: the call that ends itself
+
+`useLiveCall` now wraps the receptionist up before the limit, asks "are you still there?" after
+caller silence, and hangs up at the limit or after idle (`lib/call-limits.ts`). **None of that is
+checked by this harness, and it cannot be**, so read a passing run as saying nothing about it.
+
+It is not a matter of the timers being slow. Every one of those rules runs on the tick
+`useLiveCall` starts from the `session.started` event, and that event arrives on the `oai-events`
+SCTP data channel — which needs a completed DTLS handshake with a real peer. This fake has no
+peer: the call reaches "Ringing" and stays there, the channel never opens, and the tick never
+starts. The session answer's `maxSec` is read into the hook (`callLimitSec(data.maxSec)`) and
+then has nothing to act on, so staging a small `maxSec` to make the limit arrive in seconds would
+change nothing either — there is no observable to assert, and a check written anyway would assert
+nothing.
+
+The fake does answer `POST /demo/session` with `maxSec` (always `CALL_MAX_SEC`, because every call
+through that admin route is an operator test call and skips the prospect's allowance), so the
+answer the hook is given here has the shape the real route gives it. The rules themselves are
+covered where they can be: `tests/promo/call-limits.test.ts` exercises `callLimitSec`, `callEnd`,
+`shouldWrapUp` and `shouldCheckIn` directly, which is what the module was made pure for. Closing
+the gap for real needs something that speaks the data channel — a peer that completes the
+handshake and sends `session.started`, with the tick's clock under the test's control.
 
 Exit 0/1/2 like the others. Needs ports 5199 and 8899 free — don't run it at the same time as
 `compare.py`.

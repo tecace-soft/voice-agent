@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from "bun:test";
+import { afterAll, describe, expect, it, mock } from "bun:test";
 import { PGlite } from "@electric-sql/pglite";
 
 // Every Demo endpoint, driven as the dashboard drives it, against a real Postgres: PGlite behind
@@ -230,9 +230,47 @@ const { parseDump } = await import("../demo/dump.js");
 const { importDump } = await import("../db/demoImport.js");
 expect(await importDump(parseDump(DUMP))).toEqual({ customers: 2, calls: 3, events: 2, notes: 1 });
 
-const { demo } = await import("./demo.js");
+// What a prospect with no stored figure is treated as having. Imported rather than written out as
+// 10, so the top-up tests measure the route against the constant the route itself reads.
+const { DEFAULT_DEMO_MINUTES } = await import("../demo/types.js");
+
+const { PROMPT_VERSION } = await import("../demo/prompt.js");
+const { demo, pendingResearch } = await import("./demo.js");
 const { Elysia } = await import("elysia");
 const app = new Elysia().use(demo);
+
+// ----------------------------------------------------------------------------------------------
+// The network boundary, closed — because `POST /demo/customers` now fires a research run in the
+// background and a research run is two billable model calls. **No request leaves this process.**
+// Bun loads the developer's own `.env` at startup, so a real `OPENAI_API_KEY` could otherwise be
+// picked up and spent by running the test suite. Two belts: the base URL is pointed somewhere that
+// does not exist, and `fetch` is replaced with a stub that records the attempt and refuses.
+//
+// Research itself is covered properly in `demoResearch.pg.test.ts`. Here it only has to not escape
+// and not race — every create below is followed by `await pendingResearch()`, so the run is over
+// before the next assertion reads the row.
+const { env } = await import("../config/env.js");
+const settings = env as unknown as Record<string, unknown>;
+Object.assign(settings, {
+  openaiApiKey: "sk-test-not-a-real-key",
+  openaiBaseUrl: "https://openai.invalid/v1",
+});
+
+const realFetch = globalThis.fetch;
+const attempts: string[] = [];
+globalThis.fetch = (async (input: any) => {
+  const url =
+    typeof input === "string" ? input : input instanceof URL ? input.href : String(input?.url);
+  attempts.push(url);
+  return new Response(JSON.stringify({ error: { message: `refused: ${url}` } }), {
+    status: 599,
+    headers: { "content-type": "application/json" },
+  });
+}) as unknown as typeof fetch;
+
+afterAll(() => {
+  globalThis.fetch = realFetch;
+});
 
 // `Response.json()` is typed `unknown`; these are our own fixtures, so read them as records (same
 // pattern as ../auth/auth.test.ts).
@@ -426,6 +464,49 @@ describe("a customer saved before stages existed", () => {
   });
 });
 
+// The other half of read-time normalize(), and the one with the wider blast radius: the source
+// rebuilds any prompt nobody has edited whose version is behind PROMPT_VERSION. Eight of the ten
+// real imported customers are in exactly that state (versions 3, 4 and none), so without this they
+// would show — and dial with — text the source would have refreshed. The fixtures above carry
+// `{ live: "You are Alex", edited: false }` and no version, which is that case.
+describe("a prompt nobody has edited", () => {
+  it("is stale in the row, and rebuilt on the way out", async () => {
+    const [row] = (await db.query(
+      `SELECT prompts->>'live' AS live, prompts->>'edited' AS edited, prompts->>'version' AS version
+       FROM demo_customers WHERE id = $1`,
+      [A],
+    )).rows as any[];
+    // What is stored: the stale text, unedited, no version.
+    expect(row).toEqual({ live: "You are Alex", edited: "false", version: null });
+
+    const { customer } = await json(await asAdmin("GET", `/demo/customers/${A}`));
+    expect(customer.prompts.version).toBe(PROMPT_VERSION);
+    expect(customer.prompts.live).not.toBe("You are Alex");
+    // Rebuilt from this business's own profile, not from a template with the name left out.
+    expect(customer.prompts.live).toContain("Harbor Dental");
+    expect(customer.prompts.edited).toBe(false);
+  });
+
+  it("is rebuilt in the list too, not only on the detail read", async () => {
+    const { customers } = await json(await asAdmin("GET", "/demo/customers"));
+    for (const c of customers) {
+      expect(c.prompts.version).toBe(PROMPT_VERSION);
+      expect(c.prompts.live).not.toBe("You are Alex");
+    }
+  });
+
+  it("leaves a hand-edited prompt exactly as stored", async () => {
+    // A PATCH carrying prompt text is what marks a prompt edited, and from then on it is the
+    // operator's wording — the rebuild must never overwrite it.
+    const written = "You are Dana, and this sentence was typed by a person.";
+    await asAdmin("PATCH", `/demo/customers/${B}`, { prompts: { live: written } });
+
+    const { customer } = await json(await asAdmin("GET", `/demo/customers/${B}`));
+    expect(customer.prompts.edited).toBe(true);
+    expect(customer.prompts.live).toBe(written);
+  });
+});
+
 // ==============================================================================================
 // Who gets in. Demo data is every prospect's contact details and call transcripts, so this is the
 // whole access story for four tabs: a read and a write are each checked, because the guard is
@@ -507,10 +588,15 @@ describe("POST /demo/customers", () => {
     expect(created.language).toBe("en"); // an unknown code opens in English
     expect(created.agentName).toBe("Alex");
     expect(created.voice).toBe("gleam");
-    expect(created.status).toBe("ready");
+    // The promo's own status for a record whose research has just been fired and has not landed.
+    expect(created.status).toBe("researching");
     expect(created.profile.name).toBe("Pine Clinic");
     expect(created.id).toMatch(/^[A-Za-z0-9_-]{12}$/); // the promo's nanoid shape
     madeId = created.id;
+    // The background run the 201 did not wait for. Let it finish — with `fetch` stubbed it fails
+    // and lands the record on "error" — so the PATCH tests below are not racing it. What the run
+    // does when it succeeds is `demoResearch.pg.test.ts`'s subject, not this file's.
+    await pendingResearch();
   });
 
   it("refuses a blank business name with the promo's 400", async () => {
@@ -609,6 +695,75 @@ describe("PATCH /demo/customers/:id merge rules", () => {
     const res = await asAdmin("PATCH", "/demo/customers/nosuchcustomer", { label: "x" });
     expect(res.status).toBe(404);
     expect(await json(res)).toEqual({ error: "Customer not found." });
+  });
+});
+
+// The "Add time" menu. `addDemoMinutes` is a top-up, and the whole reason it is not just another
+// `demoMinutes` is *what it is added to*: the figure in the row, read inside the same transaction
+// that writes it — never the figure the browser was showing. A tab left open since yesterday
+// would otherwise undo a colleague's top-up simply by clicking "+10" on a stale total.
+describe("PATCH /demo/customers/:id — addDemoMinutes", () => {
+  const minutesOf = async (id: string) =>
+    (
+      (await db.query(`SELECT demo_minutes FROM demo_customers WHERE id = $1`, [id])).rows as any[]
+    )[0].demo_minutes;
+
+  const rowOf = async (id: string) =>
+    ((await db.query(`SELECT * FROM demo_customers WHERE id = $1`, [id])).rows as any[])[0];
+
+  it("adds to the stored minutes", async () => {
+    // A baseline set outright, the Share tab's way, so the starting figure is this test's own
+    // rather than whatever the merge-rule tests above left behind.
+    await asAdmin("PATCH", `/demo/customers/${madeId}`, { demoMinutes: 20 });
+    expect(await minutesOf(madeId)).toBe(20);
+
+    const res = await asAdmin("PATCH", `/demo/customers/${madeId}`, { addDemoMinutes: 30 });
+    expect(res.status).toBe(200);
+    expect((await json(res)).customer.demoMinutes).toBe(50);
+    expect(await minutesOf(madeId)).toBe(50);
+  });
+
+  it("ignores a stale demoMinutes sent in the same body", async () => {
+    // 50 is stored. A page loaded before the top-up above still shows 20 and sends it back with
+    // the next save; the add has to land on the 50, and the 20 has to go nowhere at all.
+    const res = await asAdmin("PATCH", `/demo/customers/${madeId}`, {
+      demoMinutes: 20,
+      addDemoMinutes: 10,
+    });
+    expect(res.status).toBe(200);
+    // 60, not 30 (added to what was sent) and not 20 (the stale figure written outright).
+    expect((await json(res)).customer.demoMinutes).toBe(60);
+    expect(await minutesOf(madeId)).toBe(60);
+  });
+
+  it("starts from DEFAULT_DEMO_MINUTES when the prospect has none stored", async () => {
+    // Its own prospect, so the seeded ones the tests below read are left as they were.
+    const fresh = (await json(await asAdmin("POST", "/demo/customers", { businessName: "Fir Spa" })))
+      .customer;
+    expect(await minutesOf(fresh.id)).toBe(null); // absent means the default, not zero
+
+    const res = await asAdmin("PATCH", `/demo/customers/${fresh.id}`, { addDemoMinutes: 5 });
+    expect(res.status).toBe(200);
+    expect((await json(res)).customer.demoMinutes).toBe(DEFAULT_DEMO_MINUTES + 5);
+  });
+
+  it("refuses zero, a negative and a non-number with the promo's 400, and writes nothing", async () => {
+    const before = await rowOf(madeId);
+
+    for (const addDemoMinutes of [0, -5, "ten"]) {
+      const res = await asAdmin("PATCH", `/demo/customers/${madeId}`, {
+        addDemoMinutes,
+        // Real fields alongside it, so a refusal that came *after* the write would be caught:
+        // these would have landed on the row.
+        label: "should not be saved",
+        demoMinutes: 999,
+      });
+      expect(res.status).toBe(400);
+      expect(await json(res)).toEqual({ error: "Minutes to add must be positive." });
+    }
+
+    // Not just the minutes — the whole row, updated_at included. The refusal is a refusal.
+    expect(await rowOf(madeId)).toEqual(before);
   });
 });
 

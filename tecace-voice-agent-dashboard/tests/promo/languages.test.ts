@@ -64,7 +64,7 @@ describe("prompts in the chosen language", () => {
 
   it("keeps the prompt itself in English, so the operator can still read it", () => {
     expect(korean.live).toContain("You are Mina, the phone receptionist");
-    expect(korean.live).toContain("How to speak:");
+    expect(korean.live).toContain("# Personality and tone");
   });
 
   it("still follows the caller into any other language", () => {

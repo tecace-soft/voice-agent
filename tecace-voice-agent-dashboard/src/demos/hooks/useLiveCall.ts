@@ -5,6 +5,15 @@ import { CallAudio, resolveCallSound, type CallMeters } from "@/lib/call-audio";
 import { readJson } from "@/lib/http";
 import { Ringtone } from "@/lib/ringtone";
 import { spokenGreeting } from "@/lib/prompt";
+import {
+  CHECK_IN_INSTRUCTION,
+  WRAP_UP_INSTRUCTION,
+  callEnd,
+  callLimitSec,
+  shouldCheckIn,
+  shouldWrapUp,
+  type CallEnd,
+} from "@/lib/call-limits";
 import { appendFragment } from "@/lib/transcript";
 import type { CallSound, CallState, TranscriptEntry } from "@/lib/types";
 
@@ -57,6 +66,11 @@ export type UseLiveCall = {
   thinking: boolean;
   error: string | null;
   /**
+   * Set when the call ended itself — the demo time ran out, or nobody said
+   * anything for a minute — so the page can say why. Null after a hang-up.
+   */
+  endedBy: CallEnd | null;
+  /**
    * Analysers on the microphone and the agent's voice, for the listening
    * orb. A ref, not state: it is read sixty times a second by a canvas and
    * must never re-render React. Both null outside a call.
@@ -86,6 +100,7 @@ export function useLiveCall(
   const [muted, setMuted] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [endedBy, setEndedBy] = useState<CallEnd | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -102,6 +117,14 @@ export function useLiveCall(
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const greetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // What the tick reads to decide whether the call should end itself.
+  const limitSecRef = useRef(callLimitSec());
+  const lastCallerAtRef = useRef(0);
+  const lastAgentAtRef = useRef<number | undefined>(undefined);
+  const wrappedUpRef = useRef(false);
+  const checkedInRef = useRef(false);
+  const endingRef = useRef(false);
+  const endReasonRef = useRef<string | undefined>(undefined);
   // False once the component using this hook has unmounted. `dial` awaits the
   // microphone, ICE gathering and the session request; each await is a point
   // where the page may be gone, and a call started after that has no UI and
@@ -195,15 +218,70 @@ export function useLiveCall(
     if (dc?.readyState === "open") dc.send(JSON.stringify(event));
   }, []);
 
+  /**
+   * Hang up from anywhere. `hangup` reads the call state from its render,
+   * which a timer started at the beginning of the call would see stale, so
+   * this goes by refs instead.
+   */
+  const closeCall = useCallback(
+    (reason: string) => {
+      if (endingRef.current || !pcRef.current) return;
+      endingRef.current = true;
+      // A hang-up keeps whatever reason OpenAI closes with, as it always has.
+      if (reason !== "hangup") endReasonRef.current = reason;
+      setState("ending");
+      stopRingtone();
+      send({ type: "session.close", event_id: `close_${Date.now()}` });
+      closeTimerRef.current = setTimeout(() => {
+        finish("completed", reason === "hangup" ? "close_timeout" : reason);
+      }, CLOSE_TIMEOUT_MS);
+    },
+    [finish, send, stopRingtone],
+  );
+
   const handleEvent = useCallback(
     (event: LiveEvent, greeting: string) => {
       switch (event.type) {
         case "session.started": {
           stopRingtone();
           startedAtRef.current = Date.now();
+          lastCallerAtRef.current = startedAtRef.current;
           setState("connected");
           tickRef.current = setInterval(() => {
-            setElapsedSec(Math.round((Date.now() - startedAtRef.current) / 1000));
+            const now = Date.now();
+            setElapsedSec(Math.round((now - startedAtRef.current) / 1000));
+            if (endingRef.current) return;
+
+            // Nobody pressing hang up used to mean the call never ended.
+            const activity = {
+              startedAt: startedAtRef.current,
+              lastCallerAt: lastCallerAtRef.current,
+              lastAgentAt: lastAgentAtRef.current,
+              limitSec: limitSecRef.current,
+            };
+            const end = callEnd(activity, now);
+            if (end) {
+              setEndedBy(end);
+              closeCall(end);
+              return;
+            }
+            if (!wrappedUpRef.current && shouldWrapUp(activity, now)) {
+              wrappedUpRef.current = true;
+              send({
+                type: "session.instructions.append",
+                event_id: `wrap_${now}`,
+                delegation_id: null,
+                content: WRAP_UP_INSTRUCTION,
+              });
+            } else if (!checkedInRef.current && shouldCheckIn(activity, now)) {
+              checkedInRef.current = true;
+              send({
+                type: "session.instructions.append",
+                event_id: `still_there_${now}`,
+                delegation_id: null,
+                content: CHECK_IN_INSTRUCTION,
+              });
+            }
           }, 1000);
           send({
             type: "session.instructions.append",
@@ -227,7 +305,12 @@ export function useLiveCall(
           if (!event.delta) break;
           const speaker =
             event.type === "session.input_transcript.delta" ? "caller" : "receptionist";
-          if (speaker === "receptionist") {
+          if (speaker === "caller") {
+            lastCallerAtRef.current = Date.now();
+            // Back again, so a later silence earns another "still there?".
+            checkedInRef.current = false;
+          } else {
+            lastAgentAtRef.current = Date.now();
             setThinking(false);
             // It spoke. The rescue would only talk over it.
             if (greetTimerRef.current) {
@@ -259,7 +342,7 @@ export function useLiveCall(
             usageRef.current = event.usage.seconds;
             setUsageSec(event.usage.seconds);
           }
-          finish("completed", event.reason);
+          finish("completed", endReasonRef.current ?? event.reason);
           break;
         case "error":
           setError(event.error?.message ?? "The call ran into an error.");
@@ -269,7 +352,7 @@ export function useLiveCall(
           break;
       }
     },
-    [finish, send, stopRingtone],
+    [closeCall, finish, send, stopRingtone],
   );
 
   const dial = useCallback(async () => {
@@ -282,6 +365,13 @@ export function useLiveCall(
     setUsageSec(0);
     setElapsedSec(0);
     setMuted(false);
+    setEndedBy(null);
+    limitSecRef.current = callLimitSec();
+    lastAgentAtRef.current = undefined;
+    wrappedUpRef.current = false;
+    checkedInRef.current = false;
+    endingRef.current = false;
+    endReasonRef.current = undefined;
     reportedRef.current = false;
     callIdRef.current = null;
     setState("connecting");
@@ -347,6 +437,7 @@ export function useLiveCall(
         callId?: string;
         sdp?: string;
         greeting?: string;
+        maxSec?: number;
       }>(response);
 
       if (!aliveRef.current) {
@@ -364,6 +455,7 @@ export function useLiveCall(
       }
 
       callIdRef.current = data.callId ?? null;
+      limitSecRef.current = callLimitSec(data.maxSec);
       const greeting = data.greeting ?? "Greet the caller now, then pause and listen.";
       dc.addEventListener("message", (event) => {
         try {
@@ -394,13 +486,8 @@ export function useLiveCall(
 
   const hangup = useCallback(() => {
     if (state !== "connected" && state !== "ringing") return;
-    setState("ending");
-    stopRingtone();
-    send({ type: "session.close", event_id: `close_${Date.now()}` });
-    closeTimerRef.current = setTimeout(() => {
-      finish("completed", "close_timeout");
-    }, CLOSE_TIMEOUT_MS);
-  }, [finish, send, state, stopRingtone]);
+    closeCall("hangup");
+  }, [closeCall, state]);
 
   const toggleMute = useCallback(() => {
     const stream = streamRef.current;
@@ -422,6 +509,7 @@ export function useLiveCall(
     setTranscript([]);
     setState("idle");
     setError(null);
+    setEndedBy(null);
     setElapsedSec(0);
     setUsageSec(0);
     setThinking(false);
@@ -453,6 +541,7 @@ export function useLiveCall(
     muted,
     thinking,
     error,
+    endedBy,
     meters: metersRef,
     dial,
     hangup,

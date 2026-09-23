@@ -269,6 +269,26 @@ DEMO_BASE_URL = "http://promo.example"
 # src/routes/demo.ts, POST /demo/session: the only refusal past the admin guard that the panel can
 # be made to show. The fake can't hold a per-IP rate limit, so the harness stages the 429 itself.
 RATE_LIMITED = "Too many calls in a row. Wait a minute and try again."
+
+# lib/analytics.ts DEMO_TIME_STEPS, as the "Add time" menu writes them.
+DEMO_TIME_LABELS = ["10 minutes", "30 minutes", "60 minutes"]
+# The Add-time button on the customer page and in the Share tab: "Demo time: <n> min".
+DEMO_TIME_BUTTON = re.compile(r"^Demo time: \d+ min$")
+# Every Add-time button on screen, in order, so a top-up can be seen landing on all of them
+# without the page being read again.
+DEMO_TIME_SHOWN_JS = ("() => [...document.querySelectorAll('main .tw button')]"
+                      ".map((b) => b.innerText.trim()).filter((t) => t.startsWith('Demo time:'))")
+# The prospect page's status badge ("Researching" / "Ready" / "Error" / "Stalled"). Found through
+# the <h1> rather than by class, because PageHeader is the only place the badge sits beside one —
+# the tabs below hold badges of their own.
+STATUS_BADGE_JS = """
+() => {
+  const h1 = document.querySelector('main .tw h1');
+  const header = h1 && h1.parentElement && h1.parentElement.parentElement;
+  const badge = header && header.querySelector('[data-slot="badge"]');
+  return badge ? badge.textContent.trim() : null;
+}
+"""
 # Where the dark Overview is saved, so the chart colours can be looked at (DEMOS_E2E_SCREENSHOT).
 SCREENSHOT = Path(os.environ.get("DEMOS_E2E_SCREENSHOT")
                   or Path(tempfile.gettempdir()) / "demos-e2e-chart-dark.png")
@@ -350,6 +370,16 @@ def new_toast(page, text: str, timeout: float | None = None, required: bool = Tr
         return True
     try:
         toast.wait_for(timeout=timeout or 10000)
+    except PlaywrightTimeout:
+        return False
+    return True
+
+
+def settled(page, expression: str, timeout: float = 10000) -> bool:
+    """Wait for `expression` to hold, reporting a timeout as False rather than aborting the run —
+    for the checks whose whole point is that the screen follows an answer it was given."""
+    try:
+        page.wait_for_function(expression, timeout=timeout)
     except PlaywrightTimeout:
         return False
     return True
@@ -510,6 +540,34 @@ def run() -> int:
                     check("prospects: Copy link copies the public demo link (VITE_PUBLIC_DEMO_BASE_URL)",
                           copied == f"{DEMO_BASE_URL}/c/pr0SPct1", repr(copied))
 
+                    # The "Add time" steps as a submenu on a row (AddDemoTimeSubmenu). Cedar's, so
+                    # the prospect page's own top-ups further down still start from the fixture.
+                    cedar_row = rows.filter(has_text="sam@cedarbakery.example")
+                    cedar_row.get_by_role("button", name="More actions").click()
+                    row_menu = page.locator("[data-tw-portal] [role=menu]").first
+                    row_menu.wait_for()
+                    row_menu.get_by_role("menuitem", name="Add demo time").hover()
+                    sub = page.locator("[data-tw-portal] [data-slot='dropdown-menu-sub-content']")
+                    sub.wait_for()
+                    steps = sub.get_by_role("menuitem")
+                    check("prospects: the row menu offers the demo-time steps as a submenu",
+                          [t.strip() for t in steps.all_inner_texts()] == DEMO_TIME_LABELS,
+                          str(steps.all_inner_texts()))
+                    tw_classes |= set(page.evaluate(TW_CLASSES_JS))
+                    page.evaluate(MARK_TOASTS_JS)
+                    with page.expect_request(lambda r: r.method == "PATCH"
+                                             and r.url.endswith("/demo/customers/cedar42")) as req:
+                        sub.get_by_role("menuitem", name="30 minutes").click()
+                    body = req.value.post_data_json
+                    check("prospects: a step PATCHes {addDemoMinutes: n} and sends no total",
+                          body == {"addDemoMinutes": 30}, str(body))
+                    # Cedar stores no minutes, so the backend added 30 to DEFAULT_DEMO_MINUTES. The
+                    # request above carried the amount and nothing else, so the 40 in the toast can
+                    # only have been worked out from the stored value.
+                    check("prospects: ... and the toast names the total the backend added it to",
+                          new_toast(page, "Added 30 minutes. The demo now has 40 in all.",
+                                    required=False))
+
                     page.get_by_role("button", name="New customer").click()
                     dialog = page.locator("[data-tw-portal] [role=dialog]")
                     dialog.wait_for()
@@ -530,11 +588,21 @@ def run() -> int:
                           and "POST /demo/customers" in reqs,
                           dialog.get_by_role("alert").inner_text())
                     dialog.get_by_label("Business name").fill("Birch Florist")
-                    add.click()
+                    with page.expect_response(
+                            lambda r: r.request.method == "POST"
+                            and urlparse(r.url).path == "/demo/customers") as created:
+                        add.click()
                     page.get_by_text("Customer added. Research is running.").wait_for()
                     dialog.wait_for(state="detached")
                     check("prospects: adding a customer toasts and closes the dialog",
                           page.locator("[role=dialog]").count() == 0)
+                    # The dialog's toast promises a run; the record it was answered with is what
+                    # makes that true. POST /demo/customers fires the research in the background
+                    # and answers straight away, so a new prospect is always mid-research.
+                    made = created.value.json().get("customer", {})
+                    check("prospects: ... and the new prospect comes back researching",
+                          made.get("status") == "researching"
+                          and made.get("businessName") == "Birch Florist", str(made.get("status")))
 
                     page.get_by_role("switch", name="Toggle the demo for Harbor Dental").click()
                     page.get_by_text("Demo is paused.").wait_for()
@@ -674,6 +742,61 @@ def run() -> int:
                         ".backgroundColor")
                     check("sidebar: ... and the tinted square behind it is gone",
                           tint in ("rgba(0, 0, 0, 0)", "transparent"), tint)
+
+                    # --- Add demo time, from the page header (AddDemoTimeMenu) ---
+                    #
+                    # Harbor stores no minutes, so the button opens on DEFAULT_DEMO_MINUTES. The
+                    # Share tab is closed, so this is the only one of these buttons on screen.
+                    add_time = main_tw.get_by_role("button", name=DEMO_TIME_BUTTON)
+                    check("prospect: the header carries the Add-time button with the current total",
+                          add_time.count() == 1
+                          and add_time.inner_text().strip() == "Demo time: 10 min",
+                          str(page.evaluate(DEMO_TIME_SHOWN_JS)))
+                    add_time.click()
+                    time_menu = page.locator("[data-tw-portal] [role=menu]")
+                    time_menu.wait_for()
+                    check("prospect: ... opening it shows the steps under an 'Add demo time' label",
+                          "Add demo time" in time_menu.inner_text()
+                          and [t.strip() for t in time_menu.get_by_role("menuitem").all_inner_texts()]
+                          == DEMO_TIME_LABELS,
+                          time_menu.inner_text())
+                    page.evaluate(MARK_TOASTS_JS)
+                    with page.expect_request(lambda r: r.method == "PATCH"
+                                             and r.url.endswith("/demo/customers/pr0SPct1")) as req:
+                        time_menu.get_by_role("menuitem", name="10 minutes").click()
+                    body = req.value.post_data_json
+                    check("prospect: a step PATCHes {addDemoMinutes: n} and sends no total",
+                          body == {"addDemoMinutes": 10}, str(body))
+                    check("prospect: ... and the header shows the new total without a reload",
+                          settled(page, f"() => ({DEMO_TIME_SHOWN_JS})()"
+                                        ".includes('Demo time: 20 min')"),
+                          str(page.evaluate(DEMO_TIME_SHOWN_JS)))
+                    check("prospect: ... and says what the total now is",
+                          new_toast(page, "Added 10 minutes. The demo now has 20 in all.",
+                                    required=False))
+
+                    # The menu only ever offers positive steps, so the backend's refusal for an
+                    # amount it cannot use is staged here — it is the sentence a caller with a
+                    # hand-made request would get, and what the page does with it is the point:
+                    # say it, and leave the total where it was.
+                    def refuse_top_up(route):
+                        # Everything else, the CORS preflight included, goes to the fake.
+                        if route.request.method == "PATCH":
+                            fulfill_json(route, 400, {"error": "Minutes to add must be positive."})
+                        else:
+                            route.fallback()
+
+                    page.route("**/demo/customers/pr0SPct1", refuse_top_up)
+                    page.evaluate(MARK_TOASTS_JS)
+                    add_time.click()
+                    time_menu.wait_for()
+                    time_menu.get_by_role("menuitem", name="60 minutes").click()
+                    said = new_toast(page, "Minutes to add must be positive.", required=False)
+                    check("prospect: a refused top-up says why and leaves the total alone",
+                          said and add_time.inner_text().strip() == "Demo time: 20 min",
+                          f"said={said} {page.evaluate(DEMO_TIME_SHOWN_JS)}")
+                    page.unroute("**/demo/customers/pr0SPct1")
+
                     per_state: dict[str, set[str]] = {}
 
                     def snapshot(label: str) -> None:
@@ -810,6 +933,39 @@ def run() -> int:
                     check("share: the email names the business and carries the link",
                           "Harbor Dental" in subject and "Harbor Dental" in email
                           and f"{DEMO_BASE_URL}/c/pr0SPct1" in email, subject)
+
+                    # The third Add-time menu: beside the Share tab's own Demo minutes field, which
+                    # sets the total outright. Scoped to the field's row, because the header's
+                    # button is on screen too — and that is what makes the last check below worth
+                    # making: one answer moves both.
+                    minutes_field = main_tw.locator("#demo-minutes")
+                    share_add_time = minutes_field.locator("xpath=..").get_by_role(
+                        "button", name=DEMO_TIME_BUTTON)
+                    check("share: the Add-time menu sits beside the Demo minutes field",
+                          share_add_time.count() == 1 and minutes_field.input_value() == "20",
+                          f"{share_add_time.count()} buttons, field={minutes_field.input_value()}")
+                    page.evaluate(MARK_TOASTS_JS)
+                    share_add_time.click()
+                    time_menu.wait_for()
+                    with page.expect_request(lambda r: r.method == "PATCH"
+                                             and r.url.endswith("/demo/customers/pr0SPct1")) as req:
+                        time_menu.get_by_role("menuitem", name="30 minutes").click()
+                    body = req.value.post_data_json
+                    check("share: a step PATCHes {addDemoMinutes: n} and sends no total",
+                          body == {"addDemoMinutes": 30}, str(body))
+                    # 10 + 10 + 30. The second top-up compounds on the first because the backend
+                    # added it to what it had stored; every one of these requests carried only the
+                    # amount, so the browser's own figure never entered into it.
+                    landed = settled(
+                        page, "() => document.querySelector('main .tw #demo-minutes').value === '50'")
+                    shown = page.evaluate(DEMO_TIME_SHOWN_JS)
+                    check("share: ... and the field and both Add-time buttons show the compounded "
+                          "total without a reload",
+                          landed and shown == ["Demo time: 50 min", "Demo time: 50 min"],
+                          f"field={minutes_field.input_value()} buttons={shown}")
+                    check("share: ... and says what the total now is",
+                          new_toast(page, "Added 30 minutes. The demo now has 50 in all.",
+                                    required=False))
                     snapshot("share")
 
                     # --- The test call ---
@@ -981,6 +1137,74 @@ def run() -> int:
                           f"{mics} {page_errors[errors_before:]}")
                     page.unroute("**/demo/session")
                     page.unroute("**/demo/calls/**")
+
+                    # --- Research: the header button, the panel's own, and a run that fails ---
+                    #
+                    # Last on the prospect page on purpose: a finished run replaces the draft with
+                    # the researched record, and every check above reads a prospect as the fixtures
+                    # leave it. Cedar is the one the fixtures leave mid-research — no profile, no
+                    # dossier — so a run here has something visible to finish. Its table link reads
+                    # "Unnamed" for exactly that reason.
+                    cedar_link = page.get_by_role("link", name="Unnamed", exact=True)
+                    cedar_link.wait_for()
+                    cedar_link.click()
+                    page.get_by_role("heading", name="Cedar Bakery", level=1).wait_for()
+                    re_research = main_tw.get_by_role("button", name="Re-research")
+                    check("research: a prospect mid-research says so, and offers Re-research",
+                          page.evaluate(STATUS_BADGE_JS) == "Researching"
+                          and re_research.count() == 1 and re_research.is_enabled(),
+                          f"badge={page.evaluate(STATUS_BADGE_JS)}, {re_research.count()} buttons")
+                    page.evaluate(MARK_TOASTS_JS)
+                    with page.expect_request(
+                            lambda r: r.method == "POST"
+                            and urlparse(r.url).path == "/demo/customers/cedar42/research") as req:
+                        re_research.click()
+                    body = req.value.post_data_json
+                    check("research: Re-research POSTs the promo's body to /customers/<id>/research",
+                          body == {"regeneratePrompts": False, "businessName": "Cedar Bakery",
+                                   "websiteUrl": "", "mapsUrl": "", "researchNotes": ""}, str(body))
+                    check("research: ... and says it finished", new_toast(page, "Research finished."))
+                    check("research: ... and the answer lands on the page without a reload",
+                          settled(page, f"() => ({STATUS_BADGE_JS})() === 'Ready'")
+                          and main_tw.get_by_text("8 Mill Lane, Portland, ME", exact=True).is_visible(),
+                          f"badge={page.evaluate(STATUS_BADGE_JS)}")
+
+                    # ResearchInputsPanel's own run button — the second trigger for the same
+                    # action, which is why it could not outlive the handler and had to come back
+                    # with it.
+                    main_tw.get_by_role("tab", name="Sources").click()
+                    run_again = main_tw.get_by_role("button", name="Run research again")
+                    run_again.wait_for()
+                    check("research: the Sources tab carries the panel's own run button, under the "
+                          "dossier the run wrote",
+                          run_again.count() == 1
+                          and main_tw.locator("strong", has_text="The run finished just now.").count() == 1)
+
+                    # A run that fails. The fake plays the failure a deployment with no
+                    # OPENAI_API_KEY gets, staged through the notes field the operator already
+                    # types into — so the panel's button is what asks for it, inputs and all.
+                    main_tw.get_by_label("Notes for the research").fill(
+                        fake_backend.RESEARCH_FAIL_MARKER)
+                    page.evaluate(MARK_TOASTS_JS)
+                    with page.expect_request(
+                            lambda r: r.method == "POST"
+                            and urlparse(r.url).path == "/demo/customers/cedar42/research") as req:
+                        run_again.click()
+                    body = req.value.post_data_json
+                    check("research: the panel's button runs it with the edited inputs",
+                          body.get("researchNotes") == fake_backend.RESEARCH_FAIL_MARKER
+                          and body.get("regeneratePrompts") is False
+                          and body.get("businessName") == "Cedar Bakery", str(body))
+                    check("research: a failed run shows the backend's message",
+                          new_toast(page, fake_backend.RESEARCH_FAILURE, required=False))
+                    # The catch re-reads the record, so what is on screen after a failure is what
+                    # the backend holds rather than the half-finished draft.
+                    check("research: ... and the record is read again",
+                          settled(page, f"() => ({STATUS_BADGE_JS})() === 'Researching'"),
+                          f"badge={page.evaluate(STATUS_BADGE_JS)}")
+
+                    demo_nav(page, "Customers").click()
+                    harbor_link.wait_for()
                     harbor_link.click()
                     page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
 

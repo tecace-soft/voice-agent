@@ -8,6 +8,7 @@ import {
   gapRollup,
   unreviewedCalls,
   demoAllowance,
+  extendDemoMinutes,
   distinctVisitors,
   engagement,
   inFlightCalls,
@@ -561,5 +562,18 @@ describe("several people on one demo at once", () => {
   it("reports who is on the line, so the session route can cap it", () => {
     const calls = [live("a", 10), live("b", 10), live("c", 10, { isTest: true })];
     expect(inFlightCalls(calls, now).map((call) => call.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("extendDemoMinutes", () => {
+  it("adds to what is stored, or to the default when nothing is", () => {
+    expect(extendDemoMinutes(10, 30, 10)).toBe(40);
+    expect(extendDemoMinutes(undefined, 10, 10)).toBe(20);
+  });
+
+  it("refuses anything that is not a positive number", () => {
+    for (const add of [0, -10, Number.NaN, Infinity, "30", undefined, null]) {
+      expect(extendDemoMinutes(10, add, 10)).toBeNull();
+    }
   });
 });

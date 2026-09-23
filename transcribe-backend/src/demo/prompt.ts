@@ -1,7 +1,7 @@
-import { knownHours } from "./hours";
-import { languageOf } from "./languages";
-import { businessNouns, categoryMentions } from "./use-cases";
-import type { BusinessProfile, CustomerPrompts } from "./types";
+import { knownHours } from "./hours.js";
+import { languageOf } from "./languages.js";
+import { businessNouns, categoryMentions } from "./useCases.js";
+import type { BusinessProfile, CustomerPrompts } from "./types.js";
 
 function hoursLine(profile: BusinessProfile): string {
   const known = knownHours(profile.hours);

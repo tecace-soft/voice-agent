@@ -1,4 +1,5 @@
 import type { DemoCallRow, DemoCustomerRow, DemoEventRow, DemoNoteRow } from "../demo/map.js";
+import { PROMPT_VERSION, buildPrompts } from "../demo/prompt.js";
 import { fromCallRow, fromCustomerRow, fromEventRow, fromNoteRow } from "../demo/rows.js";
 import type { CallLog, CrmNote, Customer, TrackEvent } from "../demo/types.js";
 import { sql } from "./client.js";
@@ -81,24 +82,49 @@ const eventColumns = () => sql`
  * in the real export anyway.
  */
 /**
- * The one piece of the promo's read-time `normalize()` (lib/store.ts:19-55) that this data
- * actually needs: a customer saved before stages existed has none, and the CRM board and the
- * drawer's stage select both read it directly. `analytics.ts` already defaults it the same way
- * (`customer.stage ?? "new"`), so this only makes the screens agree with the numbers.
+ * The two pieces of the promo's read-time `normalize()` (lib/store.ts:19-55) that this data
+ * actually needs, both of them the promo's own code:
  *
- * The rest of normalize() is deliberately not reproduced, having been checked against the real
- * export rather than assumed:
+ *   - the stage default: a customer saved before stages existed has none, and the CRM board and
+ *     the drawer's stage select both read it directly. `analytics.ts` already defaults it the same
+ *     way (`customer.stage ?? "new"`), so this only makes the screens agree with the numbers.
+ *   - the prompt rebuild: an **unedited** prompt whose `version` is behind `PROMPT_VERSION` is
+ *     rewritten from the profile, so a record saved before the receptionist learned to open the
+ *     call, or to answer in the caller's language, picks both up without anyone reopening it. A
+ *     prompt written by hand is left exactly as it was. Of the ten imported customers, eight are
+ *     unedited at versions 3, 4 and none, so all eight were being shown — and would have dialled
+ *     with — text the promo would have refreshed on read. The earlier note here said this was a
+ *     decision rather than an omission, on the grounds that reproducing it meant porting
+ *     `lib/prompt.ts`, and that the decision was revisitable. It has been revisited:
+ *     `src/demo/prompt.ts` is now that file, ported verbatim under `parity.test.ts`, and
+ *     `lib/maps.ts` turns out not to be needed for it at all.
+ *
+ * The rest of normalize() is still deliberately not reproduced, having been checked against the
+ * real export rather than assumed:
  *   - the "quartz" voice migration: no record carries it (all 10 are "gleam");
  *   - the blank-businessName backfill: none is blank, and the column is NOT NULL;
  *   - the callSound default: all 10 have one.
- * And the prompt rebuild is a decision, not an omission. The promo regenerated any unedited prompt
- * whose version was behind the code's PROMPT_VERSION (8 of these 10 are unedited, at versions 3, 4
- * and none). Reproducing that would mean porting lib/prompt.ts and lib/maps.ts to regenerate text
- * for a retired product; instead the stored prompt is shown, which is the prompt those recorded
- * calls were actually made with. See src/demo/PORTING.md.
+ * Those three are the only part of the promo's function that reaches for `fallbackName` and
+ * `parseMapsUrl`, which is why no `maps.ts` came with this. See src/demo/PORTING.md.
  */
 function normalize(customer: Customer): Customer {
-  return customer.stage ? customer : { ...customer, stage: "new" };
+  // Records written before the pipeline existed have not been worked yet.
+  if (!customer.stage) {
+    customer = { ...customer, stage: "new" };
+  }
+
+  // Prompts nobody has touched follow the current wording, so a record saved
+  // before the receptionist learned to open the call, or to answer in the
+  // caller's language, picks both up without anyone reopening it. A prompt
+  // written by hand is left exactly as it was.
+  if (!customer.prompts?.edited && customer.prompts?.version !== PROMPT_VERSION) {
+    customer = {
+      ...customer,
+      prompts: buildPrompts(customer.profile, customer.agentName, customer.language),
+    };
+  }
+
+  return customer;
 }
 
 export async function listCustomers(): Promise<Customer[]> {

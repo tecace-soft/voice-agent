@@ -29,8 +29,12 @@ guarded by the dashboard's own admin session — the same `BACKEND_URL` and the 
 every other screen. There is no proxy, no second sign-in and no promo password; the Demo group is
 admin-only, so an admin session is all it takes.
 
-Two promo actions could not come with the data and are gone from the UI: **Re-research** (needed the
-promo's Claude research pipeline) and the **test call** (needed the promo's OpenAI realtime session).
+Every promo admin action is served here, including the two that once could not come with the data:
+the **test call** (`POST /demo/session`, `POST /demo/calls/:id`) and **Re-research**
+(`POST /demo/customers/:id/research`, which also runs in the background on a new prospect, so a
+newly created record starts at `status: "researching"`). Both are real, billable OpenAI calls
+gated by the backend's `OPENAI_API_KEY`: with no key they fail with the backend's own message and
+every other Demo screen keeps working.
 
 The prospect-facing demo page (`/c/<id>`) is **not** served here: the promo serves it, and this app
 only links to it. Set `VITE_PUBLIC_DEMO_BASE_URL` (build time) to the promo's public origin — it is

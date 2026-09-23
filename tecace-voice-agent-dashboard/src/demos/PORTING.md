@@ -15,8 +15,9 @@ Every file is a verbatim copy except for the edits listed below. Add a line for 
 - `lib/ambience.ts:137`: `fillImpulseResponse(channel, sampleRate, random)` → unused `sampleRate` param prefixed `_sampleRate` (part of the public signature; other callers pass it positionally, still unused inside). (strictness)
 - `lib/call-audio.ts:315`: `VOICE_BANDS[index % VOICE_BANDS.length]` → `...]!` (index is `index % VOICE_BANDS.length`, always in range). (strictness)
 - `lib/call-audio.ts:359`: `channel[i] *= expr` → `channel[i] = channel[i]! * expr` (`i` bounded by `i < channel.length`; non-null assertion can't sit on a compound-assignment target, so rewritten as a plain assignment with the same arithmetic). (strictness)
-- `lib/prompt.ts:37`: `segments[segments.length - 2]` → `...]!` (guarded by `segments.length >= 2` on the same line, so the index is always valid). (strictness)
-- `lib/prompt.ts:144`: `quoted[1].trim()` → `quoted[1]!.trim()` (capture group 1 is non-optional in `/"([^"]{4,})"/`, so it is always present when `quoted` is truthy). (strictness)
+- `lib/prompt.ts:54`: `segments[segments.length - 1].toLowerCase()` → `...]!.toLowerCase()` (the `while` condition tests `segments.length` first, so the index is always valid). (strictness)
+- `lib/prompt.ts:58`: `segments[segments.length - 2]` → `...]!` (guarded by the `if (segments.length < 2) return "";` two lines above). (strictness)
+- `lib/prompt.ts:289`: `quoted[1].trim()` → `quoted[1]!.trim()` (capture group 1 is non-optional in `/"([^"]{4,})"/`, so it is always present when `quoted` is truthy). (strictness)
 - `lib/voice-level.ts:13`: `samples[i] * samples[i]` → `samples[i]! * samples[i]!` (`i` bounded by `i < samples.length`). (strictness)
 - `tests/promo/ambience.test.ts:108,118,147`: added `!` to `channel[i]`/`channel[i - 1]`/`channel[channel.length - 1]` reads, each bounded by the surrounding loop condition or a fixed buffer length. (strictness)
 - `tests/promo/analytics.test.ts`: added `!` to `stats.cust1`/`stats.cust2` (keys just inserted by the fixture's own `call()`/`view()` calls above), `buckets[0]`/`buckets[6]` (array has exactly the requested 7 entries), and `rolled[0]`/`rolled[1]` (asserted length/order on the same or a preceding line). (strictness)
@@ -181,7 +182,9 @@ user's choice):
 
 - **Re-research** — `POST /api/admin/customers/:id/research` needed the promo's Claude research
   pipeline. Gone from `screens/ProspectScreen.tsx`: the header `Button`, the `research()` handler,
-  the `researching` state and the `RefreshCw` import.
+  the `researching` state and the `RefreshCw` import. **Reversed on 2026-09-23** —
+  transcribe-backend ports the research pipeline and serves the route itself now; see "The research
+  UI comes back" at the end of this file.
 - **Call now / Test call** — `POST /api/session` and the call beacons needed the promo's OpenAI
   realtime session. Gone from `screens/ProspectScreen.tsx`: the whole "Test call" `<Card>`, the
   `useLiveCall(...)` call, the "refresh the call list once a test call finishes" effect, and the
@@ -209,16 +212,19 @@ component changed in this step.
 
 #### Deviations, with reasoning
 
-- `components/admin/ResearchInputsPanel.tsx`: its "Run research again" `Button` — and with it the
-  `onResearch` / `researching` props and the `Button` + `RefreshCw` imports — removed; the
-  destructure collapses to `({ customer, onChange }: Props)`. This button was the *second* trigger
-  for the same removed action (`ProspectScreen` passed it `onResearch={() => research(false)}`), so
-  it could not survive the handler. The panel's four input fields stay: they are ordinary customer
-  fields that Save still writes.
-- `screens/ProspectScreen.tsx` stalled banner: the trailing sentence `Press Re-research.` dropped
-  (the rest of the sentence is unchanged). It told the reader to press a button that no longer
-  exists. The `isResearchStalled` check and the "Stalled" status badge are untouched — a record
-  stuck mid-research is still worth flagging, even though this app can no longer restart one.
+- `components/admin/ResearchInputsPanel.tsx`: **this deviation no longer exists.** It was: its "Run
+  research again" `Button` — and with it the `onResearch` / `researching` props and the `Button` +
+  `RefreshCw` imports — removed, the destructure collapsing to `({ customer, onChange }: Props)`,
+  because the button was the *second* trigger for the same removed action (`ProspectScreen` passed
+  it `onResearch={() => research(false)}`) and could not survive the handler. The panel's four input
+  fields stayed throughout — they are ordinary customer fields that Save still writes. The whole
+  file is the promo's again as of 2026-09-23; see "The research UI comes back".
+- `screens/ProspectScreen.tsx` stalled banner: **this deviation no longer exists.** It was: the
+  trailing sentence `Press Re-research.` dropped (the rest of the sentence unchanged), because it
+  told the reader to press a button that no longer existed. The `isResearchStalled` check and the
+  "Stalled" status badge were untouched throughout — a record stuck mid-research was still worth
+  flagging even while this app could not restart one, and now that it can, the sentence is back and
+  the banner is the promo's again (2026-09-23).
 - `screens/ProspectScreen.tsx` layout: **this deviation no longer exists.** It was: with the call
   card gone the detail grid collapsed from `grid grid-cols-1 gap-4 lg:grid-cols-3` (tabs card at
   `lg:col-span-2`, the test-call card in the third column) to a single full-width column
@@ -306,8 +312,10 @@ detail's third column, and "Analyze" is back on a call card (see the section abo
 Re-ported (`"use client"` removed): `hooks/useLiveCall.ts`, `components/call/CallPanel.tsx`,
 `lib/ringtone.ts` — the `hooks/` folder exists again.
 
-**Source commit.** These three come from the promo's current HEAD `cf5473b`, not the `f482848` at
-the top of this file. Only `useLiveCall.ts` differs between the two: promo `6437467` ("Tell the
+**Source commit.** These three come from the promo's HEAD at the time, `cf5473b`, not the `f482848` at
+the top of this file. (`hooks/useLiveCall.ts` has since moved on to `90869c6` — see
+"`hooks/useLiveCall.ts` — merged at `90869c6`" at the end of this file. `CallPanel.tsx` and
+`lib/ringtone.ts` are still `cf5473b`, unchanged in the promo since.) Only `useLiveCall.ts` differs between the two: promo `6437467` ("Tell the
 receptionist what day it is") added the three `timeZone` lines in the session body, and they are
 wanted here — `POST /demo/session` reads `body.timeZone` through `safeTimeZone(...)` to date the
 `callClock` text it appends to the prompt. `CallPanel.tsx` and `lib/ringtone.ts` are byte-identical
@@ -402,7 +410,8 @@ single-column note under "Deviations, with reasoning" is marked as reversed ther
 Everything else in `ProspectScreen.tsx` is untouched, so its remaining deviations are still the
 ones already listed: the `{ id }` prop in place of Next's `params`, the named export, the four
 `demoFetch` calls, and the removed Re-research action (with `Press Re-research.` dropped from the
-stalled banner).
+stalled banner) — that last one **came back on 2026-09-23**; see "The research UI comes back" at
+the end of this file.
 
 #### Verification
 
@@ -558,3 +567,367 @@ matters more than the split:
 
 **If the split is ever wanted at ordinary widths**, the second option is the one that works, and it
 is three class names. It was removed, not lost.
+
+---
+
+## Syncing the promo's 2026-09-23 update — `lib/analytics.ts` and `lib/call-limits.ts`
+
+**Source commit.** `90869c6` ("Let the admin add demo time to a prospect from a menu"), not the
+`f482848` at the top of this file — the same arrangement as `hooks/useLiveCall.ts` (`cf5473b`) and
+`components/call/VoiceOrb.tsx` (`a4ee3b4`). Only the files named here came from it.
+
+### `lib/analytics.ts` — re-copied at `90869c6`
+
+Re-taken whole from the promo's `lib/analytics.ts` and still **byte-identical to it** (`diff` is
+empty): this file never needed a porting edit, because it imports only `./types`, which resolves
+here the same way it does in the promo, and it indexes nothing `noUncheckedIndexedAccess` objects
+to. The re-copy brings across the two exports `90869c6` added at the end of the file:
+
+- `DEMO_TIME_STEPS` — `[10, 30, 60] as const`, the minute steps the admin's "Add time" menu offers.
+  `components/admin/AddDemoTimeMenu.tsx` imports it from here (a later task).
+- `extendDemoMinutes(current, add, fallback)` — the new total, or `null` when `add` is not a
+  positive finite number. It is the *server's* rule; it lives here because the promo put it here,
+  and `transcribe-backend/src/demo/analytics.ts` has the same copy, which is what the customer
+  PATCH will call.
+
+`tests/promo/analytics.test.ts` gained the promo's two new cases for it (`describe("extendDemoMinutes")`,
+13 lines at the end of the file) plus the `extendDemoMinutes` name in the import block. Both were
+taken verbatim; the file's existing deviations are untouched — the `"../lib/` →
+`"../../src/demos/lib/` rewrite, the `!` strictness fixes listed near the top of this file, and the
+removed `parseLiveMember` import and `describe("the live session index")` block, which is why the
+new block sits where that one used to.
+
+### `lib/call-limits.ts` — new at `90869c6`
+
+A **byte-for-byte copy** of the promo's `lib/call-limits.ts` (`diff` is empty; the promo's file
+keeps its kebab-case name here, as every other file under `src/demos/lib/` does). It needed no
+edit of any kind: it imports nothing, reads no `process.env`/`import.meta.env`, calls no `fetch`
+and indexes no array, so none of this repo's three usual rewrites applies.
+
+It holds `CALL_MAX_SEC` (10 minutes), `WRAP_UP_LEAD_SEC`, `IDLE_END_SEC`, `IDLE_CHECK_SEC`,
+`AGENT_QUIET_SEC`, the `CallEnd`/`CallActivity` types, `callLimitSec`, `callEnd`, `shouldWrapUp`,
+`shouldCheckIn` and the two instruction strings — the rules that end a call nobody hung up on.
+
+**Nothing imports it yet.** `hooks/useLiveCall.ts` is what will (a later task); the module is here
+first so the hook's change is a plain merge. The backend has its own copy at
+`transcribe-backend/src/demo/callLimits.ts` (camelCase, that directory's convention), covered by its
+`parity.test.ts`; the two files are the same file.
+
+`tests/promo/call-limits.test.ts` is the promo's `tests/call-limits.test.ts`, all 81 lines, with the
+one rewrite every test in this folder gets: `from "../lib/call-limits"` →
+`from "../../src/demos/lib/call-limits"`. No strictness fix was needed — it indexes nothing. 11
+tests across four `describe`s.
+
+### `hooks/useLiveCall.ts` — merged at `90869c6`
+
+**Source commit.** `90869c6`, up from the `cf5473b` this file was re-ported at. The change brought
+across is promo `cbb0887` ("End the call on its own when nobody hangs up, and hold it to the demo
+time"), +111 lines: the hook now ends a call that nobody hung up on.
+
+**This was a merge, not a re-copy**, because our copy already carries three deliberate deviations
+(all recorded above) that a re-copy would have destroyed. Method: `git merge-file --diff3` with
+promo `cf5473b` as the base, our file as *ours* and promo `90869c6` as *theirs*. It produced exactly
+**one conflict**, and only because both sides append to the same block of `useRef` declarations
+after `greetTimerRef`:
+
+- theirs: `limitSecRef`, `lastCallerAtRef`, `lastAgentAtRef`, `wrappedUpRef`, `checkedInRef`,
+  `endingRef`, `endReasonRef`;
+- ours: `aliveRef`.
+
+Both are pure additions with no overlap, so both were kept, with the promo's seven first (in the
+promo's own order and position) and `aliveRef` after them. Putting `aliveRef` last, rather than back
+where it used to sit, keeps the promo's block contiguous and unmoved, so the next sync's diff stays
+small. Nothing else conflicted: the promo's `callLimitSec(data.maxSec)` line lands after
+`callIdRef.current = data.callId ?? null`, which is below our unmount check, and the promo's rewrite
+of `hangup` into `closeCall("hangup")` touched lines we had never edited.
+
+**What came across, in full** (verified present and reachable, and every identifier's occurrence
+count in our file equals the promo's): the `@/lib/call-limits` import block, `limitSecRef` seeded
+from `callLimitSec()` and re-seeded from `callLimitSec(data.maxSec)` once the session answers, the
+new `maxSec?: number` field on the `readJson` type, `closeCall(reason)`, the per-second tick's
+`callEnd` / `shouldWrapUp` / `shouldCheckIn` branches with their `session.instructions.append` sends
+of `WRAP_UP_INSTRUCTION` and `CHECK_IN_INSTRUCTION`, the caller/agent activity timestamps
+(`lastCallerAtRef`, `lastAgentAtRef`, `checkedInRef` reset when the caller speaks again),
+`endReasonRef` winning over OpenAI's own `session.closed` reason, and the new `endedBy: CallEnd | null`
+on `UseLiveCall`, cleared by `dial` and `reset`.
+
+**`POST /demo/session` supplies `maxSec`.** `transcribe-backend/src/routes/demo.ts:842` answers
+`maxSec: CALL_MAX_SEC` unconditionally, because every call reachable through that admin-guarded
+route is an operator's test call and those skip the prospect's demo-minute allowance. So
+`callLimitSec(data.maxSec)` here always resolves to the same ten minutes `callLimitSec()` seeds —
+the wiring is the promo's, the value is simply never shortened on this side.
+
+**The three deviations survive, and they are the only differences left.** `diff` against the promo's
+`hooks/useLiveCall.ts` at `90869c6` shows these hunks and nothing else:
+
+1. `"use client"` removed and `import { demoFetch } from "@/api";` added as the first import (the
+   port-wide directive rule, plus this file's `promoFetch`→`demoFetch` move).
+2. The unload report: `report`'s third parameter `beacon = false` and the whole
+   `navigator.sendBeacon` branch are gone, `` const url = `/api/calls/${callId}` `` is
+   `` `/calls/${callId}` ``, the request is `demoFetch(url, { …, keepalive: true })`, and
+   `onLeave`'s call is `report("abandoned", "page_hidden")` without the `true`. Reasoning in
+   "The unload report" above — unchanged by this merge. Also `fetch("/api/session", …)` →
+   `demoFetch("/session", …)`.
+3. The `aliveRef` guards from "Stage 4b review fixes": the ref itself, the three `!aliveRef.current`
+   early returns in `dial` (after `getUserMedia`, after `waitForIceGathering`, after the session
+   answer — the last one reporting `"abandoned", "unmounted"` if a `callId` came back), `report` in
+   `dial`'s dependency list, and the effect setting `aliveRef.current` true in its body and false in
+   its cleanup.
+
+**No new deviation was needed.** The promo's change assumes nothing our copy lacks: it touches only
+the data channel, timers and refs, never `fetch`, the unload path or anything an unmount guard sits
+on.
+
+**Not ported here:** whatever `90869c6` does with `endedBy` in the UI. `components/call/CallPanel.tsx`
+is untouched by this task, so the new field is returned and currently unread — additive, so nothing
+breaks.
+
+#### Verification
+
+`npx tsc --noEmit` clean, `npx vitest run` 19 files / 245 tests passing, `npm run build` clean (the
+only warning is the pre-existing >500 kB chunk notice). `scripts/regression/demos_e2e.py` was **not**
+run: a later task in this stage changes what it expects.
+
+### "Add demo time" (Task 6 of the `90869c6` sync)
+
+The rest of promo `90869c6` ("Let the admin add demo time to a prospect from a menu"): the
+component, its three call sites, and the `lib/use-cases.ts` change that rode along in the same
+commit range.
+
+#### `components/admin/AddDemoTimeMenu.tsx` — new
+
+Copied whole from the promo at `90869c6`. It exports **three** things: `addDemoTime(customerId,
+minutes)` (the request plus its success toast), `AddDemoTimeMenu` (the header/Share-tab button,
+"Demo time: N min" with a menu of steps) and `AddDemoTimeSubmenu` (the same steps as a submenu, for
+the customer list's row menu). Two edits, both this repo's standing rules:
+
+- `"use client"` removed and `import { demoFetch } from "@/api";` added as the first import.
+- `` fetch(`/api/admin/customers/${customerId}`, …) `` → `` demoFetch(`/customers/${customerId}`, …) ``
+  (`demoFetch`'s own base carries `/demo`, as in the table above). **The body is unchanged:**
+  `{ addDemoMinutes: minutes }` — the *step*, never a computed total. The server adds it to what is
+  stored, which is what stops a page open since earlier from undoing someone else's top-up;
+  `transcribe-backend/src/routes/demo.pg.test.ts` pins that, and sending a total would defeat it.
+
+Every shadcn primitive it uses (`DropdownMenuGroup`, `DropdownMenuLabel`, `DropdownMenuSub`,
+`DropdownMenuSubTrigger`, `DropdownMenuSubContent`, plus the ones already in use) is exported by
+this app's `components/ui/dropdown-menu.tsx`, so nothing had to be substituted or newly ported. The
+submenu portal already carries `container={twPortalContainer()}` from the original port, so the
+steps render inside `.tw`.
+
+#### The three call sites
+
+- `screens/ProspectScreen.tsx`: the `addedTime(customer)` handler and
+  `<AddDemoTimeMenu customerId={id} demoMinutes={draft.demoMinutes} onAdded={addedTime} />` in the
+  header, both verbatim from the promo, including the comment on the handler. It takes **only**
+  `demoMinutes` from the answer on purpose: the response is the whole stored record, and writing all
+  of it into the draft would clobber whatever the operator has typed but not yet saved. It sits
+  where the promo puts it, after the Live switch — at the time, the Re-research button the promo
+  has between it and Save was this app's long-standing removal, not a new deviation; it was put
+  back later the same day, into exactly that slot, so the header is now the promo's own order.
+  `SharePanel` gets `onAddedTime={addedTime}`, the same handler.
+- `components/admin/SharePanel.tsx`: the new `onAddedTime` prop, the menu beside the Demo minutes
+  input, and the promo's **reworded** paragraph — "Demo time adds minutes and saves straight away;
+  the number field sets the total and waits for Save." in place of "Raise the number here to let
+  them carry on." The file's only remaining difference from the promo is the removed directive.
+- `components/admin/CustomerTable.tsx`: `<AddDemoTimeSubmenu customerId={customer.id}
+  onAdded={onChanged} />` in the row menu, above the separator, plus the import. Its other
+  differences are the ones already listed for it (`demoFetch`, `demoHref`/`next/link`).
+
+#### `lib/use-cases.ts` — re-copied, and **dead here**
+
+Re-taken whole from the promo at `90869c6` and **byte-identical to it** (`diff` is empty; it needed
+no porting edit, then or now). The change it brings across is promo `d525196` ("Fix five things the
+generated prompts got wrong"): a new exported `categoryMentions(category, keyword)` that matches a
+keyword as a whole word — plural allowed, a trailing `*` making it a stem — and `businessNouns`
+switched from `haystack.includes(keyword)` to it, with the bucket keyword lists reworked to suit.
+Substring matching had made a barber shop a *bar* (with a table to book) and a coworking space a
+*spa*.
+
+**Almost nothing we render uses any of it.** In this app `lib/use-cases.ts` is imported only by
+`lib/prompt.ts` — which *is* ported, but of which only `spokenGreeting` is reached, from
+`hooks/useLiveCall.ts`. (The sentence here used to say `lib/prompt.ts` was not ported at all; that
+was wrong when it was written and is listed as such in the `2026-09-23` section at the end of this
+file.) So `businessNouns`, `buildUseCases` and `categoryMentions` are still exercised only by
+`tests/promo/use-cases.test.ts` and, indirectly, by `tests/promo/prompt.test.ts`. The module is
+copied whole so the next sync of it stays a plain diff rather than a three-way merge — not because
+a screen needs it.
+
+`tests/promo/use-cases.test.ts` gained the promo's two new cases ("matches whole words, not the
+middle of one", "still reads stems and plurals"), taken verbatim and placed where the promo puts
+them. The file's two existing deviations are untouched: the `"../lib/` → `"../../src/demos/lib/`
+rewrite and the `!` on `cases[0]`/`cases[1]` listed near the top of this file.
+
+#### Verification
+
+`npx tsc --noEmit` clean, `npx vitest run` 19 files / **247** tests passing (245 + the two new
+use-cases cases), `npm run build` clean (the only warning is the pre-existing >500 kB chunk notice).
+`scripts/regression/demos_e2e.py` was **not** run: the next task in this stage reworks it, and it
+cannot pass until then.
+
+
+### `lib/prompt.ts` re-copied at `90869c6` (2026-09-23)
+
+`src/demos/lib/prompt.ts` had drifted **213 diff lines** behind the promo's: it was still the copy
+taken at `f482848`, so it had none of `483f4c8` (the restructure along the GPT-Live prompting
+guide: `# Role and objective`, `# Personality and tone`, `# Language`, `# Backchannel policy`,
+`# Interruption policy`, `# Unclear audio`, `# Delegation policy`, `# Honesty and escalation`,
+`# What you know without checking`, plus `safetyLines`, `faqLines`, `backendProfile` and
+`categoryMentions`), none of `d525196`'s five fixes, and none of `d3d4b07`'s register change. It is
+now the promo's file at `90869c6`, re-taken whole.
+
+Three edits, all this repo's standing strictness rule and all listed in the per-file table near the
+top of this file: `!` on `prompt.ts:54`, `:58` and `:289`. **Nothing else differs** — `diff`
+against the promo's `lib/prompt.ts` reports exactly those three lines. The file has no
+`"use client"` to remove, its four imports are all relative and stay extensionless (this app
+resolves with `moduleResolution: "bundler"`), and it reads no `process.env`.
+
+`PROMPT_VERSION` came across with it and is now **6**, matching `transcribe-backend`'s copy, which
+matters: the backend's `normalize()` rebuilds any unedited prompt behind that number, so a mismatch
+would have had the two sides disagreeing about whether a stored prompt was current.
+
+The one thing this app actually calls is still `spokenGreeting`, from `hooks/useLiveCall.ts`, and
+its contract is unchanged (the quoted line, falling back to the whole text). The greeting the
+backend hands the browser is built server-side, so this copy is the shared source of truth rather
+than a second implementation.
+
+#### Its three dependencies
+
+`lib/hours.ts`, `lib/use-cases.ts` and `lib/languages.ts` were checked against the promo at
+`90869c6` and are **already byte-identical to it** — `diff` is empty for all three, and none needed
+a porting edit. Nothing was re-copied for them.
+
+#### `tests/promo/prompt.test.ts`
+
+Re-taken whole from the promo's `tests/prompt.test.ts` at `90869c6`, which restores the four
+`describe` blocks this folder's stale copy had deleted along with the old prompt shape — "the
+guide's policies", "register", "safetyLines", "city", "withArticle" and "backendProfile" — and
+puts the two surviving assertions back on the promo's wording (`"\n\n# Personality and tone\n"`
+rather than `"\n\nHow to speak:"`, and the opening sentence on line **1** rather than line 0, the
+prompt now opening with a `# Role and objective` heading). Its only deviation is this folder's
+standing one: the promo's `"../lib/prompt"` and `"../lib/types"` become
+`"../../src/demos/lib/prompt"` and `"../../src/demos/lib/types"`. The import stays the promo's
+multi-line block, because it now names seven exports rather than four.
+
+#### `tests/promo/languages.test.ts`
+
+One line, `:67`: `expect(korean.live).toContain("How to speak:")` → `toContain("# Personality and
+tone")`, which is the promo's own line at `90869c6`. It had been left behind by the same drift —
+the assertion was about `prompt.ts`'s output, not about languages — and it is the only difference
+between this file and the promo's besides the import rewrite.
+
+#### Verification
+
+`npx tsc --noEmit` clean, `npx vitest run` 19 files / **265** tests passing (247 + the 18 cases the
+re-taken `prompt.test.ts` restores), `npm run build` clean (the only warning is the pre-existing
+>500 kB chunk notice). `scripts/regression/demos_e2e.py` was **not** run: a later task owns it.
+
+### The research UI comes back (2026-09-23)
+
+transcribe-backend now carries the research pipeline (the promo's `lib/research.ts`, `maps.ts` and
+the OpenAI branch of `research-runner.ts`) and serves `POST /demo/customers/:id/research` with the
+promo's status codes and error strings, while `POST /demo/customers` answers at
+`status: "researching"` and runs the research in the background. Gap C in
+`docs/superpowers/specs/2026-09-23-source-parity-audit.md` is therefore closed on the front end
+too: **every piece removed in "The two actions that could not move" and its "Deviations" list is
+restored from the promo at `90869c6`.** The three entries above are corrected in place rather than
+contradicted here.
+
+#### `components/admin/ResearchInputsPanel.tsx` — re-taken whole
+
+The promo's file at `90869c6`, copied over the trimmed one, with this repo's one standing edit:
+`"use client"` removed. `diff` against the promo is that hunk and nothing else. Back with it: the
+`RefreshCw` and `Button` imports, the `onResearch` / `researching` props on `Props`, the four-name
+destructure, and the closing
+
+    <Button variant="outline" onClick={onResearch} disabled={researching}>
+      <RefreshCw className="size-4" />
+      {researching ? "Researching" : "Run research again"}
+    </Button>
+
+#### `screens/ProspectScreen.tsx` — the five pieces, put back where the promo has them
+
+All copied from the promo at `90869c6`, in the promo's own positions:
+
+- `import { RefreshCw } from "lucide-react";` after the `react` import;
+- `const [researching, setResearching] = useState(false);` after `loadError`;
+- the `research(regeneratePrompts: boolean)` handler after `save()`, verbatim but for its request
+  line: `` fetch(`/api/admin/customers/${id}/research`, …) `` → ``
+  demoFetch(`/customers/${id}/research`, …) `` — the same rewrite every other call in this file's
+  table got, and **the body is unchanged** (`regeneratePrompts` plus the four draft inputs);
+- the header `Button` between the Add-time menu and Save;
+- `onResearch={() => research(false)}` / `researching={researching}` on `<ResearchInputsPanel>`;
+- and `Press Re-research.` restored to the end of the stalled banner's sentence.
+
+`diff` against the promo's `app/admin/(dashboard)/customers/[id]/page.tsx` at `90869c6` now reports
+only this file's four known deviations: the removed directive plus the `demoFetch` import, the
+`{ id }` prop and named export in place of Next's `params`, the four `demoFetch` call sites, and
+the `VoiceOrb` in the Test call card.
+
+#### `NewCustomerDialog`, `ProspectsScreen` and `CustomerTable` — fine all along
+
+Checked rather than assumed: `diff` against the promo at `90869c6` shows each of these three has
+**only** its already-recorded port edits (the directive, `demoFetch`, `demoHref`/`next/link`, the
+named export). Nothing was ever taken out of them for the missing pipeline, so nothing had to go
+back:
+
+- `NewCustomerDialog` toasts "Customer added. Research is running." and calls `onCreated`, which is
+  `ProspectsScreen`'s `load`. That sentence is now true rather than aspirational: the create really
+  does answer `status: "researching"`.
+- `ProspectsScreen` polls `/customers` every 5 s **only** while some record is `researching` and
+  not stalled, and stops when none is — so a finished run reconciles the table on its own, and a
+  stalled record never spins the poll forever.
+- `CustomerTable` renders `isResearchStalled(customer)` as a **"Stalled"** badge (15 minutes, from
+  `lib/analytics.ts` `RESEARCH_STALL_MS`) in place of "Researching", and `ProspectScreen`'s header
+  badge does the same with the `negative` kind.
+
+`lib/analytics.ts` — which both read `isResearchStalled` from — is byte-identical to the promo's.
+
+#### The harness
+
+- `fake_backend.py`: new `demo_research_route()` behind `POST /demo/customers/<id>/research`, and a
+  `researched()` helper that writes the record a finished run leaves (`db/demoWrite.ts`
+  `startResearch` then `saveResearch`: the four inputs, a real profile / dossier / sources, prompts
+  rebuilt unless they were hand-edited and no rebuild was asked for, `status: "ready"`,
+  `researchedAt`). The body is optional **as a whole**, as `t.Optional(t.Object(…))` makes it, so
+  an absent one means "re-research with what is stored" rather than a 400; no business name at all
+  is the route's 400. **A run is staged to fail** through `RESEARCH_FAIL_MARKER` in the research
+  notes, which answers the route's 502 with `RESEARCH_FAILURE`
+  (`"OPENAI_API_KEY is not set on the server."`, the message a deployment with no key gets). The
+  marker lives in a field the operator already types into, so staging a failure is the product's
+  own flow rather than a control endpoint, and the fake stays stateless. `POST /demo/customers`
+  already answered `status: "researching"` (`new_customer()`) and needed no change; the route
+  comment block now says so, and documents the research route.
+- `demos_e2e.py`: a new `STATUS_BADGE_JS` (the prospect header's badge, found through the `<h1>`),
+  one added assertion on the create — the `POST /demo/customers` **response** carries
+  `status: "researching"` — and a research block walked on **Cedar Bakery**, the prospect the
+  fixtures leave mid-research. It checks the badge reading "Researching" beside an enabled
+  **Re-research**; the button POSTing the promo's exact body to `/demo/customers/cedar42/research`,
+  toasting "Research finished." and landing the researched record on screen (badge "Ready", the new
+  address) with no reload; **ResearchInputsPanel's run button** on the Sources tab under the
+  dossier the run wrote, sending the inputs as edited; and a failed run showing the backend's
+  message and re-reading the record. It is placed last on the prospect page on purpose: a finished
+  run replaces the draft, and every check above it reads a prospect as the fixtures leave it.
+  **Nothing was deleted**: the harness never asserted that research was absent, so there was no
+  check that only made sense while it was. (Grep of `demos_e2e.py` for `research`/`Research` before
+  this task: four hits, all of them the "Researching" row, the create toast, and the Sources tab's
+  markdown — every one still wanted.)
+- `scripts/regression/README.md`: the two new bullets describing the above.
+- `compare.py` and `tw_probe.py`: untouched, and unaffected — no transcribe capture and no probe
+  reaches the Demo section.
+
+#### Outside `src/demos/`
+
+- `README.md`: the sentence naming Re-research and the test call as gone is replaced — both are
+  served by transcribe-backend now, and a research run is called out as a real, billable model call
+  gated by the same `OPENAI_API_KEY` as the test call. (It was already wrong about the test call,
+  which came back earlier the same day.)
+- `CLAUDE.md` still names both removals in its "The Demos section" block. Left alone, as every
+  earlier entry in this file has left it: it is the user's to change.
+
+#### Verification
+
+`npx tsc --noEmit` clean, `npx vitest run` 19 files / **265** tests passing (unchanged — no ported
+test covers these components), `npm run build` clean (the only warning is the pre-existing >500 kB
+chunk notice). All three harness scripts run: `compare.py` **IDENTICAL** (44 captures),
+`tw_probe.py` **19/19**, `demos_e2e.py` **all checks pass**, including the nine new ones. No test
+makes a model call — the fake answers the research route as it answers the session route.

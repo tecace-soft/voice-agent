@@ -189,7 +189,12 @@ const customer = (id: string, businessName: string, extra: Record<string, unknow
     profile: { name: businessName, hours: HOURS },
     dossier: "# " + businessName,
     sources: [{ url: "https://example.test" }],
-    prompts: { live: LIVE_PROMPT, backend: BACKEND_PROMPT, greeting: GREETING, edited: false },
+    // `edited: true` because these three strings are hand-written, and this file's assertions are
+    // that the *stored* prompt is what reaches the model. `demoRead.ts normalize()` rebuilds any
+    // unedited prompt whose version is behind `PROMPT_VERSION` — the promo's own behaviour, ported
+    // with `src/demo/prompt.ts` — and these carry no version, so with `edited: false` the route
+    // would (correctly) have sent a freshly built prompt instead of these.
+    prompts: { live: LIVE_PROMPT, backend: BACKEND_PROMPT, greeting: GREETING, edited: true },
     voice: "meridian",
     agentName: "Alex",
     status: "ready",
@@ -215,6 +220,9 @@ expect(await importDump(parseDump(DUMP))).toEqual({ customers: 4, calls: 0, even
 
 const { env } = await import("../config/env.js");
 const { callClock, zonedToday } = await import("../demo/callClock.js");
+// The ceiling the session answer hands the browser. Imported rather than written out as 600, so
+// this file measures the route against the same constant the route and the hook read.
+const { CALL_MAX_SEC } = await import("../demo/callLimits.js");
 // `reviewCall` is documented never to throw, and the route does not take that on trust: the call is
 // committed before the review runs and must stay committed whatever the review does. Nothing that
 // can be staged from outside makes it throw — a failing `fetch` becomes an `OpenAIError` that it
@@ -434,7 +442,7 @@ const said = (id: string, speaker: "caller" | "receptionist", text: string) => (
 // POST /demo/session
 
 describe("POST /demo/session", () => {
-  it("opens a started, is_test row and answers with the callId, session, SDP and greeting", async () => {
+  it("opens a started, is_test row and answers with the callId, session, SDP, greeting and maxSec", async () => {
     responders.live = () => Response.json({ id: "sess_harbor", transport: { sdp: ANSWER_SDP } });
 
     const res = await asAdmin("POST", "/demo/session", {
@@ -446,11 +454,16 @@ describe("POST /demo/session", () => {
 
     expect(res.status).toBe(200);
     // Not sorted: the call panel reads these by name, and the order is the promo's own.
-    expect(Object.keys(payload)).toEqual(["callId", "sessionId", "sdp", "greeting"]);
+    expect(Object.keys(payload)).toEqual(["callId", "sessionId", "sdp", "greeting", "maxSec"]);
     expect(payload.callId).toMatch(/^[A-Za-z0-9_-]{12}$/); // the promo's nanoid shape
     expect(payload.sessionId).toBe("sess_harbor");
     expect(payload.sdp).toBe(ANSWER_SDP);
     expect(payload.greeting).toBe(GREETING);
+    // How long the browser may let this call run. There is no allowance on this route to narrow
+    // it, so it is the ten minute ceiling every time — and it is a number, not a string, because
+    // the hook does arithmetic with it.
+    expect(payload.maxSec).toBe(CALL_MAX_SEC);
+    expect(payload.maxSec).toBe(600);
 
     const row = await callRow(payload.callId);
     expect(row.customer_id).toBe(A);

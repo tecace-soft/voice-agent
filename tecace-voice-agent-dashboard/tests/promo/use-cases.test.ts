@@ -20,6 +20,23 @@ describe("businessNouns", () => {
     expect(businessNouns("Family Dental Clinic").booking).toBe("appointment");
   });
 
+  // Substring matching made a barber shop a bar, with a table to book, and a
+  // coworking space a spa.
+  it("matches whole words, not the middle of one", () => {
+    expect(businessNouns("Barber shop").booking).toBe("appointment");
+    expect(businessNouns("Barbershop").booking).toBe("appointment");
+    expect(businessNouns("Sushi bar").booking).toBe("table");
+    expect(businessNouns("Day spa").booking).toBe("appointment");
+    expect(businessNouns("Coworking space").statusQuestion).toBe("where is my request?");
+  });
+
+  it("still reads stems and plurals", () => {
+    expect(businessNouns("Chiropractor").booking).toBe("appointment");
+    expect(businessNouns("Automotive repair").booking).toBe("service visit");
+    expect(businessNouns("Landscaping").booking).toBe("service visit");
+    expect(businessNouns("Nails").booking).toBe("appointment");
+  });
+
   it("falls back to an appointment when the category is missing or unknown", () => {
     expect(businessNouns(undefined).booking).toBe("appointment");
     expect(businessNouns("").booking).toBe("appointment");

@@ -199,8 +199,17 @@ KEYS = [
 #   `testCalls(windowRaw)` does (the Overview only shows it when test calls are left out)
 # - GET /demo/customers -> {customers: CustomerWithStats[]} (Harbor Dental: ready, live, hot;
 #   Cedar Bakery: researching, paused, cold, no profile name yet)
-# - POST /demo/customers -> 201 {customer}; no businessName -> 400 "Enter the business name."; a
-#   website without http(s):// -> 400; a mapsUrl that isn't a Google Maps link -> 400
+# - POST /demo/customers -> 201 {customer} at status "researching", as the route answers it: the
+#   run is fired in the background there, so the record the dialog gets back is always mid-research;
+#   no businessName -> 400 "Enter the business name."; a website without http(s):// -> 400; a
+#   mapsUrl that isn't a Google Maps link -> 400
+# - POST /demo/customers/<id>/research -> {customer}: the finished run (researched(), below) —
+#   status "ready", a real profile/dossier/sources, prompts rebuilt unless they were edited by hand
+#   and the body didn't ask for a rebuild. The body is optional as a whole ("re-research with what
+#   is stored"), and each of its four inputs replaces what the record holds. No business name at all
+#   -> 400 "Enter the business name.". **A run can be staged to fail**: research notes containing
+#   RESEARCH_FAIL_MARKER answer the route's 502 with RESEARCH_FAILURE, the message a deployment with
+#   no OPENAI_API_KEY gets — see the note on the marker.
 # - GET /demo/customers/<id> -> {customer, stats, calls, events, notes}. Harbor Dental has four
 #   calls (newest first: a test call; two reviewed customer calls whose reviews share the gap "No
 #   price list for implants"; one unreviewed), 14 page views from 4 visitors and one CRM note —
@@ -209,7 +218,12 @@ KEYS = [
 # - PATCH /demo/customers/<id> -> {customer}: the route's merge (trimmed strings, "" clears,
 #   null/"" dates clear) and resolvePrompts() (a changed prompt text -> prompts.edited true;
 #   regeneratePrompts -> rebuilt). A voice not in LIVE_VOICES -> 400 "Unknown voice."; a stage not
-#   in CUSTOMER_STAGES -> 400 "Unknown stage."
+#   in CUSTOMER_STAGES -> 400 "Unknown stage."; an `addDemoMinutes` that is not a positive finite
+#   number -> 400 "Minutes to add must be positive." (judged before anything is written, as the
+#   route does). A valid `addDemoMinutes` is the "Add time" menu: it is added to the *stored*
+#   minutes (see DEMO_MINUTES below), and a `demoMinutes` sent alongside it is ignored, exactly as
+#   db/demoWrite.ts does it. `demoMinutes` on its own is the Share tab's number field and sets the
+#   total outright.
 # - DELETE /demo/customers/<id> -> {ok: true}
 # - GET /demo/customers/<id>/calls -> {calls}; PATCH …/calls {callId, isTest | analyze: true}
 #   -> {call}; neither -> 400 "Send a callId with isTest or analyze."; unknown call -> 404 "Call not
@@ -225,8 +239,12 @@ KEYS = [
 #   blank/whitespace text -> 400 "Write something first." (checked before the customer, as the
 #   route does)
 # - an unknown <id> on any /demo/customers/<id> route -> 404 {error: "Customer not found."}
-# - POST /demo/session {customerId, sdp, isTest?, timeZone?} -> {callId, sessionId, sdp, greeting}:
-#   the test call. Missing customerId/sdp -> 400 "Missing customerId or sdp."; unknown customer ->
+# - POST /demo/session {customerId, sdp, isTest?, timeZone?} -> {callId, sessionId, sdp, greeting,
+#   maxSec}: the test call. `maxSec` is how long this one call may run, which the browser enforces
+#   itself (hooks/useLiveCall.ts reads it as callLimitSec(data.maxSec)). It is always CALL_MAX_SEC
+#   here: every call through this admin route is an operator test call, which skips the prospect's
+#   allowance, so the ten-minute ceiling is the whole answer.
+#   Missing customerId/sdp -> 400 "Missing customerId or sdp."; unknown customer ->
 #   404 "This demo isn't available."; paused -> 403 "This demo is paused."; not ready -> 409 "This
 #   demo is still being prepared.". Otherwise it grants: `callId` is always SESSION_CALL_ID (the
 #   fake stores nothing, so there is one), and `sdp` is an SDP **answer** built from the browser's
@@ -240,7 +258,8 @@ KEYS = [
 #   same table before and after a test call.
 #
 # STATELESS, like the rest of this fake: writes answer as if they worked and change nothing, so
-# every run starts from the same records.
+# every run starts from the same records. The one exception is a demo's minutes (DEMO_MINUTES),
+# and it is there because `addDemoMinutes` cannot be modelled without it — see the note on it.
 #
 # Timestamps here are relative to the moment of the request (the promo's records are), not the
 # pinned NOW the transcribe fixtures use: demos_e2e.py doesn't pin the clock, and "researching"
@@ -257,6 +276,34 @@ LIVE_VOICES = ("gleam", "meridian", "delta", "cinder", "quartz", "ripple", "vesp
 CUSTOMER_STAGES = ("new", "contacted", "interested", "won", "lost")
 LANGUAGES = ("en", "ko", "es", "zh", "ja", "vi", "fr", "de", "pt", "ru")
 MAPS_SHORT_HOSTS = ("maps.app.goo.gl", "goo.gl", "g.co")
+
+# demo/types.ts DEFAULT_DEMO_MINUTES: what a prospect has when nothing is stored.
+DEFAULT_DEMO_MINUTES = 10
+# demo/callLimits.ts CALL_MAX_SEC: the ceiling on one call, which POST /demo/session tells the
+# browser so it can hang up on its own.
+CALL_MAX_SEC = 10 * 60
+
+# The one thing this fake remembers, keyed by prospect id.
+#
+# `addDemoMinutes` exists because the new total is worked out from the *stored* minutes and never
+# from the figure the browser happened to be showing — that is the whole point of the field, and a
+# stateless answer could not show it: adding 30 to a fixture that always reads 10 gives 40 whether
+# the 10 came from the record or from the request. Keeping the total here makes the addition
+# visible (a second top-up compounds) and keeps every screen agreeing with it, because prospects()
+# serves it. It resets with the process, so a run still starts from the fixtures, and none of the
+# fixtures sets it: the column is null until someone does, and the client falls back to
+# DEFAULT_DEMO_MINUTES.
+DEMO_MINUTES: dict[str, int] = {}
+
+
+def extend_demo_minutes(current: int | None, add, fallback: int) -> int | None:
+    """demo/analytics.ts extendDemoMinutes(): the new total, or None when `add` is not a positive
+    finite number (a bool is not a number in TypeScript either)."""
+    if isinstance(add, bool) or not isinstance(add, (int, float)):
+        return None
+    if add != add or add in (float("inf"), float("-inf")) or add <= 0:  # NaN, ±Infinity, <= 0
+        return None
+    return max(0, round((fallback if current is None else current) + add))
 
 
 def _iso_ms(dt: datetime) -> str:
@@ -524,6 +571,11 @@ def prospects() -> list[dict]:
         "stats": _empty_stats(),
         "heat": {"score": 0, "level": "cold", "reason": "No activity yet"},
     }
+    # A prospect the "Add time" menu has topped up this run carries the total; the fixtures
+    # themselves leave the field out, as the stored column is null until someone sets it.
+    for record in (harbor, cedar):
+        if record["id"] in DEMO_MINUTES:
+            record["demoMinutes"] = DEMO_MINUTES[record["id"]]
     return [harbor, cedar]
 
 
@@ -621,6 +673,59 @@ def _set_or_clear(record: dict, key: str, value) -> None:
         record.pop(key, None)
 
 
+# A research run is the one route here that stands in for a *billable model call*, so this fake has
+# to be able to play both endings. The marker is in the research notes because that is a field the
+# operator already types into (ResearchInputsPanel's "Notes for the research"), which keeps the
+# staging inside the product's own flow: no control endpoint, nothing to reset, and the harness
+# stages a failure the same way a person would provoke one. The message is the real one a deployment
+# without a key gets from demo/openai.ts, which is the failure the audit says to expect.
+RESEARCH_FAIL_MARKER = "make the research fail"
+RESEARCH_FAILURE = "OPENAI_API_KEY is not set on the server."
+
+
+def researched(customer: dict, name: str, website: str, maps: str, notes: str,
+               regenerate: bool) -> dict:
+    """The record a finished run leaves behind: db/demoWrite.ts startResearch() (the four inputs)
+    followed by saveResearch() (the profile, dossier, sources, prompts, status and timestamps).
+
+    The profile is written from the researched name rather than copied from a fixture, so a run on
+    either prospect answers about the business it was asked about — and so a page that has taken the
+    answer is telling them apart on the record's own text."""
+    now = _ago(seconds=0)
+    nxt = dict(customer)
+    nxt["businessName"] = name
+    _set_or_clear(nxt, "websiteUrl", website)
+    _set_or_clear(nxt, "mapsUrl", maps)
+    _set_or_clear(nxt, "researchNotes", notes)
+    nxt["profile"] = {
+        "name": name,
+        "category": "Bakery",
+        "address": "8 Mill Lane, Portland, ME",
+        "phone": "+1 207 555 0188",
+        "website": website or "",
+        "hours": [{"day": d, "open": "07:00", "close": "15:00"}
+                  for d in ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")]
+        + [{"day": "Saturday", "open": "08:00", "close": "13:00"},
+           {"day": "Sunday", "open": "", "close": "", "closed": True}],
+        "services": [{"name": "Sourdough", "price": "$8"}],
+        "highlights": ["Baked each morning"],
+        "policies": {"payment": "Cards and cash."},
+        "faqs": [{"q": "Do you take orders ahead?", "a": "Yes, a day's notice."}],
+    }
+    nxt["dossier"] = (f"## {name}\n\n**The run finished just now.**\n\n"
+                      "- Baked each morning\n- Sourdough from $8\n")
+    nxt["sources"] = [{"url": "https://cedarbakery.example", "title": name}]
+    # saveResearch(): a hand-edited prompt survives a run unless the caller asked for a rebuild.
+    keep = bool(customer.get("prompts", {}).get("edited")) and not regenerate
+    if not keep:
+        nxt["prompts"] = _prompts(name, nxt.get("agentName", "Alex"))
+    nxt["status"] = "ready"
+    nxt.pop("error", None)
+    nxt["researchedAt"] = now
+    nxt["updatedAt"] = now
+    return nxt
+
+
 def patched(customer: dict, body: dict) -> dict:
     """PATCH /demo/customers/<id>: the merged record it saves and answers."""
     nxt = dict(customer)
@@ -634,8 +739,20 @@ def patched(customer: dict, body: dict) -> dict:
         nxt["active"] = body["active"]
     if str(body.get("agentName") or "").strip():
         nxt["agentName"] = body["agentName"].strip()
-    if isinstance(body.get("demoMinutes"), (int, float)) and not isinstance(body["demoMinutes"], bool):
-        nxt["demoMinutes"] = max(0, round(body["demoMinutes"]))
+    # db/demoWrite.ts: `addDemoMinutes` is the "Add time" menu and adds to the stored total, so a
+    # `demoMinutes` arriving in the same body is ignored rather than merged — a page open since
+    # yesterday must not be able to undo someone else's top-up. `demoMinutes` on its own is the
+    # Share tab's number field and sets the total. The route has already refused an amount
+    # extend_demo_minutes() cannot use, so the None below is unreachable through the API.
+    if "addDemoMinutes" in body:
+        total = extend_demo_minutes(DEMO_MINUTES.get(customer["id"]), body["addDemoMinutes"],
+                                    DEFAULT_DEMO_MINUTES)
+        if total is not None:
+            DEMO_MINUTES[customer["id"]] = total
+            nxt["demoMinutes"] = total
+    elif isinstance(body.get("demoMinutes"), (int, float)) and not isinstance(body["demoMinutes"], bool):
+        DEMO_MINUTES[customer["id"]] = max(0, round(body["demoMinutes"]))
+        nxt["demoMinutes"] = DEMO_MINUTES[customer["id"]]
     for key in ("voice", "stage", "callSound", "profile"):
         if body.get(key) is not None:
             nxt[key] = body[key]
@@ -720,7 +837,48 @@ def demo_route(method: str, path: str, query: dict, raw_body: bytes):
             return demo_notes_route(method, parts[0], raw_body)
         if len(parts) == 2 and parts[1] == "calls" and method in ("GET", "PATCH"):
             return demo_calls_route(method, parts[0], raw_body)
+        if len(parts) == 2 and parts[1] == "research" and method == "POST":
+            return demo_research_route(parts[0], raw_body)
     return 404, {"error": f"No fake for {method} /demo{path}"}
+
+
+def demo_research_route(wanted: str, raw_body: bytes):
+    """POST /demo/customers/<id>/research, as src/routes/demo.ts answers it.
+
+    The body is optional *as a whole* — "re-research with what is stored" sends none — so an
+    unparsable one is treated as absent here rather than answered 400, which is what Elysia's
+    `t.Optional(t.Object(...))` does with it."""
+    match = _demo_customer(wanted)
+    if match is None:
+        return 404, DEMO_NOT_FOUND
+    customer = _bare(match)
+    body = _demo_json(raw_body) or {}
+
+    # The route reads the four inputs off the record and lets the body override them one at a
+    # time: a blank businessName is a no-op, the other three take "" as "clear this".
+    name = customer.get("businessName", "")
+    website = customer.get("websiteUrl", "")
+    maps = customer.get("mapsUrl", "")
+    notes = customer.get("researchNotes", "")
+    if str(body.get("businessName") or "").strip():
+        name = body["businessName"].strip()
+    if body.get("websiteUrl") is not None:
+        website = str(body["websiteUrl"]).strip()
+    if body.get("mapsUrl") is not None:
+        maps = str(body["mapsUrl"]).strip()
+    if body.get("researchNotes") is not None:
+        notes = str(body["researchNotes"]).strip()
+    if not name:
+        return 400, {"error": "Enter the business name."}
+
+    # The staged failure: the route's own 502, carrying the model's message. `failResearch` puts
+    # the record at status "error" first, which this fake cannot keep — it stores nothing — so the
+    # next GET shows the prospect exactly as the fixtures leave it.
+    if RESEARCH_FAIL_MARKER in notes.lower():
+        return 502, {"error": RESEARCH_FAILURE}
+
+    return 200, {"customer": researched(customer, name, website, maps, notes,
+                                        body.get("regeneratePrompts") is True)}
 
 
 def demo_customer_route(method: str, wanted: str, raw_body: bytes):
@@ -740,6 +898,12 @@ def demo_customer_route(method: str, wanted: str, raw_body: bytes):
         return 400, {"error": "Unknown voice."}
     if body.get("stage") and body["stage"] not in CUSTOMER_STAGES:
         return 400, {"error": "Unknown stage."}
+    # routes/demo.ts judges the amount out here, before anything is written, by asking
+    # extendDemoMinutes with the fallback standing in for the stored value: the refusal is the
+    # same whatever the amount would have been added to.
+    if "addDemoMinutes" in body and extend_demo_minutes(
+            None, body["addDemoMinutes"], DEFAULT_DEMO_MINUTES) is None:
+        return 400, {"error": "Minutes to add must be positive."}
     return 200, {"customer": patched(_bare(match), body)}
 
 
@@ -878,7 +1042,12 @@ def demo_session_route(raw_body: bytes):
         return 409, {"error": "This demo is still being prepared."}
     return 200, {"callId": SESSION_CALL_ID, "sessionId": SESSION_ID,
                  "sdp": sdp_answer(str(body["sdp"])),
-                 "greeting": match["prompts"]["greeting"]}
+                 "greeting": match["prompts"]["greeting"],
+                 # How long this one call may run, so the browser can hang up on its own. The promo
+                 # narrowed it to what was left of the prospect's allowance for a public call;
+                 # every call through this admin route is an operator test call, which skips the
+                 # allowance, so the ceiling is the whole answer.
+                 "maxSec": CALL_MAX_SEC}
 
 
 def demo_report_route(call_id: str, raw_body: bytes):

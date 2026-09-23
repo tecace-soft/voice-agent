@@ -52,9 +52,18 @@ The header of `src/styles/index.css` explains the layer order and why; read it b
   (`authenticateAdmin`), and the Demos nav group is admin-only. The promo's separate password,
   `PromoAuth`, `UnlockCard` and the `/promo-api` proxy are all gone. `DemosGate` is now just the
   `.tw` boundary, the flex column, the `Toaster` and one error card.
-- **Two actions could not move and were removed:** "Re-research" (the promo's Claude research
-  pipeline) and "Call now" (its OpenAI realtime session), along with `useLiveCall`, the call panel
-  and `ResearchInputsPanel`'s run button. The backend accepts `analyze: true` and ignores it.
+- **Everything the promo's admin does, this does** — including the three things an earlier stage
+  removed and later restored: the **test call** (`POST /demo/session` + `/demo/calls/:id`, over the
+  same `gpt-live-1` the agent app uses), **"Analyze"** (a real post-call review, never redone once a
+  call has one), and **"Re-research"** plus `ResearchInputsPanel`'s run button
+  (`POST /demo/customers/:id/research`). Prompts are generated from the business profile
+  server-side, as the promo does it: rebuilt on read when unedited and behind `PROMPT_VERSION`,
+  regenerated on save, and built on create.
+- **A research run and a test call both cost real money**, and both are gated by the one
+  `OPENAI_API_KEY` on transcribe-backend. Without it every other Demo tab works and only those two
+  refuse, with the promo's own message. Research is the OpenAI branch of the promo's runner only —
+  its Anthropic and Claude-CLI branches are not ported, so an unsupported `RESEARCH_PROVIDER`
+  throws a named error rather than failing quietly.
 - The prospect-facing demo page (`/c/<id>`) **still lives on the promo** and is only linked to, via
   `VITE_PUBLIC_DEMO_BASE_URL` (decided in stage 5). Never serve promo HTML from this origin: the
   dashboard's session token is in localStorage here, and that page is public.

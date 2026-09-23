@@ -116,6 +116,14 @@ export function nextDays(today: CalendarDay, count: number): CalendarDay[] {
   );
 }
 
+/** "1st", "22nd", "24th". English only, like the rest of the prompt. */
+export function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  const suffix = ["th", "st", "nd", "rd"][n % 10] ?? "th";
+  return `${n}${suffix}`;
+}
+
 /**
  * The timezone a browser reported, if it is one. It arrives on a public
  * endpoint and ends up inside a prompt, so it is checked rather than trusted:
@@ -186,7 +194,11 @@ export function callClock(
     "",
     "Dates and bookings:",
     '- When a caller says "today", "tomorrow", "this Friday" or gives a date, find that day in the list above. Never work out a weekday yourself.',
-    '- Say the weekday and the date back before you confirm anything: "tomorrow, Tuesday the 22nd".',
+    // The example is tomorrow's real date: a model copies sample phrases, and a
+    // fixed "Tuesday the 22nd" is the wrong day six days in seven.
+    `- Say the weekday and the date back before you confirm anything: "tomorrow, ${
+      days[1]!.weekday
+    } the ${ordinal(days[1]!.day)}".`,
   );
   if (!hoursUnknown(week)) {
     lines.push(

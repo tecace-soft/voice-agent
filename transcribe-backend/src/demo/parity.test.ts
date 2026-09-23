@@ -26,9 +26,33 @@ const PORTED: { ours: string; theirs: string; header?: number; footer?: number }
   // specifiers in place rather than adding lines. `callClock.ts` reads no `process.env`.
   { ours: "src/demo/callClock.ts", theirs: "lib/call-clock.ts" },
   { ours: "src/demo/schedule.ts", theirs: "lib/schedule.ts" },
+  // Nor on this one, and it has no footer either: `call-limits.ts` imports nothing, reads no
+  // `process.env` and indexes no array, so the whole file is compared line for line and
+  // PORTING.md lists no differing line at all. Only the file name changed, to this directory's
+  // camelCase.
+  { ours: "src/demo/callLimits.ts", theirs: "lib/call-limits.ts" },
   // No `header` either: the `env` import took over the line that imported `extractJson`, which
   // now lives in the footer along with `transcriptText`.
   { ours: "src/demo/callReview.ts", theirs: "lib/call-review.ts", footer: 44 },
+  // The prompt builders and their three pure dependencies. No `header` and no `footer` on any of
+  // them: `prompt.ts` and `hours.ts` already open with their own imports, so ours rewrite those
+  // specifiers in place, and `languages.ts` and `use-cases.ts` import nothing at all — they are
+  // compared from line 1 to the last line. None of the four reads `process.env`.
+  { ours: "src/demo/prompt.ts", theirs: "lib/prompt.ts" },
+  { ours: "src/demo/hours.ts", theirs: "lib/hours.ts" },
+  { ours: "src/demo/useCases.ts", theirs: "lib/use-cases.ts" },
+  { ours: "src/demo/languages.ts", theirs: "lib/languages.ts" },
+  // The research pipeline's two pure modules. `maps.ts` imports nothing and reads no
+  // `process.env` — one line differs, and only because a regex capture group needs `!` under
+  // `noUncheckedIndexedAccess`. `research.ts` opens with four imports, so ours rewrite those
+  // specifiers in place rather than adding a header; it reads no `process.env` either, because it
+  // delegates every outside call to `researchRunner.ts`.
+  //
+  // `researchRunner.ts` is deliberately absent from this list: it is the one module of the three
+  // that was not copied whole, and PORTING.md says exactly what was left out and why. A file that
+  // differs on purpose does not belong in a table that asserts it does not.
+  { ours: "src/demo/maps.ts", theirs: "lib/maps.ts" },
+  { ours: "src/demo/research.ts", theirs: "lib/research.ts" },
 ];
 
 const PROMO = String.raw`C:\Users\Michael Knutsen\Documents\projects\test_demo\voiceagent_promo`;

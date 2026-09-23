@@ -1,6 +1,7 @@
 
 import { demoFetch } from "@/api";
 import { useCallback, useEffect, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ActivityTab } from "@/components/admin/ActivityTab";
+import { AddDemoTimeMenu } from "@/components/admin/AddDemoTimeMenu";
 import { KnowledgeEditor } from "@/components/admin/KnowledgeEditor";
 import { SchedulePanel } from "@/components/public/SchedulePanel";
 import { PromptEditor } from "@/components/admin/PromptEditor";
@@ -42,6 +44,7 @@ export function ProspectScreen({ id }: { id: string }) {
   const [draft, setDraft] = useState<Customer | null>(null);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [researching, setResearching] = useState(false);
   // Calls from this panel are the operator's own and stay out of the numbers.
   const call = useLiveCall(id, draft?.callSound, { isTest: true });
 
@@ -114,6 +117,43 @@ export function ProspectScreen({ id }: { id: string }) {
     }
   }
 
+  async function research(regeneratePrompts: boolean) {
+    setResearching(true);
+    try {
+      const response = await demoFetch(`/customers/${id}/research`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          regeneratePrompts,
+          businessName: draft?.businessName,
+          websiteUrl: draft?.websiteUrl ?? "",
+          mapsUrl: draft?.mapsUrl ?? "",
+          researchNotes: draft?.researchNotes ?? "",
+        }),
+      });
+      const payload = await readJson<{ customer: Customer }>(response);
+      setDraft(payload.customer);
+      setData((current) => (current ? { ...current, customer: payload.customer! } : current));
+      toast.success("Research finished.");
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : "Research failed.");
+      void load();
+    } finally {
+      setResearching(false);
+    }
+  }
+
+  // Only the minutes are taken from the answer, so edits not yet saved stay in
+  // the draft rather than being replaced by the stored record.
+  function addedTime(customer: Customer) {
+    setDraft((current) => (current ? { ...current, demoMinutes: customer.demoMinutes } : current));
+    setData((current) =>
+      current
+        ? { ...current, customer: { ...current.customer, demoMinutes: customer.demoMinutes } }
+        : current,
+    );
+  }
+
   const stalled = draft ? isResearchStalled(draft) : false;
 
   if (!data || !draft) {
@@ -162,6 +202,15 @@ export function ProspectScreen({ id }: { id: string }) {
               />
               Live
             </label>
+            <AddDemoTimeMenu
+              customerId={id}
+              demoMinutes={draft.demoMinutes}
+              onAdded={addedTime}
+            />
+            <Button variant="outline" onClick={() => research(false)} disabled={researching}>
+              <RefreshCw className="size-4" />
+              {researching ? "Researching" : "Re-research"}
+            </Button>
             <Button onClick={() => save()} disabled={saving}>
               {saving ? "Saving" : "Save"}
             </Button>
@@ -178,7 +227,7 @@ export function ProspectScreen({ id }: { id: string }) {
       {stalled ? (
         <div className="bg-destructive/10 ta-label-1 text-destructive rounded-lg p-3">
           Research has been running since {new Date(draft.updatedAt).toLocaleString()},
-          which is longer than it takes. The run behind it is gone.
+          which is longer than it takes. The run behind it is gone. Press Re-research.
         </div>
       ) : null}
 
@@ -293,6 +342,8 @@ export function ProspectScreen({ id }: { id: string }) {
                 <ResearchInputsPanel
                   customer={draft}
                   onChange={(partial) => setDraft({ ...draft, ...partial })}
+                  onResearch={() => research(false)}
+                  researching={researching}
                 />
                 <SourcesPanel
                   dossier={draft.dossier}
@@ -306,6 +357,7 @@ export function ProspectScreen({ id }: { id: string }) {
                   customer={draft}
                   stats={stats}
                   onChange={(partial) => setDraft({ ...draft, ...partial })}
+                  onAddedTime={addedTime}
                 />
               </TabsContent>
             </Tabs>

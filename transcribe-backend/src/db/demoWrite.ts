@@ -19,7 +19,11 @@
 // `rows.ts`, so a caller gets exactly what a loader would have given it.
 
 import { randomBytes } from "node:crypto";
+import { extendDemoMinutes } from "../demo/analytics.js";
+import { languageOf } from "../demo/languages.js";
 import type { DemoCallRow, DemoCustomerRow, DemoNoteRow } from "../demo/map.js";
+import { buildPrompts, resolvePrompts } from "../demo/prompt.js";
+import { emptyProfile } from "../demo/research.js";
 import { fromCallRow, fromCustomerRow, fromNoteRow } from "../demo/rows.js";
 import type {
   BusinessProfile,
@@ -32,8 +36,10 @@ import type {
   CustomerPrompts,
   CustomerStage,
   CustomerStatus,
+  ResearchSource,
   TranscriptEntry,
 } from "../demo/types.js";
+import { DEFAULT_DEMO_MINUTES } from "../demo/types.js";
 import { sql } from "./client.js";
 
 // A value bound for a JSONB column is passed through as-is: **do not pre-stringify it.**
@@ -115,34 +121,12 @@ function newId(size: number): string {
   return id;
 }
 
-// Copied from the promo's `lib/languages.ts`: the ten `code` values of `LANGUAGES`, in its order,
-// and its `DEFAULT_LANGUAGE`. The promo normalises through `languageOf(code).code`, whose only
-// observable behaviour here is "a code we know, else English". The `Language` records themselves
-// (labels, greeting and signoff writers) belong to the promo's call-time prompt building and are
-// not ported.
-const LANGUAGE_CODES = ["en", "ko", "es", "zh", "ja", "vi", "fr", "de", "pt", "ru"];
-const DEFAULT_LANGUAGE = "en";
-
-const languageOf = (code: string) => (LANGUAGE_CODES.includes(code) ? code : DEFAULT_LANGUAGE);
-
-// Copied verbatim from the promo: `DEFAULT_VOICE` and `DEFAULT_CALL_SOUND` from `lib/types.ts`,
-// `emptyProfile` from `lib/research.ts`. `src/demo/types.ts` left the two constants out as unused;
-// creating a customer is what uses them.
+// Copied verbatim from the promo's `lib/types.ts`; `src/demo/types.ts` left the two constants out
+// as unused, and creating a customer is what uses them. `emptyProfile` used to be copied here too,
+// from `lib/research.ts`, because that module was not ported; it is now, so the import above is the
+// promo's own function rather than a second copy of it.
 const DEFAULT_VOICE = "gleam";
 const DEFAULT_CALL_SOUND: CallSound = { phoneLine: true, ambience: "quiet" };
-
-function emptyProfile(name: string): BusinessProfile {
-  return {
-    name,
-    category: "",
-    address: "",
-    hours: [],
-    services: [],
-    highlights: [],
-    policies: {},
-    faqs: [],
-  };
-}
 
 /** The promo's PATCH body, field for field. */
 export interface CustomerPatch {
@@ -157,6 +141,13 @@ export interface CustomerPatch {
   active?: boolean;
   agentName?: string;
   demoMinutes?: number;
+  /**
+   * Minutes to **add** to the stored figure, from the "Add time" menu. `unknown` because the
+   * route hands it over exactly as it arrived: `extendDemoMinutes` is the one place that decides
+   * whether a value is a usable amount, and typing it `number` here would mean two answers to
+   * that question.
+   */
+  addDemoMinutes?: unknown;
   stage?: CustomerStage;
   lastContactedAt?: string | null;
   followUpAt?: string | null;
@@ -166,35 +157,6 @@ export interface CustomerPatch {
   profile?: BusinessProfile;
   prompts?: Partial<CustomerPrompts>;
   regeneratePrompts?: boolean;
-}
-
-/**
- * Which prompts a save should keep — the promo's `resolvePrompts`, minus the two branches that
- * rebuild from the profile (`buildPrompts` is the promo's prompt-template module, which is not
- * ported; see `src/demo/PORTING.md`). `regeneratePrompts` therefore leaves the prompts as they are.
- *
- * The editor posts the whole record every time, prompts included, so prompts arriving unchanged
- * means nothing was typed into them. Only text that differs counts as a hand edit; otherwise saving
- * the address or the Active switch would mark the prompts hand-written and freeze them for good.
- */
-function resolvePrompts(
-  current: CustomerPrompts,
-  submitted?: Partial<CustomerPrompts>,
-): CustomerPrompts {
-  if (!submitted) return current;
-  const typed = {
-    live: submitted.live ?? current.live,
-    backend: submitted.backend ?? current.backend,
-    greeting: submitted.greeting ?? current.greeting,
-  };
-  if (
-    typed.live !== current.live ||
-    typed.backend !== current.backend ||
-    typed.greeting !== current.greeting
-  ) {
-    return { ...typed, edited: true };
-  }
-  return current;
 }
 
 /**
@@ -238,14 +200,30 @@ export async function patchCustomer(id: string, patch: CustomerPatch): Promise<C
       notes: patch.notes !== undefined ? patch.notes.trim() || undefined : customer.notes,
       active: patch.active ?? customer.active,
       agentName: patch.agentName?.trim() || customer.agentName,
+      // `addDemoMinutes` is the "Add time" menu and adds to what is stored; a plain `demoMinutes`
+      // is the Share tab's number field and sets it outright. The addition happens here, against
+      // the row this transaction locked, and never against the total the browser sent — a page
+      // open since yesterday would otherwise undo someone else's top-up by writing back the
+      // figure it was still showing. That is the entire reason the field exists, so a
+      // `demoMinutes` arriving alongside it is ignored rather than merged.
+      //
+      // The route has already refused an amount `extendDemoMinutes` cannot use, so the `??` is
+      // unreachable from the API; it keeps the stored value for any other caller.
       demoMinutes:
-        typeof patch.demoMinutes === "number" && Number.isFinite(patch.demoMinutes)
-          ? Math.max(0, Math.round(patch.demoMinutes))
-          : customer.demoMinutes,
+        patch.addDemoMinutes !== undefined
+          ? (extendDemoMinutes(
+              customer.demoMinutes,
+              patch.addDemoMinutes,
+              DEFAULT_DEMO_MINUTES,
+            ) ?? customer.demoMinutes)
+          : typeof patch.demoMinutes === "number" && Number.isFinite(patch.demoMinutes)
+            ? Math.max(0, Math.round(patch.demoMinutes))
+            : customer.demoMinutes,
       voice: patch.voice ?? customer.voice,
       // An unrecognised code lands on English rather than leaving the receptionist
       // opening in a language nothing here knows how to greet in.
-      language: patch.language !== undefined ? languageOf(patch.language) : customer.language,
+      language:
+        patch.language !== undefined ? languageOf(patch.language).code : customer.language,
       stage: patch.stage ?? customer.stage,
       // null clears a date the operator set by mistake; undefined leaves it.
       lastContactedAt:
@@ -259,7 +237,14 @@ export async function patchCustomer(id: string, patch: CustomerPatch): Promise<C
       updatedAt: new Date().toISOString(),
     };
 
-    next.prompts = resolvePrompts(customer.prompts, patch.prompts);
+    next.prompts = resolvePrompts({
+      current: customer.prompts,
+      submitted: patch.prompts,
+      profile: next.profile,
+      agentName: next.agentName,
+      language: next.language,
+      regenerate: patch.regeneratePrompts,
+    });
 
     // Only the columns the promo's PATCH can touch. `status`, `error`, `dossier`, `sources`,
     // `resolved_maps_url`, `researched_at` and `created_at` are the research pipeline's and are
@@ -307,18 +292,23 @@ export interface NewCustomerInput {
 }
 
 /**
- * Add a customer. The trims and the `"Alex"` default are the promo's; what this does *not* set is
- * where it differs from it, and all of that follows from the research pipeline being retired:
+ * Add a customer — the promo's `POST /api/admin/customers`, field for field. The trims and the
+ * `"Alex"` default are its; so, now, is everything this row starts life holding:
  *
- *  * `profile` is `emptyProfile(businessName)` and stays that way until an operator fills it in,
- *    where the promo would have had a researched profile a minute later;
- *  * `prompts` are empty rather than `buildPrompts(profile, agentName, language)`;
- *  * `status` is `"ready"`, not the promo's `"researching"`. This was `"new"` in the plan, which is
- *    outside the `CustomerStatus` union and which `CustomerTable` paints as an amber "Researching"
- *    badge — permanently, since nothing will ever research it. The promo's own `"researching"` is
- *    worse: `isResearchStalled` turns it red after 15 minutes. A record created here is as complete
- *    as it is going to get, the operator filling in the profile and prompts by hand, so the honest
- *    status is the one that says nothing is pending.
+ *  * `profile` is `emptyProfile(businessName)` and `dossier`/`sources` are empty, because nothing
+ *    has been researched **yet**;
+ *  * `prompts` is `buildPrompts(profile, agentName, language)`, so a prospect opens with a working
+ *    receptionist from the first moment — a thin one off the empty profile ("Hours: unknown"), but
+ *    the role, the language rules and the greeting are all there;
+ *  * `status` is `"researching"`, the promo's own, because the route now does what the promo's
+ *    route did next: it fires the research in the background and this record is updated when that
+ *    lands. An earlier version of this comment explained why the status was `"ready"` instead —
+ *    that was true while the research pipeline was absent, and it no longer is.
+ *
+ * A record that reaches `"researching"` and never leaves it is the one real failure mode of that
+ * arrangement: the process is torn down between the response and the end of the run. The promo has
+ * the same hole and describes it with `isResearchStalled`, which reads a "researching" record older
+ * than 15 minutes as stalled; "Re-research" is the way out of it.
  *
  * Validating the business name, the `http(s)://` on a website and the shape of a Maps link is the
  * route's job, as it is in the promo: those are 400s with the operator's own wording, not database
@@ -329,9 +319,9 @@ export async function createCustomer(input: NewCustomerInput): Promise<Customer>
   const businessName = (input.businessName ?? "").trim();
   const agentName = (input.agentName ?? "Alex").trim() || "Alex";
   // An unknown code opens in English rather than refusing the create.
-  const language = languageOf(input.language ?? "");
+  const language = languageOf(input.language).code;
   const profile = emptyProfile(businessName);
-  const prompts: CustomerPrompts = { live: "", backend: "", greeting: "", edited: false };
+  const prompts = buildPrompts(profile, agentName, language);
 
   const [row] = await sql`
     INSERT INTO demo_customers (
@@ -344,7 +334,7 @@ export async function createCustomer(input: NewCustomerInput): Promise<Customer>
       ${input.websiteUrl?.trim() || null}, ${input.mapsUrl?.trim() || null},
       ${input.researchNotes?.trim() || null}, ${jsonb(profile)}, ${""}, ${jsonb([])},
       ${jsonb(prompts)}, ${jsonb(DEFAULT_CALL_SOUND)}, ${DEFAULT_VOICE}, ${agentName},
-      ${language}, ${"ready" satisfies CustomerStatus}, ${now}, ${now}
+      ${language}, ${"researching" satisfies CustomerStatus}, ${now}, ${now}
     )
     RETURNING
       id, active, business_name AS "businessName", label, contact_name AS "contactName",
@@ -357,6 +347,136 @@ export async function createCustomer(input: NewCustomerInput): Promise<Customer>
       researched_at AS "researchedAt", created_at AS "createdAt", updated_at AS "updatedAt"
   `;
   return fromCustomerRow(row as unknown as DemoCustomerRow);
+}
+
+// ------------------------------------------------------------------------------------------------
+// The research pipeline's three writes. The promo does all of this with `saveCustomer(...)` over a
+// whole record it has in hand — once before the run to say it has started, once after to store what
+// came back, and once on the failure path. Here they are three statements against the columns each
+// one owns, which is also what keeps them out of `patchCustomer`'s way: that handler is documented
+// to leave `status`, `error`, `dossier`, `sources`, `resolved_maps_url` and `researched_at` exactly
+// as they were, and these are the only writers of them.
+
+/** The four fields the operator can revise on the way into a re-research. */
+export interface ResearchInputsPatch {
+  businessName: string;
+  websiteUrl?: string;
+  mapsUrl?: string;
+  researchNotes?: string;
+}
+
+/**
+ * Mark a prospect as being researched right now, storing the inputs the run is about to use — the
+ * promo's first `saveCustomer` in `app/api/admin/customers/[id]/research/route.ts`, which sets
+ * `status: "researching"` and clears `error`.
+ *
+ * `null` when there is no such customer, which the caller turns into the promo's 404. Note that the
+ * promo 404s on its own read *before* this write; the route here does the same, so this returning
+ * `null` only ever means the record went away in between.
+ *
+ * `updatedAt` is deliberately not touched: the promo's object spread leaves it alone here too, and
+ * the record has not changed in any way a reader cares about yet.
+ */
+export async function startResearch(
+  id: string,
+  inputs: ResearchInputsPatch,
+): Promise<Customer | null> {
+  const [row] = await sql`
+    UPDATE demo_customers AS c SET
+      business_name  = ${inputs.businessName},
+      website_url    = ${inputs.websiteUrl ?? null},
+      maps_url       = ${inputs.mapsUrl ?? null},
+      research_notes = ${inputs.researchNotes ?? null},
+      status         = ${"researching" satisfies CustomerStatus},
+      error          = ${null}
+    WHERE c.id = ${id}
+    RETURNING ${customerColumns()}
+  `;
+  return row ? fromCustomerRow(row as unknown as DemoCustomerRow) : null;
+}
+
+/** What a finished research run has to say — `ResearchResult` from `src/demo/research.ts`. */
+export interface ResearchOutcome {
+  businessName: string;
+  profile: BusinessProfile;
+  dossier: string;
+  sources: ResearchSource[];
+  resolvedMapsUrl?: string;
+}
+
+/**
+ * Store a finished run and rebuild the prompts from it — the promo's second `saveCustomer`, and the
+ * same one its `runResearch` makes from `POST /customers`.
+ *
+ * **The prompts are the point.** The promo's rule is `keepPrompts = customer.prompts.edited &&
+ * !regeneratePrompts`, and otherwise `buildPrompts(result.profile, agentName, language)`: a profile
+ * that has just been discovered is worth nothing to a receptionist whose script still describes the
+ * empty one. Hand-edited prompts survive unless "Re-research" was asked with regenerate on.
+ *
+ * Read and write are one transaction on a `FOR UPDATE` row for the same reason `patchCustomer` is:
+ * `edited`, `agentName` and `language` are read here and are exactly what a drawer save changes, and
+ * a research run takes over a minute — far longer than the window that handler races over.
+ *
+ * `null` when the record went away while the run was in flight, which is the promo's
+ * `if (!current) return;`.
+ */
+export async function saveResearch(
+  id: string,
+  result: ResearchOutcome,
+  options: { regeneratePrompts?: boolean } = {},
+): Promise<Customer | null> {
+  return (await sql.begin(async (tx) => {
+    const [row] = await tx`
+      SELECT ${customerColumns()} FROM demo_customers c WHERE c.id = ${id} FOR UPDATE
+    `;
+    if (!row) return null;
+    const current = fromCustomerRow(row as unknown as DemoCustomerRow);
+
+    const keepPrompts = current.prompts.edited && !options.regeneratePrompts;
+    const prompts = keepPrompts
+      ? current.prompts
+      : buildPrompts(result.profile, current.agentName, current.language);
+    const now = new Date().toISOString();
+
+    const [updated] = await tx`
+      UPDATE demo_customers AS c SET
+        business_name     = ${result.businessName || current.businessName},
+        resolved_maps_url = ${result.resolvedMapsUrl ?? null},
+        profile           = ${jsonb(result.profile)},
+        dossier           = ${result.dossier},
+        sources           = ${jsonb(result.sources)},
+        prompts           = ${jsonb(prompts)},
+        status            = ${"ready" satisfies CustomerStatus},
+        error             = ${null},
+        researched_at     = ${now},
+        updated_at        = ${now}
+      WHERE c.id = ${id}
+      RETURNING ${customerColumns()}
+    `;
+    return fromCustomerRow(updated as unknown as DemoCustomerRow);
+  })) as Customer | null;
+}
+
+/**
+ * Record that a research run failed — the promo's third `saveCustomer`, on the catch.
+ *
+ * Nothing else is touched. That is what "the record stays usable" means concretely: the profile,
+ * the dossier, the sources and the prompts are whatever they were a moment ago, so a prospect that
+ * had been researched before keeps the receptionist it had, and a brand-new one keeps the thin
+ * prompts `createCustomer` built. The operator sees the message and can try again.
+ *
+ * `null` when the record went away in the meantime.
+ */
+export async function failResearch(id: string, message: string): Promise<Customer | null> {
+  const [row] = await sql`
+    UPDATE demo_customers AS c SET
+      status     = ${"error" satisfies CustomerStatus},
+      error      = ${message},
+      updated_at = ${new Date().toISOString()}
+    WHERE c.id = ${id}
+    RETURNING ${customerColumns()}
+  `;
+  return row ? fromCustomerRow(row as unknown as DemoCustomerRow) : null;
 }
 
 /**

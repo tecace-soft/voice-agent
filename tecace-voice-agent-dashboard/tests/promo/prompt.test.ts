@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { buildPrompts, quotedGreeting, resolvePrompts, spokenGreeting } from "../../src/demos/lib/prompt";
+import {
+  buildPrompts,
+  city,
+  quotedGreeting,
+  resolvePrompts,
+  safetyLines,
+  spokenGreeting,
+  withArticle,
+} from "../../src/demos/lib/prompt";
 import type { BusinessProfile } from "../../src/demos/lib/types";
 
 const profile: BusinessProfile = {
@@ -21,13 +29,13 @@ describe("buildPrompts", () => {
   const prompts = buildPrompts(profile, "Alex");
 
   it("keeps the blank lines that separate sections", () => {
-    expect(prompts.live).toContain("\n\nHow to speak:");
-    expect(prompts.live).toContain("\n\nWhat you know without checking:");
+    expect(prompts.live).toContain("\n\n# Personality and tone\n");
+    expect(prompts.live).toContain("\n\n# What you know without checking\n");
   });
 
-  it("puts the agent, business, and city in the first line", () => {
-    expect(prompts.live.split("\n")[0]).toBe(
-      "You are Alex, the phone receptionist at Joe's Pizza, a pizzeria in New York.",
+  it("puts the agent, business, and city in the opening sentence", () => {
+    expect(prompts.live.split("\n")[1]).toMatch(
+      /^You are Alex, the phone receptionist at Joe's Pizza, a pizzeria in New York\. /,
     );
   });
 
@@ -61,6 +69,151 @@ describe("buildPrompts", () => {
 
   it("starts unedited", () => {
     expect(prompts.edited).toBe(false);
+  });
+});
+
+describe("the guide's policies", () => {
+  const { live, backend } = buildPrompts(profile, "Alex");
+
+  it("says what the backend can do, when to hand over, and when not to", () => {
+    expect(live).toContain("Backend capabilities:");
+    expect(live).toContain("Delegate to the backend when:");
+    expect(live).toContain("Do not delegate when:");
+    expect(live).toContain("Do not guess the result while waiting.");
+  });
+
+  it("uses this business's word for a booking", () => {
+    expect(live).toContain("book, change, or cancel a table");
+    expect(buildPrompts({ ...profile, category: "dental clinic" }, "Alex").live).toContain(
+      "book, change, or cancel an appointment",
+    );
+  });
+
+  it("asks about the part it did not catch instead of guessing", () => {
+    expect(live).toContain("ask about that part only. Never guess it.");
+  });
+
+  it("is honest that this is a demo, and an AI", () => {
+    expect(live).toContain("say once, briefly, that this is a demo");
+    expect(live).toContain("say you are an AI receptionist");
+    expect(backend).toContain("Never call it confirmed or booked.");
+    expect(backend).not.toContain("confirm the details back");
+  });
+
+  it("sends an emergency to the emergency number, whatever the business", () => {
+    expect(live).toContain("call their local emergency number now");
+  });
+
+  it("answers the short common questions without checking, and only those", () => {
+    expect(live).toContain('"Do you deliver?" Through delivery apps.');
+    const long = buildPrompts(
+      { ...profile, faqs: [{ q: "Tell me everything", a: "x".repeat(300) }] },
+      "Alex",
+    );
+    expect(long.live).not.toContain("Common questions:");
+  });
+});
+
+describe("register", () => {
+  // A test call switched from English to Korean in 반말 and the receptionist
+  // answered in 반말. The language follows the caller; the politeness does not.
+  it("follows the caller's language but never their register, whatever it opens in", () => {
+    for (const language of ["en", "ko"]) {
+      const { live } = buildPrompts(profile, "Alex", language);
+      expect(live).toContain("Switch language, never register");
+      expect(live).toContain("존댓말");
+      expect(live).toContain("고객님");
+      expect(live).toContain("never 반말");
+    }
+  });
+
+  it("gives no casual phrases to translate into casual speech", () => {
+    const { live } = buildPrompts(profile, "Alex");
+    expect(live).not.toContain("sure thing");
+    expect(live).not.toContain("you got it");
+  });
+
+  it("holds the backend to the polite register too", () => {
+    expect(buildPrompts(profile, "Alex").backend).toContain(
+      "always in its polite customer-service register",
+    );
+  });
+});
+
+describe("safetyLines", () => {
+  it("keeps a clinic from giving medical advice", () => {
+    expect(safetyLines("Dental clinic")[0]).toContain("Never give medical advice");
+    expect(safetyLines("Veterinary hospital")[0]).toContain("Never give medical advice");
+  });
+
+  it("keeps a law or accounting office from giving advice", () => {
+    expect(safetyLines("Immigration law firm")[0]).toContain("Never give legal, tax, or financial advice");
+    expect(safetyLines("CPA")[0]).toContain("financial advice");
+  });
+
+  it("keeps a restaurant from promising a dish is allergy-safe", () => {
+    expect(safetyLines("Italian restaurant")[0]).toContain("allergy");
+  });
+
+  it("adds nothing for everyone else", () => {
+    expect(safetyLines("Barber shop")).toEqual([]);
+    expect(safetyLines("Lawn care")).toEqual([]);
+    expect(safetyLines(undefined)).toEqual([]);
+  });
+});
+
+describe("city", () => {
+  it("reads the town off a US address, with or without the country", () => {
+    expect(city("7 Carmine St, New York, NY 10014")).toBe("New York");
+    expect(city("500 Pine St, Suite 200, Seattle, WA 98101, USA")).toBe("Seattle");
+    expect(city("1 Main St, Austin, TX, United States")).toBe("Austin");
+  });
+
+  // Each of these used to put a street, a postcode or a whole address where
+  // the town goes.
+  it("says nothing rather than something wrong", () => {
+    expect(city("서울특별시 강남구 테헤란로 123")).toBe("");
+    expect(city("10 Downing St, London SW1A 2AA, UK")).toBe("");
+    expect(city("1 Main St")).toBe("");
+    expect(city(undefined)).toBe("");
+  });
+
+  it("leaves the town out of the first line when it cannot find one", () => {
+    const seoul = buildPrompts(
+      { ...profile, category: "immigration law firm", address: "서울특별시 강남구 테헤란로 123" },
+      "Alex",
+    );
+    expect(seoul.live.split("\n")[1]).toMatch(
+      /^You are Alex, the phone receptionist at Joe's Pizza, an immigration law firm\. /,
+    );
+  });
+});
+
+describe("withArticle", () => {
+  it("picks a or an by the sound, not just the letter", () => {
+    expect(withArticle("pizzeria")).toBe("a pizzeria");
+    expect(withArticle("immigration law firm")).toBe("an immigration law firm");
+    expect(withArticle("Italian restaurant")).toBe("an Italian restaurant");
+    expect(withArticle("university clinic")).toBe("a university clinic");
+  });
+});
+
+describe("backendProfile", () => {
+  it("keeps ratings, reviews and coordinates away from the receptionist", () => {
+    const rated = buildPrompts(
+      {
+        ...profile,
+        rating: 3.1,
+        reviewSummary: "Reviews mention long waits.",
+        lat: 40.73,
+        lng: -74.0,
+      },
+      "Alex",
+    );
+    expect(rated.backend).not.toContain("long waits");
+    expect(rated.backend).not.toContain('"rating"');
+    expect(rated.backend).not.toContain('"lat"');
+    expect(rated.backend).toContain("Do you deliver?");
   });
 });
 

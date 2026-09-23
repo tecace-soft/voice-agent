@@ -47,6 +47,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { AddDemoTimeSubmenu } from "@/components/admin/AddDemoTimeMenu";
 import { EmptyState, StatusBadge, statusKind } from "@/components/admin/shared";
 import { isResearchStalled } from "@/lib/analytics";
 import { customerLink, emailBody, emailSubject } from "@/lib/share";
@@ -402,6 +403,7 @@ export function CustomerTable({ customers, onChanged }: Props) {
                         <ExternalLink className="size-4" />
                         Open demo
                       </DropdownMenuItem>
+                      <AddDemoTimeSubmenu customerId={customer.id} onAdded={onChanged} />
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         className="text-destructive"

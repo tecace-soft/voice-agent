@@ -9,14 +9,18 @@ import {
   countableCalls,
   emptyStats,
   engagement,
+  extendDemoMinutes,
   heatByCustomer,
   statsByCustomer,
   testCalls,
   withinDays,
 } from "../demo/analytics.js";
 import { callClock, safeTimeZone } from "../demo/callClock.js";
+import { CALL_MAX_SEC } from "../demo/callLimits.js";
 import { reviewCall, reviewable } from "../demo/callReview.js";
+import { isMapsUrl } from "../demo/maps.js";
 import { OpenAIError, createLiveSession } from "../demo/openai.js";
+import { researchBusiness } from "../demo/research.js";
 import type {
   BusinessProfile,
   CallLog,
@@ -29,10 +33,11 @@ import type {
   CustomerStage,
   CustomerStats,
   Engagement,
+  ResearchInputs,
   TrackEvent,
   TranscriptEntry,
 } from "../demo/types.js";
-import { CUSTOMER_STAGES } from "../demo/types.js";
+import { CUSTOMER_STAGES, DEFAULT_DEMO_MINUTES } from "../demo/types.js";
 import {
   getCustomer,
   listAllCalls,
@@ -49,10 +54,13 @@ import {
   createCustomer,
   deleteCall,
   deleteCustomer,
+  failResearch,
   finishCall,
   patchCall,
   patchCustomer,
+  saveResearch,
   startCall,
+  startResearch,
 } from "../db/demoWrite.js";
 
 // The Demo tabs' reads. Each handler is the promo's own route handler
@@ -110,25 +118,61 @@ async function listAllNotes(
 }
 
 /**
- * Does this look like a Google Maps link? Copied verbatim from the promo's `lib/maps.ts` — only the
- * `export` is dropped, since nothing outside this file asks. The rest of that module (the short-link
- * follower, `parseMapsUrl`, `fallbackName`) belongs to the retired research pipeline and is not
- * ported; this one predicate is what the create form's 400 is made of.
+ * The promo's `runResearch`, from the bottom of `app/api/admin/customers/route.ts`: research the
+ * business, store what came back, and on a failure mark the record rather than leave it silent.
+ *
+ * `saveResearch` and `failResearch` return `null` when the record has gone in the meantime, which
+ * is the promo's own `const current = await getCustomer(id); if (!current) return;` — a prospect
+ * deleted while its research was in flight must not be resurrected by the run finishing.
+ *
+ * This never throws. It is called without being awaited, so a rejection here would be an unhandled
+ * promise rejection, which on Node is a process-level event and on Bun prints and carries on —
+ * neither of which is a way to report that one prospect's research failed. Even the write on the
+ * failure path is guarded, because it is the write most likely to be the thing that broke.
  */
-const SHORT_HOSTS = ["maps.app.goo.gl", "goo.gl", "g.co"];
-
-function isMapsUrl(raw: string): boolean {
+async function runResearch(id: string, inputs: ResearchInputs): Promise<void> {
   try {
-    const url = new URL(raw);
-    const host = url.hostname.replace(/^www\./, "");
-    return (
-      SHORT_HOSTS.includes(host) ||
-      host.endsWith("google.com") ||
-      host.startsWith("maps.google.")
-    );
-  } catch {
-    return false;
+    const result = await researchBusiness(inputs);
+    await saveResearch(id, result);
+  } catch (error) {
+    console.error("[demo] research failed", error);
+    try {
+      await failResearch(id, error instanceof Error ? error.message : String(error));
+    } catch (saveError) {
+      console.error("[demo] could not record the research failure", saveError);
+    }
   }
+}
+
+/**
+ * Research still in flight, so something can wait for it.
+ *
+ * Two callers, and they want it for opposite reasons. A test awaits `pendingResearch()` because a
+ * background run is otherwise a race it would have to sleep on. A shutdown would await it to give
+ * the run a chance to land.
+ *
+ * **The failure mode this set describes rather than fixes.** Nothing here can survive the process
+ * going away. `POST /customers` answers 201 the instant the row is written and the run continues on
+ * borrowed time: a container restart, a deploy, or a serverless host freezing the function once the
+ * response is flushed all end it wherever it had got to, and the prospect is left at
+ * `status: "researching"` with no run attached to it. Neither `saveResearch` nor `failResearch`
+ * ever fires, so nothing marks it. The promo has exactly this hole — `after()` keeps the function
+ * alive but cannot outlive the invocation either — and names it: `isResearchStalled` reads a
+ * "researching" record older than 15 minutes as stalled, which is the dashboard's cue to offer
+ * "Re-research". `POST /demo/customers/:id/research` is that way out, and it runs *inside* the
+ * request, so it either finishes or returns a 502 saying why.
+ */
+const inFlightResearch = new Set<Promise<void>>();
+
+function startBackgroundResearch(id: string, inputs: ResearchInputs): void {
+  const task = runResearch(id, inputs);
+  inFlightResearch.add(task);
+  void task.finally(() => inFlightResearch.delete(task));
+}
+
+/** Resolves once every background run started so far has finished. */
+export function pendingResearch(): Promise<void> {
+  return Promise.all([...inFlightResearch]).then(() => undefined);
 }
 
 /**
@@ -450,15 +494,29 @@ export const demo = new Elysia({ prefix: "/demo" })
         return status(400, { error: "That does not look like a Google Maps link." });
       }
 
+      let customer: Customer;
       try {
-        // The promo kicked off `runResearch` in an `after()` here and returned the record with
-        // `status: "researching"`. That pipeline is retired, so what comes back is final: an empty
-        // profile and empty prompts for the operator to fill in, already `status: "ready"`.
-        const customer = await createCustomer({ ...body, businessName, websiteUrl, mapsUrl });
-        return status(201, { customer });
+        customer = await createCustomer({ ...body, businessName, websiteUrl, mapsUrl });
       } catch (error) {
         return status(500, jsonError(error));
       }
+
+      // The promo's `after(...)`, which keeps a serverless function alive past its response while
+      // the research runs. Elysia has no such hook, and it does not need one here: the handler
+      // returns the body it has already built, and this promise is simply not awaited, so the 201
+      // goes out at once and the run carries on against the same process. That is what the promo
+      // says `after` degrades to locally — "a plain background call".
+      //
+      // What it does NOT give us is `after`'s one guarantee, and `startBackgroundResearch` says so
+      // in full: on a host that can freeze the function the moment the response is flushed, the run
+      // dies mid-flight and the record is left at `status: "researching"` for good.
+      startBackgroundResearch(customer.id, {
+        businessName,
+        websiteUrl,
+        mapsUrl,
+        notes: customer.researchNotes,
+      });
+      return status(201, { customer });
     },
     {
       body: t.Object({
@@ -472,6 +530,113 @@ export const demo = new Elysia({ prefix: "/demo" })
         agentName: t.Optional(t.String()),
         language: t.Optional(t.String()),
       }),
+    },
+  )
+
+  /**
+   * Research a prospect's business, or research it again — the promo's
+   * `app/api/admin/customers/[id]/research/route.ts`, status codes and error strings included.
+   *
+   * Two model calls behind one request: the first searches the web and writes a briefing, the
+   * second turns that briefing into the business profile. **It is a real, billable run**, and it
+   * takes over a minute, so it is not something a page should fire by accident — the promo's route
+   * declares `maxDuration = 300` for exactly that shape, and the same ceiling applies here.
+   *
+   * The body is optional and every field in it is: sent, the four research inputs replace what is
+   * stored (this is the ResearchInputsPanel saving and running in one go); absent, the run uses
+   * what is already on the record, which is the promo's own "No body is fine: re-research with what
+   * is stored." `regeneratePrompts` is the one field that is not an input — it overrides the rule
+   * that hand-edited prompts survive a run.
+   *
+   * Unlike the create path this runs *inside* the request. That is the promo's choice too, and it
+   * is what makes this the cure for a prospect stuck at "researching": it cannot be lost to a
+   * teardown without the caller being told.
+   */
+  .post(
+    "/customers/:id/research",
+    async ({ body, headers, params, status }) => {
+      const caller = await authenticateAdmin(headers.authorization, DEMO_IS_ADMIN);
+      if ("denied" in caller) return status(caller.denied, caller.body);
+
+      let customer: Customer | null;
+      try {
+        customer = await getCustomer(params.id);
+      } catch (error) {
+        return status(500, jsonError(error));
+      }
+      if (!customer) {
+        return status(404, { error: "Customer not found." });
+      }
+
+      // The promo read these off the stored record and then let the body override them one at a
+      // time, with the same `!== undefined` rule as the customer PATCH: `""` clears an optional
+      // field, an absent key leaves it. `businessName` is the exception it makes there too — a
+      // blank one is a no-op, not a way to empty the record, and the 400 below catches a record
+      // that never had one.
+      const regeneratePrompts = body?.regeneratePrompts ?? false;
+      let businessName = customer.businessName;
+      let websiteUrl = customer.websiteUrl;
+      let mapsUrl = customer.mapsUrl;
+      let researchNotes = customer.researchNotes;
+
+      if (body) {
+        if (body.businessName?.trim()) businessName = body.businessName.trim();
+        if (body.websiteUrl !== undefined) websiteUrl = body.websiteUrl.trim() || undefined;
+        if (body.mapsUrl !== undefined) mapsUrl = body.mapsUrl.trim() || undefined;
+        if (body.researchNotes !== undefined) {
+          researchNotes = body.researchNotes.trim() || undefined;
+        }
+      }
+
+      if (!businessName) {
+        return status(400, { error: "Enter the business name." });
+      }
+
+      // Stored before the run, not after it, so the table says "Researching" for the minute this
+      // takes rather than looking idle.
+      try {
+        await startResearch(params.id, { businessName, websiteUrl, mapsUrl, researchNotes });
+      } catch (error) {
+        return status(500, jsonError(error));
+      }
+
+      try {
+        const result = await researchBusiness({
+          businessName,
+          websiteUrl,
+          mapsUrl,
+          notes: researchNotes,
+        });
+        const next = await saveResearch(params.id, result, { regeneratePrompts });
+        // Deleted while the run was in flight. The promo's `runResearch` returns silently on this;
+        // this one has a caller waiting, and "Customer not found." is what that caller is owed.
+        if (!next) return status(404, { error: "Customer not found." });
+        return { customer: next };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("[demo] research failed", error);
+        try {
+          await failResearch(params.id, message);
+        } catch (saveError) {
+          console.error("[demo] could not record the research failure", saveError);
+        }
+        return status(502, { error: message });
+      }
+    },
+    {
+      params: t.Object({ id: t.String({ maxLength: 64 }) }),
+      // Optional whole: "Re-research with what is stored" sends no body at all. Loose inside, like
+      // every other body schema here, so a malformed value reaches the handler and gets this API's
+      // own `{ error }` rather than the framework's 422.
+      body: t.Optional(
+        t.Object({
+          regeneratePrompts: t.Optional(t.Boolean()),
+          businessName: t.Optional(t.String()),
+          websiteUrl: t.Optional(t.String()),
+          mapsUrl: t.Optional(t.String()),
+          researchNotes: t.Optional(t.String()),
+        }),
+      ),
     },
   )
 
@@ -495,6 +660,18 @@ export const demo = new Elysia({ prefix: "/demo" })
       }
       if (body.stage && !CUSTOMER_STAGES.includes(body.stage as CustomerStage)) {
         return status(400, { error: "Unknown stage." });
+      }
+      // The "Add time" menu. Only the *amount* can be judged out here — the new total is added to
+      // the stored value inside `patchCustomer`'s transaction, which is where the stored value is
+      // — and `extendDemoMinutes` returns null for exactly the amounts the promo refuses
+      // (not a number, not finite, not above zero), whatever it is added to. So this asks it with
+      // the fallback standing in for the current value, and the refusal, like the two above,
+      // happens before anything is written.
+      if (
+        body.addDemoMinutes !== undefined &&
+        extendDemoMinutes(undefined, body.addDemoMinutes, DEFAULT_DEMO_MINUTES) === null
+      ) {
+        return status(400, { error: "Minutes to add must be positive." });
       }
 
       // `callSound`, `profile` and `prompts` are whole objects the editor round-trips untouched.
@@ -531,6 +708,11 @@ export const demo = new Elysia({ prefix: "/demo" })
         active: t.Optional(t.Boolean()),
         agentName: t.Optional(t.String()),
         demoMinutes: t.Optional(t.Number()),
+        // Unknown rather than a number, so `"ten"` reaches the handler and becomes the promo's
+        // own "Minutes to add must be positive." rather than the framework's 422 — the same
+        // reason `voice` and `stage` below are plain strings. `extendDemoMinutes` is what decides
+        // whether it is a number at all.
+        addDemoMinutes: t.Optional(t.Unknown()),
         // Plain strings, checked against LIVE_VOICES / CUSTOMER_STAGES in the handler, so an
         // unknown one is the promo's "Unknown voice." / "Unknown stage." rather than a 422.
         stage: t.Optional(t.String()),
@@ -811,6 +993,16 @@ export const demo = new Elysia({ prefix: "/demo" })
           sessionId: session.id,
           sdp: session.sdp,
           greeting: customer.prompts.greeting,
+          // How long this one call may run. The browser hangs up when it is reached,
+          // so a demo cannot be overrun by one long call, and a test call is still
+          // held to the ten minute ceiling.
+          //
+          // The promo narrowed this to what was left of the prospect's allowance
+          // (`callLimitSec(allowance.remainingSec)`) for a public call. There is no
+          // allowance on this route — an admin test call skipped it there too — so the
+          // ceiling is the whole answer, and it is the second sentence above that makes
+          // this worth sending at all.
+          maxSec: CALL_MAX_SEC,
         };
       } catch (error) {
         // No session means no call. Take the record back rather than leaving one that sits in the

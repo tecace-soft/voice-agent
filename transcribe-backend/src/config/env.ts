@@ -48,6 +48,21 @@ const businessExtractModel = process.env.BUSINESS_EXTRACT_MODEL?.trim() || "gemi
 // the message the promo used.
 const openaiApiKey = process.env.OPENAI_API_KEY?.trim() || undefined;
 
+// Researching a prospect's business: two model calls, the first with web search, through the same
+// Responses API and the same OPENAI_API_KEY as the test call. Optional in exactly the same way and
+// for the same reason — nothing here throws, so a deployment with no key serves every other Demo
+// route normally and only a research attempt fails, with `demo/openai.ts`'s own
+// "OPENAI_API_KEY is not set on the server."
+//
+// `RESEARCH_PROVIDER` is the promo's knob. Only "openai" is implemented here (see
+// `src/demo/researchRunner.ts`); an unset or unrecognised value lands on it, and "cli" or
+// "anthropic" is answered with an error naming the branch rather than silently ignored.
+const researchProvider = process.env.RESEARCH_PROVIDER?.trim().toLowerCase() ?? "";
+const researchOpenaiModel = process.env.RESEARCH_OPENAI_MODEL?.trim() || "gpt-5.6-terra";
+// How much of the web the search tool reads back: low | medium | high. Anything else is medium,
+// which is the promo's default and what a research run is tuned for.
+const researchSearchContext = process.env.RESEARCH_SEARCH_CONTEXT?.trim().toLowerCase() ?? "";
+
 const nodeEnv = process.env.NODE_ENV ?? "development";
 
 // Monthly transcription allowance, above which the account is billed extra. 0 (the default) means
@@ -135,6 +150,9 @@ export const env = {
   openaiLiveModel: process.env.OPENAI_LIVE_MODEL || "gpt-live-1",
   openaiBackendModel: process.env.OPENAI_BACKEND_MODEL || "gpt-5.6-terra",
   callReviewModel: process.env.CALL_REVIEW_MODEL || "gpt-5.6-terra",
+  researchProvider,
+  researchOpenaiModel,
+  researchSearchContext,
   // A browser that sends no timezone, or a value that is not one.
   defaultTimezone: process.env.DEFAULT_TIMEZONE || "America/Los_Angeles",
   monthlyCap,

@@ -125,6 +125,24 @@ export function demoAllowance(
   return { allowedSec, usedSec, remainingSec, exhausted: remainingSec <= 0 };
 }
 
+/** The steps the admin's "Add time" menu offers, in minutes. */
+export const DEMO_TIME_STEPS = [10, 30, 60] as const;
+
+/**
+ * A demo's minutes after adding `add` to them, or null when `add` is not a
+ * positive number. Added on the server to what is stored rather than set from
+ * the browser's copy, so a page open since yesterday cannot undo someone
+ * else's top-up by adding to an old figure.
+ */
+export function extendDemoMinutes(
+  current: number | undefined,
+  add: unknown,
+  fallback: number,
+): number | null {
+  if (typeof add !== "number" || !Number.isFinite(add) || add <= 0) return null;
+  return Math.max(0, Math.round((current ?? fallback) + add));
+}
+
 export function computeStats(
   calls: CallLog[],
   events: TrackEvent[],

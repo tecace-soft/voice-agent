@@ -49,6 +49,14 @@ export type BusinessProfile = {
 
 export type ResearchSource = { url: string; title: string };
 
+export type ResearchInputs = {
+  businessName: string;
+  websiteUrl?: string;
+  mapsUrl?: string;
+  /** Anything the operator knows that the web will not say. */
+  notes?: string;
+};
+
 export type CustomerPrompts = {
   live: string;
   backend: string;
@@ -57,6 +65,9 @@ export type CustomerPrompts = {
   /** Which generation of `buildPrompts` wrote these; absent on old records. */
   version?: number;
 };
+
+/** How long a prospect may spend on the demo before asking us for more. */
+export const DEFAULT_DEMO_MINUTES = 10;
 
 export type CustomerStatus = "researching" | "ready" | "error";
 
