@@ -132,3 +132,142 @@ One consequence worth knowing: the sidebar now has **two "Overview" items**, one
 in Demo. That is what the promo's naming gives; the group labels tell them apart. `demos_e2e.py` gained
 a `demo_nav()` helper that scopes a nav lookup to the Demo group, because `get_by_role("button",
 name="Overview")` is now ambiguous.
+
+### Demo tabs served from transcribe-backend (2026-09-22)
+
+The demo records were imported into transcribe-db and transcribe-backend now serves them under
+`/demo/*`, guarded by the dashboard's own admin session. voiceagent_promo is no longer called at
+all, so everything that existed only to reach it is gone.
+
+**`promoFetch` → `demoFetch`, and the paths lost `/api/admin`.** `api.ts` was rewritten around a
+single `demoFetch(path, init)` that keeps `promoFetch`'s exact signature — it returns the raw
+`Response`, so every ported screen's own `readJson(response)` is untouched. It targets
+`` `${__BACKEND_URL__}/demo${path}` `` and sends `authorization: Bearer <dashboard token>` from
+`src/api/backend.ts`'s `getToken()`. Deleted with the promo: `promoFetch`, `promoUrl`,
+`promoRequest`, `probePromo`, `unlockPromo`, `lockPromo`, `setPromoLockedHandler`, `PromoError`,
+`PromoErrorKind`, `PromoAccess`, `PROMO_API`.
+
+Because `demoFetch`'s own base carries `/demo`, the promo's `/api/admin` prefix is dropped at every
+call site — the rest of each path is the promo's own route shape, unchanged:
+
+| file:line | was | now |
+| --- | --- | --- |
+| `screens/OverviewScreen.tsx:73` | `/api/admin/analytics?days=…` | `/analytics?days=…` |
+| `screens/ProspectsScreen.tsx:20` | `/api/admin/customers` | `/customers` |
+| `screens/PipelineScreen.tsx:27` | `/api/admin/crm` | `/crm` |
+| `screens/PipelineScreen.tsx:61` | `/api/admin/customers/${customer.id}` | `/customers/${customer.id}` |
+| `screens/ProspectScreen.tsx:51,102,298` | `/api/admin/customers/${id}` | `/customers/${id}` |
+| `components/admin/CustomerTable.tsx:163,176` | `/api/admin/customers/${customer.id}` | `/customers/${customer.id}` |
+| `components/admin/NewCustomerDialog.tsx:45` | `/api/admin/customers` | `/customers` |
+| `components/admin/CrmDrawer.tsx:63,94` | `/api/admin/customers/…` | `/customers/…` |
+| `components/admin/CrmTab.tsx:65` | `/api/admin/customers/${customer.id}/notes` | `/customers/${customer.id}/notes` |
+| `components/admin/ActivityTab.tsx:160` | `/api/admin/customers/${customerId}/calls` | `/customers/${customerId}/calls` |
+
+The import line in each of those nine files changed from `import { promoFetch } from "@/api"` to
+`import { demoFetch } from "@/api"`, and each call's arguments are otherwise identical. Nothing else
+in them changed.
+
+**The gate lost its auth.** `DemosGate.tsx` keeps the `.tw` wrapper, the
+`flex flex-col gap-4 md:gap-6` column and the `Toaster`, and nothing else: there is no promo
+password to enter, and the Demo group is already admin-only, so there is no second sign-in to gate
+on. `PromoAuth.tsx` and `UnlockCard.tsx` are **deleted**, and `PromoAuthProvider`, `lockPromo` and
+the `setPromoLockedHandler` wiring (including the sign-out effect and its `useRef`) are gone from
+`src/App.tsx`. The one card left is for a build with no `BACKEND_URL` baked in — see the deviation
+note below.
+
+**The two actions that could not move.** Both needed a promo service that no longer answers, and the
+design doc puts them out of scope, so they are **removed from the UI rather than disabled** (the
+user's choice):
+
+- **Re-research** — `POST /api/admin/customers/:id/research` needed the promo's Claude research
+  pipeline. Gone from `screens/ProspectScreen.tsx`: the header `Button`, the `research()` handler,
+  the `researching` state and the `RefreshCw` import.
+- **Call now / Test call** — `POST /api/session` and the call beacons needed the promo's OpenAI
+  realtime session. Gone from `screens/ProspectScreen.tsx`: the whole "Test call" `<Card>`, the
+  `useLiveCall(...)` call, the "refresh the call list once a test call finishes" effect, and the
+  `CallPanel` / `Transcript` / `useLiveCall` imports (`CardHeader` and `CardTitle` with them — that
+  card was their only user).
+
+Files **deleted** because nothing reaches them any more (every other importer checked first):
+
+- `hooks/useLiveCall.ts` — only `ProspectScreen` used it (the `hooks/` folder is now empty and gone).
+- `components/call/CallPanel.tsx` — same.
+- `lib/ringtone.ts` — only `useLiveCall` used it, and no ported test covers it.
+
+**Kept** although the live call was their only caller in the app: `components/call/Transcript.tsx`
+(still rendered by `components/admin/ActivityTab.tsx` for a recorded call's transcript),
+`lib/call-audio.ts` and `lib/ambience.ts` (still used by `components/admin/PromptEditor.tsx` for the
+call-sound preview), and `lib/transcript.ts` (pure, and `tests/promo/transcript.test.ts` — a
+verbatim promo test — still covers it; `lib/voice-level.ts` has been in that same "only its ported
+test imports it" state since the original port).
+
+**Everything else in the screens is still verbatim.** No other line of any ported screen or
+component changed in this step.
+
+#### Deviations, with reasoning
+
+- `components/admin/ResearchInputsPanel.tsx`: its "Run research again" `Button` — and with it the
+  `onResearch` / `researching` props and the `Button` + `RefreshCw` imports — removed; the
+  destructure collapses to `({ customer, onChange }: Props)`. This button was the *second* trigger
+  for the same removed action (`ProspectScreen` passed it `onResearch={() => research(false)}`), so
+  it could not survive the handler. The panel's four input fields stay: they are ordinary customer
+  fields that Save still writes.
+- `screens/ProspectScreen.tsx` stalled banner: the trailing sentence `Press Re-research.` dropped
+  (the rest of the sentence is unchanged). It told the reader to press a button that no longer
+  exists. The `isResearchStalled` check and the "Stalled" status badge are untouched — a record
+  stuck mid-research is still worth flagging, even though this app can no longer restart one.
+- `screens/ProspectScreen.tsx` layout: the detail grid was
+  `grid grid-cols-1 gap-4 lg:grid-cols-3` with the tabs card at `lg:col-span-2` and the test-call
+  card in the third column. With the call card gone the grid is a single full-width column
+  (`grid grid-cols-1 gap-4`, and the card loses `lg:col-span-2`). Chosen over inventing a new right
+  column: everything such a column could hold is already a tab, and the wide tabs genuinely read
+  better — the Activity table, the Knowledge hours editor and the Prompt editor were all cramped at
+  two thirds. The wrapper `div` is kept as a one-column grid rather than deleted, so the page's
+  vertical rhythm (`gap-4`) and the structure around it are untouched.
+- `DemosGate.tsx`'s error card is now "Backend URL not set", not "Demo service unreachable". There
+  is no probe left to detect "unreachable" — each ported screen already catches its own failure and
+  shows the message (`demoFetch` throws `Couldn't reach the server.`). The one failure a screen
+  cannot explain is a build with an empty `__BACKEND_URL__`, where every request silently goes to
+  this app's own origin and comes back as `index.html`; that is what the card names.
+- `routes.ts` / `DemosView.tsx`: stale comments only (`/promo-api/admin/customers/<id>` →
+  `<backend>/demo/customers/<id>`; "promo sign-in" dropped from the gate's description). The
+  exported name `isPromoId` is unchanged — the ids really are still the promo's nanoids, and
+  renaming it would churn `DemosView` and `tests/routes.test.ts` for nothing.
+
+#### Outside `src/demos/`
+
+- `vite.config.ts`: the `/promo-api` proxy, the `PROMO_API_URL` read and the `__PROMO_TARGET__`
+  define are removed (`server` keeps only `port: 5175`; there is no `preview.proxy` left).
+  `env.d.ts` drops the `__PROMO_TARGET__` declaration and `vitest.config.ts` its define.
+  `VITE_PUBLIC_DEMO_BASE_URL` is deliberately **untouched**: the public demo page (`/c/<id>`) still
+  lives on the promo and is still only linked to.
+- `.env.example` and `README.md`: `PROMO_API_URL` and the "before the first deploy" Vercel-rewrite
+  note removed — no rewrite is needed now, because `BACKEND_URL` already points at
+  transcribe-backend. The README's promo section is rewritten around `/demo/*` and records the two
+  removed actions; its "Trying a real test call" section goes with the feature.
+- `tests/promoApi.test.ts` (26 tests) deleted — every function it covered is gone — and replaced by
+  `tests/demoApi.test.ts` (7 tests) covering `demoFetch`: the `/demo` base, the bearer header
+  present and absent, `content-type` only with a body, the `Response` passed through on an error
+  status, the network-failure message, and the non-`/path` guard.
+- `CLAUDE.md` still describes `promoFetch`, `promoRequest`, `PromoAuth` and the `/promo-api` proxy
+  in its "The Demos section (promo)" block, and `scripts/regression/` still has `fake_promo.py`.
+  Both left alone here: the harness is Task 10, and `CLAUDE.md` is the user's to change.
+
+### "Analyze" removed (2026-09-22, review of Tasks 8–10)
+
+`components/admin/ActivityTab.tsx`: the per-call **Analyze** button, its `onAnalyze` prop and type,
+and the `Sparkles` / `Button` imports are gone.
+
+It belonged to the same retired pipeline as "Re-research" and "Call now", but was missed when those
+were removed because it lives inside a call card rather than on the page header. Left in, it was
+worse than a dead control: it PATCHed `{ analyze: true }`, the backend returned the call unchanged
+(the review model is gone), and the UI then raised a success toast reading **"Reviewed."** — a
+confirmation that nothing had happened.
+
+The explanatory sentence beside it ("Not reviewed — this call happened before reviews, or the model
+was unreachable.") is now just "Not reviewed.", since neither reason is the operative one any more:
+reviews cannot be produced at all. Calls that already carry a `review` from the promo still render
+it in full; this only affects calls that never got one.
+
+The backend still accepts `analyze: true` and ignores it (see the Task 4/6 notes) — nothing in the
+UI sends it now, but the route stays tolerant rather than newly rejecting a field it used to take.

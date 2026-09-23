@@ -6,8 +6,8 @@ import { ProspectScreen } from "./screens/ProspectScreen";
 import { ProspectsScreen } from "./screens/ProspectsScreen";
 import { isPromoId } from "./routes";
 
-// Which Demos screen to show for a route. Everything goes through the gate (promo sign-in + the
-// .tw styling boundary).
+// Which Demos screen to show for a route. Everything goes through the gate (the .tw styling
+// boundary).
 export function DemosView({
   view,
   id,
@@ -19,7 +19,7 @@ export function DemosView({
     <DemosGate>
       {view === "demoOverview" && <OverviewScreen />}
       {view === "demoProspects" && <ProspectsScreen />}
-      {/* Only a well-formed id reaches ProspectScreen (kept verbatim), which puts it in a promo path. */}
+      {/* Only a well-formed id reaches ProspectScreen (kept verbatim), which puts it in a demo path. */}
       {view === "demoProspect" &&
         (id && isPromoId(id) ? <ProspectScreen key={id} id={id} /> : <ProspectsScreen />)}
       {view === "demoPipeline" && <PipelineScreen />}

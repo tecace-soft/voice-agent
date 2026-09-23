@@ -1,5 +1,5 @@
 
-import { promoFetch } from "@/api";
+import { demoFetch } from "@/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +24,7 @@ export function PipelineScreen() {
 
   const load = useCallback(async () => {
     try {
-      const response = await promoFetch("/api/admin/crm", { cache: "no-store" });
+      const response = await demoFetch("/crm", { cache: "no-store" });
       setData(await readJson<Payload>(response));
       setError(null);
       hasLoadedRef.current = true;
@@ -58,7 +58,7 @@ export function PipelineScreen() {
         : current,
     );
     try {
-      const response = await promoFetch(`/api/admin/customers/${customer.id}`, {
+      const response = await demoFetch(`/customers/${customer.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ stage }),

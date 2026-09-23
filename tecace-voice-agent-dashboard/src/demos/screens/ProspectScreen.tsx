@@ -1,10 +1,9 @@
 
-import { promoFetch } from "@/api";
+import { demoFetch } from "@/api";
 import { useCallback, useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,9 +15,6 @@ import { ResearchInputsPanel } from "@/components/admin/ResearchInputsPanel";
 import { SharePanel } from "@/components/admin/SharePanel";
 import { SourcesPanel } from "@/components/research/SourcesPanel";
 import { PageHeader, StatCard, StatusBadge, statusKind } from "@/components/admin/shared";
-import { CallPanel } from "@/components/call/CallPanel";
-import { Transcript } from "@/components/call/Transcript";
-import { useLiveCall } from "@/hooks/useLiveCall";
 import { formatDuration, isResearchStalled } from "@/lib/analytics";
 import { readJson } from "@/lib/http";
 import type {
@@ -42,13 +38,10 @@ export function ProspectScreen({ id }: { id: string }) {
   const [draft, setDraft] = useState<Customer | null>(null);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [researching, setResearching] = useState(false);
-  // Calls from this panel are the operator's own and stay out of the numbers.
-  const call = useLiveCall(id, draft?.callSound, { isTest: true });
 
   const load = useCallback(async () => {
     try {
-      const response = await promoFetch(`/api/admin/customers/${id}`, { cache: "no-store" });
+      const response = await demoFetch(`/customers/${id}`, { cache: "no-store" });
       const payload = await readJson<Payload>(response);
       setData(payload);
       setDraft(payload.customer);
@@ -65,14 +58,6 @@ export function ProspectScreen({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
-
-  // Refresh the call list once a test call finishes.
-  useEffect(() => {
-    if (call.state === "ended") {
-      const timer = setTimeout(() => void load(), 1200);
-      return () => clearTimeout(timer);
-    }
-  }, [call.state, load]);
 
   async function save(partial?: Partial<Customer>) {
     if (!draft) return;
@@ -99,7 +84,7 @@ export function ProspectScreen({ id }: { id: string }) {
         profile: partial?.profile ?? draft.profile,
         prompts: partial?.prompts ?? draft.prompts,
       };
-      const response = await promoFetch(`/api/admin/customers/${id}`, {
+      const response = await demoFetch(`/customers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -112,32 +97,6 @@ export function ProspectScreen({ id }: { id: string }) {
       toast.error(caught instanceof Error ? caught.message : "Could not save.");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function research(regeneratePrompts: boolean) {
-    setResearching(true);
-    try {
-      const response = await promoFetch(`/api/admin/customers/${id}/research`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          regeneratePrompts,
-          businessName: draft?.businessName,
-          websiteUrl: draft?.websiteUrl ?? "",
-          mapsUrl: draft?.mapsUrl ?? "",
-          researchNotes: draft?.researchNotes ?? "",
-        }),
-      });
-      const payload = await readJson<{ customer: Customer }>(response);
-      setDraft(payload.customer);
-      setData((current) => (current ? { ...current, customer: payload.customer! } : current));
-      toast.success("Research finished.");
-    } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Research failed.");
-      void load();
-    } finally {
-      setResearching(false);
     }
   }
 
@@ -189,10 +148,6 @@ export function ProspectScreen({ id }: { id: string }) {
               />
               Live
             </label>
-            <Button variant="outline" onClick={() => research(false)} disabled={researching}>
-              <RefreshCw className="size-4" />
-              {researching ? "Researching" : "Re-research"}
-            </Button>
             <Button onClick={() => save()} disabled={saving}>
               {saving ? "Saving" : "Save"}
             </Button>
@@ -209,7 +164,7 @@ export function ProspectScreen({ id }: { id: string }) {
       {stalled ? (
         <div className="bg-destructive/10 ta-label-1 text-destructive rounded-lg p-3">
           Research has been running since {new Date(draft.updatedAt).toLocaleString()},
-          which is longer than it takes. The run behind it is gone. Press Re-research.
+          which is longer than it takes. The run behind it is gone.
         </div>
       ) : null}
 
@@ -231,8 +186,8 @@ export function ProspectScreen({ id }: { id: string }) {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="rounded-xl border shadow-none lg:col-span-2">
+      <div className="grid grid-cols-1 gap-4">
+        <Card className="rounded-xl border shadow-none">
           <CardContent className="p-4 md:p-6">
             {/*
               No CRM tab. The pipeline reads across every prospect at once, so
@@ -295,7 +250,7 @@ export function ProspectScreen({ id }: { id: string }) {
                   onRegenerate={async () => {
                     setSaving(true);
                     try {
-                      const response = await promoFetch(`/api/admin/customers/${id}`, {
+                      const response = await demoFetch(`/customers/${id}`, {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
@@ -324,8 +279,6 @@ export function ProspectScreen({ id }: { id: string }) {
                 <ResearchInputsPanel
                   customer={draft}
                   onChange={(partial) => setDraft({ ...draft, ...partial })}
-                  onResearch={() => research(false)}
-                  researching={researching}
                 />
                 <SourcesPanel
                   dossier={draft.dossier}
@@ -345,33 +298,6 @@ export function ProspectScreen({ id }: { id: string }) {
           </CardContent>
         </Card>
 
-        <Card className="flex flex-col rounded-xl border shadow-none">
-          <CardHeader>
-            <CardTitle className="ta-headline-2">Test call</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-1 flex-col gap-4">
-            <CallPanel
-              compact
-              state={call.state}
-              elapsedSec={call.elapsedSec}
-              usageSec={call.usageSec}
-              muted={call.muted}
-              error={call.error}
-              disabled={draft.status !== "ready" || !draft.active}
-              onDial={call.dial}
-              onHangup={call.hangup}
-              onToggleMute={call.toggleMute}
-              onReset={call.reset}
-            />
-            <div className="min-h-64 flex-1 overflow-y-auto rounded-lg border">
-              <Transcript
-                entries={call.transcript}
-                thinking={call.thinking}
-                emptyMessage="Call to hear how the receptionist answers."
-              />
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </>
   );

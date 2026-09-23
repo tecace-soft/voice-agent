@@ -1,5 +1,5 @@
 
-import { promoFetch } from "@/api";
+import { demoFetch } from "@/api";
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -42,7 +42,7 @@ export function NewCustomerDialog({ onCreated }: { onCreated: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const response = await promoFetch("/api/admin/customers", {
+      const response = await demoFetch("/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

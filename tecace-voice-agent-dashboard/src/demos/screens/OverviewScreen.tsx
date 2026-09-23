@@ -1,5 +1,5 @@
 
-import { promoFetch } from "@/api";
+import { demoFetch } from "@/api";
 import { useCallback, useEffect, useState } from "react";
 import { PhoneCall } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,8 +70,8 @@ export function OverviewScreen() {
 
   const load = useCallback(async () => {
     try {
-      const response = await promoFetch(
-        `/api/admin/analytics?days=${days}${includeTests ? "&includeTests=1" : ""}`,
+      const response = await demoFetch(
+        `/analytics?days=${days}${includeTests ? "&includeTests=1" : ""}`,
         { cache: "no-store" },
       );
       setData(await readJson<Analytics>(response));

@@ -262,12 +262,29 @@ bun run demo:import data/redis-full-dump-2026-09-22.json --dry-run   # look firs
 bun run demo:import data/redis-full-dump-2026-09-22.json
 ```
 
-Against production, pass the connection string inline, the same way `db:clear` is run:
+Against production, supply the connection string for the command. **PowerShell has no inline
+`VAR=value cmd` form** — that is bash syntax, and pasting it gives
+`The term 'DATABASE_URL=...' is not recognized`. Set the variable first instead:
+
+```powershell
+$env:DATABASE_URL = "<production connection string>"
+bun run demo:import data/redis-full-dump-2026-09-22.json --dry-run
+bun run demo:import data/redis-full-dump-2026-09-22.json
+$env:DATABASE_URL = $null   # or just close the window
+```
 
 ```bash
+# bash / Git Bash
 DATABASE_URL="<production connection string>" bun run demo:import data/redis-full-dump-2026-09-22.json --dry-run
 DATABASE_URL="<production connection string>" bun run demo:import data/redis-full-dump-2026-09-22.json
 ```
+
+**The connection string is not the backend's URL.** It starts with `postgres://`, not `https://`;
+`https://transcribe-app-backend.vercel.app` is the deployed API, not its database. Take it from the
+Vercel project's Settings → Environment Variables → `DATABASE_URL`, or run `vercel env pull .env`
+in this directory to write a local `.env` and skip the variable entirely. Use the POOLED host (it
+contains `-pooler`) and keep `?sslmode=require`. The importer refuses anything that is not a
+`postgres://` URL rather than timing out against it.
 
 The 2026-09-22 export should report **10 customers, 21 calls, 51 events, 0 notes**. Different
 numbers mean a different file — stop and check which one you have.
@@ -289,6 +306,8 @@ holds everything in the file.
 
 ### If it refuses
 
+- `❌ DATABASE_URL is not set` — the file parsed fine; there is just no database to import into.
+  Either `cp .env.example .env` and set it, or pass it inline as shown above.
 - `❌ not a Redis export: expected an object with a 'data' object` — wrong file (a CSV, or the zip
   itself rather than the JSON inside it).
 - `❌ N record(s) name a customer the dump does not contain:` followed by the offending ids — the

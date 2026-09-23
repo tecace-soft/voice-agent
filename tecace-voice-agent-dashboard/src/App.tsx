@@ -1,12 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { countOpenFeedback, countUnseenFailures, getTranscribeStats } from "./api/backend";
 import type { AuthUser, MailboxScope, TranscribeStats } from "./api/types";
 import { useAuth } from "./auth";
 import { Sidebar, type ViewId } from "./components/Sidebar";
 import { MailboxPicker } from "./components/MailboxPicker";
-import { lockPromo } from "./demos/api";
 import { DemosView } from "./demos/DemosView";
-import { PromoAuthProvider } from "./demos/PromoAuth";
 import { DEMO_VIEWS } from "./demos/views";
 import { IconPanelLeft, IconRefresh } from "./icons";
 import { AccountsPage } from "./pages/AccountsPage";
@@ -177,142 +175,140 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   };
 
   return (
-    <PromoAuthProvider>
-      <div className="app" data-nav={navOpen ? "open" : "closed"}>
-        <Sidebar
-          active={view}
-          onSelect={openView}
-          failedCount={unseenFailures}
-          openFeedback={openFeedback}
-          lastRunAt={data?.lastRunAt ?? null}
-          mailboxLabel={mailboxLabel}
-          mailboxSubLabel={mailboxSubLabel}
-          showScope={!isDemoView}
-          user={user}
-          onSignOut={onSignOut}
-        />
-        <div className="nav-scrim" onClick={() => setNavOpen(false)} aria-hidden="true" />
+    <div className="app" data-nav={navOpen ? "open" : "closed"}>
+      <Sidebar
+        active={view}
+        onSelect={openView}
+        failedCount={unseenFailures}
+        openFeedback={openFeedback}
+        lastRunAt={data?.lastRunAt ?? null}
+        mailboxLabel={mailboxLabel}
+        mailboxSubLabel={mailboxSubLabel}
+        showScope={!isDemoView}
+        user={user}
+        onSignOut={onSignOut}
+      />
+      <div className="nav-scrim" onClick={() => setNavOpen(false)} aria-hidden="true" />
 
-        <div className="shell">
-          <header className="topbar">
-            <button
-              type="button"
-              className="icon-btn"
-              aria-label={navOpen ? "Hide navigation" : "Show navigation"}
-              aria-expanded={navOpen}
-              onClick={() => setNavOpen((o) => !o)}
-            >
-              <IconPanelLeft size={16} />
-            </button>
-            <nav className="crumbs ta-label-1" aria-label="Breadcrumb">
-              <span className="muted">{isDemoView ? "Demo" : "Transcribe"}</span>
-              <span className="muted" aria-hidden="true">
-                /
-              </span>
-              <span className="crumb-current">{VIEW_TITLES[view]}</span>
-            </nav>
-            <div className="topbar-actions">
-              {isAdmin && !isDemoView && <MailboxPicker value={mailbox} onChange={setMailbox} />}
-              {!isDemoView && (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => void refresh()}
-                  disabled={loading}
-                >
-                  <IconRefresh size={14} />
-                  {loading ? "Refreshing…" : "Refresh"}
-                </button>
-              )}
-              <ThemeToggle />
-            </div>
-          </header>
+      <div className="shell">
+        <header className="topbar">
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={navOpen ? "Hide navigation" : "Show navigation"}
+            aria-expanded={navOpen}
+            onClick={() => setNavOpen((o) => !o)}
+          >
+            <IconPanelLeft size={16} />
+          </button>
+          <nav className="crumbs ta-label-1" aria-label="Breadcrumb">
+            <span className="muted">{isDemoView ? "Demo" : "Transcribe"}</span>
+            <span className="muted" aria-hidden="true">
+              /
+            </span>
+            <span className="crumb-current">{VIEW_TITLES[view]}</span>
+          </nav>
+          <div className="topbar-actions">
+            {isAdmin && !isDemoView && <MailboxPicker value={mailbox} onChange={setMailbox} />}
+            {!isDemoView && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => void refresh()}
+                disabled={loading}
+              >
+                <IconRefresh size={14} />
+                {loading ? "Refreshing…" : "Refresh"}
+              </button>
+            )}
+            <ThemeToggle />
+          </div>
+        </header>
 
-          <main className="content">
-            {/* The accounts view doesn't depend on the stats, so a stats failure shouldn't hide it. */}
-            {error && !STANDALONE_VIEWS.has(view) && !(showMailbox && perPersonViews.has(view)) && (
-              <p className="error ta-body-2">{error}</p>
-            )}
-            {!data && loading && !STANDALONE_VIEWS.has(view) && !(showMailbox && perPersonViews.has(view)) && (
-              <DashboardSkeleton />
-            )}
-            {view === "overview" &&
-              (showMailbox ? (
-                <PersonBoardsPage kind="overview" />
-              ) : (
-                data && (
-                  <OverviewPage
-                    data={data}
-                    mailboxLabel={mailboxLabel}
-                    showMailbox={false}
-                    mailbox={mailbox}
-                    isAdmin={isAdmin}
-                  />
-                )
-              ))}
-            {view === "people" &&
-              (isAdmin ? (
-                <PeoplePage onPick={setMailbox} />
-              ) : (
-                <p className="muted ta-body-2">Only an admin can see everyone's totals.</p>
-              ))}
-            {view === "analytics" &&
-              (showMailbox ? <PersonBoardsPage kind="analytics" /> : <AnalyticsPage mailbox={mailbox} />)}
-            {view === "activity" &&
-              (showMailbox ? <PersonBoardsPage kind="activity" /> : data && <ActivityPage data={data} />)}
-            {data && view === "runs" && <RunsPage data={data} showMailbox={showMailbox} />}
-            {view === "failed" &&
-              (isAdmin ? (
-                <FailuresPage
-                mailbox={mailbox}
-                data={data}
-                showMailbox={showMailbox}
-                  onUnseenChange={setUnseenFailures}
+        <main className="content">
+          {/* The accounts view doesn't depend on the stats, so a stats failure shouldn't hide it. */}
+          {error && !STANDALONE_VIEWS.has(view) && !(showMailbox && perPersonViews.has(view)) && (
+            <p className="error ta-body-2">{error}</p>
+          )}
+          {!data && loading && !STANDALONE_VIEWS.has(view) && !(showMailbox && perPersonViews.has(view)) && (
+            <DashboardSkeleton />
+          )}
+          {view === "overview" &&
+            (showMailbox ? (
+              <PersonBoardsPage kind="overview" />
+            ) : (
+              data && (
+                <OverviewPage
+                  data={data}
+                  mailboxLabel={mailboxLabel}
+                  showMailbox={false}
+                  mailbox={mailbox}
+                  isAdmin={isAdmin}
                 />
-              ) : (
-                <p className="muted ta-body-2">Only an admin can see transcription failures.</p>
-              ))}
-            {view === "calls" && (
-              <CallsPage isAdmin={isAdmin} scope={mailbox} onScope={setMailbox} />
-            )}
-            {view === "business" && (
-              <BusinessPage isAdmin={isAdmin} scope={mailbox} onScope={setMailbox} />
-            )}
-            {view === "numbers" &&
-              (isAdmin ? (
-                <NumbersPage />
-              ) : (
-                <p className="muted ta-body-2">Only an admin can manage the agent's phone numbers.</p>
-              ))}
-            {view === "apiKeys" &&
-              (isAdmin ? (
-                <ApiKeysPage />
-              ) : (
-                <p className="muted ta-body-2">Only an admin can manage API keys.</p>
-              ))}
-            {view === "feedback" && <FeedbackPage />}
-            {view === "allFeedback" &&
-              (isAdmin ? (
-                <AllFeedbackPage onCountChange={setOpenFeedback} />
-              ) : (
-                <p className="muted ta-body-2">Only an admin can read everyone's feedback.</p>
-              ))}
-            {view === "accounts" &&
-              (user.role === "admin" ? (
-                <AccountsPage me={user} onSignOut={onSignOut} />
-              ) : (
-                <p className="muted ta-body-2">Only an admin can manage accounts.</p>
-              ))}
-            {isDemoView &&
-              (isAdmin ? (
-                <DemosView view={view} id={routeId} />
-              ) : (
-                <p className="muted ta-body-2">Only an admin can see the demos.</p>
-              ))}
-          </main>
-        </div>
+              )
+            ))}
+          {view === "people" &&
+            (isAdmin ? (
+              <PeoplePage onPick={setMailbox} />
+            ) : (
+              <p className="muted ta-body-2">Only an admin can see everyone's totals.</p>
+            ))}
+          {view === "analytics" &&
+            (showMailbox ? <PersonBoardsPage kind="analytics" /> : <AnalyticsPage mailbox={mailbox} />)}
+          {view === "activity" &&
+            (showMailbox ? <PersonBoardsPage kind="activity" /> : data && <ActivityPage data={data} />)}
+          {data && view === "runs" && <RunsPage data={data} showMailbox={showMailbox} />}
+          {view === "failed" &&
+            (isAdmin ? (
+              <FailuresPage
+              mailbox={mailbox}
+              data={data}
+              showMailbox={showMailbox}
+                onUnseenChange={setUnseenFailures}
+              />
+            ) : (
+              <p className="muted ta-body-2">Only an admin can see transcription failures.</p>
+            ))}
+          {view === "calls" && (
+            <CallsPage isAdmin={isAdmin} scope={mailbox} onScope={setMailbox} />
+          )}
+          {view === "business" && (
+            <BusinessPage isAdmin={isAdmin} scope={mailbox} onScope={setMailbox} />
+          )}
+          {view === "numbers" &&
+            (isAdmin ? (
+              <NumbersPage />
+            ) : (
+              <p className="muted ta-body-2">Only an admin can manage the agent's phone numbers.</p>
+            ))}
+          {view === "apiKeys" &&
+            (isAdmin ? (
+              <ApiKeysPage />
+            ) : (
+              <p className="muted ta-body-2">Only an admin can manage API keys.</p>
+            ))}
+          {view === "feedback" && <FeedbackPage />}
+          {view === "allFeedback" &&
+            (isAdmin ? (
+              <AllFeedbackPage onCountChange={setOpenFeedback} />
+            ) : (
+              <p className="muted ta-body-2">Only an admin can read everyone's feedback.</p>
+            ))}
+          {view === "accounts" &&
+            (user.role === "admin" ? (
+              <AccountsPage me={user} onSignOut={onSignOut} />
+            ) : (
+              <p className="muted ta-body-2">Only an admin can manage accounts.</p>
+            ))}
+          {isDemoView &&
+            (isAdmin ? (
+              <DemosView view={view} id={routeId} />
+            ) : (
+              <p className="muted ta-body-2">Only an admin can see the demos.</p>
+            ))}
+        </main>
       </div>
-    </PromoAuthProvider>
+    </div>
   );
 }
 
@@ -322,19 +318,6 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
 export function App() {
   const { status, user, needsSetup, signOut } = useAuth();
   const [screen, setScreen] = useState<"signin" | "setup">("signin");
-
-  // The promo cookie is the real credential for the demos, and it knows nothing about dashboard
-  // roles — so it goes whenever the dashboard session ends, however it ends (sign-out click,
-  // expired or revoked token). Not in PromoAuthProvider's unmount: StrictMode would fire that on
-  // every dev load.
-  const wasSignedIn = useRef(false);
-  useEffect(() => {
-    if (status === "signed-in") wasSignedIn.current = true;
-    else if (status === "signed-out" && wasSignedIn.current) {
-      wasSignedIn.current = false;
-      void lockPromo();
-    }
-  }, [status]);
 
   if (status === "loading") {
     return (

@@ -3,15 +3,19 @@
 Every route the dashboard calls answers with fixed data shaped like src/api/types.ts. Nothing is
 stored: a POST that would change state answers as if it worked and forgets it, so two runs in a row
 (old app, then new app) see exactly the same backend.
-"""
+
+That includes the Demo tabs' /demo/* routes, at the bottom of this file: they used to be a second
+fake standing in for voiceagent_promo, and folded in here when the demo records moved into
+transcribe-db behind this API's own admin session."""
 
 from __future__ import annotations
 
 import json
+import re
 import threading
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 NOW = datetime(2026, 9, 15, 18, 0, 0, tzinfo=timezone.utc)
 
@@ -175,12 +179,610 @@ KEYS = [
 ]
 
 
-def route(method: str, path: str, query: dict, user: dict | None):
+# --- The Demo tabs: /demo/* -----------------------------------------------------------------------
+#
+# Folded in from the retired fake_promo.py. The Demo screens used to read voiceagent_promo through a
+# /promo-api proxy with the promo's own httpOnly cookie; they now read transcribe-backend's /demo/*
+# routes with the dashboard's bearer token, so the fake promo moved in here — the same fixtures
+# (Harbor Dental, Cedar Bakery) and the same response bodies, on the new paths and behind this
+# fake's admin token.
+#
+# The record shapes are the promo's lib/types.ts (Customer, CustomerWithStats, CallLog,
+# TranscriptEntry, CallReview, TrackEvent, CrmNote) and lib/analytics.ts (Kpis, DayBucket,
+# computeStats), which src/routes/demo.ts answers with unchanged:
+# - every /demo/* route needs an admin token: none -> 401 {error:"unauthorized", message:…},
+#   a signed-in non-admin -> 403 {error:"forbidden", message:"Only an admin can read the demo data."}
+#   (auth/guard.ts authenticateAdmin)
+# - GET /demo/analytics?days=N[&includeTests=1] -> {kpis, window, callsPerDay, topCustomers,
+#   recentCalls, realCallCount, testCallCount, includeTests} (N outside 7/30/90 -> 30, as the route).
+#   testCallCount counts the window's test calls whether or not includeTests=1, as the route's
+#   `testCalls(windowRaw)` does (the Overview only shows it when test calls are left out)
+# - GET /demo/customers -> {customers: CustomerWithStats[]} (Harbor Dental: ready, live, hot;
+#   Cedar Bakery: researching, paused, cold, no profile name yet)
+# - POST /demo/customers -> 201 {customer}; no businessName -> 400 "Enter the business name."; a
+#   website without http(s):// -> 400; a mapsUrl that isn't a Google Maps link -> 400
+# - GET /demo/customers/<id> -> {customer, stats, calls, events, notes}. Harbor Dental has four
+#   calls (newest first: a test call; two reviewed customer calls whose reviews share the gap "No
+#   price list for implants"; one unreviewed), 14 page views from 4 visitors and one CRM note —
+#   `stats` is computeStats() of exactly these, so the list, analytics and detail all agree.
+#   Cedar Bakery has none.
+# - PATCH /demo/customers/<id> -> {customer}: the route's merge (trimmed strings, "" clears,
+#   null/"" dates clear) and resolvePrompts() (a changed prompt text -> prompts.edited true;
+#   regeneratePrompts -> rebuilt). A voice not in LIVE_VOICES -> 400 "Unknown voice."; a stage not
+#   in CUSTOMER_STAGES -> 400 "Unknown stage."
+# - DELETE /demo/customers/<id> -> {ok: true}
+# - GET /demo/customers/<id>/calls -> {calls}; PATCH …/calls {callId, isTest | analyze: true}
+#   -> {call}; neither -> 400 "Send a callId with isTest or analyze."; unknown call -> 404 "Call not
+#   found.". `analyze` is accepted and answers with the call unchanged, as the backend does now that
+#   the promo's review pipeline is retired.
+# - GET /demo/crm -> {customers, feed}: the same two CustomerWithStats records the list route serves
+#   (so the board's stage counts and heat agree), and activityFeed() over the same call / event /
+#   note table the detail route reads — Harbor's calls, views and note plus Cedar's note, newest
+#   first, each row carrying customerId/customerName (and callId on a call row). Harbor is stage
+#   "interested"; Cedar is "contacted" with a followUpAt a day old, so the page's "Due now" section
+#   has exactly one entry.
+# - GET /demo/customers/<id>/notes -> {notes}; POST -> 201 {note} ({id, at, text}, not stored);
+#   blank/whitespace text -> 400 "Write something first." (checked before the customer, as the
+#   route does)
+# - an unknown <id> on any /demo/customers/<id> route -> 404 {error: "Customer not found."}
+#
+# STATELESS, like the rest of this fake: writes answer as if they worked and change nothing, so
+# every run starts from the same records.
+#
+# Timestamps here are relative to the moment of the request (the promo's records are), not the
+# pinned NOW the transcribe fixtures use: demos_e2e.py doesn't pin the clock, and "researching"
+# vs "stalled" and "due now" are read off the wall clock.
+
+DEMO_IS_ADMIN = "Only an admin can read the demo data."
+# auth/guard.ts: UNAUTHORIZED, and the denial authenticateAdmin() builds for a non-admin.
+DEMO_UNAUTHORIZED = {"error": "unauthorized", "message": "Sign in to continue."}
+DEMO_FORBIDDEN = {"error": "forbidden", "message": DEMO_IS_ADMIN}
+
+# demo/types.ts LIVE_VOICES and CUSTOMER_STAGES, which PATCH validates against.
+LIVE_VOICES = ("gleam", "meridian", "delta", "cinder", "quartz", "ripple", "vesper", "willow",
+               "stone", "beacon", "bossa", "tempo")
+CUSTOMER_STAGES = ("new", "contacted", "interested", "won", "lost")
+LANGUAGES = ("en", "ko", "es", "zh", "ja", "vi", "fr", "de", "pt", "ru")
+MAPS_SHORT_HOSTS = ("maps.app.goo.gl", "goo.gl", "g.co")
+
+
+def _iso_ms(dt: datetime) -> str:
+    """The promo's timestamps: `new Date().toISOString()` (UTC, milliseconds, `Z`)."""
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+
+
+def _ago(**delta: float) -> str:
+    return _iso_ms(datetime.now(timezone.utc) - timedelta(**delta))
+
+
+def _prompts(name: str, agent: str) -> dict:
+    """Stands in for the promo's lib/prompt.ts buildPrompts()."""
+    who = name or "the business"
+    return {
+        "live": f"You are {agent}, the receptionist at {who}. Answer callers warmly.",
+        "backend": f"Facts about {who} for the receptionist.",
+        "greeting": f"Thanks for calling {name or 'us'}, this is {agent}. How can I help?",
+        "edited": False,
+        "version": 1,
+    }
+
+
+def _empty_profile(name: str) -> dict:
+    return {"name": name, "category": "", "address": "", "hours": [], "services": [],
+            "highlights": [], "policies": {}, "faqs": []}
+
+
+def _empty_stats() -> dict:
+    """demo/analytics.ts emptyStats()."""
+    return {"views": 0, "calls": 0, "totalSec": 0, "visitors": 0}
+
+
+HARBOR_CONTACT = "Dana Reyes"
+SHARED_GAP = "No price list for implants"
+
+# Harbor Dental's calls, newest first: (id, days ago, duration s, turns, isTest, review gaps or
+# None for no review). The analytics recent-calls table, the detail page's Activity tab and every
+# count (list stats, KPIs) come from this one table. 3 real calls (540 s) + 1 test call (60 s).
+CALL_SPECS = [
+    ("call1", 0, 60, 4, True, None),
+    ("call2", 0, 240, 18, False, [SHARED_GAP, "Could not say if Saturday opens again"]),
+    ("call3", 1, 180, 12, False, [SHARED_GAP]),
+    ("call4", 4, 120, 9, False, None),
+]
+VISITORS = ["v-anna", "v-ben", "v-cara", "v-dev"]
+HARBOR_VIEWS = 14
+
+LINES = [
+    ("receptionist", "Thanks for calling Harbor Dental, this is Alex. How can I help?"),
+    ("caller", "Hi, I'd like to book a cleaning next week."),
+    ("receptionist", "Of course. We have Tuesday at ten or Thursday at two."),
+    ("caller", "Thursday works. How much is a cleaning?"),
+    ("receptionist", "A cleaning is one hundred and twenty dollars."),
+    ("caller", "And what about implants, roughly?"),
+    ("receptionist", "I don't have implant prices, but the dentist can go through them with you."),
+    ("caller", "Okay. Is there parking?"),
+    ("receptionist", "Yes, there's free parking right behind the building."),
+    ("caller", "Great. Are you open on Saturdays?"),
+    ("receptionist", "We're closed at weekends, Monday to Friday eight to five."),
+    ("caller", "Do you take new patients?"),
+    ("receptionist", "We do, and we'd be glad to have you."),
+    ("caller", "Can I cancel if something comes up?"),
+    ("receptionist", "Just give us twenty-four hours' notice."),
+    ("caller", "Perfect, book me in for Thursday then."),
+    ("receptionist", "Done. Thursday at two. Anything else?"),
+    ("caller", "No, that's all, thanks."),
+]
+
+
+def _transcript(call_id: str, turns: int) -> list[dict]:
+    """`turns` TranscriptEntry records (caller/receptionist, startMs/endMs)."""
+    out = []
+    at = 0
+    for i, (speaker, text) in enumerate(LINES[:turns]):
+        length = 1500 + 60 * len(text)
+        out.append({"id": f"{call_id}-t{i + 1}", "speaker": speaker, "text": text,
+                    "startMs": at, "endMs": at + length})
+        at += length + 400
+    return out
+
+
+def _review(gaps: list[str], at: str) -> dict:
+    return {
+        "at": at,
+        "model": "fake-review",
+        "tested": "Booking a cleaning and asking about prices.",
+        "worked": "Offered two times straight away and booked one.",
+        "struggled": "Had no price for implants.",
+        "gaps": gaps,
+        "sentiment": "happy",
+    }
+
+
+def harbor_calls() -> list[dict]:
+    """Harbor Dental's CallLogs, newest first (db/demoRead.ts listCalls order)."""
+    calls = []
+    for i, (call_id, days, sec, turns, is_test, gaps) in enumerate(CALL_SPECS):
+        started = datetime.now(timezone.utc) - timedelta(days=days, minutes=30 + 60 * i)
+        ended = started + timedelta(seconds=sec)
+        call = {
+            "id": call_id, "customerId": "pr0SPct1", "liveSessionId": f"sess_{call_id}",
+            "startedAt": _iso_ms(started), "endedAt": _iso_ms(ended), "durationSec": sec,
+            "status": "completed", "endReason": "caller_hung_up", "turns": turns,
+            "transcript": _transcript(call_id, turns), "visitorId": VISITORS[0], "isTest": is_test,
+        }
+        if gaps is not None:
+            call["review"] = _review(gaps, _iso_ms(ended))
+        calls.append(call)
+    return calls
+
+
+def harbor_events() -> list[dict]:
+    """HARBOR_VIEWS page_view TrackEvents from 4 visitors, the newest 3 hours ago."""
+    return [{"type": "page_view", "customerId": "pr0SPct1",
+             "at": _ago(hours=3 + 7 * i), "visitorId": VISITORS[i % len(VISITORS)]}
+            for i in range(HARBOR_VIEWS)]
+
+
+def harbor_notes() -> list[dict]:
+    return [{"id": "note1", "at": _ago(days=2), "text": "Asked for a follow-up after the expo."}]
+
+
+def cedar_notes() -> list[dict]:
+    """Cedar has no calls or views (its stats stay empty, so its heat stays "cold / No activity
+    yet"), but one note — enough for the CRM feed to carry both prospects."""
+    return [{"id": "note2", "at": _ago(hours=5), "text": "Left a voicemail with the owner."}]
+
+
+def compute_stats(calls: list[dict], events: list[dict]) -> dict:
+    """demo/analytics.ts computeStats(): only real, finished calls count."""
+    real = [c for c in calls if not c["isTest"] and c["status"] != "started"]
+    seen = {x["visitorId"] for x in events + calls if x.get("visitorId")}
+    anonymous = any(not x.get("visitorId") for x in events + calls)
+    stats = {"views": len(events), "calls": len(real),
+             "totalSec": sum(c.get("durationSec") or 0 for c in real),
+             "visitors": len(seen) + (1 if anonymous else 0)}
+    last_call = real[0] if real else next((c for c in calls if not c["isTest"]), None)
+    if last_call:
+        stats["lastCallAt"] = last_call["startedAt"]
+    if events:
+        stats["lastViewAt"] = max(e["at"] for e in events)
+    return stats
+
+
+def harbor_detail() -> dict:
+    calls, events = harbor_calls(), harbor_events()
+    return {"calls": calls, "events": events, "notes": harbor_notes(),
+            "stats": compute_stats(calls, events)}
+
+
+def detail_for(customer_id: str) -> dict:
+    """One prospect's calls, events, notes and stats — the one table the detail route, the CRM
+    feed and the notes routes all read."""
+    if customer_id == "pr0SPct1":
+        return harbor_detail()
+    if customer_id == "cedar42":
+        return {"calls": [], "events": [], "notes": cedar_notes(), "stats": _empty_stats()}
+    return {"calls": [], "events": [], "notes": [], "stats": _empty_stats()}
+
+
+def _format_duration(seconds: int | None) -> str:
+    """demo/analytics.ts formatDuration()."""
+    if not seconds or seconds < 1:
+        return "0:00"
+    return f"{seconds // 60}:{round(seconds % 60):02d}"
+
+
+def activity_feed(limit: int = 40) -> list[dict]:
+    """demo/analytics.ts activityFeed(): every prospect's timeline() rows, newest first, each
+    carrying the prospect it belongs to (FeedEntry = TimelineEntry & {customerId, customerName})."""
+    entries = []
+    for customer in prospects():
+        detail = detail_for(customer["id"])
+        name = customer["profile"]["name"] or customer["businessName"] or "Unnamed"
+        who = {"customerId": customer["id"], "customerName": name}
+        for note in detail["notes"]:
+            entries.append({"at": note["at"], "kind": "note", "text": note["text"], **who})
+        for event in detail["events"]:
+            entries.append({"at": event["at"], "kind": "view", "text": "Opened the demo link", **who})
+        for call in detail["calls"]:
+            turns = call.get("turns", len(call["transcript"]))
+            length = _format_duration(call.get("durationSec"))
+            entries.append({
+                "at": call["startedAt"], "kind": "call", "callId": call["id"],
+                "text": (f"Your test call · {length} · {turns} turns" if call["isTest"]
+                         else f"Called · {length} · {turns} turns"),
+                **who,
+            })
+    entries.sort(key=lambda e: e["at"], reverse=True)
+    return entries[:limit]
+
+
+def prospects() -> list[dict]:
+    """Two full CustomerWithStats records. Cedar's profile has no name yet (research is running),
+    so the table shows it as "Unnamed" and search finds it by its contact email. Timestamps are
+    relative to now, so Cedar Bakery reads as "researching" (not stalled — demo/analytics.ts
+    RESEARCH_STALL_MS) and Harbor's last call is today."""
+    weekdays = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+    harbor = {
+        "id": "pr0SPct1",
+        "label": "Met at the expo",
+        "contactName": HARBOR_CONTACT,
+        "contactEmail": "dana@harbordental.example",
+        "active": True,
+        "businessName": "Harbor Dental",
+        "websiteUrl": "https://harbordental.example",
+        "profile": {
+            "name": "Harbor Dental",
+            "category": "Dentist",
+            "address": "12 Wharf St, Portland, ME",
+            "phone": "+1 207 555 0142",
+            "website": "https://harbordental.example",
+            "hours": [{"day": d, "open": "08:00", "close": "17:00"} for d in weekdays]
+            + [{"day": "Saturday", "open": "", "close": "", "closed": True},
+               {"day": "Sunday", "open": "", "close": "", "closed": True}],
+            "services": [{"name": "Cleaning", "price": "$120"},
+                         {"name": "Whitening", "description": "In-office, one visit."}],
+            "highlights": ["Same-week appointments", "Free parking"],
+            "policies": {"cancellation": "24 hours notice, please.",
+                         "payment": "Cards and most insurance."},
+            "faqs": [{"q": "Do you take new patients?", "a": "Yes."}],
+            "rating": 4.8,
+        },
+        "dossier": ("## Harbor Dental\n\n**Family dental practice** on the Portland waterfront.\n\n"
+                    "- Same-week appointments\n- Free parking behind the building\n"
+                    "- Cleaning from $120\n"),
+        "sources": [{"url": "https://harbordental.example", "title": "Harbor Dental"},
+                    {"url": "https://maps.google.com/?cid=42", "title": "Harbor Dental on Google Maps"}],
+        "prompts": _prompts("Harbor Dental", "Alex"),
+        "voice": "gleam",
+        "callSound": {"phoneLine": True, "ambience": "quiet"},
+        "agentName": "Alex",
+        "language": "en",
+        "stage": "interested",
+        "status": "ready",
+        "createdAt": _ago(days=10),
+        "updatedAt": _ago(days=2),
+        "researchedAt": _ago(days=10),
+        "stats": harbor_detail()["stats"],
+        # engagement(): 3 calls*12 + 9 min*6 + 39 turns*0.6 + min(14 views, 10) = 123.4 -> hot
+        "heat": {"score": 123, "level": "hot", "reason": "3 calls · 9 min · today"},
+    }
+    cedar = {
+        "id": "cedar42",
+        "contactName": "Sam Ortiz",
+        "contactEmail": "sam@cedarbakery.example",
+        # Paused, so the table's live switch can be seen going both ways (Harbor's is live).
+        "active": False,
+        "businessName": "Cedar Bakery",
+        "profile": _empty_profile(""),
+        "dossier": "",
+        "sources": [],
+        "prompts": _prompts("", "Alex"),
+        "voice": "gleam",
+        "callSound": {"phoneLine": True, "ambience": "quiet"},
+        "agentName": "Alex",
+        "language": "en",
+        "status": "researching",
+        # dueFollowUps() counts a followUpAt whose instant is <= now, soonest first.
+        "stage": "contacted",
+        "followUpAt": _ago(days=1),
+        "createdAt": _ago(minutes=1),
+        "updatedAt": _ago(minutes=1),
+        "stats": _empty_stats(),
+        "heat": {"score": 0, "level": "cold", "reason": "No activity yet"},
+    }
+    return [harbor, cedar]
+
+
+def _bare(record: dict) -> dict:
+    """A CustomerWithStats as the plain Customer the [id] routes answer with."""
+    return {k: v for k, v in record.items() if k not in ("stats", "heat")}
+
+
+def demo_analytics(days: int, include_tests: bool) -> dict:
+    """GET /demo/analytics, shaped as src/routes/demo.ts answers it."""
+    window = days if days in (7, 30, 90) else 30
+    calls = harbor_calls()
+    in_window = [s for s in CALL_SPECS if s[1] < window and (include_tests or not s[4])]
+    total_sec = sum(s[2] for s in in_window)
+    today = datetime.now(timezone.utc).date()
+    per_day = []
+    for offset in range(window - 1, -1, -1):
+        on_day = [s for s in in_window if s[1] == offset]
+        per_day.append({"date": (today - timedelta(days=offset)).isoformat(),
+                        "calls": len(on_day),
+                        "minutes": round(sum(s[2] for s in on_day) / 60, 1)})
+    return {
+        "kpis": {
+            "customers": 2,
+            "testedCustomers": 1 if in_window else 0,
+            "totalCalls": len(in_window),
+            "totalMinutes": round(total_sec / 60, 1),
+            "avgCallSec": round(total_sec / len(in_window)) if in_window else 0,
+            "totalViews": HARBOR_VIEWS,
+        },
+        "window": window,
+        "callsPerDay": per_day,
+        "topCustomers": [{"id": "pr0SPct1", "name": "Harbor Dental",
+                          "minutes": round(total_sec / 60, 1), "calls": len(in_window)}]
+        if in_window else [],
+        # Recent calls ignore the window and the test filter, as the route's `calls.slice(0, 20)`.
+        "recentCalls": [
+            {"id": c["id"], "customerId": "pr0SPct1", "customerName": "Harbor Dental",
+             "contactName": HARBOR_CONTACT, "startedAt": c["startedAt"],
+             "durationSec": c["durationSec"], "status": c["status"], "isTest": c["isTest"],
+             "turns": c["turns"]}
+            for c in calls
+        ],
+        "realCallCount": len([c for c in calls if not c["isTest"]]),
+        "testCallCount": len([s for s in CALL_SPECS if s[4] and s[1] < window]),
+        "includeTests": include_tests,
+    }
+
+
+def is_maps_url(raw: str) -> bool:
+    """routes/demo.ts isMapsUrl(): a URL whose host (minus www.) is a Google short-link host, ends
+    with google.com or starts with maps.google. (urlparse stands in for `new URL`, which throws on
+    anything without a scheme and host.)"""
+    try:
+        parsed = urlparse(raw)
+        host = (parsed.hostname or "").removeprefix("www.")
+    except ValueError:
+        return False
+    if not parsed.scheme or not host:
+        return False
+    return host in MAPS_SHORT_HOSTS or host.endswith("google.com") or host.startswith("maps.google.")
+
+
+def new_customer(body: dict, name: str) -> dict:
+    """The record POST /demo/customers saves."""
+    agent = str(body.get("agentName") or "Alex").strip() or "Alex"
+    now = _ago(seconds=0)
+    record = {
+        "id": "n3wCustomer1",
+        "active": True,
+        "businessName": name,
+        "profile": _empty_profile(name),
+        "dossier": "",
+        "sources": [],
+        "prompts": _prompts(name, agent),
+        "voice": "gleam",
+        "callSound": {"phoneLine": True, "ambience": "quiet"},
+        "agentName": agent,
+        "language": "en",
+        "status": "researching",
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    for key in ("label", "contactName", "contactEmail", "researchNotes", "websiteUrl", "mapsUrl"):
+        value = str(body.get(key) or "").strip()
+        if value:
+            record[key] = value
+    return record
+
+
+def _set_or_clear(record: dict, key: str, value) -> None:
+    if value:
+        record[key] = value
+    else:
+        record.pop(key, None)
+
+
+def patched(customer: dict, body: dict) -> dict:
+    """PATCH /demo/customers/<id>: the merged record it saves and answers."""
+    nxt = dict(customer)
+    if str(body.get("businessName") or "").strip():
+        nxt["businessName"] = body["businessName"].strip()
+    for key in ("websiteUrl", "mapsUrl", "researchNotes", "label", "contactName", "contactEmail",
+                "notes"):
+        if key in body and body[key] is not None:
+            _set_or_clear(nxt, key, str(body[key]).strip())
+    if body.get("active") is not None:
+        nxt["active"] = body["active"]
+    if str(body.get("agentName") or "").strip():
+        nxt["agentName"] = body["agentName"].strip()
+    if isinstance(body.get("demoMinutes"), (int, float)) and not isinstance(body["demoMinutes"], bool):
+        nxt["demoMinutes"] = max(0, round(body["demoMinutes"]))
+    for key in ("voice", "stage", "callSound", "profile"):
+        if body.get(key) is not None:
+            nxt[key] = body[key]
+    if "language" in body:
+        nxt["language"] = body["language"] if body["language"] in LANGUAGES else "en"
+    for key in ("lastContactedAt", "followUpAt"):  # null/"" clears; absent leaves it
+        if key in body:
+            _set_or_clear(nxt, key, body[key])
+    nxt["updatedAt"] = _ago(seconds=0)
+    # lib/prompt.ts resolvePrompts()
+    current = customer["prompts"]
+    submitted = body.get("prompts")
+    rebuilt = _prompts(nxt["profile"].get("name", ""), nxt["agentName"])
+    if body.get("regeneratePrompts"):
+        nxt["prompts"] = rebuilt
+    else:
+        typed = None
+        if isinstance(submitted, dict):
+            typed = {k: submitted.get(k) if submitted.get(k) is not None else current[k]
+                     for k in ("live", "backend", "greeting")}
+        if typed and any(typed[k] != current[k] for k in typed):
+            nxt["prompts"] = {**typed, "edited": True}
+        else:
+            nxt["prompts"] = current if current.get("edited") else rebuilt
+    return nxt
+
+
+def _demo_json(raw: bytes) -> dict | None:
+    """The request's JSON object, or None for anything else (the caller answers 400)."""
+    try:
+        body = json.loads(raw)  # an empty body fails too, as Elysia's parse does
+    except ValueError:
+        return None
+    return body if isinstance(body, dict) else None
+
+
+def _demo_customer(wanted: str) -> dict | None:
+    return next((p for p in prospects() if p["id"] == wanted), None)
+
+
+DEMO_NOT_FOUND = {"error": "Customer not found."}
+DEMO_BAD_BODY = {"error": "Invalid request body."}
+
+
+def demo_route(method: str, path: str, query: dict, raw_body: bytes):
+    """One /demo/* request, already known to come from an admin. `path` is what follows /demo."""
+    if path == "/analytics" and method == "GET":
+        try:
+            days = int(query.get("days", ["30"])[0])
+        except ValueError:
+            days = 30
+        return 200, demo_analytics(days, query.get("includeTests", [""])[0] == "1")
+    if path == "/crm" and method == "GET":
+        return 200, {"customers": prospects(), "feed": activity_feed()}
+    if path == "/customers" and method == "GET":
+        return 200, {"customers": prospects()}
+    if path == "/customers" and method == "POST":
+        body = _demo_json(raw_body)
+        if body is None:
+            return 400, DEMO_BAD_BODY
+        name = str(body.get("businessName") or "").strip()
+        if not name:
+            return 400, {"error": "Enter the business name."}
+        website = str(body.get("websiteUrl") or "").strip()
+        if website and not re.match(r"^https?://", website, re.IGNORECASE):
+            return 400, {"error": "The website must start with http:// or https://."}
+        maps = str(body.get("mapsUrl") or "").strip()
+        if maps and not is_maps_url(maps):
+            return 400, {"error": "That does not look like a Google Maps link."}
+        return 201, {"customer": new_customer(body, name)}
+
+    prefix = "/customers/"
+    if path.startswith(prefix):
+        parts = [unquote(p) for p in path[len(prefix):].split("/")]
+        if len(parts) == 1 and method in ("GET", "PATCH", "DELETE"):
+            return demo_customer_route(method, parts[0], raw_body)
+        if len(parts) == 2 and parts[1] == "notes" and method in ("GET", "POST"):
+            return demo_notes_route(method, parts[0], raw_body)
+        if len(parts) == 2 and parts[1] == "calls" and method in ("GET", "PATCH"):
+            return demo_calls_route(method, parts[0], raw_body)
+    return 404, {"error": f"No fake for {method} /demo{path}"}
+
+
+def demo_customer_route(method: str, wanted: str, raw_body: bytes):
+    match = _demo_customer(wanted)
+    if match is None:
+        return 404, DEMO_NOT_FOUND
+    if method == "GET":
+        detail = detail_for(wanted)
+        return 200, {"customer": _bare(match), "stats": detail["stats"], "calls": detail["calls"],
+                     "events": detail["events"], "notes": detail["notes"]}
+    if method == "DELETE":
+        return 200, {"ok": True}
+    body = _demo_json(raw_body)
+    if body is None:
+        return 400, DEMO_BAD_BODY
+    if body.get("voice") and body["voice"] not in LIVE_VOICES:
+        return 400, {"error": "Unknown voice."}
+    if body.get("stage") and body["stage"] not in CUSTOMER_STAGES:
+        return 400, {"error": "Unknown stage."}
+    return 200, {"customer": patched(_bare(match), body)}
+
+
+def demo_notes_route(method: str, wanted: str, raw_body: bytes):
+    """The blank-text 400 comes before the 404, as the route does."""
+    if method == "GET":
+        if _demo_customer(wanted) is None:
+            return 404, DEMO_NOT_FOUND
+        return 200, {"notes": detail_for(wanted)["notes"]}
+    body = _demo_json(raw_body)
+    if body is None:
+        return 400, DEMO_BAD_BODY
+    text = str(body.get("text") or "").strip()
+    if not text:
+        return 400, {"error": "Write something first."}
+    if _demo_customer(wanted) is None:
+        return 404, DEMO_NOT_FOUND
+    # Stateless: the note comes back as if it were stored, and isn't.
+    return 201, {"note": {"id": "note-new", "at": _ago(seconds=0), "text": text}}
+
+
+def demo_calls_route(method: str, wanted: str, raw_body: bytes):
+    if method == "GET":
+        if _demo_customer(wanted) is None:
+            return 404, DEMO_NOT_FOUND
+        return 200, {"calls": harbor_calls() if wanted == "pr0SPct1" else []}
+    body = _demo_json(raw_body)
+    if body is None:
+        return 400, DEMO_BAD_BODY
+    analyze = body.get("analyze") is True
+    if not body.get("callId") or (not isinstance(body.get("isTest"), bool) and not analyze):
+        return 400, {"error": "Send a callId with isTest or analyze."}
+    if _demo_customer(wanted) is None:
+        return 404, DEMO_NOT_FOUND
+    calls = harbor_calls() if wanted == "pr0SPct1" else []
+    call = next((c for c in calls if c["id"] == body["callId"]), None)
+    if call is None:
+        return 404, {"error": "Call not found."}
+    # `analyze` answers with the call unchanged: the promo's review pipeline is retired, and the
+    # backend's route says so in as many words.
+    return 200, {"call": dict(call, isTest=body["isTest"])
+                 if isinstance(body.get("isTest"), bool) else call}
+
+# --- Dispatch -------------------------------------------------------------------------------------
+
+def route(method: str, path: str, query: dict, user: dict | None, body: bytes = b""):
     """Returns (status, body). `user` is None when no/unknown bearer token was sent."""
     if path == "/auth/setup-state":
         return 200, {"needsSetup": False}
     if path == "/auth/login" and method == "POST":
         return 401, {"message": "Wrong email or password."}
+    # The Demo tabs, in the backend's own denial shapes (auth/guard.ts), which differ from the
+    # transcribe routes' plain {message}: no token is 401 `unauthorized`, a signed-in non-admin
+    # is 403 `forbidden` naming what needs the admin.
+    if path.startswith("/demo/"):
+        if user is None:
+            return 401, DEMO_UNAUTHORIZED
+        if user["role"] != "admin":
+            return 403, DEMO_FORBIDDEN
+        return demo_route(method, path[len("/demo"):], query, body)
     if user is None:
         return 401, {"message": "Not signed in."}
     admin = user["role"] == "admin"
@@ -233,7 +835,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "authorization, content-type, accept")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
@@ -244,9 +846,10 @@ class Handler(BaseHTTPRequestHandler):
         auth = self.headers.get("authorization", "")
         user = TOKENS.get(auth.removeprefix("Bearer ").strip())
         length = int(self.headers.get("content-length") or 0)
-        if length:
-            self.rfile.read(length)  # drain; the fake never uses bodies
-        status, body = route(method, url.path, parse_qs(url.query), user)
+        # Read it whatever the route does with it: an unread body would be left in the socket.
+        # Only the /demo/* writes look at it; the transcribe fakes ignore theirs.
+        raw = self.rfile.read(length) if length else b""
+        status, body = route(method, url.path, parse_qs(url.query), user, raw)
         self._send(status, body)
 
     def do_OPTIONS(self):  # noqa: N802 — BaseHTTPRequestHandler naming
@@ -257,6 +860,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):  # noqa: N802
         self._handle("POST")
+
+    def do_PATCH(self):  # noqa: N802
+        self._handle("PATCH")
 
     def do_DELETE(self):  # noqa: N802
         self._handle("DELETE")
@@ -280,7 +886,7 @@ def start(port: int = 8899) -> ThreadingHTTPServer:
 
 if __name__ == "__main__":
     srv = start()
-    print("fake transcribe-backend on http://127.0.0.1:8899 — Ctrl+C to stop")
+    print("fake transcribe-backend (transcribe + /demo) on http://127.0.0.1:8899 — Ctrl+C to stop")
     try:
         threading.Event().wait()
     except KeyboardInterrupt:

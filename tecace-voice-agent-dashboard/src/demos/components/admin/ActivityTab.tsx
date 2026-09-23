@@ -1,10 +1,9 @@
 
-import { promoFetch } from "@/api";
+import { demoFetch } from "@/api";
 import { useState } from "react";
-import { PhoneCall, Sparkles, Wrench } from "lucide-react";
+import { PhoneCall, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { readJson } from "@/lib/http";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
   Sheet,
@@ -52,13 +51,11 @@ function CallCard({
   busy,
   onOpen,
   onSetKind,
-  onAnalyze,
 }: {
   call: CallLog;
   busy: boolean;
   onOpen: () => void;
   onSetKind: (isTest: boolean) => void;
-  onAnalyze: () => void;
 }) {
   const said = callerSaid(call);
   const review = call.review;
@@ -109,16 +106,8 @@ function CallCard({
       ) : (
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <p className="ta-caption-1 text-muted-foreground">
-            {call.status === "started"
-              ? "Still on the line."
-              : "Not reviewed — this call happened before reviews, or the model was unreachable."}
+            {call.status === "started" ? "Still on the line." : "Not reviewed."}
           </p>
-          {call.status === "started" ? null : (
-            <Button size="sm" variant="outline" disabled={busy} onClick={onAnalyze}>
-              <Sparkles className="size-3.5" aria-hidden />
-              Analyze
-            </Button>
-          )}
         </div>
       )}
 
@@ -157,7 +146,7 @@ export function ActivityTab({
   async function patch(call: CallLog, body: Record<string, unknown>, done: string) {
     setBusyId(call.id);
     try {
-      const response = await promoFetch(`/api/admin/customers/${customerId}/calls`, {
+      const response = await demoFetch(`/customers/${customerId}/calls`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ callId: call.id, ...body }),
@@ -234,7 +223,6 @@ export function ActivityTab({
                 isTest ? "Counted as your test." : "Counted as a customer call.",
               )
             }
-            onAnalyze={() => void patch(call, { analyze: true }, "Reviewed.")}
           />
         ))}
       </ul>

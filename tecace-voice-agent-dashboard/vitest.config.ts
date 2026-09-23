@@ -14,7 +14,7 @@ export default defineConfig({
   resolve: {
     alias: [{ find: /^@\//, replacement: fileURLToPath(new URL("./src/demos/", import.meta.url)) }],
   },
-  // vite.config.ts defines this for the app build; a future component test would otherwise hit a
-  // ReferenceError the moment it imports anything that reads __PROMO_TARGET__.
-  define: { __BACKEND_URL__: '""', __PROMO_TARGET__: '""' },
+  // vite.config.ts defines this for the app build; a test would otherwise hit a ReferenceError the
+  // moment it imports anything that reads __BACKEND_URL__ (src/demos/api.ts does, at module load).
+  define: { __BACKEND_URL__: '""' },
 });

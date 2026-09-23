@@ -37,28 +37,33 @@ The header of `src/styles/index.css` explains the layer order and why; read it b
   remount on theme change (`key={theme}`).
 - Never hardcode a hex — reference a token (`var(--…)` in legacy CSS, a utility in promo markup).
 
-## The Demos section (promo)
+## The Demos section
 
-- `src/demos/api.ts` is the only code that knows where the promo backend is: same-origin
-  `/promo-api/*`, proxied to voiceagent_promo's `/api/*` (`vite.config.ts`, `PROMO_API_URL`). Every
-  promo call goes through `promoRequest`; its errors are `unreachable` / `locked` / `failed`, and
-  `fromPromo` says whether the promo itself answered (only that proves its auth let us through).
-- The promo has its own admin password until its backend is merged. `PromoAuth` holds that state
-  (probed on the first Demos visit only, one probe at a time); `DemosGate` shows the unlock or
-  unreachable card and is the `.tw` boundary for everything in the section. A promo 401 re-locks
-  the demos; it never signs anyone out of the dashboard.
-- The promo cookie is the real credential for the demos and knows nothing about dashboard roles, so
-  `App` clears it whenever the dashboard session ends — a click, or an expired/revoked token. Keep
-  it that way.
-- Proxy only `/promo-api/*`. The prospect-facing demo page (`/c/<id>`) stays on the promo and is
-  linked to via `VITE_PUBLIC_DEMO_BASE_URL` (decided in stage 5) — never proxy promo HTML onto this
-  origin: the dashboard's session token lives in localStorage here, and that page is public.
+- **The demo data lives in transcribe-db, not the promo.** The promo's Redis was exported on
+  2026-09-22 and imported into the `demo_*` tables; the promo has stopped collecting. transcribe-backend
+  serves it under `/demo/*` — `analytics`, `customers`, `customers/:id`, `crm`, plus the CRUD
+  writes — with bodies that still match the promo's `/api/admin/*` exactly, because the screens are
+  verbatim ports that parse them as they are.
+- `src/demos/api.ts` is the only code that knows that: `demoFetch(path, init)` sends
+  `${__BACKEND_URL__}/demo${path}` with the dashboard's bearer token and returns the **raw
+  `Response`**, because the ported screens call `readJson(response)` themselves. Paths lost their
+  `/api/admin` prefix: `promoFetch("/api/admin/customers")` is `demoFetch("/customers")`.
+- **There is one sign-in.** The demo routes are guarded by the dashboard's own admin session
+  (`authenticateAdmin`), and the Demos nav group is admin-only. The promo's separate password,
+  `PromoAuth`, `UnlockCard` and the `/promo-api` proxy are all gone. `DemosGate` is now just the
+  `.tw` boundary, the flex column, the `Toaster` and one error card.
+- **Two actions could not move and were removed:** "Re-research" (the promo's Claude research
+  pipeline) and "Call now" (its OpenAI realtime session), along with `useLiveCall`, the call panel
+  and `ResearchInputsPanel`'s run button. The backend accepts `analyze: true` and ignores it.
+- The prospect-facing demo page (`/c/<id>`) **still lives on the promo** and is only linked to, via
+  `VITE_PUBLIC_DEMO_BASE_URL` (decided in stage 5). Never serve promo HTML from this origin: the
+  dashboard's session token is in localStorage here, and that page is public.
 - Ported promo code lives in `src/demos/` in the promo's own layout (`components/ui`,
   `components/admin`, `components/charts`, `lib`, and pages as `screens/`), imported as `@/…`
   (= `src/demos/`). It is a verbatim copy of voiceagent_promo @ f482848 plus the edits logged in
   `src/demos/PORTING.md` — keep that log current; it's what makes a later sync a plain diff
   (`diff --strip-trailing-cr`).
-- Porting rules: `fetch("/api/…")` → `promoFetch("/api/…")` (`@/api`); `next/link` →
+- Porting rules: `fetch("/api/admin/x")` → `demoFetch("/x")` (`@/api`); `next/link` →
   `<a href={demoHref(…)}>` (`@/routes`); `next-themes` → `useDocumentTheme()` (`@/theme`); pop-ups
   render into `twPortalContainer()` (`@/portal`); `process.env.NEXT_PUBLIC_*` →
   `import.meta.env.VITE_*`; no bare `var(--x)` in CSS/markup and no bare

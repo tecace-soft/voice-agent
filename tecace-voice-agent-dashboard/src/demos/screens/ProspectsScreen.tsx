@@ -1,5 +1,5 @@
 
-import { promoFetch } from "@/api";
+import { demoFetch } from "@/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { readJson } from "@/lib/http";
 import { isResearchStalled } from "@/lib/analytics";
@@ -17,7 +17,7 @@ export function ProspectsScreen() {
 
   const load = useCallback(async () => {
     try {
-      const response = await promoFetch("/api/admin/customers", { cache: "no-store" });
+      const response = await demoFetch("/customers", { cache: "no-store" });
       const data = await readJson<{ customers: CustomerWithStats[] }>(response);
       setCustomers(data.customers);
       setError(null);

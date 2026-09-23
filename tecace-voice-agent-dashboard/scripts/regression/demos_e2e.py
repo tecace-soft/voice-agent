@@ -1,13 +1,15 @@
-"""End-to-end check of the Demos section: proxy, promo cookie, unlock card, record-id routes, and
-the promo's real Overview and Prospects screens (KPIs, charts, recent calls; the prospects table,
-its menu, copy link, the "New customer" dialog and the live switch), portals, theme re-render and a
-runtime check that no transcribe (@layer legacy) class name lands on promo markup.
+"""End-to-end check of the Demos section: who may reach it, the record-id routes, and the promo's
+real Overview, Prospects, prospect and CRM screens (KPIs, charts, tables, portals, the drawer and
+the pipeline board), plus a runtime check that no transcribe (@layer legacy) class name lands on
+promo markup.
 
     python scripts/regression/demos_e2e.py      (from tecace-voice-agent-dashboard/)
 
-Builds this app, serves it with `vite preview` (whose proxy sends /promo-api to fake_promo.py),
-signs in against fake_backend.py and walks the flow in Edge. Exit 0 = all checks pass,
-1 = failures listed, 2 = harness failure. Needs ports 5199, 8898 and 8899 free.
+Builds this app, serves it with `vite preview` and points it at fake_backend.py, which now answers
+the Demo tabs' /demo/* routes as well as the transcribe ones. There is no promo any more: no proxy,
+no second sign-in, no cookie — the Demo screens send the dashboard's own admin bearer token, so
+this walks the flow as an admin, as a signed-in user, and signed out. Exit 0 = all checks pass,
+1 = failures listed, 2 = harness failure. Needs ports 5199 and 8899 free.
 """
 
 from __future__ import annotations
@@ -18,15 +20,14 @@ import re
 import socket
 import sys
 import tempfile
-import time
 from pathlib import Path
 from urllib.parse import urlparse
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect, sync_playwright
 
 import fake_backend
-import fake_promo
-from compare import APP_ROOT, BACKEND_PORT, NEW_PORT, OUT_DIR, HarnessError, build, serve, settle, stop
+from compare import (APP_ROOT, BACKEND, BACKEND_PORT, NEW_PORT, OUT_DIR, HarnessError, build,
+                     serve, settle, stop)
 
 
 class Checks:
@@ -45,14 +46,15 @@ def port_in_use(port: int) -> bool:
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
-def restart_promo():
-    # Windows can hold the port for a moment after the old server closed; retry briefly.
-    for _ in range(20):
-        try:
-            return fake_promo.start()
-        except OSError:
-            time.sleep(0.5)
-    raise HarnessError(f"couldn't restart the fake promo on port {fake_promo.PORT}")
+def fulfill_json(route, status: int, body: dict) -> None:
+    """Answer an intercepted request with JSON.
+
+    The backend is a different origin from the app (:8899 vs :5199), so a fulfilled response needs
+    the same CORS header the fake sends — without it the browser drops the answer and the screen
+    reports "Couldn't reach the server." instead of whatever this call is pretending happened.
+    """
+    route.fulfill(status=status, body=json.dumps(body),
+                  headers={"content-type": "application/json", "access-control-allow-origin": "*"})
 
 
 # Every class name used in a rule inside `@layer legacy` (the transcribe CSS), and for each one the
@@ -121,6 +123,24 @@ TW_CLASSES_JS = """
 }
 """
 
+# Ask the backend's /demo routes straight from the page with whatever token is handed in (none at
+# all for `null`) — what a signed-in user, or nobody, gets if they go looking for the data behind
+# the Demo tabs rather than at the tabs themselves.
+PROBE_JS = """
+async ([base, token]) => {
+  const paths = ['/demo/analytics?days=30', '/demo/customers', '/demo/customers/pr0SPct1',
+                 '/demo/crm'];
+  const out = {};
+  for (const path of paths) {
+    const headers = { accept: 'application/json' };
+    if (token) headers.authorization = 'Bearer ' + token;
+    const response = await fetch(base + path, { headers });
+    out[path] = { status: response.status, body: await response.json().catch(() => null) };
+  }
+  return out;
+}
+"""
+
 # What a stale, slow read of Harbor Dental would put in the drawer if it were allowed to land.
 STALE_HARBOR = {
     "customer": {"id": "pr0SPct1", "businessName": "Harbor Dental", "active": True,
@@ -154,6 +174,22 @@ STAT_JS = """
     if (value) return value.textContent.trim();
   }
   return null;
+}
+"""
+
+# The prospect page's tabs card, its grid and the column it sits in. The call panel used to take a
+# column beside it; with "Call now" gone the card has the width to itself.
+TABS_CARD_JS = """
+() => {
+  const card = document.querySelector('main .tw [role=tablist]').closest('.rounded-xl');
+  const grid = card.parentElement;
+  const column = document.querySelector('main .tw > div');
+  return {
+    card: Math.round(card.getBoundingClientRect().width),
+    column: Math.round(column.getBoundingClientRect().width),
+    tracks: getComputedStyle(grid).gridTemplateColumns.trim(),
+    siblings: grid.children.length,
+  };
 }
 """
 
@@ -207,36 +243,6 @@ CANVAS_PIXELS_JS = """
 }
 """
 
-
-# Keeps every stream getUserMedia hands the page, so the harness can see the test call stop the
-# microphone afterwards (every track "ended"). With window.__holdMic = true, getUserMedia waits
-# (like a permission prompt left open) until the harness calls window.__releaseMic(); window.__micHeld
-# says it is waiting. Behaviour is otherwise unchanged.
-MIC_HOOK_JS = """
-(() => {
-  const md = navigator.mediaDevices;
-  if (!md || !md.getUserMedia) return;
-  const original = md.getUserMedia.bind(md);
-  window.__micStreams = [];
-  window.__holdMic = false;
-  window.__micHeld = false;
-  md.getUserMedia = async (constraints) => {
-    if (window.__holdMic) {
-      window.__micHeld = true;
-      await new Promise((resolve) => { window.__releaseMic = resolve; });
-      window.__micHeld = false;
-    }
-    const stream = await original(constraints);
-    window.__micStreams.push(stream);
-    return stream;
-  };
-})();
-"""
-
-MIC_STATE_JS = """
-() => (window.__micStreams || []).map((s) => s.getTracks().map((t) => t.kind + ':' + t.readyState))
-"""
-
 # Marks the toasts on screen now, so a wait can tell a new toast from one still fading out.
 MARK_TOASTS_JS = "() => document.querySelectorAll('[data-sonner-toast]').forEach((t) => t.dataset.seen = '1')"
 
@@ -284,21 +290,22 @@ def demo_nav(page, label: str):
         "button", name=label, exact=True)
 
 
-def open_page(browser, token: str | None, url: str, promo_requests: list[str], page_errors: list[str]):
+def open_page(browser, token: str | None, url: str, demo_requests: list[str], page_errors: list[str]):
     ctx = browser.new_context(viewport={"width": 1440, "height": 900}, reduced_motion="reduce")
-    init = ["try { localStorage.clear(); } catch (e) {}", "localStorage.setItem('theme', 'light');",
-            MIC_HOOK_JS]
+    init = ["try { localStorage.clear(); } catch (e) {}", "localStorage.setItem('theme', 'light');"]
     if token:
         init.append(f"localStorage.setItem('transcribe.token', '{token}');")
     ctx.add_init_script("\n".join(init))
     # "Copy link" / "Copy email" write to the clipboard; without the grant the write is refused
-    # and the (unawaited) promise rejection would surface as a page error. The microphone is
-    # Edge's fake device (launch flags), granted so the test call's getUserMedia needs no prompt.
-    ctx.grant_permissions(["microphone", "clipboard-read", "clipboard-write"])
+    # and the (unawaited) promise rejection would surface as a page error.
+    ctx.grant_permissions(["clipboard-read", "clipboard-write"])
     page = ctx.new_page()
     page.route("**/favicon.ico", lambda r: r.fulfill(status=204))
-    page.on("request", lambda r: promo_requests.append(f"{r.method} {urlparse(r.url).path}")
-            if "/promo-" in r.url else None)
+    # Every request the Demo screens make, by path. The CORS preflights the browser sends first
+    # (the bearer token makes the requests non-simple) are left out: they are the browser's, not
+    # the app's, and Playwright reports them inconsistently.
+    page.on("request", lambda r: demo_requests.append(f"{r.method} {urlparse(r.url).path}")
+            if urlparse(r.url).path.startswith("/demo") and r.method != "OPTIONS" else None)
     page.on("pageerror", lambda e: page_errors.append(str(e)))
     page.goto(url)
     settle(page)
@@ -306,15 +313,13 @@ def open_page(browser, token: str | None, url: str, promo_requests: list[str], p
 
 
 def run() -> int:
-    for port in (NEW_PORT, BACKEND_PORT, fake_promo.PORT):
+    for port in (NEW_PORT, BACKEND_PORT):
         if port_in_use(port):
             raise HarnessError(f"port {port} in use")
     OUT_DIR.mkdir(exist_ok=True)
     check = Checks()
     page_errors: list[str] = []
     backend = fake_backend.start(BACKEND_PORT)
-    promo = fake_promo.start()
-    os.environ["PROMO_API_URL"] = f"http://127.0.0.1:{fake_promo.PORT}"  # read by vite preview's proxy
     # Baked into the build: the origin of the demo links "Copy link" / "Copy email" produce.
     os.environ["VITE_PUBLIC_DEMO_BASE_URL"] = DEMO_BASE_URL
     try:
@@ -325,57 +330,54 @@ def run() -> int:
             base = f"http://127.0.0.1:{NEW_PORT}/"
             try:
                 with sync_playwright() as p:
-                    # A fake microphone (a generated tone), with no permission prompt, so the test
-                    # call builds a real WebRTC offer.
-                    browser = p.chromium.launch(channel="msedge", args=[
-                        "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"])
+                    browser = p.chromium.launch(channel="msedge")
 
-                    # A user never sees the Demos section, and asking for it by URL is refused
-                    # without the promo ever being contacted.
+                    # A signed-in user never sees the Demos section, asking for it by URL is
+                    # refused, and the data behind it is refused to their token as well.
                     reqs: list[str] = []
                     ctx, page = open_page(browser, "tok-user", base + "#/demos/prospects", reqs, page_errors)
                     check("user: no Demo group in the sidebar",
                           page.locator('.sidebar-group[data-group="demos"]').count() == 0)
                     check("user: a Demos URL is refused",
                           "Only an admin can see the demos." in page.locator("main").inner_text())
-                    check("user: the promo is never contacted", reqs == [], str(reqs))
+                    check("user: no demo data is asked for", reqs == [], str(reqs))
+                    denied = page.evaluate(PROBE_JS, [BACKEND, "tok-user"])
+                    check("user: the /demo routes refuse this token (403 forbidden)",
+                          all(answer["status"] == 403
+                              and answer["body"] == fake_backend.DEMO_FORBIDDEN
+                              for answer in denied.values()), str(denied))
+                    anonymous = page.evaluate(PROBE_JS, [BACKEND, None])
+                    check("signed out: the /demo routes answer 401 unauthorized",
+                          all(answer["status"] == 401
+                              and answer["body"] == fake_backend.DEMO_UNAUTHORIZED
+                              for answer in anonymous.values()), str(anonymous))
                     ctx.close()
 
-                    # Admin: the group is there, and a transcribe view doesn't touch the promo.
+                    # Admin: the group is there, and a transcribe view doesn't read demo data.
                     reqs = []
                     ctx, page = open_page(browser, "tok-admin", base + "#/overview", reqs, page_errors)
                     check("admin: Demo group with three items",
                           page.locator('.sidebar-group[data-group="demos"] .nav-item').count() == 3)
-                    check("admin: no promo request on a transcribe view", reqs == [], str(reqs))
+                    check("admin: no demo request on a transcribe view", reqs == [], str(reqs))
 
                     demo_nav(page, "Customers").click()
-                    page.get_by_role("heading", name="Unlock demos").wait_for()
+                    harbor_link = page.get_by_role("link", name="Harbor Dental", exact=True)
+                    harbor_link.wait_for()
+                    rows = page.locator("main .tw table tbody tr")
                     check("Prospects opens #/demos/prospects", page.evaluate("location.hash") == "#/demos/prospects")
-                    check("locked: the unlock card is shown", True)
-                    check("only the health probe was sent while locked",
-                          reqs == ["GET /promo-api/admin/health"], str(reqs))
+                    # The dashboard's own admin session is the only one there is: the records are
+                    # on screen with nothing else asked of the operator.
+                    check("admin: the prospects load with no second sign-in",
+                          harbor_link.is_visible()
+                          and rows.filter(has_text="Researching").count() == 1
+                          and page.get_by_label("Password").count() == 0)
+                    check("admin: ... and the only request was for them",
+                          reqs != [] and set(reqs) == {"GET /demo/customers"}, str(reqs))
                     check("breadcrumb says Demo", page.locator(".crumbs").inner_text().startswith("Demo"))
                     check("no mailbox picker or Refresh on Demos views",
                           page.locator(".mailbox-picker").count() == 0
                           and page.get_by_role("button", name="Refresh").count() == 0)
                     check("Demos render inside one .tw wrapper", page.locator("main .tw").count() == 1)
-                    unlock_bg = page.get_by_role("button", name="Unlock demos").evaluate(
-                        "e => getComputedStyle(e).backgroundColor")
-                    check("unlock button is brand blue", unlock_bg == "rgb(17, 109, 255)", unlock_bg)
-
-                    page.get_by_label("Promo password").fill("wrong")
-                    page.get_by_role("button", name="Unlock demos").click()
-                    page.get_by_role("alert").wait_for()
-                    check("a wrong password is rejected", "Wrong password." in page.get_by_role("alert").inner_text())
-
-                    page.get_by_label("Promo password").fill(fake_promo.PASSWORD)
-                    page.get_by_role("button", name="Unlock demos").click()
-                    harbor_link = page.get_by_role("link", name="Harbor Dental", exact=True)
-                    harbor_link.wait_for()
-                    rows = page.locator("main .tw table tbody tr")
-                    check("unlocked: prospects are listed",
-                          harbor_link.is_visible()
-                          and rows.filter(has_text="Researching").count() == 1)
                     tw_classes: set[str] = set(page.evaluate(TW_CLASSES_JS))
 
                     # --- Prospects: the promo's real table ---
@@ -422,14 +424,14 @@ def run() -> int:
                     add = dialog.get_by_role("button", name="Add customer")
                     check("prospects: Add customer is disabled with no business name", add.is_disabled())
                     # The button stays disabled for a blank name, so a name of spaces is submitted
-                    # the only way left (the form's own submit); the promo refuses it server-side.
+                    # the only way left (the form's own submit); the backend refuses it.
                     reqs.clear()
                     dialog.get_by_label("Business name").fill("   ")
                     dialog.locator("form").evaluate("f => f.requestSubmit()")
                     dialog.get_by_role("alert").wait_for()
-                    check("prospects: a blank business name shows the promo's 400 error",
+                    check("prospects: a blank business name shows the backend's 400 error",
                           dialog.get_by_role("alert").inner_text().strip() == "Enter the business name."
-                          and "POST /promo-api/admin/customers" in reqs,
+                          and "POST /demo/customers" in reqs,
                           dialog.get_by_role("alert").inner_text())
                     dialog.get_by_label("Business name").fill("Birch Florist")
                     add.click()
@@ -450,7 +452,7 @@ def run() -> int:
                     page.get_by_text("Recent calls").wait_for()
                     page.wait_for_function("() => document.querySelectorAll('main .tw canvas').length === 2")
                     stats = {t: page.evaluate(STAT_JS, t) for t in ("Customers", "Tested", "Calls", "Minutes")}
-                    check("overview: the KPI cards show the promo's numbers",
+                    check("overview: the KPI cards show the backend's numbers",
                           stats == {"Customers": "2", "Tested": "1", "Calls": "3", "Minutes": "9"}, str(stats))
                     check("overview: both charts are titled",
                           page.get_by_text("Calls per day", exact=True).is_visible()
@@ -498,21 +500,18 @@ def run() -> int:
                     page.get_by_title("Light theme").click()
                     page.wait_for_function("() => document.documentElement.dataset.theme === 'light'")
 
-                    # The promo session ends mid-use (cookie gone): the next promo call answers
-                    # 401 and the section re-locks instead of showing an error.
-                    ctx.clear_cookies(name=fake_promo.COOKIE)
+                    # The reporting period is a portal surface of its own, and picking one re-reads
+                    # the analytics for that window.
                     page.get_by_label("Select the reporting period").click()
                     option = page.locator("[data-tw-portal] [role=option]", has_text="Last 7 days")
                     option.wait_for()
                     tw_classes |= set(page.evaluate(TW_CLASSES_JS))
-                    reqs.clear()
-                    option.click()
-                    page.get_by_role("heading", name="Unlock demos").wait_for()
-                    check("a promo session ending mid-use re-locks the demos",
-                          "GET /promo-api/admin/analytics" in reqs, str(reqs))
-                    page.get_by_label("Promo password").fill(fake_promo.PASSWORD)
-                    page.get_by_role("button", name="Unlock demos").click()
+                    with page.expect_request(lambda r: "/demo/analytics" in r.url
+                                             and r.method == "GET") as req:
+                        option.click()
                     page.get_by_text("Recent calls").wait_for()
+                    check("overview: picking a period re-reads the analytics for it",
+                          "days=7" in req.value.url, req.value.url)
 
                     # --- No transcribe class name lands on promo markup ---
                     css = page.evaluate(LEGACY_CLASSES_JS)
@@ -539,9 +538,15 @@ def run() -> int:
                              for t in ("Link opens", "Calls", "Minutes", "Average call")}
                     check("prospect: header names the business and its address",
                           main_tw.get_by_text("12 Wharf St, Portland, ME", exact=True).is_visible())
-                    check("prospect: the stat cards show the promo's numbers",
+                    check("prospect: the stat cards show the backend's numbers",
                           stats == {"Link opens": "14", "Calls": "3", "Minutes": "9", "Average call": "3:00"},
                           str(stats))
+                    # The test call went with the promo, and the column that held its panel with
+                    # it: the tabs card now has the page width to itself.
+                    layout = page.evaluate(TABS_CARD_JS)
+                    check("prospect: the tabs card fills the width (no call-panel column beside it)",
+                          layout["siblings"] == 1 and " " not in layout["tracks"]
+                          and abs(layout["card"] - layout["column"]) <= 1, str(layout))
                     per_state: dict[str, set[str]] = {}
 
                     def snapshot(label: str) -> None:
@@ -573,7 +578,7 @@ def run() -> int:
 
                     page.evaluate(MARK_TOASTS_JS)
                     with page.expect_request(lambda r: r.method == "PATCH"
-                                             and r.url.endswith("/promo-api/admin/customers/pr0SPct1/calls")) as req:
+                                             and r.url.endswith("/demo/customers/pr0SPct1/calls")) as req:
                         main_tw.get_by_role("switch", name="Count this call as your test").first.click()
                     body = req.value.post_data_json
                     check("activity: marking a call as a test PATCHes {callId, isTest}",
@@ -591,7 +596,7 @@ def run() -> int:
                     phone.fill("+1 207 555 0199")
                     page.evaluate(MARK_TOASTS_JS)
                     with page.expect_request(lambda r: r.method == "PATCH"
-                                             and r.url.endswith("/promo-api/admin/customers/pr0SPct1")) as req:
+                                             and r.url.endswith("/demo/customers/pr0SPct1")) as req:
                         main_tw.get_by_role("button", name="Save", exact=True).click()
                     body = req.value.post_data_json
                     check("knowledge: Save PATCHes the edited profile",
@@ -625,7 +630,7 @@ def run() -> int:
                     greeting.fill("Harbor Dental, Alex speaking. What can I do for you?")
                     page.evaluate(MARK_TOASTS_JS)
                     with page.expect_request(lambda r: r.method == "PATCH"
-                                             and r.url.endswith("/promo-api/admin/customers/pr0SPct1")) as req:
+                                             and r.url.endswith("/demo/customers/pr0SPct1")) as req:
                         main_tw.get_by_role("button", name="Save", exact=True).click()
                     body = req.value.post_data_json
                     check("prompt: an edited prompt is saved with prompts.edited true",
@@ -666,125 +671,6 @@ def run() -> int:
                           and f"{DEMO_BASE_URL}/c/pr0SPct1" in email, subject)
                     snapshot("share")
 
-                    # Re-research
-                    page.evaluate(MARK_TOASTS_JS)
-                    with page.expect_request(lambda r: r.method == "POST"
-                                             and r.url.endswith("/promo-api/admin/customers/pr0SPct1/research")) as req:
-                        main_tw.get_by_role("button", name="Re-research").click()
-                    body = req.value.post_data_json
-                    check("re-research POSTs the research inputs",
-                          body.get("businessName") == "Harbor Dental" and body.get("regeneratePrompts") is False,
-                          str(body))
-                    check("re-research: ... and says Research finished.", new_toast(page, "Research finished."))
-
-                    # The test call: a real offer from the fake microphone, refused by the promo's
-                    # own "every line busy" answer (the fake can't mint an OpenAI SDP answer).
-                    call_now = main_tw.get_by_role("button", name="Call now")
-                    for attempt in (1, 2):
-                        with page.expect_request(lambda r: r.method == "POST"
-                                                 and r.url.endswith("/promo-api/session"),
-                                                 timeout=15000) as req:
-                            call_now.click()
-                        body = req.value.post_data_json or {}
-                        busy = main_tw.get_by_role("alert").filter(has_text=fake_promo.BUSY_EVERYWHERE)
-                        busy.wait_for()
-                        again = main_tw.get_by_role("button", name="Start a new call")
-                        again.wait_for()
-                        if attempt == 1:
-                            check("test call: POST /promo-api/session with customerId, isTest and a real SDP offer",
-                                  body.get("customerId") == "pr0SPct1" and body.get("isTest") is True
-                                  and str(body.get("sdp", "")).startswith("v=0"),
-                                  str({k: (v[:12] + "…" if isinstance(v, str) and len(v) > 12 else v)
-                                       for k, v in body.items()}))
-                            check("test call: the busy refusal is shown, and 'Call failed'",
-                                  busy.is_visible() and main_tw.get_by_text("Call failed").is_visible())
-                            mics = page.evaluate(MIC_STATE_JS)
-                            check("test call: the fake microphone was opened and is stopped again",
-                                  len(mics) == 1 and mics[0] and all(t.endswith(":ended") for t in mics[0]),
-                                  str(mics))
-                            snapshot("test call refused")
-                        again.click()
-                        call_now.wait_for()
-                        if attempt == 1:
-                            check("test call: 'Call again' returns to a callable state",
-                                  call_now.is_enabled() and busy.count() == 0)
-                    mics = page.evaluate(MIC_STATE_JS)
-                    check("test call: a retry dials again and stops its microphone too",
-                          len(mics) == 2 and all(all(t.endswith(":ended") for t in s) for s in mics),
-                          str(mics))
-
-                    # Leaving the page while the microphone prompt is still open must not let the
-                    # call carry on behind it (mic, ringtone, a session nobody hears or reports).
-                    page.evaluate("() => { window.__holdMic = true; }")
-                    call_now.click()
-                    page.wait_for_function("() => window.__micHeld === true")
-                    demo_nav(page, "Customers").click()
-                    harbor_link.wait_for()
-                    after_leave = len(reqs)
-                    page.evaluate("() => { window.__holdMic = false; window.__releaseMic(); }")
-                    page.wait_for_function("() => window.__micStreams.length === 3")
-                    page.wait_for_timeout(3000)  # time for a runaway dial to reach /api/session
-                    late = [r for r in reqs[after_leave:] if r.endswith("/promo-api/session")]
-                    check("test call: leaving mid-dial sends no session request afterwards", late == [],
-                          str(late))
-                    mics = page.evaluate(MIC_STATE_JS)
-                    check("test call: ... and the microphone it got after leaving is stopped "
-                          "(also true without the guard against the fake's 429; "
-                          "the no-session-request check is the proof)",
-                          len(mics) == 3 and all(t.endswith(":ended") for t in mics[2]), str(mics))
-                    harbor_link.click()
-                    page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
-
-                    # The billed case: the promo GRANTS the session after the admin has left.
-                    # The session request is held (not answered) until the page is gone, then
-                    # answered with a grant; the call must be handed back with one "abandoned /
-                    # unmounted" report and go no further (the fake SDP would make
-                    # setRemoteDescription throw if it did).
-                    held: list = []
-                    reports: list[dict] = []
-
-                    def record_report(route):
-                        try:
-                            body = json.loads(route.request.post_data or "{}")
-                        except ValueError:
-                            body = {"unparsable": route.request.post_data}
-                        reports.append({"path": urlparse(route.request.url).path, **body})
-                        route.fulfill(status=200, content_type="application/json", body='{"ok": true}')
-
-                    page.route("**/promo-api/session", lambda route: held.append(route))
-                    page.route("**/promo-api/calls/**", record_report)
-                    errors_before = len(page_errors)
-                    call_now.click()
-                    for _ in range(150):  # up to 15 s for the mic, the offer and ICE gathering
-                        if held:
-                            break
-                        page.wait_for_timeout(100)
-                    if not held:
-                        raise HarnessError("the test call never sent its session request")
-                    demo_nav(page, "Customers").click()
-                    harbor_link.wait_for()
-                    held[0].fulfill(status=200, content_type="application/json",
-                                    body=json.dumps({"callId": "held42", "sdp": "v=0\r\n", "greeting": "Hi."}))
-                    for _ in range(50):
-                        if reports:
-                            break
-                        page.wait_for_timeout(100)
-                    page.wait_for_timeout(3000)  # time for a second report to show up
-                    check("test call: a session granted after leaving is reported once as abandoned/unmounted",
-                          len(reports) == 1 and reports[0]["path"] == "/promo-api/calls/held42"
-                          and reports[0].get("status") == "abandoned"
-                          and reports[0].get("endReason") == "unmounted",
-                          str([{k: v for k, v in rep.items() if k != "transcript"} for rep in reports]))
-                    mics = page.evaluate(MIC_STATE_JS)
-                    check("test call: ... its microphone is stopped and nothing threw",
-                          len(mics) == 4 and all(t.endswith(":ended") for t in mics[3])
-                          and len(page_errors) == errors_before,
-                          f"{mics} {page_errors[errors_before:]}")
-                    page.unroute("**/promo-api/session")
-                    page.unroute("**/promo-api/calls/**")
-                    harbor_link.click()
-                    page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
-
                     for label, classes in per_state.items():
                         bad, _ = legacy_collisions(css, classes)
                         check(f"no @layer legacy class name on promo markup: prospect / {label}",
@@ -794,25 +680,23 @@ def run() -> int:
                     settle(page)
                     page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
                     check("refresh keeps the prospect", True)
-                    check("refresh stays unlocked (the promo cookie was kept)",
-                          page.get_by_role("heading", name="Unlock demos").count() == 0)
 
                     page.goto(base + "#/demos/prospects/nope")
                     page.reload()
                     settle(page)
                     page.locator("main .tw").get_by_text("Customer not found.").wait_for()
-                    check("an unknown prospect says so (the promo's 404 message)",
+                    check("an unknown prospect says so (the backend's 404 message)",
                           page.get_by_role("heading", name="Harbor Dental").count() == 0)
 
-                    # A record id that isn't a promo id never reaches a promo path: the hash
-                    # decodes to "../../analytics", which would leave the customer route.
+                    # A record id that isn't a demo id never reaches a demo path: the hash decodes
+                    # to "../../analytics", which would leave the customer route.
                     reqs.clear()
                     page.evaluate("() => { location.hash = '#/demos/prospects/..%2F..%2Fanalytics'; }")
                     harbor_link.wait_for()
                     page.wait_for_timeout(500)
                     stray = [r for r in reqs if not re.fullmatch(
-                        r"/promo-api/admin/customers(/[A-Za-z0-9_-]+(/[a-z]+)?)?", r.split(" ", 1)[1])]
-                    check("a malformed prospect id shows the list and asks the promo nothing else",
+                        r"/demo/customers(/[A-Za-z0-9_-]+(/[a-z]+)?)?", r.split(" ", 1)[1])]
+                    check("a malformed prospect id shows the list and asks the backend nothing else",
                           page.get_by_role("heading", name="Customers", level=1).is_visible() and stray == [],
                           str(reqs))
 
@@ -846,9 +730,11 @@ def run() -> int:
 
                     # The board moves a card before its PATCH is answered, so every move check
                     # holds the request and decides the answer itself.
-                    held.clear()
+                    held: list = []
 
                     def hold_patch(route):
+                        # Everything else — the CORS preflight included — goes to the fake, which
+                        # answers it with the headers the browser needs.
                         if route.request.method == "PATCH":
                             held.append(route)
                         else:
@@ -861,12 +747,11 @@ def run() -> int:
                             page.wait_for_timeout(100)
                         if not held:
                             raise HarnessError("the board never sent its PATCH")
-                        held[0].fulfill(status=status, content_type="application/json",
-                                        body=json.dumps(body))
+                        fulfill_json(held[0], status, body)
                         return json.loads(held[0].request.post_data or "{}")
 
                     # A refused move: the card goes back where it was, and it says why.
-                    page.route("**/promo-api/admin/customers/pr0SPct1", hold_patch)
+                    page.route("**/demo/customers/pr0SPct1", hold_patch)
                     page.evaluate(MARK_TOASTS_JS)
                     main_tw.get_by_role("button", name="Move on to Won").click()
                     page.wait_for_function(
@@ -882,18 +767,23 @@ def run() -> int:
                           and page.evaluate(BOARD_JS)[3]["cards"] == [])
 
                     # Both the move and the reload behind it fail: the board is now showing a
-                    # stage the promo never accepted, so the reload's failure has to be said out
+                    # stage the backend never accepted, so the reload's failure has to be said out
                     # loud rather than left on screen as a silent lie.
                     held.clear()
-                    page.route("**/promo-api/admin/crm", lambda route: route.fulfill(
-                        status=500, content_type="application/json",
-                        body=json.dumps({"error": "The CRM is unavailable."})))
+
+                    def crm_unavailable(route):
+                        if route.request.method != "GET":
+                            route.fallback()
+                        else:
+                            fulfill_json(route, 500, {"error": "The CRM is unavailable."})
+
+                    page.route("**/demo/crm", crm_unavailable)
                     page.evaluate(MARK_TOASTS_JS)
                     main_tw.get_by_role("button", name="Move on to Won").click()
                     answer_held(500, {"error": "The store is read-only."})
                     check("pipeline: a failed move whose reload also fails still reports it",
                           new_toast(page, "The CRM is unavailable.", required=False))
-                    page.unroute("**/promo-api/admin/crm")
+                    page.unroute("**/demo/crm")
                     held.clear()
 
                     # Back to a board that matches the fake for the rest of the checks.
@@ -915,7 +805,7 @@ def run() -> int:
                           and moved_early[2]["cards"] == [],
                           f"body={body} board={moved_early}")
                     check("pipeline: ... and says where it went", new_toast(page, "Moved to Won."))
-                    page.unroute("**/promo-api/admin/customers/pr0SPct1")
+                    page.unroute("**/demo/customers/pr0SPct1")
 
                     # The drawer: one prospect's CRM, over the board. Three ways in.
                     drawer = page.locator("[data-tw-portal] [role=dialog]")
@@ -936,7 +826,6 @@ def run() -> int:
                     main_tw.get_by_role("button", name="Harbor Dental").first.click()
                     drawer.wait_for()
                     drawer.get_by_text("Asked for a follow-up after the expo.").wait_for()
-                    open_link = drawer.locator(':is(a, button):has-text("Open the customer")').last
                     check("pipeline: the card opens the drawer inside [data-tw-portal], with the timeline",
                           page.locator("[role=dialog]").count() == 1
                           and drawer.get_by_role("heading", name="Harbor Dental").is_visible()
@@ -958,7 +847,7 @@ def run() -> int:
                     # popover portalled into the shared .tw container beside the modal sheet, so
                     # it has to be reachable and clickable from inside the sheet.
                     # (The fake is stateless, so the board behind can't be asserted to follow:
-                    # its next read of /api/admin/crm returns the original stages.)
+                    # its next read of /demo/crm returns the original stages.)
                     drawer.get_by_label("Deal stage").click()
                     listbox = page.locator("[data-tw-portal] [role=listbox]")
                     listbox.wait_for()
@@ -966,15 +855,15 @@ def run() -> int:
                     check("drawer: the stage select opens inside [data-tw-portal]",
                           page.locator("[role=listbox]").count() == 1 and lost.is_visible())
                     with page.expect_request(lambda r: r.method == "PATCH"
-                                             and "/promo-api/admin/customers/" in r.url) as req:
+                                             and "/demo/customers/" in r.url) as req:
                         lost.click()
                     body = req.value.post_data_json
                     check("drawer: picking a stage PATCHes {stage}",
                           body == {"stage": "lost"}
-                          and req.value.url.endswith("/promo-api/admin/customers/pr0SPct1"),
+                          and req.value.url.endswith("/demo/customers/pr0SPct1"),
                           f"{body} {req.value.url}")
                     with page.expect_request(lambda r: r.method == "PATCH"
-                                             and "/promo-api/admin/customers/" in r.url) as req:
+                                             and "/demo/customers/" in r.url) as req:
                         drawer.get_by_label("Follow up on").fill("2026-10-01")
                     body = req.value.post_data_json
                     check("drawer: setting the follow-up date PATCHes {followUpAt}",
@@ -991,7 +880,7 @@ def run() -> int:
                     note.fill("Called back, wants pricing.")
                     page.evaluate(MARK_TOASTS_JS)
                     with page.expect_request(lambda r: r.method == "POST"
-                                             and r.url.endswith("/promo-api/admin/customers/pr0SPct1/notes")) as req:
+                                             and r.url.endswith("/demo/customers/pr0SPct1/notes")) as req:
                         add_note.click()
                     body = req.value.post_data_json
                     # expect_request fires when the request goes out; the box is cleared when the
@@ -1015,7 +904,7 @@ def run() -> int:
                         else:
                             route.fallback()
 
-                    page.route("**/promo-api/admin/customers/pr0SPct1", hold_harbor_get)
+                    page.route("**/demo/customers/pr0SPct1", hold_harbor_get)
                     main_tw.get_by_role("button", name="Harbor Dental").first.click()
                     drawer.wait_for()
                     for _ in range(50):
@@ -1028,8 +917,7 @@ def run() -> int:
                     drawer.wait_for(state="detached")
                     main_tw.get_by_role("button", name="Cedar Bakery").first.click()
                     drawer.get_by_text("Left a voicemail with the owner.").wait_for()
-                    held[0].fulfill(status=200, content_type="application/json",
-                                    body=json.dumps(STALE_HARBOR))
+                    fulfill_json(held[0], 200, STALE_HARBOR)
                     page.wait_for_timeout(1000)
                     check("drawer: a stale read for a closed prospect can't take over the open one",
                           drawer.get_by_role("heading", name="Cedar Bakery").is_visible()
@@ -1039,13 +927,13 @@ def run() -> int:
                     drawer.get_by_label("Deal stage").click()
                     listbox.wait_for()
                     with page.expect_request(lambda r: r.method == "PATCH"
-                                             and "/promo-api/admin/customers/" in r.url) as req:
+                                             and "/demo/customers/" in r.url) as req:
                         listbox.get_by_role("option", name="Interested").click()
                     check("drawer: ... and the next save still goes to the prospect on screen",
-                          req.value.url.endswith("/promo-api/admin/customers/cedar42")
+                          req.value.url.endswith("/demo/customers/cedar42")
                           and req.value.post_data_json == {"stage": "interested"},
                           f"{req.value.url} {req.value.post_data_json}")
-                    page.unroute("**/promo-api/admin/customers/pr0SPct1")
+                    page.unroute("**/demo/customers/pr0SPct1")
                     page.keyboard.press("Escape")
                     drawer.wait_for(state="detached")
 
@@ -1069,23 +957,20 @@ def run() -> int:
                     check("#/apiKeys survives a refresh",
                           page.get_by_text("Let another system read call minutes").is_visible())
 
-                    reqs.clear()
+                    # Signing out is the end of it: there is no separate demo session to leave
+                    # behind, so the Demos views go with the dashboard's own.
                     page.get_by_title("Sign out").click()
                     settle(page)
-                    check("sign-out also locks the demos", "DELETE /promo-api/admin/login" in reqs, str(reqs))
-                    ctx.close()
-
-                    # The promo is down: an honest card, and "Try again" recovers once it's back.
-                    promo.shutdown()
-                    promo.server_close()
-                    reqs = []
-                    ctx, page = open_page(browser, "tok-admin", base + "#/demos/overview", reqs, page_errors)
-                    page.get_by_role("heading", name="Demo service unreachable").wait_for()
-                    check("promo down: the unreachable card is shown", True)
-                    promo = restart_promo()
-                    page.get_by_role("button", name="Try again").click()
-                    page.get_by_role("heading", name="Unlock demos").wait_for()
-                    check("Try again recovers once the promo is back", True)
+                    check("signing out returns to the sign-in screen",
+                          page.get_by_role("button", name="Sign in", exact=True).is_visible()
+                          and page.evaluate("localStorage.getItem('transcribe.token')") is None)
+                    reqs.clear()
+                    page.goto(base + "#/demos/overview")
+                    settle(page)
+                    check("signing out ends access to the demos",
+                          page.get_by_role("button", name="Sign in", exact=True).is_visible()
+                          and page.locator('.sidebar-group[data-group="demos"]').count() == 0
+                          and reqs == [], str(reqs))
                     ctx.close()
 
                     check("no page errors", page_errors == [], str(page_errors))
@@ -1095,8 +980,6 @@ def run() -> int:
     finally:
         backend.shutdown()
         backend.server_close()
-        promo.shutdown()
-        promo.server_close()
 
     print(f"\n{len(check.failed)} failing checks" if check.failed else "\nALL DEMOS CHECKS PASS")
     return 1 if check.failed else 0

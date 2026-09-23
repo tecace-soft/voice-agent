@@ -1,5 +1,5 @@
 
-import { promoFetch } from "@/api";
+import { demoFetch } from "@/api";
 import { useMemo, useState } from "react";
 import {
   ArrowDown,
@@ -160,7 +160,7 @@ export function CustomerTable({ customers, onChanged }: Props) {
   async function toggleActive(customer: CustomerWithStats, active: boolean) {
     setBusyId(customer.id);
     try {
-      await promoFetch(`/api/admin/customers/${customer.id}`, {
+      await demoFetch(`/customers/${customer.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ active }),
@@ -173,7 +173,7 @@ export function CustomerTable({ customers, onChanged }: Props) {
   }
 
   async function remove(customer: CustomerWithStats) {
-    await promoFetch(`/api/admin/customers/${customer.id}`, { method: "DELETE" });
+    await demoFetch(`/customers/${customer.id}`, { method: "DELETE" });
     toast.success("Customer removed.");
     setPendingDelete(null);
     onChanged();

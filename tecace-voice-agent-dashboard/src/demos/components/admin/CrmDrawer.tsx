@@ -1,5 +1,5 @@
 
-import { promoFetch } from "@/api";
+import { demoFetch } from "@/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { toast } from "sonner";
@@ -60,7 +60,7 @@ export function CrmDrawer({
     if (!customerId) return;
     const wanted = customerId;
     try {
-      const response = await promoFetch(`/api/admin/customers/${customerId}`, {
+      const response = await demoFetch(`/customers/${customerId}`, {
         cache: "no-store",
       });
       const payload = await readJson<Payload>(response);
@@ -91,7 +91,7 @@ export function CrmDrawer({
     if (!data) return;
     setData({ ...data, customer: { ...data.customer, ...partial } });
     try {
-      const response = await promoFetch(`/api/admin/customers/${data.customer.id}`, {
+      const response = await demoFetch(`/customers/${data.customer.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(partial),

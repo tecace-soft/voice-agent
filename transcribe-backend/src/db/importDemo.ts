@@ -40,8 +40,41 @@ console.log(
 );
 
 // Everything above this line is cheap and offline. Only now do we need a database.
-const { initDb, sql } = await import("./client.js");
-const { importDump } = await import("./demoImport.js");
+//
+// Checked here rather than left to postgres.js: given an https:// URL it would take the host at
+// face value and sit there trying to open a Postgres connection to port 5432 of a web server,
+// failing eventually with a timeout that says nothing about the real mistake. The deployed
+// backend's address and the database's connection string are easy to confuse.
+const configured = process.env.DATABASE_URL;
+if (configured && !/^postgres(ql)?:\/\//i.test(configured)) {
+  console.error(`\n❌ DATABASE_URL is not a Postgres connection string:\n   ${configured}\n`);
+  console.error("   It must start with postgres:// or postgresql:// — this is the database itself,");
+  console.error("   not the URL of the deployed backend that talks to it. On Vercel, copy it from");
+  console.error("   the project's Settings → Environment Variables → DATABASE_URL, or run");
+  console.error("   `vercel env pull .env` in this directory. Use the POOLED host (it contains");
+  console.error("   \"-pooler\") and keep ?sslmode=require.");
+  process.exit(2);
+}
+//
+// config/env.ts throws at module scope when DATABASE_URL is unset, and the raw throw here is a
+// stack trace pointing into env.ts — which tells someone running an import script nothing about
+// what to do next. The file has already parsed cleanly at this point, so the only thing missing
+// is the connection string; say that, and say both ways to supply it.
+let initDb: typeof import("./client.js").initDb;
+let sql: typeof import("./client.js").sql;
+let importDump: typeof import("./demoImport.js").importDump;
+try {
+  ({ initDb, sql } = await import("./client.js"));
+  ({ importDump } = await import("./demoImport.js"));
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!message.includes("DATABASE_URL")) throw error;
+  const flag = dryRun ? " --dry-run" : "";
+  console.error("\n❌ DATABASE_URL is not set — the file is fine, but there is no database to import into.\n");
+  console.error("   Local:       cp .env.example .env    # then set DATABASE_URL and re-run");
+  console.error(`   Production:  DATABASE_URL="<connection string>" bun run demo:import ${path}${flag}`);
+  process.exit(2);
+}
 
 await initDb(); // idempotent; makes the tables exist before the first write
 const counts = await importDump(parsed, { dryRun });

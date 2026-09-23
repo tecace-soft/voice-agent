@@ -19,9 +19,9 @@ function currentMailbox(): MailboxScope {
   return typeof window === "undefined" ? undefined : parseHash(window.location.hash).mailbox;
 }
 
-// Whether a record id from the URL is safe to put in a promo API path. The promo's ids are nanoids
+// Whether a record id from the URL is safe to put in a demo API path. The promo's ids are nanoids
 // (A-Z a-z 0-9 _ -). Anything else — "../../analytics" decoded from the hash, a "/" or "?" — would
-// otherwise be spliced into /promo-api/admin/customers/<id> and could leave that route.
+// otherwise be spliced into <backend>/demo/customers/<id> and could leave that route.
 export function isPromoId(id: string): boolean {
   return /^[A-Za-z0-9_-]+$/.test(id);
 }

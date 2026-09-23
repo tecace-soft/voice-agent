@@ -1,5 +1,14 @@
 # Regression harness
 
+Three checks over one fake backend. `compare.py` proves a change to this app left the transcribe
+screens exactly as they were, `tw_probe.py` that Tailwind stays inside `.tw`, and `demos_e2e.py`
+that the Demo tabs still work — all three against `fake_backend.py`, which answers every route
+the dashboard calls: sign-in, `/transcribe/*`, `/business/*`, `/calls`, `/usage/*`, `/feedback`,
+`/api-keys` and the Demo tabs' `/demo/*`. It is stateless and deterministic: a write answers as
+if it worked and changes nothing, so every run starts from the same records.
+
+## compare.py
+
 Proves a change to this app left the transcribe screens exactly as they were.
 
     cd tecace-voice-agent-dashboard
@@ -90,56 +99,48 @@ port 5199 and 8899 free; don't run it at the same time as `compare.py` (they'd s
 
     python scripts/regression/demos_e2e.py
 
-Builds this app, serves it with `vite preview` proxied (`PROMO_API_URL`) to `fake_promo.py` — a
-stand-in for voiceagent_promo's API that answers, statelessly, with the promo's full record shapes
-(two `CustomerWithStats` prospects — Harbor "interested", Cedar "contacted" with an overdue
-follow-up; Harbor Dental's detail with four calls — transcripts, reviews sharing a gap, one test
-call — 14 page views and a CRM note, Cedar a note of its own; analytics and the CRM feed built
-from that same table, so every screen's numbers agree;
-POST/PATCH/DELETE answer as if they worked and change nothing; the public `/api/session` always
-refuses with the promo's "All the demo lines are busy" 429) — and walks the Demos section in Edge:
+Builds this app, serves it, points it at `fake_backend.py` and walks the Demos section in Edge.
+There is no promo in this any more: the demo records live in transcribe-db, transcribe-backend
+serves them under `/demo/*`, and the Demo screens reach them with the dashboard's own admin bearer
+token — no proxy, no second sign-in, no cookie. The fake promo that used to stand behind the proxy
+folded into `fake_backend.py`, fixtures and all, so what the screens are asserted against is
+unchanged: two `CustomerWithStats` prospects (Harbor "interested", Cedar "contacted" with an
+overdue follow-up); Harbor Dental's detail with four calls — transcripts, reviews sharing a gap,
+one test call — 14 page views and a CRM note, Cedar a note of its own; analytics and the CRM feed
+built from that same table, so every screen's numbers agree.
 
-- a user never sees it; an admin unlocks it (wrong password rejected);
+What it checks:
+
+- **who gets in**: a signed-in user sees no Demo group, is refused a Demos URL and asks for no demo
+  data — and that user's own token is refused by the `/demo` routes themselves (403 `forbidden`),
+  as is no token at all (401 `unauthorized`); an admin's first click opens the Prospects table with
+  nothing else asked of them (no second sign-in, one request) and signing out ends it — the
+  sign-in screen returns, the token is gone, and a Demos URL then asks the backend for nothing;
 - the Prospects screen: table, search, the "More actions" menu and the "New customer" dialog
   rendered inside `[data-tw-portal]` with promo styling, copy-link / add / pause / resume toasts,
-  the promo's 400 for a blank name; "Copy link" copies `VITE_PUBLIC_DEMO_BASE_URL/c/<id>` (the
+  the backend's 400 for a blank name; "Copy link" copies `VITE_PUBLIC_DEMO_BASE_URL/c/<id>` (the
   build sets it to `http://promo.example`);
 - the Overview screen: KPI values, a `<canvas>` per chart, recent calls linking to the prospect; a
   theme toggle replaces both canvases, and in dark mode the chart colour variables are 6-digit hex
   and the canvases are actually painted in `--ui-chart-1`, not black (the dark Overview is saved to
-  `DEMOS_E2E_SCREENSHOT`, default `%TEMP%/demos-e2e-chart-dark.png`); a promo session that ends
-  mid-use (cookie cleared) re-locks the section on the next fetch;
-- the prospect page: header and stat cards; Activity (a card per call, the gap roll-up count, the
-  transcript sheet inside `[data-tw-portal]`, "count as your test" PATCHes `{callId, isTest}`);
-  Knowledge (Save PATCHes the edited profile, "Saved."); Schedule (the week grid follows the
-  hours, says it's a mock-up); Prompt (the three prompts; an edit saves `prompts.edited: true`);
-  Sources (the dossier as markdown, source links with `target="_blank"`); Share (link, Copy,
-  email); Re-research (POST, "Research finished."); a refresh keeps it; an unknown id shows the
-  promo's "Customer not found."; a malformed id (`..%2F..%2Fanalytics`) shows the list and sends
-  no promo request outside `/promo-api/admin/customers`;
-- **the test call**: Edge runs with a fake microphone (`--use-fake-device-for-media-stream
-  --use-fake-ui-for-media-stream`, microphone permission granted), so pressing "Call now" builds a
-  real WebRTC offer. The check proves the request the promo would get — `POST
-  /promo-api/session` with `customerId`, `isTest: true` and an SDP offer (`v=0…`) — that the
-  promo's refusal is shown, that "Call again" makes a second attempt possible, and (through a
-  `getUserMedia` hook added by an init script) that each attempt's microphone tracks end up
-  stopped. The hook can also hold `getUserMedia` open like an unanswered permission prompt: the
-  check leaves the page mid-dial, releases it, and requires that no `/promo-api/session` request
-  follows and the late microphone is stopped (the microphone part is supporting evidence only:
-  against the fake's 429 it holds even without the guard; the no-session-request check is the
-  proof). A second check holds the session request itself (a Playwright route), leaves the page,
-  then answers it with a grant: exactly one report must follow, `POST /promo-api/calls/held42`
-  with `status: "abandoned"`, `endReason: "unmounted"`, and nothing may throw. It does **not**
-  prove a call connects: the fake can't answer with an OpenAI SDP, so the
-  live conversation (audio both ways, transcript, hang-up, the end-of-call report) is checked by
-  hand against the real promo;
+  `DEMOS_E2E_SCREENSHOT`, default `%TEMP%/demos-e2e-chart-dark.png`); picking a reporting period
+  from its portalled listbox re-reads `/demo/analytics` for that window;
+- the prospect page: header and stat cards; the tabs card now has the page width to itself (the
+  call panel went with the test call, and its column with it); Activity (a card per call, the gap
+  roll-up count, the transcript sheet inside `[data-tw-portal]`, "count as your test" PATCHes
+  `{callId, isTest}`); Knowledge (Save PATCHes the edited profile, "Saved."); Schedule (the week
+  grid follows the hours, says it's a mock-up); Prompt (the three prompts; an edit saves
+  `prompts.edited: true`); Sources (the dossier as markdown, source links with `target="_blank"`);
+  Share (link, Copy, email); a refresh keeps it; an unknown id shows "Customer not found."; a
+  malformed id (`..%2F..%2Fanalytics`) shows the list and sends no request outside
+  `/demo/customers`;
 - the pipeline (CRM) page: the stage board's columns, counts and cards (Harbor in Interested,
   Cedar in Contacted), the "Due now" section naming Cedar, the activity feed across both
   prospects (its first four rows asserted in order), and stage moves, each with the `PATCH` held
   so the harness decides the answer — a granted move moves the card before the answer arrives
   and toasts where it went; a refused one puts the card back and says why; a refused move whose
   recovery reload also fails still says so, rather than leaving the card parked in a stage the
-  promo never accepted;
+  backend never accepted;
 - the drawer, opened all three ways (a board card, an activity-feed row, a "Due now" chip):
   inside `[data-tw-portal]` with that prospect's timeline and a link to
   `#/demos/prospects/pr0SPct1` (followed, it lands there); its own writes — the Stage select is a
@@ -153,10 +154,13 @@ refuses with the promo's "All the demo lines are busy" 429) — and walks the De
 - a runtime check that no class used in `@layer legacy` lands on promo markup (bar `sr-only`,
   `grid`, and the `.ta-*` type scale where the promo's unlayered copy fully shadows the transcribe
   one) — over Overview, Prospects, the menu, the dialog, and each prospect tab, the transcript
-  sheet, the refused call and the pipeline page with and without its drawer, one check line per
-  state;
-- `#/apiKeys` survives a refresh; signing out clears the promo cookie; a promo that's down shows
-  the "unreachable" card and "Try again" recovers; no page errors throughout.
+  sheet and the pipeline page with and without its drawer, one check line per state;
+- `#/apiKeys` survives a refresh; no page errors throughout.
 
-Exit 0/1/2 like the others. Needs ports 5199, 8898 and 8899 free — don't run it at the same time
-as `compare.py`.
+Because the backend is a different origin from the app (:8899 vs :5199), every request carrying the
+bearer token is preflighted, and any response the harness fulfils itself has to carry
+`Access-Control-Allow-Origin` (`fulfill_json`) or the browser drops it. Route handlers therefore
+fall back for anything that isn't the method they mean to hold, so the preflight reaches the fake.
+
+Exit 0/1/2 like the others. Needs ports 5199 and 8899 free — don't run it at the same time as
+`compare.py`.

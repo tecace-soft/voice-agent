@@ -6,19 +6,15 @@ import { defineConfig, loadEnv } from "vite";
 // Dev server on 5175 (the admin dashboard uses 5173 and the transcribe dashboard 5174, so all
 // three can run at once).
 //
-// /promo-api goes to voiceagent_promo's /api (PROMO_API_URL — server-side only, so no VITE_
-// prefix; default a local `npm run dev` on :3000). Proxying rather than calling it cross-origin
-// keeps the promo's httpOnly admin cookie same-origin with no change to the promo, and `vite
-// preview` uses the same proxy. A deployed build needs that one path as a Vercel rewrite (added at
-// first deploy — see README).
+// Nothing is proxied. The Demo screens used to reach voiceagent_promo through a /promo-api proxy;
+// their data now lives in transcribe-db and transcribe-backend serves it under /demo/*, so they go
+// straight to BACKEND_URL like every other screen.
 //
-// Nothing else of the promo is proxied. The prospect-facing demo page (/c/<id>) stays on the promo
-// and is only ever linked to (VITE_PUBLIC_DEMO_BASE_URL) — decided in stage 5. Promo HTML must not
-// run on this origin: the dashboard's admin bearer token lives in localStorage here, and that page
-// is public.
+// The prospect-facing demo page (/c/<id>) stays on the promo and is only ever linked to
+// (VITE_PUBLIC_DEMO_BASE_URL) — decided in stage 5. Promo HTML must not run on this origin: the
+// dashboard's admin bearer token lives in localStorage here, and that page is public.
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const promo = (env.PROMO_API_URL || "http://localhost:3000").replace(/\/$/, "");
   // transcribe-backend's base URL, baked into the bundle at build time as __BACKEND_URL__.
   // Deliberately NOT a VITE_ name: Vite only exposes VITE_-prefixed vars to browser code, so this
   // is injected here instead — the deployment's env var is just BACKEND_URL. (It is still public:
@@ -36,13 +32,6 @@ export default defineConfig(({ command, mode }) => {
         "public origin (see README).\n",
     );
   }
-  const proxy = {
-    "/promo-api": {
-      target: promo,
-      changeOrigin: true,
-      rewrite: (path: string) => path.replace(/^\/promo-api/, "/api"),
-    },
-  };
   return {
     plugins: [react()],
     // Ported promo code imports "@/components/…", "@/lib/…" exactly as in its own repo; @/ is
@@ -50,12 +39,9 @@ export default defineConfig(({ command, mode }) => {
     resolve: {
       alias: [{ find: /^@\//, replacement: fileURLToPath(new URL("./src/demos/", import.meta.url)) }],
     },
-    server: { port: 5175, proxy },
-    preview: { proxy },
-    // Shown on the "demo service unreachable" card in development, so a wrong target is obvious.
+    server: { port: 5175 },
     define: {
       __BACKEND_URL__: JSON.stringify(backend),
-      __PROMO_TARGET__: JSON.stringify(mode === "development" ? promo : ""),
     },
   };
 });

@@ -1,6 +1,4 @@
 
-import { RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,16 +7,9 @@ import type { Customer } from "@/lib/types";
 type Props = {
   customer: Customer;
   onChange: (partial: Partial<Customer>) => void;
-  onResearch: () => void;
-  researching: boolean;
 };
 
-export function ResearchInputsPanel({
-  customer,
-  onChange,
-  onResearch,
-  researching,
-}: Props) {
+export function ResearchInputsPanel({ customer, onChange }: Props) {
   return (
     <div className="space-y-4">
       <div>
@@ -76,11 +67,6 @@ export function ResearchInputsPanel({
           onChange={(event) => onChange({ researchNotes: event.target.value })}
         />
       </div>
-
-      <Button variant="outline" onClick={onResearch} disabled={researching}>
-        <RefreshCw className="size-4" />
-        {researching ? "Researching" : "Run research again"}
-      </Button>
     </div>
   );
 }

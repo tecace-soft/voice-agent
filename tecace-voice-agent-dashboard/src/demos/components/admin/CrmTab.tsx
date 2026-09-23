@@ -1,5 +1,5 @@
 
-import { promoFetch } from "@/api";
+import { demoFetch } from "@/api";
 import { useState } from "react";
 
 import { toast } from "sonner";
@@ -62,7 +62,7 @@ export function CrmTab({
     if (!text) return;
     setSaving(true);
     try {
-      const response = await promoFetch(`/api/admin/customers/${customer.id}/notes`, {
+      const response = await demoFetch(`/customers/${customer.id}/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),

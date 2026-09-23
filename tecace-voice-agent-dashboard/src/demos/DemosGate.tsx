@@ -1,47 +1,29 @@
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
-import { usePromoAuth } from "./PromoAuth";
-import { UnlockCard } from "./UnlockCard";
 
-// Everything in the Demos section renders through here: it asks the promo on the first visit and
-// shows the unlock card, an "unreachable" card, or the view. It is also the `.tw` boundary — the
-// promo's Tailwind styling applies inside this element and nowhere else. The wrapper itself stays
-// bare (inside @scope a utility can't style the scope root).
+// Everything in the Demos section renders through here. There is nothing to unlock any more: the
+// demo data lives in transcribe-db behind this dashboard's own admin session, and the Demo group is
+// already admin-only, so whoever can see these views is already allowed to read them.
+//
+// What is left is the `.tw` boundary — the promo's Tailwind styling applies inside this element and
+// nowhere else — plus the flex column the promo's pages relied on, the toaster, and one error card
+// for the case the screens themselves cannot report: `__BACKEND_URL__` was never set, so every
+// request would go to this app's own origin and come back as the SPA's index.html.
 export function DemosGate({ children }: { children: ReactNode }) {
-  const { state, recheck } = usePromoAuth();
-
-  useEffect(() => {
-    if (state === "idle") recheck();
-  }, [state, recheck]);
+  // A build-time constant, so this cannot change while the app is running.
+  const configured = Boolean(__BACKEND_URL__);
 
   return (
     <div className="tw">
-      {(state === "idle" || state === "checking") && (
-        <p className="ta-body-2 text-muted-foreground">Checking the demo service…</p>
-      )}
-      {state === "locked" && <UnlockCard />}
-      {state === "unreachable" && (
+      {!configured ? (
         <section className="max-w-lg rounded-xl border bg-card p-6">
-          <h2 className="ta-headline-1 text-foreground">Demo service unreachable</h2>
+          <h2 className="ta-headline-1 text-foreground">Backend URL not set</h2>
           <p className="ta-body-2 mt-1 text-muted-foreground">
-            The demos come from the promo app, and it didn't answer. Check that it's running, then
-            try again.
+            The demos read from transcribe-backend, and this build has no backend URL baked into it.
+            Set <code>BACKEND_URL</code> and rebuild.
           </p>
-          {__PROMO_TARGET__ && (
-            <p className="ta-caption-1 mt-2 text-muted-foreground">
-              Dev proxy target: {__PROMO_TARGET__} (set PROMO_API_URL to change it)
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={recheck}
-            className="ta-label-1 mt-4 h-10 rounded-lg border px-4 text-foreground transition-colors hover:bg-accent"
-          >
-            Try again
-          </button>
         </section>
-      )}
-      {state === "unlocked" && (
+      ) : (
         // The promo's pages are fragments that relied on their layout's `flex-col gap` — this is it.
         // The toaster lives here, inside .tw, so toasts get the promo styling and only exist on
         // Demos views. It sits after the flex column, not in it: sonner renders a zero-height
