@@ -33,10 +33,14 @@ import type {
 } from "../demo/types.js";
 import { sql } from "./client.js";
 
-// JSONB columns are passed as text with an explicit ::jsonb cast rather than as objects, for the
-// same reason `demoImport.ts` does it: an untyped parameter resolves to text, and the cast is what
-// makes the intent unambiguous.
-const json = (value: unknown) => JSON.stringify(value ?? null);
+// A value bound for a JSONB column is passed through as-is: **do not pre-stringify it.**
+// postgres.js learns from the server's ParameterDescription that `$n::jsonb` is OID 3802, and
+// types.js registers the json serializer (JSON.stringify) for that OID, so the driver encodes it
+// itself (connection.js: `options.serializers[type](x)`). Encoding it here as well stores a JSON
+// *string* instead of an object — see the same note in `demoImport.ts`, and
+// `jsonbBinding.test.ts`, which pins this against postgres.js's own serializer.
+const jsonb = (value: unknown) =>
+  value === null || value === undefined ? null : sql.json(value as Parameters<typeof sql.json>[0]);
 
 // Selected explicitly, never `SELECT *`: a column added later must not silently change the shape
 // `rows.ts` is handed. The aliases are `DemoCustomerRow`'s field names.
@@ -275,9 +279,9 @@ export async function patchCustomer(id: string, patch: CustomerPatch): Promise<C
         stage             = ${next.stage ?? null},
         last_contacted_at = ${next.lastContactedAt ?? null},
         follow_up_at      = ${next.followUpAt ?? null},
-        call_sound        = ${next.callSound === undefined ? null : json(next.callSound)}::jsonb,
-        profile           = ${json(next.profile)}::jsonb,
-        prompts           = ${json(next.prompts)}::jsonb,
+        call_sound        = ${jsonb(next.callSound)},
+        profile           = ${jsonb(next.profile)},
+        prompts           = ${jsonb(next.prompts)},
         updated_at        = ${next.updatedAt}
       WHERE c.id = ${id}
       RETURNING ${customerColumns()}
@@ -335,8 +339,8 @@ export async function createCustomer(input: NewCustomerInput): Promise<Customer>
       ${newId(12)}, ${true}, ${businessName}, ${input.label?.trim() || null},
       ${input.contactName?.trim() || null}, ${input.contactEmail?.trim() || null},
       ${input.websiteUrl?.trim() || null}, ${input.mapsUrl?.trim() || null},
-      ${input.researchNotes?.trim() || null}, ${json(profile)}::jsonb, ${""}, ${json([])}::jsonb,
-      ${json(prompts)}::jsonb, ${json(DEFAULT_CALL_SOUND)}::jsonb, ${DEFAULT_VOICE}, ${agentName},
+      ${input.researchNotes?.trim() || null}, ${jsonb(profile)}, ${""}, ${jsonb([])},
+      ${jsonb(prompts)}, ${jsonb(DEFAULT_CALL_SOUND)}, ${DEFAULT_VOICE}, ${agentName},
       ${language}, ${"ready" satisfies CustomerStatus}, ${now}, ${now}
     )
     RETURNING

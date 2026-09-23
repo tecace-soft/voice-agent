@@ -10,6 +10,26 @@ const db = await PGlite.create();
 // (sql`TRUE`) as text with its values merged, which is what postgres.js itself does.
 const FRAGMENT = Symbol("fragment");
 
+// postgres.js decides a parameter's wire text with `options.serializers[type](x)`
+// (connection.js), and `sql.json(x)` tags the parameter as OID 3802. Reproducing that here —
+// with postgres.js's real serializer table — is what makes these tests able to catch a
+// double-encoded JSON value, which a shim that forwarded raw values could not.
+// Resolved relative to this file: postgres.js does not export its internals through package
+// "exports", and the specifier is built at runtime so tsc does not try to resolve it.
+const TYPES_URL = new URL("../../node_modules/postgres/src/types.js", import.meta.url).href;
+const { serializers } = (await import(TYPES_URL)) as {
+  serializers: Record<number, (x: unknown) => string>;
+};
+
+function bind(value: unknown): unknown {
+  const parameter = value as { value?: unknown; type?: number } | null;
+  if (parameter && typeof parameter === "object" && "type" in parameter && "value" in parameter) {
+    const serialize = serializers[parameter.type as number];
+    return serialize ? serialize(parameter.value) : parameter.value;
+  }
+  return value instanceof Date ? value.toISOString() : value;
+}
+
 function build(strings: TemplateStringsArray, values: unknown[], counter: { n: number }) {
   let text = "";
   const out: unknown[] = [];
@@ -24,7 +44,7 @@ function build(strings: TemplateStringsArray, values: unknown[], counter: { n: n
     } else {
       counter.n += 1;
       text += "$" + counter.n;
-      out.push(value instanceof Date ? value.toISOString() : value);
+      out.push(bind(value));
     }
   });
   return { text, values: out };
@@ -54,6 +74,9 @@ const sqlShim: any = Object.assign(makeTag(), {
       throw error;
     }
   },
+  // postgres.js's own `sql.json(x)` is `new Parameter(x, 3802)`; `bind()` above then runs the
+  // driver's jsonb serializer over it, exactly as connection.js does.
+  json: (value: unknown) => ({ value, type: 3802 }),
   end: async () => {},
 });
 

@@ -9,10 +9,15 @@ export interface ImportCounts {
   notes: number;
 }
 
-// JSONB columns are passed as text with an explicit ::jsonb cast rather than as objects: an untyped
-// parameter resolves to text, and the cast is what makes the intent unambiguous — the same reason
-// the counter's upsert casts its parameters.
-const json = (value: unknown) => JSON.stringify(value ?? null);
+// A value bound for a JSONB column is passed through as-is: **do not pre-stringify it.**
+// postgres.js learns from the server's ParameterDescription that `$n::jsonb` is OID 3802, and
+// types.js registers the json serializer (JSON.stringify) for that OID — so the driver encodes it
+// itself (connection.js: `options.serializers[type](x)`). Handing it an already-encoded string
+// encodes it twice and Postgres stores a JSON *string* rather than an object, which is what the
+// first production import did: every customer read back with `profile.name` undefined and the
+// Customers tab showed ten rows of "Unnamed". `?? null` keeps a SQL NULL for the nullable columns.
+const jsonb = (value: unknown) =>
+  value === null || value === undefined ? null : sql.json(value as Parameters<typeof sql.json>[0]);
 
 /** Thrown to force a ROLLBACK at the end of a dry run. Never escapes importDump. */
 class DryRun extends Error {}
@@ -48,8 +53,8 @@ export async function importDump(
         ) VALUES (
           ${c.id}, ${c.active}, ${c.businessName}, ${c.label}, ${c.contactName}, ${c.contactEmail},
           ${c.operatorNotes}, ${c.websiteUrl}, ${c.mapsUrl}, ${c.resolvedMapsUrl}, ${c.researchNotes},
-          ${json(c.profile)}::jsonb, ${c.dossier}, ${json(c.sources)}::jsonb, ${json(c.prompts)}::jsonb,
-          ${c.callSound === null ? null : json(c.callSound)}::jsonb, ${c.voice}, ${c.agentName},
+          ${jsonb(c.profile)}, ${c.dossier}, ${jsonb(c.sources)}, ${jsonb(c.prompts)},
+          ${jsonb(c.callSound)}, ${c.voice}, ${c.agentName},
           ${c.language}, ${c.demoMinutes}, ${c.stage}, ${c.status}, ${c.error},
           ${c.lastContactedAt}, ${c.followUpAt}, ${c.researchedAt}, ${c.createdAt}, ${c.updatedAt}
         )
@@ -81,8 +86,8 @@ export async function importDump(
         ) VALUES (
           ${c.id}, ${c.customerId}, ${c.liveSessionId}, ${c.startedAt}, ${c.endedAt}, ${c.status},
           ${c.durationSec}, ${c.turns}, ${c.endReason}, ${c.isTest}, ${c.visitorId}, ${c.ipHash},
-          ${c.userAgent}, ${json(c.transcript)}::jsonb,
-          ${c.review === null ? null : json(c.review)}::jsonb
+          ${c.userAgent}, ${jsonb(c.transcript)},
+          ${jsonb(c.review)}
         )
         ON CONFLICT (id) DO UPDATE SET
           customer_id = EXCLUDED.customer_id, live_session_id = EXCLUDED.live_session_id,
