@@ -65,6 +65,22 @@ describe("parseDump", () => {
     expect(() => parseDump(null)).toThrow(DumpError);
   });
 
+  it("takes the later export shape too: the key map on its own, entries without a ttl", () => {
+    // The 2026-09-23 export drops the { exportedAt, source, keyCount, data } wrapper and the per-key
+    // `ttl`. Nothing read `ttl`, and the keys are the same, so both shapes parse to the same thing.
+    const bare: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(DUMP.data)) {
+      const { ttl: _ttl, ...rest } = entry as Record<string, unknown>;
+      bare[key] = rest;
+    }
+    expect(parseDump(bare)).toEqual(parseDump(DUMP));
+  });
+
+  it("still refuses a file that is not an export, in either shape", () => {
+    expect(() => parseDump({ nothing: "useful" })).toThrow(DumpError);
+    expect(() => parseDump({ data: { nothing: "useful" } })).toThrow(DumpError);
+  });
+
   it("names every call whose customer is missing, and imports nothing", () => {
     const orphaned = structuredClone(DUMP) as typeof DUMP & { data: Record<string, unknown> };
     orphaned.data["calls:zzzzzzzzzzzz:c2"] = call("c2", "zzzzzzzzzzzz");

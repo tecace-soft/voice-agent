@@ -33,12 +33,37 @@ function listEntries(value: unknown): Raw[] {
   });
 }
 
-export function parseDump(input: unknown): ParsedDump {
-  const data = (input as { data?: unknown } | null)?.data;
-  if (data === null || typeof data !== "object" || Array.isArray(data)) {
-    throw new DumpError("not a Redis export: expected an object with a `data` object");
+/** A key only a Redis export of this shape would carry. */
+const EXPORT_KEY = /^(customers|events)(:|$)|^calls:/;
+
+/**
+ * The export has been seen in two shapes. The 2026-09-22 one wrapped everything in
+ * `{ exportedAt, source, keyCount, data }`; a later one is the key map on its own, and its entries
+ * carry `{ type, value }` with no `ttl`. Both are accepted — `ttl` was never read.
+ *
+ * What is NOT relaxed is refusing a file that is not an export at all. Importing zero rows and
+ * reporting success is the failure this check exists to prevent, so a bare object still has to
+ * carry at least one key that looks like one of Redis's.
+ */
+function entriesOf(input: unknown): Record<string, Entry> {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    throw new DumpError("not a Redis export: expected an object");
   }
-  const entries = data as Record<string, Entry>;
+  const wrapped = (input as { data?: unknown }).data;
+  const map =
+    wrapped !== null && typeof wrapped === "object" && !Array.isArray(wrapped) ? wrapped : input;
+  const keys = Object.keys(map as object);
+  if (!keys.some((k) => EXPORT_KEY.test(k))) {
+    throw new DumpError(
+      "not a Redis export: no customers, calls or events keys (looked at " +
+        `${keys.length} key(s)`,
+    );
+  }
+  return map as Record<string, Entry>;
+}
+
+export function parseDump(input: unknown): ParsedDump {
+  const entries = entriesOf(input);
 
   const customers: DemoCustomerRow[] = [];
   const calls: DemoCallRow[] = [];
