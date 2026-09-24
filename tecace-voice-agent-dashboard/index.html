@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TecAce — Voice Agent Dashboard</title>
+    <!--
+      The tab icon: the voice orb, which is the app's mark (the sidebar renders the same film idling,
+      and so does the demo page's logo). One asset for both, rather than a separate 32px copy — the
+      dashboard already loads this file for the mark, so it is cached either way, and a second file
+      is a second thing to forget when the icon changes.
+    -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/voice-orb.png" />
+    <link rel="apple-touch-icon" href="/voice-orb.png" />
     <!-- Apply the saved theme before first paint so there's no flash of the wrong theme. -->
     <script>
       try {

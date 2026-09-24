@@ -87,6 +87,18 @@ describe("what the prospect's page is built from", () => {
     expect(first).toEqual({ source: "/c/:path*", destination: "/c.html" });
   });
 
+  it("shows the same tab icon as the dashboard", () => {
+    // The app's mark is the voice orb (the sidebar renders the same film idling). Two documents now
+    // means two <head>s, and a favicon is the kind of thing that gets added to one of them.
+    const icon = /<link rel="icon"[^>]*href="([^"]+)"/;
+    const dashboard = readFileSync(join(appRoot, "index.html"), "utf8").match(icon);
+    const demo = readFileSync(join(appRoot, "c.html"), "utf8").match(icon);
+    expect(dashboard?.[1]).toBe("/voice-orb.png");
+    expect(demo?.[1]).toBe(dashboard?.[1]);
+    // And the file is really there to be served — `public/` is copied verbatim into the build.
+    expect(existsSync(join(appRoot, "public", "voice-orb.png"))).toBe(true);
+  });
+
   it("is not a view in the dashboard, so it cannot appear in the Demos tabs", () => {
     const routing = readFileSync(join(src, "routing.ts"), "utf8");
     expect(routing).not.toContain('"c/');
