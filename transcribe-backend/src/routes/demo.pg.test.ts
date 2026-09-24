@@ -23,6 +23,20 @@ const db = await PGlite.create();
 // (sql`TRUE`) as text with its values merged, which is what postgres.js itself does.
 const FRAGMENT = Symbol("fragment");
 
+// A fragment is recognised by its SHAPE, not by the private symbol above.
+//
+// Module instances are shared across the files of one `bun test` run, while `mock.module` rebinds
+// their imports. So `db/users.ts`'s module-level COLUMNS list can have been built by ANOTHER test
+// file's tag and still be executed here. Recognising only our own symbol bound that list as a value
+// — `RETURNING $1`, a row with no columns — which surfaces wherever the row is next read and looks
+// nothing like its cause.
+const isFragment = (value: any): boolean =>
+  Boolean(value) &&
+  typeof value === "object" &&
+  Array.isArray(value.strings) &&
+  Array.isArray(value.values) &&
+  "raw" in value.strings;
+
 // postgres.js decides a parameter's wire text with `options.serializers[type](x)`
 // (connection.js), and `sql.json(x)` tags the parameter as OID 3802. Reproducing that here —
 // with postgres.js's real serializer table — is what makes these tests able to catch a
@@ -50,7 +64,7 @@ function build(strings: TemplateStringsArray, values: unknown[], counter: { n: n
     text += part;
     if (i >= values.length) return;
     const value = values[i] as any;
-    if (value && value[FRAGMENT]) {
+    if (isFragment(value)) {
       const inner = build(value.strings, value.values, counter);
       text += inner.text;
       out.push(...inner.values);
@@ -115,39 +129,22 @@ for (const [, statement = ""] of body.matchAll(/sql`([\s\S]*?)`/g)) {
 
 
 // ----------------------------------------------------------------------------------------------
-// The three callers. `authenticateAdmin`'s real contract, reproduced: the user on success, and
-// otherwise the ready-made denial the routes forward — 401 with the shared UNAUTHORIZED body for
-// nobody, 403 with the route's own `forbiddenMessage` for a signed-in non-admin.
-const ADMIN = "Bearer admin-token";
-const NON_ADMIN = "Bearer user-token";
+const { createUser } = await import("../db/users.js");
+const { createToken } = await import("../auth/session.js");
 
-const adminUser = {
-  id: "admin-1",
-  email: "admin@tecace.com",
-  name: "Admin",
-  role: "admin",
-  lastLoginAt: null,
-};
+async function bearerFor(email: string, role: "admin" | "user"): Promise<string> {
+  const user = (await createUser({
+    email,
+    name: email,
+    // Never verified on this path — the token is signed, and a request carries no password.
+    passwordHash: "x".repeat(60),
+    role,
+  }))!;
+  return `Bearer ${createToken(user.id, user.tokenVersion).token}`;
+}
 
-await mock.module("../auth/guard.js", () => ({
-  UNAUTHORIZED: { error: "unauthorized", message: "Sign in to continue." },
-  authenticate: async (authorization?: string) =>
-    authorization === ADMIN
-      ? adminUser
-      : authorization === NON_ADMIN
-        ? { id: "user-1", email: "jane@tecace.com", name: "Jane", role: "user", lastLoginAt: null }
-        : null,
-  authenticateAdmin: async (
-    authorization?: string,
-    forbiddenMessage = "This needs an admin account.",
-  ) => {
-    if (authorization === ADMIN) return { user: adminUser };
-    if (authorization === NON_ADMIN) {
-      return { denied: 403, body: { error: "forbidden", message: forbiddenMessage } };
-    }
-    return { denied: 401, body: { error: "unauthorized", message: "Sign in to continue." } };
-  },
-}));
+const ADMIN = await bearerFor("admin@tecace.com", "admin");
+const NON_ADMIN = await bearerFor("jane@tecace.com", "user");
 
 // ----------------------------------------------------------------------------------------------
 // The seed, in the shape `demoImport.pg.test.ts` uses — the promo's own Redis export — so the rows
@@ -513,12 +510,19 @@ describe("a prompt nobody has edited", () => {
 // per-handler and a route added without one is how this leaks.
 
 describe("the admin guard", () => {
-  const reads: [string, string][] = [
-    ["GET", "/demo/analytics"],
-    ["GET", "/demo/customers"],
-    ["GET", `/demo/customers/${A}`],
-    ["GET", "/demo/crm"],
-    ["GET", `/demo/customers/${A}/notes`],
+  // Two shapes of refusal, because two of these handlers are shared with the customer whose record
+  // it is (`GET` and `PATCH /demo/customers/:id`, see `auth/guard.ts`'s `authenticateDemo`). A plain
+  // non-admin — no demo stage, no demo record — is refused by either, and the message says which
+  // door was shut. Everything else on this file is the operator's pipeline and has no customer
+  // version at all.
+  const OPERATOR_ONLY = "Only an admin can read the demo data.";
+  const NOT_YOURS = "Only an admin can read other customers' demos.";
+  const reads: [string, string, string][] = [
+    ["GET", "/demo/analytics", OPERATOR_ONLY],
+    ["GET", "/demo/customers", OPERATOR_ONLY],
+    ["GET", `/demo/customers/${A}`, NOT_YOURS],
+    ["GET", "/demo/crm", OPERATOR_ONLY],
+    ["GET", `/demo/customers/${A}/notes`, OPERATOR_ONLY],
   ];
   const writes: [string, string, unknown][] = [
     ["POST", "/demo/customers", { businessName: "Sneaky Co" }],
@@ -528,14 +532,11 @@ describe("the admin guard", () => {
     ["PATCH", `/demo/customers/${A}/calls`, { callId: "c1", isTest: true }],
   ];
 
-  for (const [method, path] of reads) {
+  for (const [method, path, message] of reads) {
     it(`refuses a signed-in non-admin on ${method} ${path} with 403`, async () => {
       const res = await request(method, path, { auth: NON_ADMIN });
       expect(res.status).toBe(403);
-      expect(await json(res)).toEqual({
-        error: "forbidden",
-        message: "Only an admin can read the demo data.",
-      });
+      expect(await json(res)).toEqual({ error: "forbidden", message });
     });
   }
 

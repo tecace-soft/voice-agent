@@ -1,113 +1,138 @@
 import { afterAll, beforeEach, describe, expect, it, mock } from "bun:test";
+import { PGlite } from "@electric-sql/pglite";
 import { hashPassword } from "./password.js";
-import type { UserRecord } from "../db/users.js";
 
-// Exercises the real routes, guards and token code against an in-memory stand-in for the two
-// database modules, so `bun test` needs no Postgres. Run with: bun test
+// Exercises the real routes, guards and token code — and the real `users` queries — against PGlite
+// behind `db/client.js`, so `bun test` still needs no Postgres. The reads that are not about accounts
+// (voicemail stats, analytics, feedback) stay in-memory stand-ins: they are other tables' concern.
+//
+// WHY THE `users` TABLE IS REAL HERE. It used to be an in-memory array, mocked in over
+// `db/users.js`. `mock.module` replaces a module for the WHOLE test run, not just this file, so that
+// array became every later test file's `users` table too — and any test that wrote an account
+// through a route and read it back out of a database was quietly reading the array instead. It also
+// meant an export added to `db/users.ts` had to be added here or every one of those files failed to
+// load. Both problems go away if this file mocks nothing that owns accounts.
+//
+// Run with: bun test
 process.env.AUTH_SECRET ??= "test-secret-test-secret-test-secret-0123";
 process.env.DATABASE_URL ??= "postgres://unused/unused";
 
 const PASSWORD = "hunter2-hunter2";
 const JANE_ID = "11111111-1111-1111-1111-111111111111";
 
-// The fake `users` table. Each test starts from a known state via resetUsers().
-let users: UserRecord[] = [];
-let nextId = 0;
+const db = await PGlite.create();
 
-function jane(): UserRecord {
-  return {
-    id: JANE_ID,
-    email: "jane@tecace.com",
-    name: "Jane Kim",
-    role: "admin",
-    passwordHash: hashPassword(PASSWORD),
-    tokenVersion: 1,
-    createdAt: new Date().toISOString(),
-    lastLoginAt: null,
-  };
+// A postgres.js-shaped tagged template over PGlite: it builds $1..$n and splices a nested fragment
+// (the COLUMNS list) as text with its values merged, which is what postgres.js itself does. Copied
+// from `routes/demo.pg.test.ts`, minus the JSON serializer — no account column is JSONB.
+const FRAGMENT = Symbol("fragment");
+
+// A fragment is recognised by its SHAPE, not by a private symbol.
+//
+// Module instances are shared across test files in one `bun test` run, while `mock.module` rebinds
+// their imports retroactively. So `businessProfiles.ts`'s module-level COLUMNS list can have been
+// built by another test file's tag and then be executed by this one's. A shim that recognised only
+// its own symbol treated that list as a VALUE, and the query became `SELECT $1 FROM ...` — which
+// fails in a way that looks like a bug in the route. Anything carrying a template's `strings` and
+// `values` is a fragment, whoever made it.
+const isFragment = (value: any): boolean =>
+  Boolean(value) &&
+  typeof value === "object" &&
+  Array.isArray(value.strings) &&
+  Array.isArray(value.values) &&
+  "raw" in value.strings;
+
+function build(strings: TemplateStringsArray, values: unknown[], counter: { n: number }) {
+  let text = "";
+  const out: unknown[] = [];
+  strings.forEach((part, i) => {
+    text += part;
+    if (i >= values.length) return;
+    const value = values[i] as any;
+    if (isFragment(value)) {
+      const inner = build(value.strings, value.values, counter);
+      text += inner.text;
+      out.push(...inner.values);
+    } else {
+      counter.n += 1;
+      text += "$" + counter.n;
+      out.push(value instanceof Date ? value.toISOString() : value);
+    }
+  });
+  return { text, values: out };
 }
 
-function resetUsers(seeded = true): void {
-  nextId = 0;
-  users = seeded ? [jane()] : [];
-}
-resetUsers();
+const makeTag = () => (strings: TemplateStringsArray, ...values: unknown[]) => ({
+  [FRAGMENT]: true,
+  strings,
+  values,
+  then(resolve: any, reject: any) {
+    const built = build(strings, values, { n: 0 });
+    return db.query(built.text, built.values).then((r) => r.rows).then(resolve, reject);
+  },
+});
 
-const byId = (id: string) => users.find((u) => u.id === id) ?? null;
-const normalize = (e: string) => e.trim().toLowerCase();
-
-const STATS = { totalProcessed: 42, totalFailed: 0, runs: 3, lastRunAt: null, today: 1, last7Days: 4, daily: [], recent: [], runSeries: [] };
+const sqlShim: any = Object.assign(makeTag(), {
+  begin: async (fn: (tx: any) => Promise<unknown>) => {
+    await db.exec("BEGIN");
+    try {
+      const out = await fn(makeTag());
+      await db.exec("COMMIT");
+      return out;
+    } catch (error) {
+      await db.exec("ROLLBACK");
+      throw error;
+    }
+  },
+  json: (value: unknown) => value,
+  end: async () => {},
+});
 
 await mock.module("../db/client.js", () => ({
-  sql: Object.assign(() => [], { end: async () => {} }),
+  sql: sqlShim,
   initDb: async () => {},
   ensureDbReady: async () => {},
 }));
-await mock.module("../db/users.js", () => {
-  const insert = (input: { email: string; name: string; passwordHash: string; role?: "admin" | "user" }, role?: "admin" | "user"): UserRecord => {
-    const row: UserRecord = {
-      id: `user-${++nextId}`,
-      email: normalize(input.email),
-      name: input.name.trim(),
-      role: role ?? input.role ?? "user",
-      passwordHash: input.passwordHash,
-      tokenVersion: 1,
-      createdAt: new Date().toISOString(),
-      lastLoginAt: null,
-    };
-    users.push(row);
-    return row;
-  };
-  return {
-    normalizeEmail: normalize,
-    isRole: (v: unknown) => v === "admin" || v === "user",
-    toPublicUser: (u: UserRecord) => ({ id: u.id, email: u.email, name: u.name, role: u.role, lastLoginAt: u.lastLoginAt }),
-    findUserByEmail: async (e: string) => users.find((u) => u.email === normalize(e)) ?? null,
-    findUserById: async (id: string) => byId(id),
-    listUsers: async () => [...users],
-    countUsers: async () => users.length,
-    countAdmins: async () => users.filter((u) => u.role === "admin").length,
-    recordLogin: async (id: string) => {
-      const u = byId(id);
-      if (u) u.lastLoginAt = new Date().toISOString();
-    },
-    createUser: async (input: { email: string; name: string; passwordHash: string }) =>
-      users.some((u) => u.email === normalize(input.email)) ? null : insert(input),
-    // the real query hardcodes 'admin' for the first account
-    createFirstUser: async (input: { email: string; name: string; passwordHash: string }) =>
-      users.length > 0 ? null : insert(input, "admin"),
-    setPasswordById: async (id: string, hash: string) => {
-      const u = byId(id);
-      if (!u) return null;
-      u.passwordHash = hash;
-      u.tokenVersion += 1;
-      return u;
-    },
-    bumpTokenVersionById: async (id: string) => {
-      const u = byId(id);
-      if (!u) return null;
-      u.tokenVersion += 1;
-      return u;
-    },
-    promoteByEmail: async (email: string) => {
-      const u = users.find((x) => x.email === normalize(email));
-      if (!u) return null;
-      u.role = "admin";
-      return u;
-    },
-    setRoleById: async (id: string, role: "admin" | "user") => {
-      const u = byId(id);
-      if (!u) return null;
-      u.role = role;
-      return u;
-    },
-    deleteUserById: async (id: string) => {
-      const before = users.length;
-      users = users.filter((u) => u.id !== id);
-      return users.length < before;
-    },
-  };
-});
+
+// initDb closes over client.ts's own `sql`, so mocking the module cannot redirect it. Run the real
+// DDL text instead, lifted out of the source — so the constraints these tests run against (the role
+// and status CHECKs, the one-account-per-business index) are the real ones.
+const ddlSource = await Bun.file("src/db/client.ts").text();
+const ddl = ddlSource.slice(
+  ddlSource.indexOf("export async function initDb"),
+  ddlSource.indexOf("// On Vercel"),
+);
+for (const [, statement = ""] of ddl.matchAll(/sql`([\s\S]*?)`/g)) {
+  try {
+    await db.exec(statement);
+  } catch (error) {
+    throw new Error(`DDL failed: ${statement.trim().slice(0, 90)}\n${(error as Error).message}`);
+  }
+}
+
+const rows = async <T = any>(text: string, values: unknown[] = []): Promise<T[]> =>
+  (await db.query(text, values)).rows as T[];
+
+const countAccounts = async (): Promise<number> =>
+  Number((await rows<{ n: number }>("SELECT count(*)::int AS n FROM users"))[0]!.n);
+
+const idOf = async (email: string): Promise<string> =>
+  (await rows<{ id: string }>("SELECT id FROM users WHERE email = $1", [email]))[0]!.id;
+
+// Each test starts from a known state: Jane alone, or nobody. Jane's id is fixed so the route tests
+// can name her without a lookup.
+async function resetUsers(seeded = true): Promise<void> {
+  await db.exec("DELETE FROM users");
+  if (!seeded) return;
+  await rows(
+    `INSERT INTO users (id, email, name, role, password_hash)
+     VALUES ($1, 'jane@tecace.com', 'Jane Kim', 'admin', $2)`,
+    [JANE_ID, hashPassword(PASSWORD)],
+  );
+}
+await resetUsers();
+
+const STATS = { totalProcessed: 42, totalFailed: 0, runs: 3, lastRunAt: null, today: 1, last7Days: 4, daily: [], recent: [], runSeries: [] };
 // In-memory `feedback` table.
 let notes: any[] = [];
 let noteId = 0;
@@ -205,8 +230,8 @@ async function tokenFor(email = "jane@tecace.com", password = PASSWORD): Promise
   return (await json<{ token: string }>(res)).token;
 }
 
-beforeEach(() => {
-  resetUsers();
+beforeEach(async () => {
+  await resetUsers();
   notes = [];
   noteId = 0;
 });
@@ -218,7 +243,18 @@ describe("POST /auth/login", () => {
     expect(res.status).toBe(200);
     const body = await json(res);
     expect(body.token).toMatch(/^[\w-]+\.[\w-]+$/);
-    expect(body.user).toEqual({ id: JANE_ID, email: "jane@tecace.com", name: "Jane Kim", role: "admin", lastLoginAt: expect.any(String) });
+    // The whole public shape, so a field added to it has to be considered here rather than appearing
+    // in every dashboard response unnoticed. `businessId` and `status` are the lifecycle's, and an
+    // account that predates it reads as unplaced.
+    expect(body.user).toEqual({
+      id: JANE_ID,
+      email: "jane@tecace.com",
+      name: "Jane Kim",
+      role: "admin",
+      businessId: null,
+      status: "unassigned",
+      lastLoginAt: expect.any(String),
+    });
     expect(body.user.passwordHash).toBeUndefined();
     expect(new Date(body.expiresAt).getTime()).toBeGreaterThan(Date.now());
   });
@@ -251,14 +287,14 @@ describe("POST /auth/login", () => {
 
 describe("first-run setup", () => {
   it("reports that setup is needed only while there are no accounts", async () => {
-    resetUsers(false);
+    await resetUsers(false);
     expect(await json<{ needsSetup: boolean }>(await call("/auth/setup-state"))).toEqual({ needsSetup: true });
-    resetUsers();
+    await resetUsers();
     expect(await json<{ needsSetup: boolean }>(await call("/auth/setup-state"))).toEqual({ needsSetup: false });
   });
 
   it("creates the first account and signs it in", async () => {
-    resetUsers(false);
+    await resetUsers(false);
     const res = await post("/auth/setup", { name: "First Admin", email: "First@TecAce.com", password: "setup-password" });
     expect(res.status).toBe(201);
     const body = await json(res);
@@ -273,13 +309,13 @@ describe("first-run setup", () => {
     const res = await post("/auth/setup", { name: "Sneaky", email: "sneaky@example.com", password: "another-password" });
     expect(res.status).toBe(403);
     expect((await json(res)).error).toBe("setup_complete");
-    expect(users).toHaveLength(1);
+    expect(await countAccounts()).toBe(1);
   });
 
   it("refuses a short password", async () => {
-    resetUsers(false);
+    await resetUsers(false);
     expect((await post("/auth/setup", { name: "First", email: "first@tecace.com", password: "short" })).status).toBe(422);
-    expect(users).toHaveLength(0);
+    expect(await countAccounts()).toBe(0);
   });
 });
 
@@ -300,7 +336,8 @@ describe("GET /auth/me", () => {
 
   it("401s once the account's tokens are revoked", async () => {
     const token = await tokenFor();
-    users[0]!.tokenVersion += 1; // what "sign out everywhere" does
+    // What "sign out everywhere" does, done to the row rather than to a copy of it.
+    await rows("UPDATE users SET token_version = token_version + 1 WHERE id = $1", [JANE_ID]);
     expect((await call("/auth/me", { headers: { authorization: `Bearer ${token}` } })).status).toBe(401);
   });
 });
@@ -345,7 +382,7 @@ describe("account management", () => {
     expect(dupe.status).toBe(409);
     expect((await json(dupe)).error).toBe("email_taken");
     expect((await post("/auth/users", { name: "Sam", email: "sam@tecace.com", password: "short" }, token)).status).toBe(422);
-    expect(users).toHaveLength(1);
+    expect(await countAccounts()).toBe(1);
   });
 
   it("resets a password and signs that account out", async () => {
@@ -377,7 +414,7 @@ describe("account management", () => {
     const added = await json(await post("/auth/users", { name: "Sam", email: "sam@tecace.com" }, token));
     const removed = await call(`/auth/users/${added.user.id}`, { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
     expect(removed.status).toBe(200);
-    expect(users).toHaveLength(1);
+    expect(await countAccounts()).toBe(1);
 
     // and the survivor can't be removed by someone else either (Sam has to be an admin to try)
     const samToken = await (async () => {
@@ -386,12 +423,13 @@ describe("account management", () => {
       );
       return tokenFor("sam@tecace.com", again.password);
     })();
-    users = users.filter((u) => u.email === "sam@tecace.com"); // pretend Jane is gone
+    await rows("DELETE FROM users WHERE email <> 'sam@tecace.com'"); // pretend Jane is gone
     const last = await call(`/auth/users/${JANE_ID}`, { method: "DELETE", headers: { authorization: `Bearer ${samToken}` } });
     expect(last.status).toBe(404); // Jane no longer exists
-    const lastSelf = await call(`/auth/users/${users[0]!.id}`, { method: "DELETE", headers: { authorization: `Bearer ${samToken}` } });
+    const samId = await idOf("sam@tecace.com");
+    const lastSelf = await call(`/auth/users/${samId}`, { method: "DELETE", headers: { authorization: `Bearer ${samToken}` } });
     expect(lastSelf.status).toBe(409);
-    expect(users).toHaveLength(1);
+    expect(await countAccounts()).toBe(1);
   });
 
   it("404s on an unknown account", async () => {
@@ -441,7 +479,7 @@ describe("roles", () => {
   it("promotes and demotes, and a demotion applies to the existing session at once", async () => {
     const sam = await asPlainUser();
     const admin = await tokenFor();
-    const samId = users.find((u) => u.email === "sam@tecace.com")!.id;
+    const samId = await idOf("sam@tecace.com");
 
     expect((await call("/auth/users", { headers: { authorization: `Bearer ${sam}` } })).status).toBe(403);
     const promoted = await json(await post(`/auth/users/${samId}/role`, { role: "admin" }, admin));
@@ -616,7 +654,7 @@ describe("feedback", () => {
   it("stops a demoted admin reading everyone's feedback on their existing session", async () => {
     const admin = await tokenFor();
     const sam = await plainUserToken();
-    const samId = users.find((u) => u.email === "sam@tecace.com")!.id;
+    const samId = await idOf("sam@tecace.com");
 
     await post(`/auth/users/${samId}/role`, { role: "admin" }, admin);
     expect((await call("/feedback", { headers: { authorization: `Bearer ${sam}` } })).status).toBe(200);

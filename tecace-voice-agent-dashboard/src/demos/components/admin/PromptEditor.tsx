@@ -28,7 +28,15 @@ type Props = {
   voice: string;
   language?: string;
   callSound?: Partial<CallSound> | null;
-  onCallSoundChange: (sound: CallSound) => void;
+  onCallSoundChange?: (sound: CallSound) => void;
+  /**
+   * Whether to offer the call-sound controls. Default true, which is every demo prospect.
+   *
+   * The Business tab passes false. Those two switches synthesise a phone line in a browser so a
+   * demo sounds like a call; a real customer's calls arrive down an actual phone line, and a
+   * control that cannot change anything is worse than a missing one.
+   */
+  showCallSound?: boolean;
   prompts: CustomerPrompts;
   onAgentNameChange: (value: string) => void;
   onVoiceChange: (value: string) => void;
@@ -83,6 +91,7 @@ export function PromptEditor({
   onPromptsChange,
   onRegenerate,
   regenerating,
+  showCallSound = true,
 }: Props) {
   const sound = resolveCallSound(callSound);
   const selected = LIVE_VOICE_OPTIONS.find((option) => option.id === voice);
@@ -167,6 +176,7 @@ export function PromptEditor({
         </div>
       </div>
 
+      {showCallSound ? (
       <div className="space-y-3 rounded-lg border p-4">
         <div>
           <h3 className="ta-headline-2">Call sound</h3>
@@ -185,7 +195,7 @@ export function PromptEditor({
           <Switch
             checked={sound.phoneLine}
             onCheckedChange={(checked) =>
-              onCallSoundChange({ ...sound, phoneLine: checked })
+              onCallSoundChange?.({ ...sound, phoneLine: checked })
             }
             aria-label="Apply the phone line filter"
           />
@@ -202,7 +212,7 @@ export function PromptEditor({
           <Select
             value={sound.ambience}
             onValueChange={(value) =>
-              onCallSoundChange({
+              onCallSoundChange?.({
                 ...sound,
                 ambience: (value as AmbienceLevel) ?? sound.ambience,
               })
@@ -221,6 +231,7 @@ export function PromptEditor({
           </Select>
         </div>
       </div>
+      ) : null}
 
       {prompts.edited ? (
         <div className="bg-primary/10 ta-caption-1 text-primary rounded-lg p-3">

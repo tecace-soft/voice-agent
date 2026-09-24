@@ -4,6 +4,7 @@ import { env } from "./config/env.js";
 import { ensureDbReady } from "./db/client.js";
 import { ensureSeedAdmin } from "./auth/seed.js";
 import { auth } from "./routes/auth.js";
+import { lifecycle } from "./routes/lifecycle.js";
 import { feedback } from "./routes/feedback.js";
 import { health } from "./routes/health.js";
 import { business } from "./routes/business.js";
@@ -24,11 +25,16 @@ export const app = new Elysia()
   .use(
     cors({
       ...(env.corsOrigins.length ? { origin: env.corsOrigins } : {}),
-      // PUT is here for the business-profile save. Every method a route uses has to be
-      // listed: the browser preflights anything outside the simple set, and a missing one
-      // fails at the preflight — which surfaces as "couldn't reach the server" rather than
-      // as an HTTP error, so it looks like the backend is down instead of picky.
-      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      // Every method a route uses has to be listed: the browser preflights anything outside the
+      // simple set, and a missing one fails at the preflight — which surfaces as "couldn't reach
+      // the server" rather than as an HTTP error, so it looks like the backend is down instead of
+      // picky.
+      //
+      // PUT is the business saves (profile, identity, house rules, knowledge, prompts). PATCH is
+      // the demo ones — `PATCH /demo/customers/:id` is how every edit in the Demos section is
+      // written, and it was missing from this list: those writes work from a same-origin dev server
+      // and fail at the preflight wherever CORS_ORIGINS is actually set.
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowedHeaders: ["content-type", "authorization", "x-transcribe-key"],
     }),
   )
@@ -41,6 +47,9 @@ export const app = new Elysia()
   .get("/", () => ({ name: "transcribe-backend", message: "Elysia is running" }))
   .use(health)
   .use(auth)
+  // Account management too, at the same prefix: where a customer is in their life, and the
+  // one-time copy out of the demo. Its own file says why those are separate decisions.
+  .use(lifecycle)
   .use(feedback)
   .use(transcribe)
   .use(business)

@@ -1,4 +1,6 @@
 import { env } from "../config/env.js";
+import { MAX_FACTS, MAX_FACT_CHARS, MAX_TOTAL_CHARS } from "./factLimits.js";
+import { ExtractionError } from "./extractionError.js";
 
 // Turn whatever a customer pasted about their business into facts an agent can say out loud.
 //
@@ -25,7 +27,9 @@ export interface BusinessExtract {
   facts: string[];
 }
 
-export class ExtractionError extends Error {}
+// Re-exported so the many existing importers keep working; it is declared in its own module so
+// the pure shaping can throw it without pulling this file's config dependency in.
+export { ExtractionError } from "./extractionError.js";
 
 // Caps, applied after the model. Generous enough for a real business, tight enough that a pasted
 // novel can't become a prompt nobody can afford to send on every call.
@@ -49,11 +53,11 @@ export class ExtractionError extends Error {}
 // re-reads it instead of being skipped as "nothing changed". Without this, a customer who pasted
 // their details before an improvement keeps the old facts forever: Olympus Spa's address was in
 // their text and missing from their facts for exactly that reason.
-export const EXTRACTOR_VERSION = 3;
+export const EXTRACTOR_VERSION = 4;
 
-const MAX_FACTS = 80;
-const MAX_FACT_CHARS = 200;
-const MAX_TOTAL_CHARS = 11_000;
+// The three fact caps live in `factLimits.ts` — `business/derive.ts` renders the same block from the
+// structured profile and has to be held to the same ceiling, and importing this module for them
+// would drag `config/env.ts` into a pure renderer.
 export const MAX_SOURCE_CHARS = 20_000;
 
 // Openers that are instructions rather than facts. Deliberately narrow: "always" and "never" are

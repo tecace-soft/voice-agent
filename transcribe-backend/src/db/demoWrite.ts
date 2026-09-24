@@ -41,15 +41,9 @@ import type {
 } from "../demo/types.js";
 import { DEFAULT_DEMO_MINUTES } from "../demo/types.js";
 import { sql } from "./client.js";
+import { jsonb } from "./jsonb.js";
 
-// A value bound for a JSONB column is passed through as-is: **do not pre-stringify it.**
-// postgres.js learns from the server's ParameterDescription that `$n::jsonb` is OID 3802, and
-// types.js registers the json serializer (JSON.stringify) for that OID, so the driver encodes it
-// itself (connection.js: `options.serializers[type](x)`). Encoding it here as well stores a JSON
-// *string* instead of an object — see the same note in `demoImport.ts`, and
-// `jsonbBinding.test.ts`, which pins this against postgres.js's own serializer.
-const jsonb = (value: unknown) =>
-  value === null || value === undefined ? null : sql.json(value as Parameters<typeof sql.json>[0]);
+// How a JSONB value is bound, and why it must not be pre-stringified: `db/jsonb.ts`.
 
 // Selected explicitly, never `SELECT *`: a column added later must not silently change the shape
 // `rows.ts` is handed. The aliases are `DemoCustomerRow`'s field names.

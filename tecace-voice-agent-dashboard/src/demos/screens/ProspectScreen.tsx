@@ -39,7 +39,20 @@ type Payload = {
   notes: CrmNote[];
 };
 
-export function ProspectScreen({ id }: { id: string }) {
+/**
+ * One demo, either for us or for the customer it belongs to.
+ *
+ * `operator` false is that customer. What it takes away is everything that is OURS rather than
+ * theirs: the live switch and the demo allowance (their side of a deal they do not administer),
+ * re-research and the research inputs (a model call we pay for), the call history's reclassify and
+ * delete (our metrics), the share link and its tracking, and the test-call panel — an unmetered live
+ * minute, which is why the prospect's own link has an allowance and this does not. What is left is
+ * what the receptionist knows, how it sounds, and the week it works.
+ *
+ * Every one of those is refused by the backend for that account as well; this is the dashboard not
+ * offering what it knows would be refused. See `auth/guard.ts` and `routes/demo.ts`.
+ */
+export function ProspectScreen({ id, operator = true }: { id: string; operator?: boolean }) {
   const [data, setData] = useState<Payload | null>(null);
   const [draft, setDraft] = useState<Customer | null>(null);
   const [saving, setSaving] = useState(false);
@@ -191,26 +204,30 @@ export function ProspectScreen({ id }: { id: string }) {
                     ? "Stalled"
                     : "Researching"}
             </StatusBadge>
-            <label className="ta-label-1 flex items-center gap-2">
-              <Switch
-                checked={draft.active}
-                onCheckedChange={(checked) => {
-                  setDraft({ ...draft, active: checked });
-                  void save({ active: checked });
-                }}
-                aria-label="Toggle the demo link"
-              />
-              Live
-            </label>
-            <AddDemoTimeMenu
-              customerId={id}
-              demoMinutes={draft.demoMinutes}
-              onAdded={addedTime}
-            />
-            <Button variant="outline" onClick={() => research(false)} disabled={researching}>
-              <RefreshCw className="size-4" />
-              {researching ? "Researching" : "Re-research"}
-            </Button>
+            {operator && (
+              <>
+                <label className="ta-label-1 flex items-center gap-2">
+                  <Switch
+                    checked={draft.active}
+                    onCheckedChange={(checked) => {
+                      setDraft({ ...draft, active: checked });
+                      void save({ active: checked });
+                    }}
+                    aria-label="Toggle the demo link"
+                  />
+                  Live
+                </label>
+                <AddDemoTimeMenu
+                  customerId={id}
+                  demoMinutes={draft.demoMinutes}
+                  onAdded={addedTime}
+                />
+                <Button variant="outline" onClick={() => research(false)} disabled={researching}>
+                  <RefreshCw className="size-4" />
+                  {researching ? "Researching" : "Re-research"}
+                </Button>
+              </>
+            )}
             <Button onClick={() => save()} disabled={saving}>
               {saving ? "Saving" : "Save"}
             </Button>
@@ -250,16 +267,17 @@ export function ProspectScreen({ id }: { id: string }) {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="rounded-xl border shadow-none lg:col-span-2">
+        <Card className={`rounded-xl border shadow-none ${operator ? "lg:col-span-2" : "lg:col-span-3"}`}>
           <CardContent className="p-4 md:p-6">
             {/*
               No CRM tab. The pipeline reads across every prospect at once, so
               it lives at /admin/crm; what is left here is this one demo — what
               it knows, how it sounds, what happened on it.
             */}
-            <Tabs defaultValue="activity">
+            {/* The customer opens on Knowledge, because Activity is not one of their tabs. */}
+            <Tabs defaultValue={operator ? "activity" : "knowledge"}>
               <TabsList variant="line" className="w-full justify-start">
-                <TabsTrigger value="activity">Activity</TabsTrigger>
+                {operator && <TabsTrigger value="activity">Activity</TabsTrigger>}
                 <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
                 <TabsTrigger value="schedule">
                   Schedule
@@ -268,13 +286,15 @@ export function ProspectScreen({ id }: { id: string }) {
                   </span>
                 </TabsTrigger>
                 <TabsTrigger value="prompt">Prompt</TabsTrigger>
-                <TabsTrigger value="sources">Sources</TabsTrigger>
-                <TabsTrigger value="share">Share</TabsTrigger>
+                {operator && <TabsTrigger value="sources">Sources</TabsTrigger>}
+                {operator && <TabsTrigger value="share">Share</TabsTrigger>}
               </TabsList>
 
-              <TabsContent value="activity" className="pt-4">
-                <ActivityTab calls={calls} customerId={id} onChanged={load} />
-              </TabsContent>
+              {operator && (
+                <TabsContent value="activity" className="pt-4">
+                  <ActivityTab calls={calls} customerId={id} onChanged={load} />
+                </TabsContent>
+              )}
 
               <TabsContent value="knowledge" className="pt-4">
                 <KnowledgeEditor
@@ -338,6 +358,7 @@ export function ProspectScreen({ id }: { id: string }) {
                 />
               </TabsContent>
 
+              {operator && (
               <TabsContent value="sources" className="space-y-6 pt-4">
                 <ResearchInputsPanel
                   customer={draft}
@@ -351,7 +372,9 @@ export function ProspectScreen({ id }: { id: string }) {
                   researchedAt={draft.researchedAt}
                 />
               </TabsContent>
+              )}
 
+              {operator && (
               <TabsContent value="share" className="pt-4">
                 <SharePanel
                   customer={draft}
@@ -360,10 +383,12 @@ export function ProspectScreen({ id }: { id: string }) {
                   onAddedTime={addedTime}
                 />
               </TabsContent>
+              )}
             </Tabs>
           </CardContent>
         </Card>
 
+        {operator && (
         <Card className="flex flex-col rounded-xl border shadow-none">
           <CardHeader>
             <CardTitle className="ta-headline-2">Test call</CardTitle>
@@ -396,6 +421,7 @@ export function ProspectScreen({ id }: { id: string }) {
             </div>
           </CardContent>
         </Card>
+        )}
       </div>
     </>
   );

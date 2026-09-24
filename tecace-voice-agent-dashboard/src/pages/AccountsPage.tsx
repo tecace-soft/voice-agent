@@ -1,16 +1,29 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   createAccount,
   listAccounts,
+  promoteAccount,
   removeAccount,
   resetAccountPassword,
   revokeAccountSessions,
+  setAccountBusiness,
   setAccountRole,
+  setAccountStatus,
 } from "../api/backend";
-import type { AuthUser, Role } from "../api/types";
+import { ACCOUNT_STATUS_LABEL, type AccountStatus, type AuthUser, type Role } from "../api/types";
+import { demoFetch } from "../demos/api";
+import { readJson } from "../demos/lib/http";
 import { accountErrorMessage } from "../auth";
 import { forgetAccountNames } from "../people";
-import { IconCopy, IconKey, IconPlus, IconSignOut, IconTrash, IconUsers } from "../icons";
+import {
+  IconCopy,
+  IconKey,
+  IconPlus,
+  IconPresentation,
+  IconSignOut,
+  IconTrash,
+  IconUsers,
+} from "../icons";
 import { formatDateTime } from "../lib";
 
 // Who can sign in to the dashboard, and what each of them may do. Admins only — the sidebar hides
@@ -80,6 +93,102 @@ function PasswordNotice({
   );
 }
 
+// The Demos customers an account can be linked to: id and name only — this page has no use for a
+// prospect's calls or engagement, and the list is a dropdown.
+type DemoOption = { id: string; businessName: string };
+
+const STAGES: AccountStatus[] = ["unassigned", "demo", "pre-production", "production"];
+
+/**
+ * Where a customer is in their life, for one account.
+ *
+ * The three controls are three decisions, kept apart on purpose. Linking says which Demos customer
+ * this account grew out of and changes nothing anyone hears. The stage says what they see. The copy
+ * is the one-way door: it writes the demo's knowledge and prompts into the customer's own Business
+ * information, once, and from then on the two are unrelated — editing either leaves the other alone.
+ */
+function LifecyclePanel({
+  user,
+  demos,
+  busy,
+  onLink,
+  onStage,
+  onPromote,
+}: {
+  user: AuthUser;
+  demos: DemoOption[] | null;
+  busy: boolean;
+  onLink: (businessId: string | null) => void;
+  onStage: (status: AccountStatus) => void;
+  onPromote: () => void;
+}) {
+  const linked = demos?.find((d) => d.id === user.businessId) ?? null;
+  return (
+    <div className="inline-form" role="group" aria-label={`Lifecycle for ${user.name}`}>
+      <label className="field">
+        <span className="field-label ta-caption-1">Demo customer</span>
+        {/* Named explicitly: a wrapping <label> lends its text to the control, but a <select> also
+            contributes its selected option, so the name a screen reader reads would be
+            "Demo customer Not linked" rather than the field's own name. */}
+        <select
+          aria-label="Demo customer"
+          className="input"
+          value={user.businessId ?? ""}
+          disabled={busy || demos === null}
+          onChange={(e) => onLink(e.target.value || null)}
+        >
+          <option value="">Not linked</option>
+          {/* A link this account already has but the list no longer contains — a deleted demo —
+              still shows, so it can be seen and cleared rather than reading "Not linked". */}
+          {user.businessId && !linked && (
+            <option value={user.businessId}>{user.businessId} (missing)</option>
+          )}
+          {(demos ?? []).map((demo) => (
+            <option key={demo.id} value={demo.id}>
+              {demo.businessName}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span className="field-label ta-caption-1">Stage</span>
+        <select
+          aria-label="Stage"
+          className="input"
+          value={user.status}
+          disabled={busy}
+          onChange={(e) => onStage(e.target.value as AccountStatus)}
+        >
+          {STAGES.map((stage) => (
+            <option key={stage} value={stage}>
+              {ACCOUNT_STATUS_LABEL[stage]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="inline-form-actions">
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={onPromote}
+          disabled={busy || !user.businessId}
+          title={
+            user.businessId
+              ? "Copy this demo's knowledge and prompts into their own Business information, once"
+              : "Link a demo customer first"
+          }
+        >
+          Copy demo into their business
+        </button>
+      </div>
+      <p className="ta-caption-1 muted lifecycle-note">
+        Copying happens once. After it, their Business information is theirs: changes there do not
+        reach the demo, and changes to the demo do not reach their receptionist.
+      </p>
+    </div>
+  );
+}
+
 export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () => void }) {
   const [users, setUsers] = useState<AuthUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +202,11 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
 
   const [secret, setSecret] = useState<{ email: string; password: string; self: boolean } | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null);
+  // Which account's lifecycle row is open, and the Demos customers it can be linked to. That list is
+  // fetched once: it is a dropdown, and this page is not where prospects are managed.
+  const [managing, setManaging] = useState<string | null>(null);
+  const [demos, setDemos] = useState<DemoOption[] | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   // Set once an action has invalidated our own session; further calls would only 401.
   const [sessionEnded, setSessionEnded] = useState(false);
 
@@ -111,6 +225,26 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    let active = true;
+    demoFetch("/customers")
+      .then((response) => readJson<{ customers: DemoOption[] }>(response))
+      .then((payload) => {
+        if (!active) return;
+        setDemos(
+          payload.customers
+            .map((c) => ({ id: c.id, businessName: c.businessName }))
+            .sort((a, b) => a.businessName.localeCompare(b.businessName)),
+        );
+      })
+      // An empty list is honest here: the dropdown reads "Not linked" and the stage control still
+      // works. Failing the whole page over a dropdown would be worse.
+      .catch(() => active && setDemos([]));
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Mirrors the backend's "last admin" rule so the button is disabled rather than failing.
   const adminCount = users?.filter((u) => u.role === "admin").length ?? 0;
@@ -177,6 +311,54 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
     }
   }
 
+  // ---- the lifecycle. Each of these re-reads the list rather than patching the row in place: the
+  // stage and the link are what the backend stored, and a promotion changes both.
+  async function onLink(user: AuthUser, businessId: string | null) {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      await setAccountBusiness(user.id, businessId);
+      load();
+    } catch (e) {
+      setError(accountErrorMessage(e, "Couldn't link that demo customer."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onStage(user: AuthUser, status: AccountStatus) {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      await setAccountStatus(user.id, status);
+      load();
+    } catch (e) {
+      setError(accountErrorMessage(e, "Couldn't change that stage."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onPromote(user: AuthUser) {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      await promoteAccount(user.id);
+      setNote(
+        `Copied into ${user.name}'s Business information. From here the two are separate — ` +
+          "editing one leaves the other alone.",
+      );
+      load();
+    } catch (e) {
+      setError(accountErrorMessage(e, "Couldn't copy that demo over."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onRevoke(user: AuthUser) {
     setBusy(true);
     setError(null);
@@ -210,6 +392,12 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
       {error && (
         <p className="error ta-body-2" role="alert">
           {error}
+        </p>
+      )}
+
+      {note && (
+        <p className="muted ta-body-2" role="status">
+          {note}
         </p>
       )}
 
@@ -311,6 +499,7 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
                 <th scope="col">Person</th>
                 <th scope="col">Email</th>
                 <th scope="col">Role</th>
+                <th scope="col">Stage</th>
                 <th scope="col">Last sign-in</th>
                 <th scope="col" className="actions-col">
                   Actions
@@ -320,13 +509,14 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
             <tbody>
               {users === null ? (
                 <tr>
-                  <td className="table-empty" colSpan={5}>
+                  <td className="table-empty" colSpan={6}>
                     Loading…
                   </td>
                 </tr>
               ) : (
                 users.map((user) => (
-                  <tr key={user.id}>
+                  <Fragment key={user.id}>
+                  <tr>
                     <td>
                       <span className="person">
                         <span className="avatar avatar-sm" aria-hidden="true">
@@ -341,6 +531,28 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
                       <span className={user.role === "admin" ? "badge badge-admin" : "badge badge-neutral"}>
                         {user.role === "admin" ? "Admin" : "User"}
                       </span>
+                    </td>
+                    <td>
+                      {/* Only `demo` restricts anything, so it is the only stage worth colouring.
+                          An account nobody has placed reads as plain text rather than a badge —
+                          it is the absence of a decision, not a state. */}
+                      {user.status === "unassigned" ? (
+                        <span className="muted ta-caption-1">Not placed</span>
+                      ) : (
+                        <span
+                          className={
+                            user.status === "demo" ? "badge badge-admin" : "badge badge-neutral"
+                          }
+                        >
+                          {ACCOUNT_STATUS_LABEL[user.status]}
+                        </span>
+                      )}
+                      {user.businessId && (
+                        <div className="ta-caption-1 muted">
+                          {demos?.find((d) => d.id === user.businessId)?.businessName ??
+                            user.businessId}
+                        </div>
+                      )}
                     </td>
                     <td>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "Never"}</td>
                     <td className="actions-col">
@@ -406,6 +618,17 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
                           <button
                             type="button"
                             className="btn btn-quiet"
+                            onClick={() => setManaging((open) => (open === user.id ? null : user.id))}
+                            aria-expanded={managing === user.id}
+                            disabled={busy || sessionEnded}
+                            title="Link a demo customer, set the stage, copy the demo over"
+                          >
+                            <IconPresentation size={14} />
+                            Stage
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-quiet"
                             onClick={() => setConfirmingRemove(user.id)}
                             disabled={busy || sessionEnded || user.id === me.id}
                             title={
@@ -421,6 +644,21 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
                       )}
                     </td>
                   </tr>
+                  {managing === user.id && (
+                    <tr>
+                      <td colSpan={6}>
+                        <LifecyclePanel
+                          user={user}
+                          demos={demos}
+                          busy={busy}
+                          onLink={(businessId) => void onLink(user, businessId)}
+                          onStage={(status) => void onStage(user, status)}
+                          onPromote={() => void onPromote(user)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))
               )}
             </tbody>
@@ -431,7 +669,8 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
       <p className="muted ta-caption-1 view-foot">
         Admins manage accounts; users only read the dashboard. New accounts get a generated password
         unless you set one, and there is no public sign-up — this page and the backend CLI are the
-        only ways in.
+        only ways in. Stage is separate from role: it says where a customer is in their life, and
+        only the demo stage takes a section away.
       </p>
     </div>
   );

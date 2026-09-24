@@ -1,7 +1,33 @@
 // Shapes shared with the backend API (kept in sync with transcribe-backend's routes).
 
+// The Business tab's Knowledge and Prompt sections are the demo's, so they speak the demo's types.
+// Imported rather than re-declared: two copies of a shape that one editor renders is how the two
+// drift apart, and the editor is `src/demos/components/admin/KnowledgeEditor.tsx` either way.
+import type {
+  BusinessProfile as DemoBusinessProfile,
+  CustomerPrompts,
+} from "../demos/lib/types";
+
+export type { CustomerPrompts, DemoBusinessProfile };
+
 // What an account may do: `admin` manages accounts, `user` reads the dashboard.
 export type Role = "admin" | "user";
+
+/**
+ * How far along a customer is, which is a different question from what they may do.
+ *
+ * `unassigned` means nobody has placed this account in the lifecycle. It is what every account that
+ * predates the lifecycle has, and it restricts nothing — including the live voicemail customer's.
+ * Only `demo` takes a section away.
+ */
+export type AccountStatus = "unassigned" | "demo" | "pre-production" | "production";
+
+export const ACCOUNT_STATUS_LABEL: Record<AccountStatus, string> = {
+  unassigned: "Not placed",
+  demo: "Demo",
+  "pre-production": "Pre-production",
+  production: "Production",
+};
 
 // A signed-in dashboard user, as GET /auth/me and POST /auth/login return them. The backend never
 // sends the password hash or token version.
@@ -10,6 +36,9 @@ export interface AuthUser {
   email: string;
   name: string;
   role: Role;
+  /** Which Demos customer this account grew out of, if any. Null for an account with no demo. */
+  businessId: string | null;
+  status: AccountStatus;
   lastLoginAt: string | null;
 }
 
@@ -197,6 +226,20 @@ export interface BusinessProfile {
   greeting: string | null;
   /** How this business wants the assistant to behave, in their own words. Null means defaults. */
   houseRules: string | null;
+  /**
+   * What the Knowledge tab edits — the SAME shape a demo prospect has, so one editor serves both.
+   *
+   * This is the source of truth: `facts`, `hoursText`, `openHour` and `closeHour` above are
+   * rendered from it by the backend, because the phone agent is promised flat strings and two ints.
+   * Null only on a row the backend could not build one for.
+   */
+  profile: DemoBusinessProfile | null;
+  /** What the Prompt tab edits. Null until a profile has been read. */
+  prompts: CustomerPrompts | null;
+  /** Which of the twelve voices answers. Null means the service default. */
+  voice: string | null;
+  /** Which language the opening line is in. Null means English. */
+  language: string | null;
   /** Extra reasons to put a caller through, beyond the standard appointment rules. */
   transferTopics: string | null;
   /** Enough here for the agent to answer AS this business rather than neutrally. */
@@ -217,6 +260,14 @@ export interface BusinessProfileResponse {
   defaultBehaviour: BehaviourDefault[];
   /** True when the saved facts were read by an older reader — re-reading the description fixes it. */
   factsStale: boolean;
+  /**
+   * There is a saved description but no structured profile read out of it yet.
+   *
+   * The page offers the re-read rather than an empty form. Nothing is assembled from the old flat
+   * columns: an earlier attempt did that, and saving the reconstruction wrote nulls over good
+   * values — the hours especially, which cannot be parsed back out of a sentence.
+   */
+  needsReread: boolean;
   /** Their assigned number, or null — a profile with no number is saved but not in use. */
   number: AgentNumber | null;
   maxSourceChars: number;

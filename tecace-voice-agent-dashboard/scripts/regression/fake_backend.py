@@ -24,11 +24,22 @@ def iso(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
+# `businessId` and `status` are the customer lifecycle. Both accounts here are "unassigned" — the
+# stage nobody has set, which gates nothing — because that is what every account that predates the
+# lifecycle has, and the Accounts page has to read as it does for them.
 ADMIN = {"id": "u-admin", "email": "admin@tecace.com", "name": "Ada Admin", "role": "admin",
+         "businessId": None, "status": "unassigned",
          "lastLoginAt": iso(NOW - timedelta(hours=2))}
 USER = {"id": "u-sam", "email": "sam@tecace.com", "name": "Sam Customer", "role": "user",
+        "businessId": None, "status": "unassigned",
         "lastLoginAt": iso(NOW - timedelta(days=1))}
-TOKENS = {"tok-admin": ADMIN, "tok-user": USER}
+# A prospect who is signed in to look at the receptionist we built for them: stage `demo`, linked to
+# Harbor Dental. Everything they may reach is their own record; the routes below refuse the rest the
+# way transcribe-backend's `authenticateDemo` does.
+DEMO_CUSTOMER = {"id": "u-dana", "email": "dana@harbordental.example", "name": "Dana Reed",
+                 "role": "user", "businessId": "pr0SPct1", "status": "demo",
+                 "lastLoginAt": iso(NOW - timedelta(minutes=20))}
+TOKENS = {"tok-admin": ADMIN, "tok-user": USER, "tok-demo": DEMO_CUSTOMER}
 SAM = "sam@tecace.com"
 
 
@@ -156,6 +167,37 @@ PROFILE = {
     "transferNumber": "+14255550111", "agentName": None, "greeting": None, "houseRules": None,
     "transferTopics": None, "isLive": True, "extractedAt": iso(NOW - timedelta(days=10)),
     "updatedAt": iso(NOW - timedelta(days=10)),
+    # What the Knowledge tab edits: the same shape a demo prospect has, because the tab IS the
+    # demo's editor. The flat values above are what the backend renders from it for the phone agent.
+    "profile": {
+        "name": "Sam's Dental",
+        "category": "Dental practice",
+        "address": "12 Wharf St, Portland, ME",
+        "phone": "+1 207 555 0142",
+        "website": "https://samsdental.example",
+        "hours": [{"day": d, "open": "08:00", "close": "17:00"}
+                  for d in ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")]
+        + [{"day": "Saturday", "open": "", "close": "", "closed": True},
+           {"day": "Sunday", "open": "", "close": "", "closed": True}],
+        "services": [{"name": "Cleaning", "price": "$120"},
+                     {"name": "Whitening", "description": "In-office, one visit."},
+                     {"name": "Emergency visit"}],
+        "highlights": ["Same-week appointments", "Free parking"],
+        "policies": {"cancellation": "24 hours notice, please.",
+                     "payment": "Cards and most insurance."},
+        "faqs": [{"q": "Do you take new patients?", "a": "Yes."}],
+    },
+    # What the Prompt tab edits. Not hand-edited, so the backend rebuilds it whenever the profile
+    # changes — `edited` false is what says so.
+    "prompts": {
+        "live": "You are Alex, the receptionist at Sam's Dental. Speak warmly and answer briefly.",
+        "backend": "You take the booking for Sam's Dental and answer in JSON.",
+        "greeting": "Open with: Sam's Dental, this is Alex - how can I help?",
+        "edited": False,
+        "version": 6,
+    },
+    "voice": "gleam",
+    "language": "en",
 }
 
 CALLS = [
@@ -1153,9 +1195,21 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
     if path.startswith("/demo/"):
         if user is None:
             return 401, DEMO_UNAUTHORIZED
+        rest = path[len("/demo"):]
         if user["role"] != "admin":
-            return 403, DEMO_FORBIDDEN
-        return demo_route(method, path[len("/demo"):], query, body)
+            # A demo-stage customer reaches exactly two handlers, and only for their own record:
+            # `GET` and `PATCH /demo/customers/:id`. Everything else is the operator's pipeline.
+            # This mirrors `auth/guard.ts`'s `authenticateDemo` — the harness would otherwise pass
+            # against a fake that is more permissive than the service.
+            own = user.get("businessId") if user.get("status") == "demo" else None
+            if not own or method not in ("GET", "PATCH") or not rest.startswith("/customers/"):
+                return 403, DEMO_FORBIDDEN
+            wanted = rest[len("/customers/"):]
+            if wanted != own:
+                # Somebody else's record, or one of the sub-paths (/notes, /calls): not found and not
+                # forbidden, so the refusal says nothing about which ids are real.
+                return 404, {"error": "Customer not found."}
+        return demo_route(method, rest, query, body)
     if user is None:
         return 401, {"message": "Not signed in."}
     admin = user["role"] == "admin"
@@ -1166,6 +1220,33 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
         return 200, {}
     if path == "/auth/users" and method == "GET":
         return (200, {"users": [ADMIN, USER]}) if admin else (403, {"message": "Admins only."})
+
+    # ---- the customer lifecycle. Admin-only, like everything else under /auth/users/:id.
+    #
+    # These keep state for the length of a run, because the panel that drives them re-reads the list
+    # after every change: a stub that always answered with the same account would show a dropdown
+    # that snaps back, which is exactly the bug a harness is here to catch.
+    if path.startswith("/auth/users/") and method == "POST":
+        if not admin:
+            return 403, {"message": "Only an admin can change a customer's stage."}
+        rest = path[len("/auth/users/"):]
+        target_id, _, action = rest.partition("/")
+        target = next((u for u in (ADMIN, USER) if u["id"] == target_id), None)
+        if target is None:
+            return 404, {"error": "not_found", "message": "No such account."}
+        payload = _demo_json(body) or {}
+        if action == "business":
+            target["businessId"] = payload.get("businessId") or None
+            return 200, {"user": target}
+        if action == "status":
+            target["status"] = payload.get("status") or "unassigned"
+            return 200, {"user": target}
+        if action == "promote":
+            if not target.get("businessId"):
+                return 409, {"error": "not_linked",
+                             "message": "Link this account to its demo customer first."}
+            target["status"] = "pre-production"
+            return 200, {"user": target, "profile": {}}
     if path == "/transcribe/stats":
         return 200, stats()
     if path == "/transcribe/analytics":
@@ -1192,7 +1273,28 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
         return 200, {"profile": PROFILE, "defaultBehaviour": [
             {"does": "Answers in the caller's language", "because": "Callers switch languages."},
             {"does": "Offers a callback when it can't help"}],
-            "factsStale": False, "number": NUMBERS[0], "maxSourceChars": 4000}
+            "factsStale": False, "number": NUMBERS[0], "maxSourceChars": 4000,
+            # This fixture carries a real structured profile, so there is nothing to re-read before the
+            # Knowledge tab can be used.
+            "needsReread": False}
+    # The two tabs' saves. Nothing is stored — the page re-reads after each one and gets the fixture
+    # back — so what these prove is the request shape and that the page survives the round trip.
+    if path == "/business/knowledge" and method == "PUT":
+        sent = json.loads(body or b"{}")
+        if not isinstance(sent.get("profile"), dict):
+            return 400, {"error": "bad_profile", "message": "Send a profile."}
+        return 200, {"profile": {**PROFILE, "profile": sent["profile"]}}
+    if path == "/business/prompts" and method == "PUT":
+        sent = json.loads(body or b"{}")
+        prompts = sent.get("prompts")
+        rebuilt = sent.get("rebuild") is True
+        return 200, {"profile": {**PROFILE,
+                                 # `rebuild` throws hand edits away, which is what the real
+                                 # `resolvePrompts` does; anything else sent is kept as edited.
+                                 "prompts": PROFILE["prompts"] if rebuilt
+                                 else {**(prompts or PROFILE["prompts"]), "edited": True},
+                                 "voice": sent.get("voice") or PROFILE["voice"],
+                                 "language": sent.get("language") or PROFILE["language"]}}
     if path == "/calls":
         return 200, {"calls": CALLS}
     if path == "/usage/minutes":
@@ -1208,7 +1310,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "authorization, content-type, accept")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+        # PUT is here because the business endpoints use it (profile, identity, house rules, and
+        # now knowledge and prompts); PATCH because the demo ones do. A method missing from this
+        # list fails at the browser's preflight, which surfaces as "couldn't reach the server"
+        # rather than as an HTTP error — so it reads like the backend is down instead of picky.
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()

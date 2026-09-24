@@ -74,12 +74,15 @@ const VIEW_TITLES: Record<ViewId, string> = {
 // One fetch of GET /transcribe/stats, shared by every view, with a manual refresh that keeps the
 // current numbers on screen while the new ones load. `mailbox` only narrows an admin's view — the
 // backend pins everyone else to their own mailbox whatever is asked for.
-function useStats(mailbox: MailboxScope) {
+function useStats(mailbox: MailboxScope, skip = false) {
   const [data, setData] = useState<TranscribeStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!skip);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
+    // A customer we are still demoing to has no voicemail runs — nothing has ever reported for their
+    // address. Asking anyway would be one request per page load answering with zeroes.
+    if (skip) return Promise.resolve();
     setLoading(true);
     return getTranscribeStats(mailbox)
       .then((d) => {
@@ -101,19 +104,28 @@ function useStats(mailbox: MailboxScope) {
 function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void }) {
   // The view and the mailbox both live in the URL, so a refresh stays where you were and the
   // browser's Back button walks the views you visited.
-  const [{ view, mailbox: routeMailbox, id: routeId }, navigate] = useRoute();
-  const isDemoView = DEMO_VIEWS.has(view);
+  const [{ view: routeView, mailbox: routeMailbox, id: routeRecordId }, navigate] = useRoute();
   // Open by default on a desktop-width screen; on narrow screens the rail is an overlay, so it
   // starts closed and the header's toggle brings it in.
   const [navOpen, setNavOpen] = useState(() => window.innerWidth >= 900);
-  const accountNames = useAccountNames();
+  // Admin surfaces only — see `people.ts`. `isAdmin` is read below, so this is declared after it.
+  const accountNames = useAccountNames(user.role === "admin");
   // Which mailbox is on screen. Admins choose; for everyone else it stays undefined and the backend
   // scopes them to their own address — so a ?mailbox= in the URL is ignored for a `user` rather than
   // silently doing nothing.
   const isAdmin = user.role === "admin";
+  // A customer in the demo stage. They see one screen — the receptionist we built for them — and the
+  // URL cannot take them anywhere else: everything below reads `view` through this, so a typed
+  // `#/overview` or a bookmarked `#/demos/pipeline` lands on their own page rather than on an empty
+  // screen or a permission error. The backend refuses the rest for that account regardless
+  // (`auth/guard.ts`), which is what makes this a tidy front end rather than the protection.
+  const demoOnly = user.status === "demo";
+  const view = demoOnly ? "demoProspect" : routeView;
+  const isDemoView = DEMO_VIEWS.has(view);
+  const routeId = demoOnly ? (user.businessId ?? undefined) : routeRecordId;
   const mailbox: MailboxScope = isAdmin ? routeMailbox : undefined;
   const setMailbox = useCallback((next: MailboxScope) => navigate({ mailbox: next }), [navigate]);
-  const { data, loading, error, refresh } = useStats(mailbox);
+  const { data, loading, error, refresh } = useStats(mailbox, demoOnly);
 
   // How many notes are waiting on the team, for the sidebar badge. Admins only — it's the one
   // number a `user` isn't allowed to see, and it's cheap enough to refresh with everything else.
@@ -170,7 +182,9 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   const showMailbox = isAdmin && mailbox === undefined;
 
   const openView = (id: ViewId) => {
-    navigate({ view: id });
+    // For a demo-stage account there is one destination, and it needs the record id in the path.
+    if (demoOnly) navigate({ view: "demoProspect", id: user.businessId ?? undefined });
+    else navigate({ view: id });
     if (window.innerWidth < 900) setNavOpen(false);
   };
 
@@ -206,7 +220,9 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             <span className="muted" aria-hidden="true">
               /
             </span>
-            <span className="crumb-current">{VIEW_TITLES[view]}</span>
+            <span className="crumb-current">
+              {demoOnly ? "My receptionist" : VIEW_TITLES[view]}
+            </span>
           </nav>
           <div className="topbar-actions">
             {isAdmin && !isDemoView && <MailboxPicker value={mailbox} onChange={setMailbox} />}
@@ -303,6 +319,8 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           {isDemoView &&
             (isAdmin ? (
               <DemosView view={view} id={routeId} />
+            ) : demoOnly ? (
+              <DemosView view={view} id={routeId} operator={false} />
             ) : (
               <p className="muted ta-body-2">Only an admin can see the demos.</p>
             ))}

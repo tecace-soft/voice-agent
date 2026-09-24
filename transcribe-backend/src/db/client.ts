@@ -165,6 +165,34 @@ export async function initDb(): Promise<void> {
       updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  // How far along a customer is, and which business record is theirs.
+  //
+  // `business_id` is the connection point between the two halves of this system: it holds the id of
+  // the `demo_customers` row this account grew out of. Nothing is joined on it at read time — the
+  // two tables stay independent on purpose — it exists so that promoting an account knows which
+  // demo record to copy from, once.
+  //
+  // `status` is deliberately NOT defaulted to a lifecycle stage. Every account that already exists
+  // gets `'unassigned'`, which means "not placed in the lifecycle yet" and gates nothing: one of
+  // them is a live voicemail customer and must carry on exactly as before while this is built. Only
+  // `'demo'` restricts anything, so a stage nobody has set can never take a section away from
+  // somebody.
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS business_id TEXT`;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'unassigned'`;
+  await sql`
+    ALTER TABLE users DROP CONSTRAINT IF EXISTS users_status_known
+  `;
+  await sql`
+    ALTER TABLE users ADD CONSTRAINT users_status_known
+      CHECK (status IN ('unassigned', 'demo', 'pre-production', 'production'))
+  `;
+  // One account per demo record. Promoting the same prospect twice would give two accounts the same
+  // business, and the second copy would silently diverge from the first.
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS users_one_per_business
+      ON users (business_id) WHERE business_id IS NOT NULL
+  `;
+
   // Where callers go when they ask for a person. NOT derived from source_text like the columns
   // above: a phone number is not prose, and a model that picks the fax line or drops it entirely
   // routes a real caller to the wrong person. This one is typed in and validated.
@@ -181,6 +209,29 @@ export async function initDb(): Promise<void> {
   // dashboard, in their own words, and appended to the agent's instructions as preferences. Their
   // wishes, not their own rule book: the caller-facing guarantees are not a customer setting.
   await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS house_rules TEXT`;
+
+  // The structured profile a customer edits in the Knowledge tab — the same shape the demo
+  // prospects use (`demo/types.ts` BusinessProfile), so the dashboard renders both with one editor.
+  //
+  // It does NOT replace the derived columns above; it feeds them. `business/derive.ts` renders
+  // `facts`, `hours_text`, `open_hour`, `close_hour`, `business_name` and `website` out of this on
+  // every save, because `GET /business/config` promises the phone agent flat strings and two ints
+  // and that promise is older than this column. Structured here, flat on the wire.
+  //
+  // NULL means a profile written before this existed: the derived columns are then the extractor's
+  // own and are left exactly as they are, so nothing a customer has today changes until they open
+  // the tab. `backfillProfile` builds one on first read.
+  await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS profile JSONB`;
+  // The three prompts, generated from the profile and editable by hand — the demo's own contract
+  // (`prompts.edited` freezes them, a version bump rebuilds the untouched ones). Stored rather than
+  // built at call time so an edit is a thing that persists, and so the dashboard can show exactly
+  // what was sent.
+  await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS prompts JSONB`;
+  // Which of the twelve voices answers, and which language the opening line is in. Both are the
+  // demo's per-customer settings; the phone agent reads a global voice today and detects the
+  // caller's language, so these are stored and shown but not yet consumed — see BUSINESS_TABS.md.
+  await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS voice TEXT`;
+  await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS language TEXT`;
 
   // Calls the voice agent answered — the conversational counterpart to a transcribed voicemail.
   // user_id is resolved at write time from the number that was dialled; nullable, because a call

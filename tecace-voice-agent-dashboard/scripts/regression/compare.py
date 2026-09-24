@@ -109,6 +109,36 @@ EXPECTED_CHANGES = {
         "stage 3 fixed routing: #/apiKeys opens API keys (the original lands on Overview)",
         "Let another system read call minutes",
     ),
+    # The Business page's read-only list of fact sentences became the demo's own Knowledge and
+    # Prompt editors. The list was the preview half of the read/edit split: a customer who spotted a
+    # wrong closing time in it had to go and reword a paragraph to fix it. Now they change the
+    # closing time. The marker is the Knowledge tab's own control — the default tab, so it is in the
+    # captured text — and it exists nowhere in the original app.
+    "admin-scoped:business:light": (
+        "the Business page's facts list became the demo's Knowledge and Prompt editors",
+        "Add service",
+    ),
+    "user:business:light": (
+        "the Business page's facts list became the demo's Knowledge and Prompt editors",
+        "Add service",
+    ),
+    # The Accounts table gained a Stage column and a Stage action: where a customer is in their life
+    # (demo / pre-production / production), which Demos record their account grew out of, and the
+    # one-time copy of that demo into their own Business information. Role says what an account may
+    # do; stage says what it sees. The marker is the column heading, which the original app has no
+    # equivalent of.
+    "admin:accounts:light": (
+        "the Accounts table gained the customer lifecycle: a Stage column and its controls",
+        "Stage",
+    ),
+    "admin:accounts:dark": (
+        "the Accounts table gained the customer lifecycle: a Stage column and its controls",
+        "Stage",
+    ),
+    "admin:accounts:light+add-user": (
+        "the Accounts table gained the customer lifecycle: a Stage column and its controls",
+        "Stage",
+    ),
 }
 
 HIDE_JS = """
@@ -424,7 +454,15 @@ def diff(old: dict, new: dict) -> list[str]:
             problems.append(f"[{cid}] loaded fonts differ: only old={sorted(set(a['fonts']) - set(b['fonts']))} "
                             f"only new={sorted(set(b['fonts']) - set(a['fonts']))}")
         if a["errors"] != b["errors"]:
-            problems.append(f"[{cid}] errors differ: old={a['errors']} new={b['errors']}")
+            gone = [e for e in a["errors"] if e not in b["errors"]]
+            appeared = [e for e in b["errors"] if e not in a["errors"]]
+            # An error the original logged and this one no longer does is a fix, not a regression —
+            # but only the ones named here, so a console that goes quiet for some other reason is
+            # still reported. `/auth/users` is the accounts list: the original asked for it on every
+            # page load whatever the account was, and a `user` got a 403 every time. It is an admin
+            # endpoint and only admin surfaces read it, so it is no longer asked for (`people.ts`).
+            if appeared or not all("/auth/users" in e for e in gone):
+                problems.append(f"[{cid}] errors differ: old={a['errors']} new={b['errors']}")
         # Tokens: only names OLD declares — stage 2's new Tailwind variables aren't noise.
         for name, val in a["tokens"].items():
             if name not in b["tokens"]:

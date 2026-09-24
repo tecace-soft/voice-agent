@@ -111,13 +111,24 @@ Run all three after any styling change:
 - `python scripts/regression/tw_probe.py` — checks the Tailwind side inside and outside `.tw`.
 - `python scripts/regression/demos_e2e.py` — walks the Demos section against a fake backend
   (`fake_backend.py`).
+- `python scripts/regression/business_tabs.py` — opens the Business page's Knowledge and Prompt
+  tabs in a browser: the demo's fields hold a real business's profile, Save goes to
+  `/business/knowledge` and `/business/prompts` (never a `/demo/` route), a prompt edit is marked
+  edited, Rebuild sends `rebuild` and no prompts, and the `.tw` boundary holds.
 - `python scripts/regression/public_page.py` — opens a demo link (`/c/<id>`) in a browser: the page
   renders the business and not the dashboard, carries none of the operator's fields, the scenarios
   and pricing links navigate, an unknown or unready id is the quiet page, `/` is still the
   dashboard, and pressing call dials `/demo/public/session`. This is the one that would have caught
   the Share link opening Overview.
+- `python scripts/regression/accounts_lifecycle.py` — opens the Accounts page's Stage panel: the
+  three controls go to three endpoints (`/auth/users/:id/business`, `/status`, `/promote`), each
+  carrying only its own field, the copy is refused until a demo is linked, and the page says the
+  copy happens once.
+- `python scripts/regression/demo_customer.py` — signs in as a demo-stage customer: one item in the
+  rail, their own record and no other, none of the operator's controls on it (live switch, add time,
+  re-research, Activity/Sources/Share, the test call), and no way out by typing a URL.
 
-Run the four Python scripts one at a time — they share ports.
+Run the seven Python scripts one at a time — they share ports.
 
 ## Hard rules (from the skill)
 - Brand blue **#116DFF** only — never `#3366FF` or `#2AA25F`.

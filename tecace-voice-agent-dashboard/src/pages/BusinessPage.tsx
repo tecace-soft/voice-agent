@@ -14,7 +14,8 @@ import type {
   MailboxScope,
 } from "../api/types";
 import { accountErrorMessage } from "../auth";
-import { IconAlert, IconCheck, IconChevronLeft, IconChevronRight, IconPhone } from "../icons";
+import { BusinessTabs } from "./BusinessTabs";
+import { IconAlert, IconChevronLeft, IconChevronRight, IconPhone } from "../icons";
 import { formatDateTime, formatPhone } from "../lib";
 
 // What the voice agent says about a customer's business, and where they change it.
@@ -47,13 +48,6 @@ const discloseNote = " Any call-recording notice is added for you.";
 const PLACEHOLDER = `Paste anything you already have — your website's About page, a services list, an email you send new customers. Plain sentences work just as well.
 
 Useful to include: what the business does, where it is, opening hours, the services people ring about, prices if you quote them, and your website.`;
-
-function factLines(facts: string | null): string[] {
-  return (facts ?? "")
-    .split("\n")
-    .map((line) => line.replace(/^[-\s]+/, "").trim())
-    .filter(Boolean);
-}
 
 /** Which of the four real situations this customer is in. Each needs a different thing said. */
 type State = "empty" | "live" | "not-live" | "no-number";
@@ -374,6 +368,9 @@ export function BusinessPage({
   // Their saved facts came from an older reader, so the description would produce more (or better)
   // facts today. Invisible otherwise: the page looks fine and only callers find the gaps.
   const [factsStale, setFactsStale] = useState(false);
+  // There is a description on file but nothing read out of it into the structured shape yet. The
+  // Knowledge tab then offers the re-read instead of a form.
+  const [needsReread, setNeedsReread] = useState(false);
   const [rereading, setRereading] = useState(false);
   const [number, setNumber] = useState<AgentNumber | null>(null);
   const [maxChars, setMaxChars] = useState(20_000);
@@ -415,6 +412,7 @@ export function BusinessPage({
         setMaxChars(r.maxSourceChars);
         setStandard(r.defaultBehaviour ?? []);
         setFactsStale(Boolean(r.factsStale));
+        setNeedsReread(Boolean(r.needsReread));
         setError(null);
       })
       .catch((e) => setError(accountErrorMessage(e, "Couldn't load these business details.")))
@@ -531,7 +529,6 @@ export function BusinessPage({
   if (error) return <p className="error ta-body-2">{error}</p>;
 
   const state = stateOf(profile, number);
-  const facts = factLines(profile?.facts ?? null);
 
   if (editing) {
     return (
@@ -749,14 +746,23 @@ export function BusinessPage({
         </section>
       )}
 
-      {profile && facts.length > 0 && (
+      {/*
+        What the assistant knows, and what it is told — the same two editors a demo prospect gets.
+        This replaced a read-only list of fact sentences: the list was the preview half of the
+        read/edit split, and a customer who spotted a wrong closing time in it had to go and reword
+        a paragraph to fix it. Now they change the closing time.
+
+        The re-read stays with it, because it is still the thing that rebuilds everything below from
+        the description.
+      */}
+      {profile && (
         <section className="card">
           <div className="card-toolbar">
             <div>
               <div className="card-title ta-headline-2">What the assistant knows about you</div>
               <div className="card-sub ta-caption-1">
-                Only these. It answers from them and defers anything else to a person — so if
-                something here is wrong, callers will hear it wrong.
+                Only this. It answers from what is here and defers anything else to a person — so if
+                something is wrong, callers will hear it wrong.
               </div>
             </div>
             {factsStale && (
@@ -772,14 +778,19 @@ export function BusinessPage({
               Reading your details again fixes it. Nothing you typed changes.
             </p>
           )}
-          <ul className="business-facts">
-            {facts.map((fact) => (
-              <li key={fact} className="ta-body-2">
-                <IconCheck size={14} />
-                <span>{fact}</span>
-              </li>
-            ))}
-          </ul>
+
+          <BusinessTabs
+            profile={profile}
+            userId={targetId}
+            needsReread={needsReread}
+            onSaved={(next) => {
+              setProfile(next);
+              setJustSaved(true);
+              // The header, the facts count and the live state all read the same row.
+              void load();
+            }}
+          />
+
           {profile.extractedAt && (
             <p className="muted ta-caption-1 view-foot">
               Read from what you wrote on {formatDateTime(profile.extractedAt)}. It will never quote

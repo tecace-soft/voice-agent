@@ -1,4 +1,5 @@
 import type {
+  AccountStatus,
   AgentNumber,
   ApiKey,
   CallMinutes,
@@ -6,6 +7,8 @@ import type {
   InboundCall,
   BusinessProfile,
   BusinessProfileResponse,
+  CustomerPrompts,
+  DemoBusinessProfile,
   PollerHeartbeat,
   TranscribeFailure,
   AuthUser,
@@ -204,6 +207,31 @@ export function removeAccount(id: string): Promise<void> {
   return request<void>("DELETE", `/auth/users/${id}`);
 }
 
+// ---- the customer lifecycle (admins only) ----
+//
+// Three calls because they are three decisions. Linking an account to the Demos customer it came
+// from says where its data may be copied from; the stage says what the account sees; and the copy is
+// the one action that cannot be repeated — after it, the two records are unrelated, so an edit in
+// the Demos section never reaches the customer's live receptionist and vice versa.
+
+/** Point an account at the Demos customer it grew out of. `null` unlinks. */
+export function setAccountBusiness(id: string, businessId: string | null): Promise<{ user: AuthUser }> {
+  return request<{ user: AuthUser }>("POST", `/auth/users/${id}/business`, { body: { businessId } });
+}
+
+export function setAccountStatus(id: string, status: AccountStatus): Promise<{ user: AuthUser }> {
+  return request<{ user: AuthUser }>("POST", `/auth/users/${id}/status`, { body: { status } });
+}
+
+/**
+ * Copy the linked demo's knowledge and prompts into the account's own Business information, once,
+ * and move it out of the demo stage. Refuses if they already have their own — overwriting it would
+ * discard whatever the customer has corrected since.
+ */
+export function promoteAccount(id: string): Promise<{ user: AuthUser; profile: unknown }> {
+  return request<{ user: AuthUser; profile: unknown }>("POST", `/auth/users/${id}/promote`, { body: {} });
+}
+
 // ---- feedback ----
 
 // Send a note. The backend takes the author from the session, so there's nothing to pass but the
@@ -355,6 +383,42 @@ export function saveBusinessProfile(
     // agentName/greeting/houseRules are deliberately NOT sent: each belongs to its own section, and
     // the backend leaves absent fields alone rather than clearing them.
     { body: { sourceText, transferNumber, transferTopics } },
+  );
+}
+
+/**
+ * Save the Knowledge tab — the structured profile a customer edits.
+ *
+ * The backend re-renders everything the phone agent reads from this, so a corrected closing time
+ * changes what the agent says and not just what the page shows. It leaves the description alone:
+ * editing the profile that was read out of it does not rewrite what the customer wrote.
+ */
+export function saveBusinessKnowledge(
+  profile: DemoBusinessProfile,
+  userId?: string,
+): Promise<{ profile: BusinessProfile }> {
+  return request<{ profile: BusinessProfile }>(
+    "PUT",
+    `/business/knowledge${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
+    { body: { profile } },
+  );
+}
+
+/**
+ * Save the Prompt tab.
+ *
+ * `rebuild` throws hand edits away and generates from the profile again; without it, a prompt that
+ * arrives changed is a hand edit and is frozen from then on. That rule is the backend's — and it is
+ * the demo's own `resolvePrompts`, so both tabs behave identically because they are the same code.
+ */
+export function saveBusinessPrompts(
+  input: { prompts?: CustomerPrompts; voice?: string; language?: string; rebuild?: boolean },
+  userId?: string,
+): Promise<{ profile: BusinessProfile }> {
+  return request<{ profile: BusinessProfile }>(
+    "PUT",
+    `/business/prompts${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
+    { body: input },
   );
 }
 

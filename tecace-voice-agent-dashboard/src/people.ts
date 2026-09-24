@@ -35,23 +35,28 @@ export function forgetAccountNames(): void {
 }
 
 // email -> { name, role }. Everything below derives from this one cached fetch.
-export function useAccounts(): Map<string, AccountInfo> {
+// `enabled` is false where the caller is not an admin. The accounts list is an admin endpoint, so
+// asking as anybody else is a guaranteed 403 — harmless, since the failure is caught and the name
+// falls back to the address, but it is a refused request on every page load, and a customer's browser
+// asking for the list of everyone's accounts is not something to leave lying in a log.
+export function useAccounts(enabled = true): Map<string, AccountInfo> {
   const [accounts, setAccounts] = useState<Map<string, AccountInfo>>(new Map());
 
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
     void loadAccounts().then((map) => active && setAccounts(map));
     return () => {
       active = false;
     };
-  }, []);
+  }, [enabled]);
 
   return accounts;
 }
 
 // Just the names, for the places that only display who a mailbox belongs to.
-export function useAccountNames(): Map<string, string> {
-  const accounts = useAccounts();
+export function useAccountNames(enabled = true): Map<string, string> {
+  const accounts = useAccounts(enabled);
   return useMemo(
     () => new Map([...accounts].map(([email, info]) => [email, info.name])),
     [accounts],

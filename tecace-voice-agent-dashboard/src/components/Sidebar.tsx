@@ -91,6 +91,24 @@ const NAV: {
   },
 ];
 
+/**
+ * The whole navigation, for a customer we are still demoing to: their own receptionist, and nothing
+ * else.
+ *
+ * They have no voicemail runs, no answered calls, no Business information of their own yet — that
+ * arrives when their demo is copied across and they leave this stage. Showing them the rest would be
+ * a rail of empty screens, and the demo group's own items are the operator's views across every
+ * prospect, which are not theirs to see. The backend refuses all of it either way
+ * (`auth/guard.ts`'s `authenticateDemo`); this is what keeps the dashboard honest about it.
+ */
+const DEMO_ONLY_NAV: typeof NAV = [
+  {
+    key: "demos",
+    group: "Demo",
+    items: [{ id: "demoProspect", label: "My receptionist", icon: IconPresentation }],
+  },
+];
+
 // Up to two initials for the account avatar ("Jane Kim" -> "JK"), falling back to the email.
 function initials(user: AuthUser): string {
   const source = user.name.trim() || user.email;
@@ -148,7 +166,7 @@ export function Sidebar({
         </span>
       </div>
 
-      {NAV.map((section) => {
+      {(user.status === "demo" ? DEMO_ONLY_NAV : NAV).map((section) => {
         // Account management is admin-only; a `user` doesn't see the section at all. The backend
         // enforces it too — this only keeps the nav honest about what's reachable.
         const items = section.items.filter((item) => !item.adminOnly || user.role === "admin");

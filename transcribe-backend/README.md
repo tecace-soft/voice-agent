@@ -70,6 +70,54 @@ takes effect immediately rather than when that person's token expires.
 Two things are refused so nobody can lock the team out: the **last admin** can't be demoted or
 removed, and the **last account** can't be removed at all.
 
+### Stages
+
+Separate from the role, which says what an account may *do*, `users.status` says where a customer is
+in their life: `unassigned`, `demo`, `pre-production` or `production`. `users.business_id` points at
+the `demo_customers` record their account grew out of.
+
+Three admin-only routes, in `routes/lifecycle.ts`, because these are three decisions:
+
+| | what it does |
+| --- | --- |
+| `POST /auth/users/:id/business` | link the account to a Demos customer (`null` unlinks) |
+| `POST /auth/users/:id/status` | move it along the stages |
+| `POST /auth/users/:id/promote` | **copy** that demo into the account's own business profile, once |
+
+The copy (`business/promote.ts`) writes the demo's profile, prompts, receptionist name, voice and
+language into `business_profiles`, renders the four flat columns the phone agent reads, and moves the
+account to `pre-production`. **It runs once.** After it the two records are unrelated — different
+tables, different endpoints, no read path that joins them — so a customer correcting their closing
+time does not rewrite a demo somebody is still showing, and re-researching that demo does not change
+what answers the customer's phone. `/promote` refuses an account that already has a profile rather
+than overwriting whatever they have corrected since.
+
+`unassigned` is what every account that predates all this has, and it restricts nothing.
+
+### Who sees what
+
+| | demo | pre-production / production | admin |
+| --- | --- | --- | --- |
+| Their own demo record (`GET`/`PATCH /demo/customers/:id`) | ✅ | — | ✅ (any) |
+| Anyone else's demo record | — | — | ✅ |
+| The prospect list, CRM, pipeline analytics, research, test calls, CRM notes | — | — | ✅ |
+| Their own business profile, answered calls, minutes, voicemail stats | — | ✅ | ✅ (any, by `?userId=`) |
+| Accounts, agent numbers, API keys, everyone's feedback | — | — | ✅ |
+
+A demo-stage customer gets their own record and nothing around it: no prospect list, and another
+prospect's id answers **404**, not 403, so the refusal cannot be used to find out which ids are real.
+The operator's notes are dropped from the record they do get, and the only fields they may write are
+the receptionist's own (`profile`, `prompts`, `regeneratePrompts`, `agentName`, `voice`, `language`,
+`callSound`) — a refused field is named in the error rather than silently dropped. The commercial
+side (demo minutes, the live switch, the sales stage, follow-ups, contact details) stays ours, as do
+the two things that cost money: research and the unmetered test call. They hear their receptionist
+through their own demo link, which has the allowance.
+
+Everywhere else, `?userId=` is an **admin's filter and never a way in**: asked by a customer it is
+ignored and the answer is their own. `routes/tenancy.pg.test.ts` proves all of this with real session
+tokens against a real database — no stubbed guard — and `scripts/regression/demo_customer.py` in the
+dashboard proves the UI does not offer what would be refused.
+
 ### Where accounts come from
 
 There is **no open sign-up**. Accounts come from exactly four places:

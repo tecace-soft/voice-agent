@@ -12,14 +12,15 @@ import {
   saveProfile,
   saveAgentIdentity,
   saveHouseRules,
+  saveStructured,
   saveTypedFields,
 } from "../db/businessProfiles.js";
-import {
-  ExtractionError,
-  extractBusiness,
-  MAX_SOURCE_CHARS,
-  renderFacts,
-} from "../tools/extractBusiness.js";
+import { ExtractionError, MAX_SOURCE_CHARS } from "../tools/extractBusiness.js";
+import { extractProfile } from "../tools/extractProfile.js";
+import { normalizeProfile } from "../business/profileShape.js";
+import { deriveFromProfile } from "../business/derive.js";
+import { buildPrompts, resolvePrompts } from "../demo/prompt.js";
+import type { BusinessProfile as StructuredProfile } from "../demo/types.js";
 import {
   assignAgentNumber,
   createAgentNumber,
@@ -40,6 +41,31 @@ import {
 // shared key, since it has no session — see AGENT_CONFIG_KEY.
 
 const NUMBERS_ARE_ADMIN = "Only an admin can manage the agent's phone numbers.";
+
+// Said by both tab endpoints when there is no profile row to edit. The agent answers neutrally
+// without one, so a saved Knowledge or Prompt edit would be a setting that does nothing.
+/**
+ * The largest a structured profile may be, as JSON.
+ *
+ * Generous against the form — a spa with eighty services and twenty questions is nowhere near it —
+ * and small enough that a body which is not an edit cannot be stored and re-read forever. The fact
+ * block the agent is sent is capped separately and much lower (`factLimits.ts`); this is the cap on
+ * what a customer may keep, not on what a caller may hear.
+ */
+const MAX_PROFILE_CHARS = 120_000;
+
+const ADD_DETAILS_FIRST =
+  "Add your business information first — until then the assistant answers neutrally.";
+
+/**
+ * The twelve voices, by id. `demo/types.ts` exports them as `LIVE_VOICE_OPTIONS` objects for the
+ * picker; only the ids matter here, and validating a business's voice in its own route is what lets
+ * this say "Unknown voice." rather than failing a schema.
+ */
+const VOICES = [
+  "gleam", "meridian", "delta", "cinder", "quartz", "ripple",
+  "vesper", "willow", "stone", "beacon", "bossa", "tempo",
+];
 
 // Whose profile is being read or written. A customer only ever gets their own; an admin may act on
 // someone else's by naming them, which is what onboarding looks like. The parameter is a filter for
@@ -129,12 +155,20 @@ export const business = new Elysia({ prefix: "/business" })
       // The standing behaviour travels with the profile so the page can show what the
       // assistant already does, instead of "nothing set" on a business that has simply not
       // added anything of their own.
+      // A row written before the structured profile existed has none, and is NOT given a
+      // reconstructed one. An earlier attempt assembled a profile out of the flat columns so the
+      // tab would not be empty; saving it then derived those same columns back from the
+      // reconstruction and wrote nulls over good values — the hours in particular, which cannot be
+      // parsed back out of a sentence. Re-reading the description is the way in, and `factsStale`
+      // is already true for every such row because the extractor version moved.
+      const needsReread = Boolean(profile && !profile.profile);
       return {
         profile,
         number,
         maxSourceChars: MAX_SOURCE_CHARS,
         defaultBehaviour: DEFAULT_BEHAVIOUR,
         factsStale,
+        needsReread,
       };
     },
     { query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }) },
@@ -203,10 +237,32 @@ export const business = new Elysia({ prefix: "/business" })
         return { profile: existing, extracted: false };
       }
 
+      // ONE model call, and it produces the structured profile the customer edits. The four flat
+      // values the phone agent reads are rendered from that rather than extracted separately: two
+      // readings of the same text could disagree, and the one a customer can correct has to be the
+      // one that reaches the call.
+      let structured;
       let fields;
       try {
-        const extract = await extractBusiness(sourceText);
-        fields = { ...extract, facts: renderFacts(extract) };
+        const profile = await extractProfile(sourceText);
+        fields = deriveFromProfile(profile);
+        structured = {
+          profile,
+          // Through `resolvePrompts`, not `buildPrompts` — the demo's own rule, and the same one the
+          // two tab endpoints follow: an untouched set is rebuilt from the new data, a hand-written
+          // one is left alone. Re-reading a description is exactly when a customer who wrote their
+          // own prompt would otherwise lose it, without asking for a rebuild and without being told.
+          prompts: existing?.prompts
+            ? resolvePrompts({
+                current: existing.prompts,
+                profile,
+                agentName: identity.agentName ?? "",
+                language: existing.language ?? undefined,
+              })
+            : buildPrompts(profile, identity.agentName ?? "", existing?.language ?? undefined),
+          voice: existing?.voice ?? null,
+          language: existing?.language ?? null,
+        };
       } catch (err) {
         if (err instanceof ExtractionError) {
           // Nothing is written. Whatever was live stays live and stays being spoken to callers —
@@ -220,7 +276,7 @@ export const business = new Elysia({ prefix: "/business" })
         throw err;
       }
       return {
-        profile: await saveProfile(target, sourceText, fields, typed),
+        profile: await saveProfile(target, sourceText, fields, typed, structured),
         extracted: true,
       };
     },
@@ -375,6 +431,147 @@ export const business = new Elysia({ prefix: "/business" })
   )
 
   // How the assistant introduces itself — its own section in the dashboard, so its own endpoint.
+  /**
+   * Save the Knowledge tab.
+   *
+   * The structured profile is the source of truth, so the four flat values the phone agent reads
+   * are re-rendered here — correcting a closing time has to change what the agent says, not just
+   * what the page shows. The prompts follow the same rule the demo uses: an untouched set is
+   * rebuilt from the new data, a hand-edited one is left exactly as it is.
+   *
+   * `sourceText` is not touched. The description is what the customer wrote; editing the profile it
+   * produced does not rewrite their words.
+   */
+  .put(
+    "/knowledge",
+    async ({ body, headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      const target = profileTargetFor(user, query.userId);
+
+      const existing = await findProfile(target);
+      if (!existing) return status(409, { error: "no_profile", message: ADD_DETAILS_FIRST });
+
+      // Shaped exactly as an extraction is. The tab's fields are free text — a closing time is a
+      // text box — so "9:00 PM", a day called "Funday", a number where a string belongs and a
+      // pasted instruction all arrive here from a browser, and none of them may be written as-is.
+      //
+      // It throws when nothing usable survives, which is the refusal that matters: a profile with
+      // no name and no facts is not live, and `GET /business/config` would stop answering as this
+      // business at all. Saving an emptied form must not be able to take a number off the air.
+      // A profile is a form with a few dozen fields in it. Anything far past that is not an edit,
+      // and `t.Unknown()` means the schema will not stop it — the body would be stored verbatim in
+      // JSONB and read back on every page load forever.
+      const size = JSON.stringify(body.profile ?? null).length;
+      if (size > MAX_PROFILE_CHARS) {
+        return status(413, {
+          error: "profile_too_large",
+          message: `That's more than we can store (${size.toLocaleString()} characters, limit ${MAX_PROFILE_CHARS.toLocaleString()}).`,
+        });
+      }
+
+      let profile: StructuredProfile;
+      try {
+        profile = normalizeProfile(body.profile);
+      } catch (err) {
+        if (err instanceof ExtractionError) {
+          return status(422, { error: "bad_profile", message: err.message });
+        }
+        throw err;
+      }
+
+      const prompts = resolvePrompts({
+        current: existing.prompts ?? buildPrompts(profile, existing.agentName ?? "", existing.language ?? undefined),
+        profile,
+        agentName: existing.agentName ?? "",
+        language: existing.language ?? undefined,
+      });
+
+      const saved = await saveStructured(
+        target,
+        { profile, prompts, voice: existing.voice, language: existing.language },
+        deriveFromProfile(profile),
+      );
+      if (!saved) return status(409, { error: "no_profile", message: ADD_DETAILS_FIRST });
+      return { profile: saved };
+    },
+    {
+      query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }),
+      // `t.Unknown()` for the same reason the demo's PATCH uses it: a stricter schema would 422 on
+      // any field the editor adds, and the shaping is done by `normalize` below rather than by the
+      // schema. The size cap is the real guard.
+      body: t.Object({ profile: t.Unknown() }),
+    },
+  )
+
+  /**
+   * Save the Prompt tab: the three prompts, who answers, and in what language.
+   *
+   * A prompt that arrives changed is a hand edit and is frozen from then on; `rebuild: true` throws
+   * the edits away and generates from the profile again. Both are `resolvePrompts`, which is the
+   * demo's own function — the two tabs are not lookalikes, they are the same code.
+   */
+  .put(
+    "/prompts",
+    async ({ body, headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      const target = profileTargetFor(user, query.userId);
+
+      const existing = await findProfile(target);
+      if (!existing?.profile) {
+        return status(409, {
+          error: "no_profile",
+          message: "There's nothing to build a prompt from yet. Add your business details first.",
+        });
+      }
+      const profile = existing.profile;
+
+      const voice = typeof body.voice === "string" ? body.voice.trim() : existing.voice;
+      if (voice && !VOICES.includes(voice)) {
+        return status(400, { error: "bad_voice", message: "Unknown voice." });
+      }
+      const language =
+        typeof body.language === "string" ? body.language.trim() || null : existing.language;
+
+      // `submitted` is only a hand edit when there is something stored to compare it against.
+      //
+      // Synthesising `current` and comparing against that marked prompts as hand-edited when the
+      // customer had changed nothing: the editor posts back the text it is showing, which was built
+      // under the OLD language and agent name, while the comparison rebuilt it under the new ones.
+      // Changing the language dropdown alone was enough to freeze the English prompt forever.
+      const prompts = existing.prompts
+        ? resolvePrompts({
+            current: existing.prompts,
+            submitted: body.prompts as never,
+            profile,
+            agentName: existing.agentName ?? "",
+            language: language ?? undefined,
+            regenerate: body.rebuild === true,
+          })
+        : buildPrompts(profile, existing.agentName ?? "", language ?? undefined);
+
+      const saved = await saveStructured(
+        target,
+        { profile, prompts, voice: voice || null, language },
+        // Re-rendered even though the profile did not change here: the flat columns must never be
+        // able to drift from the profile they are derived from, whichever endpoint last wrote.
+        deriveFromProfile(profile),
+      );
+      if (!saved) return status(409, { error: "no_profile", message: ADD_DETAILS_FIRST });
+      return { profile: saved };
+    },
+    {
+      query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }),
+      body: t.Object({
+        prompts: t.Optional(t.Unknown()),
+        voice: t.Optional(t.String({ maxLength: 40 })),
+        language: t.Optional(t.String({ maxLength: 16 })),
+        rebuild: t.Optional(t.Boolean()),
+      }),
+    },
+  )
+
   // Nothing here touches the description or anything derived from it, which is the point: editing
   // a greeting must never risk rewording what the agent says about the business.
   .put(

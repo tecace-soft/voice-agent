@@ -1,5 +1,6 @@
 import type { ParsedDump } from "../demo/dump.js";
 import { sql } from "./client.js";
+import { jsonb } from "./jsonb.js";
 
 /** How many rows each entity newly inserted. A re-import of the same file reports all zeros. */
 export interface ImportCounts {
@@ -9,15 +10,7 @@ export interface ImportCounts {
   notes: number;
 }
 
-// A value bound for a JSONB column is passed through as-is: **do not pre-stringify it.**
-// postgres.js learns from the server's ParameterDescription that `$n::jsonb` is OID 3802, and
-// types.js registers the json serializer (JSON.stringify) for that OID — so the driver encodes it
-// itself (connection.js: `options.serializers[type](x)`). Handing it an already-encoded string
-// encodes it twice and Postgres stores a JSON *string* rather than an object, which is what the
-// first production import did: every customer read back with `profile.name` undefined and the
-// Customers tab showed ten rows of "Unnamed". `?? null` keeps a SQL NULL for the nullable columns.
-const jsonb = (value: unknown) =>
-  value === null || value === undefined ? null : sql.json(value as Parameters<typeof sql.json>[0]);
+// How a JSONB value is bound, and why it must not be pre-stringified: `db/jsonb.ts`.
 
 /** Thrown to force a ROLLBACK at the end of a dry run. Never escapes importDump. */
 class DryRun extends Error {}

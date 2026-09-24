@@ -101,6 +101,15 @@ await mock.module("../db/users.js", () => ({
   // uuid) is "no such account" — the route's own 404, not this route's concern.
   findUserById: async (id: string) =>
     id === EMPTY_ID ? { id: EMPTY_ID, email: "empty@tecace.com", name: "Empty Biz", role: "user" } : null,
+  // `mock.module` replaces the module for the whole test run, not just this file, so anything else
+  // loaded after this one resolves `db/users.js` to the object above. These are here for those
+  // importers: an export this stand-in omits is a module that fails to load, not a failing test.
+  toPublicUser: (u: Record<string, unknown>) => u,
+  ACCOUNT_STATUSES: ["unassigned", "demo", "pre-production", "production"],
+  isAccountStatus: (v: unknown) =>
+    typeof v === "string" && ["unassigned", "demo", "pre-production", "production"].includes(v),
+  findUserByBusinessId: async () => null,
+  setLifecycleById: async () => null,
 }));
 await mock.module("../auth/guard.js", () => ({
   UNAUTHORIZED: { error: "unauthorized", message: "Sign in to continue." },

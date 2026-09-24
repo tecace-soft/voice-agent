@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
+import type { BusinessProfile as StructuredProfile, CustomerPrompts } from "../demo/types.js";
 import { EXTRACTOR_VERSION } from "../tools/extractBusiness.js";
 import { sql } from "./client.js";
+import { jsonb } from "./jsonb.js";
 
 // What a customer told us about their business, and what the agent may say because of it.
 //
@@ -35,6 +37,20 @@ export interface BusinessProfile {
   houseRules: string | null;
   /** True when there's enough here for the agent to answer AS this business rather than neutrally. */
   isLive: boolean;
+  /**
+   * What the customer edits in the Knowledge tab, in the demo's own shape.
+   *
+   * Null on a row written before the structured profile existed. Everything flat above is rendered
+   * FROM this when it is present — see `business/derive.ts` — so this is the source of truth and
+   * those are the wire format.
+   */
+  profile: StructuredProfile | null;
+  /** The three prompts, generated from `profile` and editable. Null until one has been built. */
+  prompts: CustomerPrompts | null;
+  /** Which voice answers. Null means the service default. */
+  voice: string | null;
+  /** Which language the opening line is in. Null means English. */
+  language: string | null;
   extractedAt: string | null;
   updatedAt: string;
 }
@@ -75,6 +91,10 @@ const COLUMNS = sql`
   p.transfer_topics AS "transferTopics",
   p.house_rules     AS "houseRules",
   ${IS_LIVE}      AS "isLive",
+  p.profile,
+  p.prompts,
+  p.voice,
+  p.language,
   p.extracted_at  AS "extractedAt",
   p.updated_at    AS "updatedAt"
 `;
@@ -117,22 +137,32 @@ export interface TypedFields {
   houseRules: string | null;
 }
 
+/** The structured profile and everything generated alongside it. */
+export interface StructuredFields {
+  profile: StructuredProfile;
+  prompts: CustomerPrompts;
+  voice: string | null;
+  language: string | null;
+}
+
 export async function saveProfile(
   userId: string,
   sourceText: string,
   fields: ExtractedFields,
   typed: TypedFields,
+  structured: StructuredFields,
 ): Promise<BusinessProfile> {
   await sql`
     INSERT INTO business_profiles (
       user_id, source_text, source_hash, business_name, hours_text,
       open_hour, close_hour, website, facts, transfer_number, agent_name, greeting,
-      transfer_topics, house_rules, extracted_at, updated_at
+      transfer_topics, house_rules, profile, prompts, voice, language, extracted_at, updated_at
     ) VALUES (
       ${userId}, ${sourceText}, ${hashSource(sourceText)}, ${fields.businessName},
       ${fields.hoursText}, ${fields.openHour}, ${fields.closeHour}, ${fields.website},
       ${fields.facts}, ${typed.transferNumber}, ${typed.agentName}, ${typed.greeting},
-      ${typed.transferTopics}, ${typed.houseRules}, now(), now()
+      ${typed.transferTopics}, ${typed.houseRules}, ${jsonb(structured.profile)},
+      ${jsonb(structured.prompts)}, ${structured.voice}, ${structured.language}, now(), now()
     )
     ON CONFLICT (user_id) DO UPDATE SET
       source_text   = EXCLUDED.source_text,
@@ -148,10 +178,50 @@ export async function saveProfile(
       greeting        = EXCLUDED.greeting,
       transfer_topics = EXCLUDED.transfer_topics,
       house_rules     = EXCLUDED.house_rules,
+      profile         = EXCLUDED.profile,
+      prompts         = EXCLUDED.prompts,
+      voice           = EXCLUDED.voice,
+      language        = EXCLUDED.language,
       extracted_at    = now(),
       updated_at    = now()
   `;
   return (await findProfile(userId))!;
+}
+
+/**
+ * Save an edit made in the Knowledge or Prompt tab.
+ *
+ * The structured profile is the source of truth, so the four flat columns the phone agent reads are
+ * re-rendered from it here rather than being left as the extractor last wrote them — otherwise
+ * correcting a closing time in the tab would change what the page shows and not what the agent
+ * says, which is the worst of both.
+ *
+ * `source_text` and `source_hash` are deliberately untouched. The description is what the customer
+ * pasted; editing the profile it produced does not rewrite their words, and leaving the hash alone
+ * means a later re-read still knows whether the description itself has changed.
+ */
+export async function saveStructured(
+  userId: string,
+  structured: StructuredFields,
+  derived: ExtractedFields,
+): Promise<BusinessProfile | null> {
+  const rows = await sql`
+    UPDATE business_profiles
+    SET profile       = ${jsonb(structured.profile)},
+        prompts       = ${jsonb(structured.prompts)},
+        voice         = ${structured.voice},
+        language      = ${structured.language},
+        business_name = ${derived.businessName},
+        hours_text    = ${derived.hoursText},
+        open_hour     = ${derived.openHour},
+        close_hour    = ${derived.closeHour},
+        website       = ${derived.website},
+        facts         = ${derived.facts},
+        updated_at    = now()
+    WHERE user_id = ${userId}
+    RETURNING user_id
+  `;
+  return rows.length ? findProfile(userId) : null;
 }
 
 /**

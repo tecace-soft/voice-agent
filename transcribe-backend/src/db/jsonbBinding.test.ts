@@ -63,7 +63,15 @@ describe("binding a value to a JSONB column", () => {
 // used the other shape — a bare string plus a `::jsonb` cast — whose type only becomes jsonb at the
 // server, which no local shim can reproduce. So that shape is guarded at the source instead.
 describe("the writers bind JSON without pre-encoding it", () => {
-  const writers = ["src/db/demoImport.ts", "src/db/demoWrite.ts"];
+  // Every module that binds a JSONB column. `jsonb.ts` is the binder itself; the others are its
+  // callers, and the check is on the *shape* they write, so a caller that stopped using it and
+  // hand-rolled the broken form again would still be caught here.
+  const writers = [
+    "src/db/jsonb.ts",
+    "src/db/demoImport.ts",
+    "src/db/demoWrite.ts",
+    "src/db/businessProfiles.ts",
+  ];
 
   it("never interpolates a JSON.stringify(...) into a statement", async () => {
     for (const path of writers) {

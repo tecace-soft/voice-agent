@@ -1,5 +1,5 @@
 import { Elysia, t } from "elysia";
-import { authenticateAdmin } from "../auth/guard.js";
+import { authenticateAdmin, authenticateDemo, ownsDemo } from "../auth/guard.js";
 import { env } from "../config/env.js";
 import {
   activityFeed,
@@ -71,13 +71,43 @@ import {
 // dashboard's Demo screens are verbatim ports of the promo's and parse these bodies field for
 // field, so a tidier `topCustomers` or a renamed `realCallCount` is a broken screen, not a cleanup.
 //
-// Admin-only, through the same `authenticateAdmin` guard as the rest of this API. The promo put
-// these behind its own operator password; here the dashboard's admin session is the only way in.
-// Note what that rules out: `authenticateAdmin` resolves a *user* token, so an API key — which
+// Admin-only, through the same `authenticateAdmin` guard as the rest of this API, WITH TWO
+// EXCEPTIONS — `GET /customers/:id` and `PATCH /customers/:id`, which a demo-stage customer may use
+// on their own record so they can read and correct the receptionist we built for them. Both go
+// through `authenticateDemo` and check `ownsDemo`; everything else on this file is the operator's
+// pipeline and stays admin-only, which is also the safe default for anything added later.
+//
+// What the admin guard rules out either way: it resolves a *user* token, so an API key — which
 // `src/routes/usage.ts` accepts for the usage numbers — cannot reach any of this. Demo data is
 // every prospect's contact details and call transcripts, which is not what a machine key is for.
 
 const DEMO_IS_ADMIN = "Only an admin can read the demo data.";
+
+// Said to a signed-in customer who is not in the demo stage, and to one whose account has no demo
+// record behind it. Both are "there is nothing here for you", not "you got it wrong".
+const DEMO_NOT_YOURS = "Only an admin can read other customers' demos.";
+
+/** The route's own not-found, reused for somebody else's record — see `ownsDemo` for why. */
+const NO_SUCH_CUSTOMER = { error: "Customer not found." } as const;
+
+/**
+ * What a demo-stage customer may change about their own record: the receptionist, and nothing else.
+ *
+ * Everything left out is the operator's side of the deal — the demo allowance and how much time to
+ * add to it, whether the demo is still active, the sales stage and follow-up dates, the contact
+ * details and the operator's private notes, and the research inputs that cost money to re-run. A
+ * customer who could set `addDemoMinutes` would have an unmetered line; one who could set `stage`
+ * would be editing our pipeline.
+ */
+const CUSTOMER_MAY_EDIT = [
+  "profile",
+  "prompts",
+  "regeneratePrompts",
+  "agentName",
+  "voice",
+  "language",
+  "callSound",
+] as const;
 
 /** The promo's `lib/types.ts` shape for a row of the customers table. */
 type CustomerWithStats = Customer & {
@@ -298,11 +328,15 @@ export const demo = new Elysia({ prefix: "/demo" })
   })
 
   // One prospect's page: the record, its all-time stats, and its calls, views and notes.
+  //
+  // Shared with the customer whose record it is. They get the same shape minus the operator's notes:
+  // those are what we write about a deal, and a CRM note is not something the other party reads.
   .get(
     "/customers/:id",
     async ({ headers, params, status }) => {
-      const caller = await authenticateAdmin(headers.authorization, DEMO_IS_ADMIN);
+      const caller = await authenticateDemo(headers.authorization, DEMO_NOT_YOURS);
       if ("denied" in caller) return status(caller.denied, caller.body);
+      if (!ownsDemo(caller, params.id)) return status(404, NO_SUCH_CUSTOMER);
 
       const { id } = params;
       let customer: Customer | null, calls: CallLog[], events: TrackEvent[], notes: CrmNote[];
@@ -324,7 +358,7 @@ export const demo = new Elysia({ prefix: "/demo" })
         calls,
         events.filter((event) => event.customerId === id),
       );
-      return { customer, stats, calls, events, notes };
+      return { customer, stats, calls, events, notes: caller.scope === "all" ? notes : [] };
     },
     { params: t.Object({ id: t.String({ maxLength: 64 }) }) },
   )
@@ -574,8 +608,25 @@ export const demo = new Elysia({ prefix: "/demo" })
   .patch(
     "/customers/:id",
     async ({ body, headers, params, status }) => {
-      const caller = await authenticateAdmin(headers.authorization, DEMO_IS_ADMIN);
+      const caller = await authenticateDemo(headers.authorization, DEMO_NOT_YOURS);
       if ("denied" in caller) return status(caller.denied, caller.body);
+      if (!ownsDemo(caller, params.id)) return status(404, NO_SUCH_CUSTOMER);
+
+      // A customer editing their own record may only send the receptionist's own fields. Refused by
+      // NAMING the field rather than by dropping it: a save that silently keeps half of what was
+      // sent is how a form comes to show something the server never stored.
+      if (caller.scope === "own") {
+        const forbidden = Object.keys(body).filter(
+          (key) =>
+            body[key as keyof typeof body] !== undefined &&
+            !(CUSTOMER_MAY_EDIT as readonly string[]).includes(key),
+        );
+        if (forbidden.length > 0) {
+          return status(403, {
+            error: `Only an admin can change ${forbidden.sort().join(", ")}.`,
+          });
+        }
+      }
 
       if (body.voice && !LIVE_VOICES.includes(body.voice)) {
         return status(400, { error: "Unknown voice." });

@@ -1030,3 +1030,71 @@ They are a **second entry document**, not a view: `c.html` → `src/public/main.
 `npx tsc --noEmit` clean, `npx vitest run` **273** tests passing (265 + 8 new), `npm run build`
 clean and emitting both documents. The built `c.html` loads no chunk containing the session token's
 storage key; `index.html`'s does.
+
+---
+
+## The Business tab's Knowledge and Prompt (real customers)
+
+The real customers' Business page now renders the demo's **own** editors over a real business's
+profile — `KnowledgeEditor` and `PromptEditor` imported from here, the same `BusinessProfile` shape,
+and prompts generated and resolved by `demo/prompt.ts` on the backend. Not a matching pair: the same
+code, so anything that changes about editing a prospect's knowledge changes there too.
+
+### Edited
+
+- **`components/admin/PromptEditor.tsx`** gains `showCallSound?: boolean` (default `true`, which is
+  every prospect) and `onCallSoundChange` becomes optional. The Business tab passes `false`: those
+  two switches synthesise a phone line in a browser so a demo sounds like a call, and a customer's
+  calls arrive down a real one. A control that cannot change anything is worse than a missing one.
+  The call-sound card is wrapped in `{showCallSound ? … : null}`; nothing else moved.
+
+### New, outside `src/demos/`
+
+- `src/pages/BusinessTabs.tsx` — the two tabs, inside a `.tw` boundary. Each tab saves itself, to
+  its own endpoint: the demo has one Save in the page header because a prospect is one PATCH, while
+  a business's settings are split across endpoints that must not disturb each other.
+- `src/api/types.ts` imports `BusinessProfile` and `CustomerPrompts` from `demos/lib/types` rather
+  than re-declaring them — two copies of a shape that one editor renders is how they drift.
+- `scripts/regression/business_tabs.py`, and `compare.py` gains two `EXPECTED_CHANGES` entries
+  (`admin-scoped:business:light`, `user:business:light`) with `"Add service"` as the marker, so the
+  change is proven rather than skipped.
+
+## A demo-stage customer reads their own prospect page (2026-09-24)
+
+A customer whose account is at stage `demo` signs in and sees one screen: the receptionist we built
+for them, which is `screens/ProspectScreen.tsx` — the operator's own page, with everything that is
+ours rather than theirs taken off it. Not a second screen: a copy would drift from the one we use, and
+the whole point of the port is that there is one of each.
+
+### Edited
+
+- **`screens/ProspectScreen.tsx`** gains `operator?: boolean` (default `true`, which is every use we
+  make of it). With `false` the page drops the live switch, `AddDemoTimeMenu`, Re-research, the
+  Activity / Sources / Share tabs and the whole "Test call" `<Card>`, opens on Knowledge instead of
+  Activity, and the editor card spans all three columns instead of two. Save, the stat cards, the
+  status badge and Knowledge / Schedule / Prompt are untouched. Each thing removed is refused by the
+  backend for that account (`auth/guard.ts`'s `authenticateDemo`, `routes/demo.ts`): the live switch
+  and demo minutes are the commercial side of a deal the customer does not administer, re-research is
+  a model call we pay for, the Activity tab's actions reclassify and delete calls we count, Share is
+  the link and its tracking, and the test call is an unmetered live minute — which is why the
+  prospect's own `/c/<id>` link has an allowance and this panel does not. They hear their receptionist
+  through that link.
+- **`DemosView.tsx`** gains `operator?: boolean`. With `false` it renders only `ProspectScreen` for
+  the given id, and a plain "your demo isn't set up yet" line when the account has no record linked.
+  It deliberately does NOT fall back to `ProspectsScreen`, which the operator's branch does: that
+  fallback is a list of every prospect.
+
+### New, outside `src/demos/`
+
+- `src/App.tsx` reads `user.status === "demo"` and pins `view` to `demoProspect` with the account's
+  own `businessId`, so a typed `#/overview` or a bookmarked `#/demos/pipeline` lands on their own page
+  rather than on an empty screen or a permission error. It also skips the `/transcribe/stats` fetch
+  (they have no voicemail runs) and passes `operator={false}` down.
+- `src/components/Sidebar.tsx` gains `DEMO_ONLY_NAV`: one item, "My receptionist".
+- `src/people.ts` — `useAccounts`/`useAccountNames` take `enabled`, and `App` passes `isAdmin`. The
+  accounts list is an admin endpoint that only admin surfaces read, and the original asked for it on
+  every page load whatever the account was: a 403 per load for every customer. `compare.py` treats
+  an `/auth/users` error the original logged and this one does not as a fix rather than a difference.
+- `scripts/regression/demo_customer.py`, and `fake_backend.py` gains a `tok-demo` account plus the
+  demo scope in front of `/demo/*` — mirrored from the real guard, so the harness cannot pass against
+  a fake that is more permissive than the service.

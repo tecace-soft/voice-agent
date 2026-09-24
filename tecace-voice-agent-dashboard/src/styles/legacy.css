@@ -957,6 +957,12 @@ select.input {
   justify-content: flex-end;
   gap: 8px;
 }
+/* the sentence under the lifecycle controls: it explains the one-way copy, so it runs the full
+   width of the grid rather than sitting in a column beside a dropdown */
+.lifecycle-note {
+  grid-column: 1 / -1;
+  margin: 0;
+}
 
 /* a generated password, shown once */
 .notice {

@@ -10,6 +10,20 @@ const db = await PGlite.create();
 // (sql`TRUE`) as text with its values merged, which is what postgres.js itself does.
 const FRAGMENT = Symbol("fragment");
 
+// A fragment is recognised by its SHAPE, not by the private symbol above.
+//
+// Module instances are shared across the files of one `bun test` run, while `mock.module` rebinds
+// their imports. So `db/users.ts`'s module-level COLUMNS list can have been built by ANOTHER test
+// file's tag and still be executed here. Recognising only our own symbol bound that list as a value
+// — `RETURNING $1`, a row with no columns — which surfaces wherever the row is next read and looks
+// nothing like its cause.
+const isFragment = (value: any): boolean =>
+  Boolean(value) &&
+  typeof value === "object" &&
+  Array.isArray(value.strings) &&
+  Array.isArray(value.values) &&
+  "raw" in value.strings;
+
 // postgres.js decides a parameter's wire text with `options.serializers[type](x)`
 // (connection.js), and `sql.json(x)` tags the parameter as OID 3802. Reproducing that here —
 // with postgres.js's real serializer table — is what makes these tests able to catch a
@@ -37,7 +51,7 @@ function build(strings: TemplateStringsArray, values: unknown[], counter: { n: n
     text += part;
     if (i >= values.length) return;
     const value = values[i] as any;
-    if (value && value[FRAGMENT]) {
+    if (isFragment(value)) {
       const inner = build(value.strings, value.values, counter);
       text += inner.text;
       out.push(...inner.values);
