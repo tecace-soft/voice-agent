@@ -178,6 +178,21 @@ const A = "aaaaaaaaaaaa"; // the prospect every good call is placed against
 const F = "ffffffffffff"; // only ever dialled on the failure paths, so its call rows can be counted
 const P = "pppppppppppp"; // paused
 const R = "rrrrrrrrrrrr"; // still being researched
+const U = "uuuuuuuuuuuu"; // the public demo: two minutes, so the allowance is reachable in a test
+const V = "vvvvvvvvvvvv"; // the public demo the concurrency cap is filled on
+
+// Operator-only fields, on the customer the public page is served from. They exist so the public
+// read can be checked for their absence rather than for the absence of nothing.
+const OPERATOR_LABEL = "warm lead";
+const OPERATOR_NAME = "Office manager";
+const OPERATOR_EMAIL = "private@example.invalid";
+const OPERATOR_NOTE = "internal: haggles on price";
+
+/** Who the browser says it is on a public dial; there is no such thing on an admin test call. */
+const VISITOR = "vid_public_1";
+
+/** Set by the first public dial and read by the report that follows it. */
+let publicCallId = "";
 
 const customer = (id: string, businessName: string, extra: Record<string, unknown> = {}) => ({
   type: "string",
@@ -206,17 +221,25 @@ const customer = (id: string, businessName: string, extra: Record<string, unknow
 
 const DUMP = {
   data: {
-    customers: { type: "set", ttl: -1, value: [A, F, P, R] },
+    customers: { type: "set", ttl: -1, value: [A, F, P, R, U, V] },
     [`customers:${A}`]: customer(A, "Harbor Dental"),
     [`customers:${F}`]: customer(F, "Fallible Co"),
     [`customers:${P}`]: customer(P, "Paused Clinic", { active: false }),
     [`customers:${R}`]: customer(R, "Cedar Bakery", { status: "researching" }),
+    [`customers:${U}`]: customer(U, "Public Spa", {
+      demoMinutes: 2,
+      label: OPERATOR_LABEL,
+      contactName: OPERATOR_NAME,
+      contactEmail: OPERATOR_EMAIL,
+      notes: OPERATOR_NOTE,
+    }),
+    [`customers:${V}`]: customer(V, "Busy Spa"),
   },
 };
 
 const { parseDump } = await import("../demo/dump.js");
 const { importDump } = await import("../db/demoImport.js");
-expect(await importDump(parseDump(DUMP))).toEqual({ customers: 4, calls: 0, events: 0, notes: 0 });
+expect(await importDump(parseDump(DUMP))).toEqual({ customers: 6, calls: 0, events: 0, notes: 0 });
 
 const { env } = await import("../config/env.js");
 const { callClock, zonedToday } = await import("../demo/callClock.js");
@@ -247,8 +270,11 @@ await mock.module("../demo/callReview.js", () => ({
 }));
 
 const { demo } = await import("./demo.js");
+// The prospect's side is mounted alongside the operator's, exactly as `app.ts` mounts them, because
+// half of what these tests check is the difference between the two.
+const { demoPublic } = await import("./demoPublic.js");
 const { Elysia } = await import("elysia");
-const app = new Elysia().use(demo);
+const app = new Elysia().use(demo).use(demoPublic);
 
 // The settings the test call runs on.
 //
@@ -1080,6 +1106,187 @@ describe("PATCH /demo/customers/:id/calls with analyze", () => {
     expect(row.is_test).toBe(false);
     expect(row.review_kind).toBe("object");
     expect(row.review).toMatchObject(REVIEW);
+  });
+});
+
+// ==============================================================================================
+// The prospect's own side: `/demo/public/*`, reached with no sign-in at all.
+//
+// These are the routes behind a `/c/<id>` link. Everything above this point is the operator's, and
+// the two differ in more than a guard: a public dial spends the prospect's demo minutes, holds one
+// of the concurrency seats, and is recorded as a real call rather than a test — so each of those is
+// asserted here rather than taken on trust from the admin route's tests.
+//
+// Every request below is deliberately sent WITHOUT an `authorization` header.
+
+describe("GET /demo/public/customers/:id", () => {
+  it("serves the business's own data to a caller with no sign-in", async () => {
+    const res = await request("GET", `/demo/public/customers/${U}`);
+    expect(res.status).toBe(200);
+
+    const { customer } = await json(res);
+    expect(customer.customerId).toBe(U);
+    expect(customer.name).toBe("Public Spa");
+    expect(customer.agentName).toBe("Alex");
+    expect(customer.voice).toBe("meridian");
+    expect(customer.prompts.greeting).toBe(GREETING);
+    // Two minutes on this fixture, so the page can tell the caller what is left.
+    expect(customer.demo.allowedSec).toBe(120);
+    expect(customer.demo.exhausted).toBe(false);
+  });
+
+  it("carries nothing the operator keeps about the prospect", async () => {
+    const res = await request("GET", `/demo/public/customers/${U}`);
+    const body = JSON.stringify(await json(res));
+    for (const secret of [OPERATOR_EMAIL, OPERATOR_NAME, OPERATOR_NOTE, OPERATOR_LABEL]) {
+      expect(body).not.toContain(secret);
+    }
+    // The field list itself is pinned in `demoPublicView.test.ts`; this is the same promise made
+    // over HTTP, in case a route ever spreads the customer in beside the view.
+    expect(body).not.toContain("operatorNotes");
+    expect(body).not.toContain("contactEmail");
+  });
+
+  it("says why a link does not open a demo, so the page can word it", async () => {
+    const paused = await request("GET", `/demo/public/customers/${P}`);
+    expect(paused.status).toBe(404);
+    expect(await json(paused)).toEqual({ error: "This demo isn't available.", reason: "paused" });
+
+    const preparing = await request("GET", `/demo/public/customers/${R}`);
+    expect(preparing.status).toBe(404);
+    expect((await json(preparing)).reason).toBe("preparing");
+
+    const missing = await request("GET", "/demo/public/customers/zzzzzzzzzzzz");
+    expect(missing.status).toBe(404);
+    expect((await json(missing)).reason).toBe("missing");
+  });
+});
+
+describe("POST /demo/public/session", () => {
+  it("opens a REAL call — not a test — and answers the browser the same way", async () => {
+    responders.live = () => Response.json({ id: "sess_public", transport: { sdp: ANSWER_SDP } });
+
+    const res = await request("POST", "/demo/public/session", {
+      body: { customerId: U, sdp: OFFER_SDP, timeZone: TIME_ZONE, visitorId: VISITOR },
+    });
+    const payload = await json(res);
+
+    expect(res.status).toBe(200);
+    expect(Object.keys(payload)).toEqual(["callId", "sessionId", "sdp", "greeting", "maxSec"]);
+    expect(payload.sessionId).toBe("sess_public");
+    expect(payload.sdp).toBe(ANSWER_SDP);
+    expect(payload.greeting).toBe(GREETING);
+    // Narrowed to what is left of the two minutes, NOT the ten minute ceiling: this is the half the
+    // admin route has no use for, and the reason a prospect cannot overrun a demo with one call.
+    expect(payload.maxSec).toBe(120);
+
+    const row = await callRow(payload.callId);
+    expect(row.customer_id).toBe(U);
+    expect(row.status).toBe("started");
+    // The whole point. A public dial counts against the demo and shows in the prospect's numbers.
+    expect(row.is_test).toBe(false);
+    expect(row.live_session_id).toBe("sess_public");
+    // Who was on the page, for `analytics.distinctVisitors`. There is none on an admin test call.
+    expect(row.visitor_id).toBe(VISITOR);
+
+    publicCallId = payload.callId;
+  });
+
+  it("is reported done through the public route, with no sign-in either", async () => {
+    const res = await request("POST", `/demo/public/calls/${publicCallId}`, {
+      body: {
+        customerId: U,
+        status: "completed",
+        durationSec: 200,
+        transcript: [said("p1", "caller", "Do you do massages?")],
+      },
+    });
+    expect(res.status).toBe(200);
+    expect((await json(res)).ok).toBe(true);
+
+    const row = await callRow(publicCallId);
+    expect(row.status).toBe("completed");
+    expect(row.duration_sec).toBe(200);
+    expect(row.is_test).toBe(false);
+  });
+
+  it("refuses once the demo has spent its minutes, and says so in a way the page can act on", async () => {
+    const res = await request("POST", "/demo/public/session", {
+      body: { customerId: U, sdp: OFFER_SDP },
+    });
+    expect(res.status).toBe(403);
+    const body = await json(res);
+    // The page swaps the call button for the contact form on this flag.
+    expect(body.exhausted).toBe(true);
+    expect(body.error).toContain("2 minutes");
+    // Refused before OpenAI was asked, and without leaving a row behind.
+    expect(await callsOf(U)).toBe(1);
+  });
+
+  it("refuses a paused demo, one still being prepared, and an id that is not one", async () => {
+    const before = attempts.length;
+
+    const paused = await request("POST", "/demo/public/session", {
+      body: { customerId: P, sdp: OFFER_SDP },
+    });
+    expect(paused.status).toBe(403);
+    expect(await json(paused)).toEqual({ error: "This demo is paused." });
+
+    const preparing = await request("POST", "/demo/public/session", {
+      body: { customerId: R, sdp: OFFER_SDP },
+    });
+    expect(preparing.status).toBe(409);
+
+    const missing = await request("POST", "/demo/public/session", {
+      body: { customerId: "zzzzzzzzzzzz", sdp: OFFER_SDP },
+    });
+    expect(missing.status).toBe(404);
+
+    const empty = await request("POST", "/demo/public/session", { body: { customerId: U } });
+    expect(empty.status).toBe(400);
+    expect(await json(empty)).toEqual({ error: "Missing customerId or sdp." });
+
+    // Nothing reached OpenAI, and no rows were opened for any of it.
+    expect(attempts.length).toBe(before);
+    expect(await callsOf(P)).toBe(0);
+    expect(await callsOf(R)).toBe(0);
+  });
+
+  it("cannot be talked into placing a test call", async () => {
+    responders.live = () => Response.json({ id: "sess_v1", transport: { sdp: ANSWER_SDP } });
+    const res = await request("POST", "/demo/public/session", {
+      // `isTest` was a body field on the promo's one shared route. This route has no such field, so
+      // a caller sending it changes nothing — the call is still real and still spends the demo.
+      body: { customerId: V, sdp: OFFER_SDP, isTest: true },
+    });
+    expect(res.status).toBe(200);
+    expect((await callRow((await json(res)).callId)).is_test).toBe(false);
+  });
+});
+
+describe("how many people may be on one demo at once", () => {
+  it("lets a few colleagues on together and turns the next one away politely", async () => {
+    // One is already on the line from the test above; three more fill the demo.
+    for (let i = 2; i <= 4; i += 1) {
+      responders.live = () => Response.json({ id: `sess_v${i}`, transport: { sdp: ANSWER_SDP } });
+      const res = await request("POST", "/demo/public/session", {
+        body: { customerId: V, sdp: OFFER_SDP },
+      });
+      expect(res.status).toBe(200);
+    }
+    expect(await callsOf(V)).toBe(4);
+
+    const before = attempts.length;
+    const fifth = await request("POST", "/demo/public/session", {
+      body: { customerId: V, sdp: OFFER_SDP },
+    });
+    expect(fifth.status).toBe(429);
+    expect((await json(fifth)).error).toContain("as many people on it as it can take");
+
+    // Turned away before OpenAI was asked, and the reservation it wrote was taken back — otherwise
+    // the demo would be one seat down for the ten minutes it takes a started row to age out.
+    expect(attempts.length).toBe(before);
+    expect(await callsOf(V)).toBe(4);
   });
 });
 

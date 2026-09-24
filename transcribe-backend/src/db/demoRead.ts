@@ -1,4 +1,5 @@
 import type { DemoCallRow, DemoCustomerRow, DemoEventRow, DemoNoteRow } from "../demo/map.js";
+import { STALE_CALL_MS } from "../demo/analytics.js";
 import { PROMPT_VERSION, buildPrompts } from "../demo/prompt.js";
 import { fromCallRow, fromCustomerRow, fromEventRow, fromNoteRow } from "../demo/rows.js";
 import type { CallLog, CrmNote, Customer, TrackEvent } from "../demo/types.js";
@@ -172,6 +173,31 @@ export async function listCalls(customerId: string): Promise<CallLog[]> {
     ORDER BY started_at DESC, id DESC
   `) as unknown as DemoCallRow[];
   return rows.map(fromCallRow);
+}
+
+/**
+ * Every call still on the line, across every prospect — the seat count the public demo checks
+ * before it opens another live session.
+ *
+ * The promo kept this as a Redis set it wrote to (`markLive`) and read back (`listLiveSessions`),
+ * because Redis could not answer "which calls are live" across customers. Postgres can, so the set
+ * is gone and this asks the table directly: there is nothing to write, nothing to expire, and no
+ * way for the set and the rows to disagree.
+ *
+ * The WHERE clause is `analytics.ts`'s `inFlightCalls` in SQL — not a test call, still `started`,
+ * and started within `STALE_CALL_MS`, which is what makes a browser closed mid-call stop holding a
+ * seat. Kept in step with that function: if one changes, both do.
+ */
+export async function listLiveSessions(): Promise<{ callId: string; startedAtMs: number }[]> {
+  const rows = (await sql`
+    SELECT id, started_at AS "startedAt"
+    FROM demo_calls
+    WHERE status = 'started'
+      AND is_test = FALSE
+      AND started_at > NOW() - ${`${STALE_CALL_MS} milliseconds`}::interval
+    ORDER BY started_at, id
+  `) as unknown as { id: string; startedAt: Date }[];
+  return rows.map((row) => ({ callId: row.id, startedAtMs: row.startedAt.getTime() }));
 }
 
 /**

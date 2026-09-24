@@ -30,3 +30,6 @@ export async function demoFetch(path: string, init?: RequestInit): Promise<Respo
     throw new Error("Couldn't reach the server.");
   }
 }
+
+// The prospect's side of the same API lives in `publicApi.ts`, not here: this module reads the
+// session token, so importing it pulls the dashboard's auth into whatever bundle does.

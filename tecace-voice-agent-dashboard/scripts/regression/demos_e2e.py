@@ -265,7 +265,10 @@ POPOVER_COLOR_JS = """
 """
 
 
-DEMO_BASE_URL = "http://promo.example"
+# Where a demo link points. It used to be the promo's origin, set into the build through
+# VITE_PUBLIC_DEMO_BASE_URL; this app serves /c/<id> itself now, so a link is this server's own
+# origin and there is nothing to configure. Filled in once the harness knows its port.
+DEMO_BASE_URL = ""
 # src/routes/demo.ts, POST /demo/session: the only refusal past the admin guard that the panel can
 # be made to show. The fake can't hold a per-IP rate limit, so the harness stages the 429 itself.
 RATE_LIMITED = "Too many calls in a row. Wait a minute and try again."
@@ -443,14 +446,16 @@ def run() -> int:
     check = Checks()
     page_errors: list[str] = []
     backend = fake_backend.start(BACKEND_PORT)
-    # Baked into the build: the origin of the demo links "Copy link" / "Copy email" produce.
-    os.environ["VITE_PUBLIC_DEMO_BASE_URL"] = DEMO_BASE_URL
     try:
         with tempfile.TemporaryDirectory(prefix="demos-e2e-") as tmp:
             out = Path(tmp) / "app"
             build("demos-e2e", APP_ROOT, out)
             proc, log = serve("demos-e2e", APP_ROOT, out, NEW_PORT)
             base = f"http://127.0.0.1:{NEW_PORT}/"
+            # The links "Copy link" / "Copy email" / the Share tab produce: this origin, because the
+            # page they open is served from it.
+            global DEMO_BASE_URL
+            DEMO_BASE_URL = f"http://127.0.0.1:{NEW_PORT}"
             try:
                 with sync_playwright() as p:
                     # A fake microphone (a generated tone), with no permission prompt, so the test
@@ -537,7 +542,7 @@ def run() -> int:
                     check("prospects: Copy link shows a toast",
                           page.locator("main .tw [data-sonner-toast]", has_text="Link copied.").count() >= 1)
                     copied = page.evaluate("navigator.clipboard.readText()")
-                    check("prospects: Copy link copies the public demo link (VITE_PUBLIC_DEMO_BASE_URL)",
+                    check("prospects: Copy link copies the public demo link (this origin)",
                           copied == f"{DEMO_BASE_URL}/c/pr0SPct1", repr(copied))
 
                     # The "Add time" steps as a submenu on a row (AddDemoTimeSubmenu). Cedar's, so

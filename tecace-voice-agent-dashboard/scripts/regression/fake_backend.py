@@ -1062,6 +1062,79 @@ def demo_report_route(call_id: str, raw_body: bytes):
     return 200, {"ok": True, "reviewed": False}
 
 
+# --- The prospect's own side: /demo/public/* -------------------------------------------------------
+#
+# These take NO token — whoever opens a demo link has no account — so they are dispatched before the
+# admin gate below rather than inside demo_route(). Four of them, as routes/demoPublic.ts has them:
+#
+# - GET  /demo/public/customers/<id> -> {customer}: the hand-picked field list `publicView` sends,
+#   and nothing the operator keeps (no label, contactName, contactEmail, notes, stage, demoMinutes).
+#   An unknown id, a paused demo or one still researching -> 404 {error, reason}.
+# - POST /demo/public/track          -> {ok: true}, always, for anything.
+# - POST /demo/public/session        -> the same answer the admin route gives, except maxSec, which
+#   a public call has narrowed to what is left of the allowance.
+# - POST /demo/public/calls/<id>     -> {ok: true, reviewed: false}.
+
+def public_view(customer: dict) -> dict:
+    """routes/demoPublic.ts publicView(), over one of the fixtures above."""
+    profile = customer["profile"]
+    return {
+        "customerId": customer["id"],
+        "name": profile.get("name"),
+        "category": profile.get("category"),
+        "address": profile.get("address"),
+        "phone": profile.get("phone"),
+        "agentName": customer["agentName"],
+        "language": customer.get("language"),
+        "callSound": customer.get("callSound"),
+        "voice": customer["voice"],
+        "profile": profile,
+        "prompts": {k: customer["prompts"][k] for k in ("live", "backend", "greeting")},
+        "dossier": customer["dossier"],
+        "sources": customer["sources"],
+        "researchedAt": customer.get("researchedAt"),
+        "demo": demo_allowance_for(customer),
+    }
+
+
+def demo_allowance_for(customer: dict) -> dict:
+    """demo/analytics.ts demoAllowance() over the fixture's calls, in the shape the page reads."""
+    minutes = customer.get("demoMinutes") or DEFAULT_DEMO_MINUTES
+    allowed = minutes * 60
+    used = sum(c.get("durationSec") or 0
+               for c in detail_for(customer["id"])["calls"] if not c.get("isTest"))
+    remaining = max(0, allowed - used)
+    return {"allowedSec": allowed, "usedSec": used, "remainingSec": remaining,
+            "exhausted": remaining <= 0}
+
+
+def demo_public_route(method: str, path: str, raw_body: bytes):
+    """One /demo/public/* request. `path` is what follows /demo/public."""
+    if path.startswith("/customers/") and method == "GET":
+        match = _demo_customer(path[len("/customers/"):])
+        if match is None:
+            return 404, {"error": "This demo isn't available.", "reason": "missing"}
+        if not match["active"]:
+            return 404, {"error": "This demo isn't available.", "reason": "paused"}
+        if match["status"] != "ready":
+            return 404, {"error": "This demo isn't available.", "reason": "preparing"}
+        return 200, {"customer": public_view(match)}
+    if path == "/track" and method == "POST":
+        return 200, {"ok": True}
+    if path == "/session" and method == "POST":
+        status, body = demo_session_route(raw_body)
+        if status == 200:
+            # The half the admin route has no use for: a public call may only run for what is left.
+            match = _demo_customer(str(_demo_json(raw_body).get("customerId")))
+            if match is not None:
+                body = dict(body)
+                body["maxSec"] = min(CALL_MAX_SEC, demo_allowance_for(match)["remainingSec"])
+        return status, body
+    if path.startswith("/calls/") and method == "POST":
+        return demo_report_route(path[len("/calls/"):], raw_body)
+    return 404, {"error": f"No fake for {method} /demo/public{path}"}
+
+
 # --- Dispatch -------------------------------------------------------------------------------------
 
 def route(method: str, path: str, query: dict, user: dict | None, body: bytes = b""):
@@ -1073,6 +1146,10 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
     # The Demo tabs, in the backend's own denial shapes (auth/guard.ts), which differ from the
     # transcribe routes' plain {message}: no token is 401 `unauthorized`, a signed-in non-admin
     # is 403 `forbidden` naming what needs the admin.
+    # The prospect's routes first, and with no reference to `user`: a demo link is opened by
+    # somebody who has never signed in, and the whole point of them is that they still work.
+    if path.startswith("/demo/public/"):
+        return demo_public_route(method, path[len("/demo/public"):], body)
     if path.startswith("/demo/"):
         if user is None:
             return 401, DEMO_UNAUTHORIZED

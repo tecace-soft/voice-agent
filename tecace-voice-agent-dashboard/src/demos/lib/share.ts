@@ -1,8 +1,16 @@
+/**
+ * Where a demo link points: this app's own origin, because this app serves `/c/<id>`.
+ *
+ * There was a `VITE_PUBLIC_DEMO_BASE_URL` here while the page lived on the promo, and an unset
+ * build fell back to this origin — which produced a link that looked right, opened the dashboard,
+ * and landed on Overview. There is nothing to configure now, and nothing to get wrong: the page and
+ * the link are the same deployment.
+ */
 function baseUrl(): string {
-  const configured: string | undefined = import.meta.env.VITE_PUBLIC_DEMO_BASE_URL;
-  if (configured) return configured.replace(/\/$/, "");
   if (typeof window !== "undefined") return window.location.origin;
-  return "http://localhost:3000";
+  // Only reachable from a non-browser context (a test importing this directly); the promo's own
+  // fallback, kept so `customerLink` always returns an absolute URL.
+  return "http://localhost:5175";
 }
 
 export function customerLink(id: string): string {

@@ -64,9 +64,23 @@ The header of `src/styles/index.css` explains the layer order and why; read it b
   refuse, with the promo's own message. Research is the OpenAI branch of the promo's runner only —
   its Anthropic and Claude-CLI branches are not ported, so an unsupported `RESEARCH_PROVIDER`
   throws a named error rather than failing quietly.
-- The prospect-facing demo page (`/c/<id>`) **still lives on the promo** and is only linked to, via
-  `VITE_PUBLIC_DEMO_BASE_URL` (decided in stage 5). Never serve promo HTML from this origin: the
-  dashboard's session token is in localStorage here, and that page is public.
+- **The prospect-facing demo page (`/c/<id>`) is served by this app, as a SECOND ENTRY DOCUMENT —
+  not a view.** `c.html` → `src/public/main.tsx` → `src/public/PublicApp.tsx`, which reads the path
+  (`/c/<id>`, `/c/<id>/scenarios`, `/c/<id>/pricing`), loads the demo from `/demo/public/*` and
+  renders `screens/Public{Demo,Scenarios,Pricing}Screen`. `vercel.json` sends `/c/*` to it;
+  `vite.config.ts` names both inputs (adding one replaces Vite's default of index.html alone).
+  - It is not a `ViewId`, has no `PATHS` entry and no sidebar item, so it cannot be reached from the
+    Demos tabs — the link is the only way in. Don't add one.
+  - Nothing reachable from `src/public/` may import the dashboard's auth (`api/backend.ts`,
+    `auth.tsx`, `App.tsx`, or `demos/api.ts`, which reads the token). That is why the prospect's API
+    client is its own module, `demos/publicApi.ts`, and why `useLiveCall` is **handed** its fetcher
+    (`{ api: demoFetch, isTest: true }` from the admin panel, `{ api: publicFetch }` from the public
+    page) instead of choosing one. `tests/public-entry.test.ts` walks the import graph and fails if
+    that stops being true. It is not a security boundary — one origin, one localStorage — it keeps
+    the admin code out of a public bundle.
+  - There is **no base-URL variable**. A demo link is this origin plus `/c/<id>`
+    (`demos/lib/share.ts`). The old `VITE_PUBLIC_DEMO_BASE_URL` fell back to this origin when unset
+    and produced a link that opened the dashboard's Overview; that is the bug this replaced.
 - Ported promo code lives in `src/demos/` in the promo's own layout (`components/ui`,
   `components/admin`, `components/charts`, `lib`, and pages as `screens/`), imported as `@/…`
   (= `src/demos/`). It is a verbatim copy of voiceagent_promo @ f482848 plus the edits logged in
@@ -95,10 +109,15 @@ Run all three after any styling change:
 - `python scripts/regression/compare.py` — renders every transcribe view in the original app and
   in this one; must print `IDENTICAL` (see `scripts/regression/README.md`).
 - `python scripts/regression/tw_probe.py` — checks the Tailwind side inside and outside `.tw`.
-- `python scripts/regression/demos_e2e.py` — walks the Demos section against a fake promo
-  (`fake_promo.py`).
+- `python scripts/regression/demos_e2e.py` — walks the Demos section against a fake backend
+  (`fake_backend.py`).
+- `python scripts/regression/public_page.py` — opens a demo link (`/c/<id>`) in a browser: the page
+  renders the business and not the dashboard, carries none of the operator's fields, the scenarios
+  and pricing links navigate, an unknown or unready id is the quiet page, `/` is still the
+  dashboard, and pressing call dials `/demo/public/session`. This is the one that would have caught
+  the Share link opening Overview.
 
-Run the three Python scripts one at a time — they share ports.
+Run the four Python scripts one at a time — they share ports.
 
 ## Hard rules (from the skill)
 - Brand blue **#116DFF** only — never `#3366FF` or `#2AA25F`.

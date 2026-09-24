@@ -558,8 +558,13 @@ export async function patchCall(
  * following their own demo link; here the only caller is the operator's test panel behind the
  * admin guard, so every call this backend places is a test call and is written as one.
  *
- * `visitorId` is likewise absent: it identified an anonymous visitor to the public demo, and the
- * caller here is a signed-in admin.
+ * `isTest` is a required argument rather than a default, and that is deliberate. It decides
+ * whether the call spends a prospect's demo minutes and whether it holds one of the concurrency
+ * seats, so a caller that forgets to say which kind of call this is should not compile. The
+ * operator's test panel passes `true`; the prospect's own dial passes `false`.
+ *
+ * `visitorId` identifies an anonymous visitor to the public demo, which is what
+ * `analytics.distinctVisitors` counts. There is none for an admin test call: the caller is signed in.
  *
  * `liveSessionId` starts empty because the row is written *before* OpenAI is asked for a session —
  * see the ordering comment in the route. `attachLiveSession` fills it in once there is one.
@@ -567,13 +572,17 @@ export async function patchCall(
 export async function startCall(input: {
   customerId: string;
   userAgent?: string;
+  isTest: boolean;
+  visitorId?: string;
 }): Promise<CallLog> {
   const [row] = await sql`
     INSERT INTO demo_calls AS l (
-      id, customer_id, live_session_id, started_at, status, is_test, user_agent, transcript
+      id, customer_id, live_session_id, started_at, status, is_test, user_agent, visitor_id,
+      transcript
     ) VALUES (
       ${newId(12)}, ${input.customerId}, ${""}, ${new Date().toISOString()},
-      ${"started" satisfies CallStatus}, ${true}, ${input.userAgent ?? null}, ${jsonb([])}
+      ${"started" satisfies CallStatus}, ${input.isTest}, ${input.userAgent ?? null},
+      ${input.visitorId ?? null}, ${jsonb([])}
     )
     RETURNING ${callColumns()}
   `;
@@ -693,4 +702,24 @@ export async function attachReview(callId: string, review: CallReview): Promise<
     RETURNING ${callColumns()}
   `;
   return row ? fromCallRow(row as unknown as DemoCallRow) : null;
+}
+
+/**
+ * Record that someone opened a demo page — the promo's `appendEvent`, which only ever wrote this
+ * one kind of event.
+ *
+ * `ON CONFLICT DO NOTHING` against the identity index the importer relies on. That index exists to
+ * make a re-import idempotent, and it does the same job here: a page reloaded twice in the same
+ * millisecond by the same visitor is one visit, not two, and a double-counted view is a number the
+ * operator would act on.
+ *
+ * `source` is `'customer'` — the promo's legacy global list is history, and nothing writes to it.
+ */
+export async function recordPageView(customerId: string, visitorId?: string): Promise<void> {
+  await sql`
+    INSERT INTO demo_call_events (customer_id, type, at, visitor_id, source)
+    VALUES (${customerId}, ${"page_view"}, ${new Date().toISOString()}, ${visitorId ?? null},
+            ${"customer"})
+    ON CONFLICT DO NOTHING
+  `;
 }

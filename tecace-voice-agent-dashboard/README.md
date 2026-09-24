@@ -36,7 +36,11 @@ newly created record starts at `status: "researching"`). Both are real, billable
 gated by the backend's `OPENAI_API_KEY`: with no key they fail with the backend's own message and
 every other Demo screen keeps working.
 
-The prospect-facing demo page (`/c/<id>`) is **not** served here: the promo serves it, and this app
-only links to it. Set `VITE_PUBLIC_DEMO_BASE_URL` (build time) to the promo's public origin — it is
-the origin of the demo links the Prospects and Share screens copy and email, and without it they
-fall back to this dashboard's own origin (its sign-in page). `npm run build` warns when it is unset.
+The prospect-facing demo page (`/c/<id>`) **is** served here, as a second entry document
+(`c.html`) rather than a dashboard view: a prospect opening a demo link gets that page and none of
+the admin bundle, and it cannot be reached from the Demos tabs. It has three pages — the demo, its
+scenarios and its pricing — and it talks to the backend's `/demo/public/*` routes, which take no
+sign-in because whoever holds the link has no account.
+
+There is nothing to configure for it. A demo link is this deployment's origin plus `/c/<id>`, so the
+links the Prospects and Share screens copy and email are right by construction.

@@ -12,6 +12,7 @@ import { transcribe } from "./routes/transcribe.js";
 import { usage } from "./routes/usage.js";
 import { apiKeys } from "./routes/apiKeys.js";
 import { demo } from "./routes/demo.js";
+import { demoPublic } from "./routes/demoPublic.js";
 
 // Compose the application from controllers. Exported WITHOUT `.listen()` so tests can call it
 // directly and so the entrypoint owns the server lifecycle. Add controllers with another `.use()`.
@@ -46,7 +47,12 @@ export const app = new Elysia()
   .use(calls)
   .use(usage)
   .use(apiKeys)
-  .use(demo);
+  .use(demo)
+  // Last, and NOT behind the admin guard: the prospect's side of a demo link. Its own file says why
+  // each handler is safe to leave open. Mounted after `demo` so a path collision would be a startup
+  // error rather than a public route quietly shadowing an admin one — the prefixes (`/demo` and
+  // `/demo/public`) do not overlap, and this keeps it that way if either ever changes.
+  .use(demoPublic);
 
 export type App = typeof app;
 

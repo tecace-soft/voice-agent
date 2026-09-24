@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>A TecAce voice agent demo</title>
+    <meta
+      name="description"
+      content="Talk to an AI receptionist built for this business, and see what else it can answer, book, and take down."
+    />
+    <!--
+      The prospect's document. `vercel.json` sends every /c/* path here, and Vite builds it as a
+      second entry from `src/public/main.tsx`.
+
+      Two differences from index.html, both deliberate:
+
+        * no theme script. The dashboard restores the operator's saved theme before first paint;
+          this page is somebody else's browser and has no saved anything, so it is light and stays
+          light. `data-theme` is set here rather than left off so the promo's tokens resolve on the
+          first frame.
+        * `noindex`. The link goes to one business by email. It is not secret — the id in it is the
+          only credential — but it is not for search engines either, and a demo of someone's
+          business turning up in results is a conversation nobody wants to have.
+    -->
+    <meta name="robots" content="noindex, nofollow" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/public/main.tsx"></script>
+  </body>
+</html>

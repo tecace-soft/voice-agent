@@ -10,10 +10,16 @@ import { defineConfig, loadEnv } from "vite";
 // their data now lives in transcribe-db and transcribe-backend serves it under /demo/*, so they go
 // straight to BACKEND_URL like every other screen.
 //
-// The prospect-facing demo page (/c/<id>) stays on the promo and is only ever linked to
-// (VITE_PUBLIC_DEMO_BASE_URL) — decided in stage 5. Promo HTML must not run on this origin: the
-// dashboard's admin bearer token lives in localStorage here, and that page is public.
-export default defineConfig(({ command, mode }) => {
+// Two entry documents. `index.html` is the dashboard; `c.html` is the prospect-facing demo page
+// at /c/<id>, which this app now serves itself (it used to live on the promo and be linked to
+// through VITE_PUBLIC_DEMO_BASE_URL — that variable is gone, and with it the link that silently
+// pointed at this app's own sign-in when nobody set it).
+//
+// They are two documents rather than two routes for a reason: the demo page is public, so a
+// prospect must not download the admin bundle. Nothing reachable from `src/public/main.tsx` imports
+// the dashboard's auth, which is what keeps the session token in localStorage out of reach of the
+// code that page runs. `vercel.json` sends /c/* to c.html.
+export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   // transcribe-backend's base URL, baked into the bundle at build time as __BACKEND_URL__.
   // Deliberately NOT a VITE_ name: Vite only exposes VITE_-prefixed vars to browser code, so this
@@ -22,16 +28,6 @@ export default defineConfig(({ command, mode }) => {
   // the build tool out of the deployment's settings.) VITE_BACKEND_URL is still read as a fallback,
   // because the regression harness builds the original transcribe-dashboard-app, which uses it.
   const backend = (env.BACKEND_URL || env.VITE_BACKEND_URL || "").replace(/\/$/, "");
-  // The demo links the Prospects screen copies and emails (src/demos/lib/share.ts, kept verbatim)
-  // fall back to this app's own origin without it — a link that opens the dashboard's sign-in, not
-  // the demo. A warning, not a failure: compare.py and tw_probe.py build without it (demos_e2e.py sets it).
-  if (command === "build" && !env.VITE_PUBLIC_DEMO_BASE_URL) {
-    console.warn(
-      "\n[warning] VITE_PUBLIC_DEMO_BASE_URL is not set: copied/emailed demo links will point at " +
-        "this dashboard's own origin (its sign-in page), not the demo. Set it to the promo's " +
-        "public origin (see README).\n",
-    );
-  }
   return {
     plugins: [react()],
     // Ported promo code imports "@/components/…", "@/lib/…" exactly as in its own repo; @/ is
@@ -40,6 +36,15 @@ export default defineConfig(({ command, mode }) => {
       alias: [{ find: /^@\//, replacement: fileURLToPath(new URL("./src/demos/", import.meta.url)) }],
     },
     server: { port: 5175 },
+    build: {
+      rollupOptions: {
+        // Named explicitly because adding one input replaces Vite's default of index.html alone.
+        input: {
+          index: fileURLToPath(new URL("./index.html", import.meta.url)),
+          c: fileURLToPath(new URL("./c.html", import.meta.url)),
+        },
+      },
+    },
     define: {
       __BACKEND_URL__: JSON.stringify(backend),
     },

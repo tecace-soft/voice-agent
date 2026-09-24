@@ -931,3 +931,102 @@ test covers these components), `npm run build` clean (the only warning is the pr
 chunk notice). All three harness scripts run: `compare.py` **IDENTICAL** (44 captures),
 `tw_probe.py` **19/19**, `demos_e2e.py` **all checks pass**, including the nine new ones. No test
 makes a model call — the fake answers the research route as it answers the session route.
+
+---
+
+## The prospect-facing pages (`/c/<id>`)
+
+The demo page, its scenarios page and its pricing page were the last part of the promo that had not
+been ported: they stayed on the promo, and this app linked to them through
+`VITE_PUBLIC_DEMO_BASE_URL`. Unset in the deployed build, that fell back to this app's own origin, so
+the Share tab's link and Open button opened the dashboard and landed on Overview. The variable is
+gone and the pages are served here.
+
+They are a **second entry document**, not a view: `c.html` → `src/public/main.tsx` →
+`src/public/PublicApp.tsx`. That shape is what keeps the page unreachable from the Demos tabs (no
+`ViewId`, no `PATHS` entry, no sidebar item) and keeps the admin bundle out of a prospect's browser.
+
+### Copied verbatim
+
+- `components/public/`: `BusinessKnowledge`, `ContactButtons`, `GoLive`, `Hero`, `HowItWorks`,
+  `illustrations`, `LanguageNote`, `Logo`, `MissedCalls`, `PlanEstimator`, `Pricing`, `PromptView`,
+  `ScenarioList`, `ScenarioTeaser`, `StickyCall` (`Exchange` and `SchedulePanel` were already here).
+  `HowItWorks`, `MissedCalls` and `GoLive` are parked out of the page in the promo too — copied so a
+  sync stays a plain diff.
+- `hooks/useInView.ts`, `components/VersionBadge.tsx`, `lib/pricing.ts`.
+- `public/tecace-logo.png`.
+
+### Edited
+
+- **`"use client"`** dropped from every copied file (`BusinessKnowledge`, `Hero`, `PlanEstimator`,
+  `PromptView`, `StickyCall`, `useInView`) — a Next directive with no meaning here.
+- **`next/image` → `<img>`** in `Logo.tsx`: same `src`, same intrinsic `width`/`height` (so the
+  layout does not jump), `priority` → `loading="eager"`. Next's optimiser is what is gone.
+- **`next/link` → `<a href>`** in `ScenarioTeaser.tsx` and `Pricing.tsx`. Unlike the admin ports,
+  these are NOT `demoHref(…)`: `/c/<id>` is a real document this app serves, so the href is the path.
+- **`VersionBadge`**: `process.env.NEXT_PUBLIC_APP_VERSION` → `import.meta.env.VITE_APP_VERSION`,
+  same `"v0"` default. Nothing sets it; the badge is for telling two deploys apart while a demo is
+  being worked on, which is not worth a required build variable.
+- **`lib/links.ts`**: `pricingHref()` and `pricingMailto()` restored from the promo, and
+  `PRICING_URL` back to its `""` default — meaning "use our own pricing page", which now exists. It
+  had been pointed at the contact form while there was no page to link to.
+- **`lib/share.ts`**: `baseUrl()` no longer reads a variable. It is `window.location.origin`, which
+  is correct by construction now that this origin serves the page.
+- **`Pricing.tsx`**: `const [solo, standard] = PLANS;` gains `if (!solo || !standard) return [];`
+  for `noUncheckedIndexedAccess`. Behaviour identical — PLANS has three literal entries.
+- **`hooks/useLiveCall.ts`**: `options` is now required and carries `api`, the fetcher to dial
+  through (`demoFetch` from the admin panel, `publicFetch` from the public page). The promo had one
+  route for both and told them apart by a body flag plus an admin cookie; here they are two routes,
+  so the caller says which door it is at. Passing it in rather than choosing here is what keeps
+  `api.ts` — and through it the session token — out of the public bundle. `isTest` still travels in
+  the session body, where the admin route reads it as the promo's did and the public route has no
+  such field. A public dial also sends `visitorId`.
+
+### New (this app's own, not ported)
+
+- `src/public/{main.tsx,PublicApp.tsx}`: the entry, the path router (`parsePath`), the one read that
+  loads a demo, the promo's `not-found.tsx` inline as `NotAvailable`, and the `.tw` boundary —
+  `DemosGate`'s job for the admin side, plus `bg-background` because this is a whole page rather
+  than a card on the dashboard's canvas.
+- `src/demos/publicApi.ts`: `publicFetch`, in its own module so importing it does not drag
+  `api/backend.ts` in.
+- `src/demos/lib/visitor.ts`: the promo minted its `va_vid` in `middleware.ts` and read the cookie
+  server-side. There is no middleware here, so the browser mints it into `localStorage` under the
+  same name. Every path tolerates storage refusing — a demo must not fail to open over an
+  analytics id.
+- `src/demos/screens/Public{Demo,Scenarios,Pricing}Screen.tsx`: `app/c/[id]/demo-call.tsx` renamed,
+  and the two server components turned into components that take what they render. The loading and
+  the "not available" case moved to the entry, which does it once for all three.
+- `PublicDemoScreen`'s two fetches: `POST /api/track` → `publicFetch("/track", …)` with the visitor
+  id in the body, and `GET /api/customers/:id/public` → `publicFetch("/customers/:id")`, reading the
+  allowance out of `{ customer: { demo } }` — the promo had a route of its own that answered
+  `{ demo }`.
+- `tests/public-entry.test.ts` (8 tests): the import graph never reaches the dashboard's auth, both
+  Vite inputs are named, `/c/*` is rewritten before the catch-all, the page is not a `ViewId`, no
+  code reads a demo base URL again, and `parsePath` accepts the three pages and refuses an id that
+  would not be safe in an API path.
+
+### Outside this app
+
+- `transcribe-backend`: `routes/demoPublic.ts` — `GET /demo/public/customers/:id` (the prospect-safe
+  field list, `publicView`), `POST /demo/public/track`, `POST /demo/public/session` and
+  `POST /demo/public/calls/:callId`, none behind the admin guard. The session route is the promo's
+  `app/api/session/route.ts` along the path it took when `isTest` was false, so the three ceilings an
+  earlier stage left out are back: the demo allowance, the per-prospect concurrency reservation and
+  the global live-session seat. The promo's Redis live-set (`markLive`/`listLiveSessions`) is gone —
+  `demoRead.listLiveSessions()` asks the table, so there is nothing to write, expire or disagree
+  with the rows. `routes/demoCommon.ts` holds what both route files share (the dial rate limiter, as
+  ONE map; `jsonError`; and `applyCallReport`, so a transcript is capped and validated by one
+  implementation). `startCall` takes `isTest` as a required argument and an optional `visitorId`.
+  Tests: `routes/demoPublicView.test.ts` (6) pins the public field list, and
+  `routes/demoCall.pg.test.ts` gains 9 for the public routes — 283 passing in all.
+- `vercel.json`, `vite.config.ts`, `.env.example`, `README.md`, `CLAUDE.md`,
+  `scripts/regression/demos_e2e.py` and `scripts/regression/README.md`: the second entry, the
+  rewrite, and the removal of the base-URL variable. The harness now expects a demo link to be its
+  own server's origin.
+
+#### Verification
+
+`npx tsc --noEmit` clean, `npx vitest run` **273** tests passing (265 + 8 new), `npm run build`
+clean and emitting both documents. The built `c.html` loads no chunk containing the session token's
+storage key; `index.html`'s does.

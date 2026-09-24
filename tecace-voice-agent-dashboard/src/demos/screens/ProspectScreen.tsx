@@ -46,7 +46,7 @@ export function ProspectScreen({ id }: { id: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [researching, setResearching] = useState(false);
   // Calls from this panel are the operator's own and stay out of the numbers.
-  const call = useLiveCall(id, draft?.callSound, { isTest: true });
+  const call = useLiveCall(id, draft?.callSound, { api: demoFetch, isTest: true });
 
   const load = useCallback(async () => {
     try {

@@ -1,5 +1,5 @@
 
-import { demoFetch } from "@/api";
+import { visitorId } from "@/lib/visitor";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { CallAudio, resolveCallSound, type CallMeters } from "@/lib/call-audio";
 import { readJson } from "@/lib/http";
@@ -82,17 +82,34 @@ export type UseLiveCall = {
   reset: () => void;
 };
 
+/** How this call reaches the backend, and whether it counts as the operator testing. */
+export type CallOptions = {
+  /**
+   * Which half of the Demo API to dial through — `demoFetch` for the operator's test panel,
+   * `publicFetch` for a prospect's own page.
+   *
+   * Passed in rather than chosen here so that neither bundle has to contain the other's client. The
+   * public page must not ship the dashboard's auth code, and this hook is the one module both sides
+   * share. The promo had one route for both and told them apart by a body flag plus an admin
+   * cookie; here they are two routes, and the caller says which door it is standing at.
+   */
+  api: (path: string, init?: RequestInit) => Promise<Response>;
+  /**
+   * Set by the admin test panel. A call is a test because the operator made it from inside the
+   * admin area, not because their browser happens to be carrying an admin cookie while they look at
+   * the public page. A public dial spends the prospect's demo minutes and holds one of the
+   * concurrency seats; an operator's test call does neither.
+   */
+  isTest?: boolean;
+};
+
 export function useLiveCall(
   customerId: string,
-  callSound?: Partial<CallSound> | null,
-  /**
-   * Set by the admin test panel. A call is a test because the operator made it
-   * from inside the admin area, not because their browser happens to be
-   * carrying an admin cookie while they look at the public page.
-   */
-  options?: { isTest?: boolean },
+  callSound: Partial<CallSound> | null | undefined,
+  options: CallOptions,
 ): UseLiveCall {
-  const isTest = options?.isTest === true;
+  const isTest = options.isTest === true;
+  const call = options.api;
   const [state, setState] = useState<CallState>("idle");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [elapsedSec, setElapsedSec] = useState(0);
@@ -193,14 +210,14 @@ export function useLiveCall(
       // the backend is no longer same-origin either. So both cases take the
       // one request, and `keepalive` is what lets it outlive the page. See
       // PORTING.md for what is lost if the browser kills it anyway.
-      void demoFetch(url, {
+      void call(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: payload,
         keepalive: true,
       }).catch(() => undefined);
     },
-    [customerId],
+    [call, customerId],
   );
 
   const finish = useCallback(
@@ -417,13 +434,19 @@ export function useLiveCall(
       ringtoneRef.current = new Ringtone();
       void ringtoneRef.current.start();
 
-      const response = await demoFetch("/session", {
+      const response = await call("/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerId,
           sdp: pc.localDescription?.sdp,
+          // Still sent, and still ignored by the public route, which has no such field: the door
+          // decides, not the body. The operator's route reads it as the promo's did.
           isTest,
+          // Who is on the page, so `analytics.distinctVisitors` can tell one prospect's colleagues
+          // apart. Nothing identifying — see `lib/visitor.ts` — and absent on a test call, where
+          // the caller is a signed-in operator.
+          ...(isTest ? {} : { visitorId: visitorId() }),
           // The server runs in UTC and the business has no timezone on file,
           // so the caller's is what decides which day "tomorrow" is.
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -482,7 +505,7 @@ export function useLiveCall(
         setState("error");
       }
     }
-  }, [customerId, finish, handleEvent, isTest, report, state, stopRingtone, teardown]);
+  }, [call, customerId, finish, handleEvent, isTest, report, state, stopRingtone, teardown]);
 
   const hangup = useCallback(() => {
     if (state !== "connected" && state !== "ringing") return;

@@ -132,7 +132,7 @@ What it checks:
   sign-in screen returns, the token is gone, and a Demos URL then asks the backend for nothing;
 - the Prospects screen: table, search, the "More actions" menu and the "New customer" dialog
   rendered inside `[data-tw-portal]` with promo styling, copy-link / add / pause / resume toasts,
-  the backend's 400 for a blank name; "Copy link" copies `VITE_PUBLIC_DEMO_BASE_URL/c/<id>` (the
+  the backend's 400 for a blank name; "Copy link" copies `<this origin>/c/<id>` (the
   build sets it to `http://promo.example`); and the row menu's "Add demo time" submenu — the three
   `DEMO_TIME_STEPS`, a step PATCHing `{addDemoMinutes: n}` and nothing else, and a toast naming the
   total the backend arrived at by adding that amount to what it had stored; and a created prospect
@@ -249,3 +249,24 @@ handshake and sends `session.started`, with the tick's clock under the test's co
 
 Exit 0/1/2 like the others. Needs ports 5199 and 8899 free — don't run it at the same time as
 `compare.py`.
+
+## `public_page.py` — the prospect's own page
+
+Opens `/c/<id>` the way a prospect does, against `fake_backend.py`'s `/demo/public/*` routes and a
+static server that mirrors `vercel.json`'s rewrites (`/c/*` → `c.html`, everything else →
+`index.html`).
+
+It exists because the bug it guards against was invisible to every other check here: the Share tab's
+link *looked* right, and opening it landed on the dashboard's Overview, because nothing served
+`/c/<id>` at all. A check that reads the link text would still have passed. This one follows it.
+
+What it asserts: the page renders the business and its receptionist, with the call button and the
+demo disclaimer; there is no sidebar and no sign-in; none of the operator's fields (label, contact
+name, contact email) appear anywhere in the text; the document loads the public entry's chunk and
+never the dashboard's; the scenarios and pricing links are real navigations that land on real pages
+and come back; an unready demo, an unknown id and an id that is not one all meet the quiet "not
+available" page; `/` is still the dashboard; and pressing call dials `/demo/public/session` after
+the page view has been tracked.
+
+It stops short of a real call — the fake answers with an SDP no browser can complete, which is as
+far as this can go without OpenAI.
