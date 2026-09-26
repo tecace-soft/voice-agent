@@ -385,6 +385,43 @@ export async function initDb(): Promise<void> {
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_demo_customers_stage ON demo_customers (stage)`;
 
+  // The customer's permanent id, CUST-0001 and up. The nanoid above is the promo's and lives in
+  // links; this one is what people say and write down, and it survives renames of the business.
+  //
+  // Numbered by a sequence and rendered by a generated column, so nothing can write the code itself
+  // and a number is never handed out twice (a deleted customer's number is not reused). Rows that
+  // predate the column are numbered once, oldest first, in a single DO block: one statement, so it
+  // runs in one transaction under the advisory lock, and concurrent cold starts cannot both number
+  // the same rows. The DEFAULT is only set after that, so the backfill is the only thing that ever
+  // sees a NULL. lpad's width is at least the number's own length because lpad truncates.
+  await sql`CREATE SEQUENCE IF NOT EXISTS customer_code_seq`;
+  await sql`ALTER TABLE demo_customers ADD COLUMN IF NOT EXISTS customer_seq BIGINT`;
+  await sql`
+    DO $$
+    DECLARE base BIGINT;
+    BEGIN
+      PERFORM pg_advisory_xact_lock(hashtext('demo_customers.customer_seq'));
+      SELECT GREATEST(
+        COALESCE((SELECT max(customer_seq) FROM demo_customers), 0),
+        (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM customer_code_seq)
+      ) INTO base;
+      UPDATE demo_customers d SET customer_seq = base + n.rn
+        FROM (SELECT id, row_number() OVER (ORDER BY created_at, id) AS rn
+                FROM demo_customers WHERE customer_seq IS NULL) n
+       WHERE d.id = n.id;
+      IF FOUND THEN
+        PERFORM setval('customer_code_seq', (SELECT max(customer_seq) FROM demo_customers));
+      END IF;
+    END $$
+  `;
+  await sql`ALTER TABLE demo_customers ALTER COLUMN customer_seq SET DEFAULT nextval('customer_code_seq')`;
+  await sql`ALTER TABLE demo_customers ALTER COLUMN customer_seq SET NOT NULL`;
+  await sql`
+    ALTER TABLE demo_customers ADD COLUMN IF NOT EXISTS customer_code TEXT GENERATED ALWAYS AS
+      ('CUST-' || lpad(customer_seq::text, greatest(4, length(customer_seq::text)), '0')) STORED
+  `;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_demo_customers_code ON demo_customers (customer_code)`;
+
   await sql`
     CREATE TABLE IF NOT EXISTS demo_calls (
       id              TEXT PRIMARY KEY,
@@ -477,7 +514,8 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM agent_call_minutes LIMIT 1`;
     await sql`SELECT 1 FROM agent_call_sessions LIMIT 1`;
     await sql`SELECT 1 FROM api_keys LIMIT 1`;
-    await sql`SELECT 1 FROM demo_customers LIMIT 1`;
+    await sql`SELECT business_id, status FROM users LIMIT 1`;
+    await sql`SELECT customer_code FROM demo_customers LIMIT 1`;
     await sql`SELECT 1 FROM demo_calls LIMIT 1`;
     await sql`SELECT 1 FROM demo_call_events LIMIT 1`;
     await sql`SELECT 1 FROM demo_notes LIMIT 1`;

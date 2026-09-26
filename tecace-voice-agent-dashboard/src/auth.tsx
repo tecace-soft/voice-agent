@@ -24,6 +24,9 @@ interface AuthValue {
   signIn: (email: string, password: string) => Promise<void>;
   createFirstAccount: (name: string, email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  // Re-read the signed-in account, after something on the server moved it (a demo customer
+  // starting onboarding leaves the demo-only view without signing in again).
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -103,9 +106,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("signed-out");
   }, []);
 
+  const refresh = useCallback(async () => {
+    setUser(await fetchMe());
+  }, []);
+
   const value = useMemo<AuthValue>(
-    () => ({ status, user, needsSetup, signIn, createFirstAccount, signOut }),
-    [status, user, needsSetup, signIn, createFirstAccount, signOut],
+    () => ({ status, user, needsSetup, signIn, createFirstAccount, signOut, refresh }),
+    [status, user, needsSetup, signIn, createFirstAccount, signOut, refresh],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

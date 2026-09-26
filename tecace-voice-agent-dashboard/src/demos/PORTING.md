@@ -1098,3 +1098,25 @@ the whole point of the port is that there is one of each.
 - `scripts/regression/demo_customer.py`, and `fake_backend.py` gains a `tok-demo` account plus the
   demo scope in front of `/demo/*` — mirrored from the real guard, so the harness cannot pass against
   a fake that is more permissive than the service.
+
+## Customer lifecycle: ID, phase, Start onboarding (2026-09-25)
+
+Dashboard-only; the promo had no lifecycle. Everything is additive and inside the existing Demo ›
+Customers screens — no new route or sidebar item.
+
+- **`lib/types.ts`** — `Customer` gains optional `customerCode` (CUST-0001, permanent),
+  `phase` (`demo` | `onboarding` | `production`, derived by the backend from the linked account's
+  stage) and `accountEmail`; new `CUSTOMER_PHASES` / `CustomerPhase`. Optional because the promo's
+  bodies never had them.
+- **`lib/phase.ts`** (new) — phase labels and badge kinds; a customer without `phase` reads as demo.
+- **`components/admin/Lifecycle.tsx`** (new) — `LifecycleBadges` (ID + phase in the operator's
+  header), `LifecycleNotice` (operator, once past the demo: edits here stay in the demo; link to the
+  customer's Business information), `StartOnboarding` (customer: card + confirm dialog →
+  `POST /demo/customers/:id/onboard`).
+- **`components/admin/CustomerTable.tsx`** — ID and Phase columns, a phase filter (with counts)
+  beside the status filter, search also matches the ID.
+- **`screens/ProspectScreen.tsx`** — renders the three pieces above; new optional `onOnboarded`
+  prop, which only the customer view passes.
+- **`DemosView.tsx`** — passes `onOnboarded` through on the customer branch.
+- Outside `src/demos/`: `src/auth.tsx` gains `refresh()`; `src/App.tsx` passes an `onOnboarded` that
+  refreshes the user (which lifts the demo-only view) and navigates to `business`.

@@ -51,7 +51,8 @@ import { AddDemoTimeSubmenu } from "@/components/admin/AddDemoTimeMenu";
 import { EmptyState, StatusBadge, statusKind } from "@/components/admin/shared";
 import { isResearchStalled } from "@/lib/analytics";
 import { customerLink, emailBody, emailSubject } from "@/lib/share";
-import type { CustomerWithStats } from "@/lib/types";
+import { CUSTOMER_PHASES, type CustomerPhase, type CustomerWithStats } from "@/lib/types";
+import { PHASE_KIND, PHASE_LABELS, phaseOf } from "@/lib/phase";
 import { demoHref } from "@/routes";
 
 type Props = {
@@ -64,6 +65,11 @@ const STATUS_LABELS: Record<string, string> = {
   ready: "Ready",
   researching: "Researching",
   error: "Error",
+};
+
+const PHASE_FILTER_LABELS: Record<string, string> = {
+  all: "All phases",
+  ...PHASE_LABELS,
 };
 
 function relative(iso?: string): string {
@@ -132,6 +138,12 @@ function SortHead({
 
 export function CustomerTable({ customers, onChanged }: Props) {
   const [status, setStatus] = useState("all");
+  const [phase, setPhase] = useState("all");
+  const phaseCounts = useMemo(() => {
+    const counts: Record<CustomerPhase, number> = { demo: 0, onboarding: 0, production: 0 };
+    for (const customer of customers) counts[phaseOf(customer)] += 1;
+    return counts;
+  }, [customers]);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("heat");
   const [dueOnly, setDueOnly] = useState(false);
@@ -145,8 +157,10 @@ export function CustomerTable({ customers, onChanged }: Props) {
     const filtered = customers.filter((customer) => {
       if (dueOnly && !due.has(customer.id)) return false;
       if (status !== "all" && customer.status !== status) return false;
+      if (phase !== "all" && phaseOf(customer) !== phase) return false;
       if (!term) return true;
       return [
+        customer.customerCode,
         customer.profile.name,
         customer.label,
         customer.contactName,
@@ -156,7 +170,7 @@ export function CustomerTable({ customers, onChanged }: Props) {
         .some((value) => value!.toLowerCase().includes(term));
     });
     return [...filtered].sort(SORTS[sort]);
-  }, [customers, dueOnly, query, sort, status]);
+  }, [customers, dueOnly, phase, query, sort, status]);
 
   async function toggleActive(customer: CustomerWithStats, active: boolean) {
     setBusyId(customer.id);
@@ -199,7 +213,7 @@ export function CustomerTable({ customers, onChanged }: Props) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Input
-          placeholder="Search business or contact"
+          placeholder="Search ID, business or contact"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           className="max-w-64"
@@ -216,6 +230,19 @@ export function CustomerTable({ customers, onChanged }: Props) {
             <SelectItem value="error">Error</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={phase} onValueChange={(value) => setPhase(value ?? "all")}>
+          <SelectTrigger className="w-44" aria-label="Filter by phase">
+            <SelectValue>{PHASE_FILTER_LABELS[phase]}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All phases</SelectItem>
+            {CUSTOMER_PHASES.map((value) => (
+              <SelectItem key={value} value={value}>
+                {PHASE_LABELS[value]} ({phaseCounts[value]})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Button
           variant={dueOnly ? "default" : "outline"}
           onClick={() => setDueOnly((current) => !current)}
@@ -224,12 +251,13 @@ export function CustomerTable({ customers, onChanged }: Props) {
           Follow-ups due
           {dueCount ? ` (${dueCount})` : ""}
         </Button>
-        {query || status !== "all" || dueOnly ? (
+        {query || status !== "all" || phase !== "all" || dueOnly ? (
           <Button
             variant="ghost"
             onClick={() => {
               setQuery("");
               setStatus("all");
+              setPhase("all");
               setDueOnly(false);
             }}
           >
@@ -251,7 +279,9 @@ export function CustomerTable({ customers, onChanged }: Props) {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="ta-caption-1 text-muted-foreground">ID</TableHead>
               <SortHead label="Business" column="name" sort={sort} onSort={setSort} />
+              <TableHead className="ta-caption-1 text-muted-foreground">Phase</TableHead>
               <TableHead className="ta-caption-1 text-muted-foreground">Contact</TableHead>
               <SortHead label="Interest" column="heat" sort={sort} onSort={setSort} />
               <TableHead className="ta-caption-1 text-muted-foreground">Status</TableHead>
@@ -297,6 +327,9 @@ export function CustomerTable({ customers, onChanged }: Props) {
           <TableBody>
             {rows.map((customer) => (
               <TableRow key={customer.id} className="hover:bg-accent h-11">
+                <TableCell className="ta-caption-1 text-muted-foreground font-mono whitespace-nowrap">
+                  {customer.customerCode ?? "—"}
+                </TableCell>
                 <TableCell className="ta-label-1">
                   <a
                     href={demoHref("demoProspect", customer.id)}
@@ -309,6 +342,11 @@ export function CustomerTable({ customers, onChanged }: Props) {
                       {customer.label}
                     </span>
                   ) : null}
+                </TableCell>
+                <TableCell>
+                  <StatusBadge kind={PHASE_KIND[phaseOf(customer)]}>
+                    {PHASE_LABELS[phaseOf(customer)]}
+                  </StatusBadge>
                 </TableCell>
                 <TableCell className="ta-label-1">
                   {customer.contactName || "—"}

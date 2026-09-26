@@ -270,3 +270,15 @@ the page view has been tracked.
 
 It stops short of a real call — the fake answers with an SDP no browser can complete, which is as
 far as this can go without OpenAI.
+
+## A local `.env` with `BACKEND_URL` breaks every script
+
+`vite.config.ts` prefers `BACKEND_URL` over `VITE_BACKEND_URL`, and reads it from `.env` as well as
+the environment. The scripts set only `VITE_BACKEND_URL`, so with a `.env` pointing at the real
+backend the harness builds call the real service, the browser blocks them (CORS), and every capture
+differs. Override it for the run:
+
+    BACKEND_URL=http://127.0.0.1:8899 python scripts/regression/compare.py
+
+(`demo_customer.py`, `accounts_lifecycle.py`, `business_tabs.py` and `public_page.py` set their own
+`BACKEND_URL` and are not affected.)

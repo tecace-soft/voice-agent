@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ActivityTab } from "@/components/admin/ActivityTab";
 import { AddDemoTimeMenu } from "@/components/admin/AddDemoTimeMenu";
 import { KnowledgeEditor } from "@/components/admin/KnowledgeEditor";
+import { LifecycleBadges, LifecycleNotice, StartOnboarding } from "@/components/admin/Lifecycle";
 import { SchedulePanel } from "@/components/public/SchedulePanel";
 import { PromptEditor } from "@/components/admin/PromptEditor";
 import { ResearchInputsPanel } from "@/components/admin/ResearchInputsPanel";
@@ -52,7 +53,16 @@ type Payload = {
  * Every one of those is refused by the backend for that account as well; this is the dashboard not
  * offering what it knows would be refused. See `auth/guard.ts` and `routes/demo.ts`.
  */
-export function ProspectScreen({ id, operator = true }: { id: string; operator?: boolean }) {
+export function ProspectScreen({
+  id,
+  operator = true,
+  onOnboarded,
+}: {
+  id: string;
+  operator?: boolean;
+  /** Dashboard-only: the customer started onboarding and is leaving the demo. */
+  onOnboarded?: () => void | Promise<void>;
+}) {
   const [data, setData] = useState<Payload | null>(null);
   const [draft, setDraft] = useState<Customer | null>(null);
   const [saving, setSaving] = useState(false);
@@ -204,6 +214,8 @@ export function ProspectScreen({ id, operator = true }: { id: string; operator?:
                     ? "Stalled"
                     : "Researching"}
             </StatusBadge>
+            {/* After the research status, which stays the header's first badge as in the promo. */}
+            {operator && <LifecycleBadges customer={draft} />}
             {operator && (
               <>
                 <label className="ta-label-1 flex items-center gap-2">
@@ -234,6 +246,11 @@ export function ProspectScreen({ id, operator = true }: { id: string; operator?:
           </div>
         }
       />
+
+      {operator ? <LifecycleNotice customer={draft} /> : null}
+      {!operator && onOnboarded ? (
+        <StartOnboarding customer={draft} onOnboarded={onOnboarded} />
+      ) : null}
 
       {draft.status === "error" && draft.error ? (
         <div className="bg-destructive/10 ta-label-1 text-destructive rounded-lg p-3">

@@ -124,7 +124,18 @@ export type Customer = {
   createdAt: string;
   updatedAt: string;
   researchedAt?: string;
+  // Dashboard-only (see PORTING.md): the lifecycle the backend merges into every customer it
+  // returns. Optional because the promo never sent them.
+  /** The permanent customer id, CUST-0001. Survives renames; nothing edits it. */
+  customerCode?: string;
+  /** From the linked account's stage: demo, then onboarding (pre-production), then production. */
+  phase?: CustomerPhase;
+  /** The linked account's email — how the Business pages pick this customer. */
+  accountEmail?: string | null;
 };
+
+export const CUSTOMER_PHASES = ["demo", "onboarding", "production"] as const;
+export type CustomerPhase = (typeof CUSTOMER_PHASES)[number];
 
 export type TranscriptSpeaker = "caller" | "receptionist";
 

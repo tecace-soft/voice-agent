@@ -9,7 +9,7 @@ import {
   setLifecycleById,
   toPublicUser,
 } from "../db/users.js";
-import { PromotionError, promoteToBusiness } from "../business/promote.js";
+import { PromotionError, startOnboarding } from "../business/promote.js";
 
 // Where an account is in its life, and the one-way door between the demo and the product.
 //
@@ -147,21 +147,17 @@ export const lifecycle = new Elysia({ prefix: "/auth/users" })
         });
       }
 
-      let profile;
+      // The copy and the move to `pre-production`, shared with the customer's own "Start
+      // onboarding" (`POST /demo/customers/:id/onboard`).
       try {
-        profile = await promoteToBusiness(target.id, demo);
+        const { user, profile } = await startOnboarding(target.id, demo);
+        return { user: toPublicUser(user), profile };
       } catch (err) {
         if (err instanceof PromotionError) {
           return status(422, { error: "thin_demo", message: err.message });
         }
         throw err;
       }
-
-      // Out of the demo view and into the product, but NOT into production: the number still has to
-      // be assigned and a transfer number typed in, neither of which a demo has. `pre-production`
-      // is exactly that state — they can see and edit everything, and nothing is answering yet.
-      const user = await setLifecycleById(target.id, { status: "pre-production" });
-      return { user: toPublicUser(user!), profile };
     },
     { params: t.Object({ id: t.String() }) },
   );

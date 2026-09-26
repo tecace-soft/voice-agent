@@ -48,6 +48,9 @@ import {
   readEvents,
 } from "../db/demoRead.js";
 import type { CustomerPatch } from "../db/demoWrite.js";
+import { lifecycleByDemo, withLifecycle } from "../db/customerLifecycle.js";
+import { findUserByBusinessId, toPublicUser } from "../db/users.js";
+import { PromotionError, startOnboarding } from "../business/promote.js";
 import {
   addNote,
   attachLiveSession,
@@ -309,15 +312,16 @@ export const demo = new Elysia({ prefix: "/demo" })
     if ("denied" in caller) return status(caller.denied, caller.body);
 
     try {
-      const [customers, calls, events] = await Promise.all([
+      const [customers, calls, events, lifecycle] = await Promise.all([
         listCustomers(),
         listAllCalls(),
         readEvents(),
+        lifecycleByDemo(),
       ]);
       const stats = statsByCustomer(calls, events);
       const heat = heatByCustomer(calls, stats);
       const withStats: CustomerWithStats[] = customers.map((customer) => ({
-        ...customer,
+        ...withLifecycle(customer, lifecycle),
         stats: stats[customer.id] ?? emptyStats(),
         heat: heat[customer.id] ?? engagement(emptyStats(), []),
       }));
@@ -346,11 +350,14 @@ export const demo = new Elysia({ prefix: "/demo" })
           return status(404, { error: "Customer not found." });
         }
         // Only this customer's views; no need to read every other one's.
-        [calls, events, notes] = await Promise.all([
+        let lifecycle;
+        [calls, events, notes, lifecycle] = await Promise.all([
           listCalls(id),
           readEvents(id),
           listNotes(id),
+          lifecycleByDemo(id),
         ]);
+        customer = withLifecycle(customer, lifecycle);
       } catch (error) {
         return status(500, jsonError(error));
       }
@@ -376,10 +383,11 @@ export const demo = new Elysia({ prefix: "/demo" })
     if ("denied" in caller) return status(caller.denied, caller.body);
 
     try {
-      const [customers, calls, events] = await Promise.all([
+      const [customers, calls, events, lifecycle] = await Promise.all([
         listCustomers(),
         listAllCalls(),
         readEvents(),
+        lifecycleByDemo(),
       ]);
       const notes = await listAllNotes(customers.map((customer) => customer.id));
 
@@ -387,7 +395,7 @@ export const demo = new Elysia({ prefix: "/demo" })
       const heat = heatByCustomer(calls, stats);
 
       const withStats: CustomerWithStats[] = customers.map((customer) => ({
-        ...customer,
+        ...withLifecycle(customer, lifecycle),
         stats: stats[customer.id] ?? emptyStats(),
         heat: heat[customer.id] ?? engagement(emptyStats(), []),
       }));
@@ -472,7 +480,7 @@ export const demo = new Elysia({ prefix: "/demo" })
         mapsUrl,
         notes: customer.researchNotes,
       });
-      return status(201, { customer });
+      return status(201, { customer: withLifecycle(customer, await lifecycleByDemo(customer.id)) });
     },
     {
       body: t.Object({
@@ -567,7 +575,7 @@ export const demo = new Elysia({ prefix: "/demo" })
         // Deleted while the run was in flight. The promo's `runResearch` returns silently on this;
         // this one has a caller waiting, and "Customer not found." is what that caller is owed.
         if (!next) return status(404, { error: "Customer not found." });
-        return { customer: next };
+        return { customer: withLifecycle(next, await lifecycleByDemo(next.id)) };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error("[demo] research failed", error);
@@ -662,7 +670,7 @@ export const demo = new Elysia({ prefix: "/demo" })
       try {
         const customer = await patchCustomer(params.id, patch);
         if (!customer) return status(404, { error: "Customer not found." });
-        return { customer };
+        return { customer: withLifecycle(customer, await lifecycleByDemo(customer.id)) };
       } catch (error) {
         return status(500, jsonError(error));
       }
@@ -700,6 +708,67 @@ export const demo = new Elysia({ prefix: "/demo" })
         regeneratePrompts: t.Optional(t.Boolean()),
       }),
     },
+  )
+
+  /**
+   * Demo → onboarding, from the customer's own demo page ("Start onboarding").
+   *
+   * Not a promo route: the promo had no lifecycle. Shared with the customer whose demo it is, like
+   * the two routes above, and an admin may press it on their behalf. Either way it moves the account
+   * LINKED to this demo, never the caller's own when an admin calls it.
+   *
+   * What moves: the demo is copied into the account's own business information (unless it already
+   * has some, which is kept), the account goes to `pre-production`, and the deal is marked won on the
+   * CRM board. After this the customer's dashboard is the Business section, not this demo.
+   *
+   * 409 once the account is past the demo, 422 when the demo is too thin to copy.
+   */
+  .post(
+    "/customers/:id/onboard",
+    async ({ headers, params, status }) => {
+      const caller = await authenticateDemo(headers.authorization, DEMO_NOT_YOURS);
+      if ("denied" in caller) return status(caller.denied, caller.body);
+      if (!ownsDemo(caller, params.id)) return status(404, NO_SUCH_CUSTOMER);
+
+      try {
+        const demo = await getCustomer(params.id);
+        if (!demo) return status(404, NO_SUCH_CUSTOMER);
+
+        const account =
+          caller.scope === "own" ? caller.user : await findUserByBusinessId(params.id);
+        if (!account) {
+          return status(409, {
+            error: "Link an account to this customer first — onboarding moves that account.",
+          });
+        }
+        if (account.status === "pre-production" || account.status === "production") {
+          return status(409, { error: "This customer is already past the demo." });
+        }
+
+        let moved;
+        try {
+          moved = await startOnboarding(account.id, demo);
+        } catch (err) {
+          if (err instanceof PromotionError) return status(422, { error: err.message });
+          throw err;
+        }
+
+        // Best effort: the account has moved, which is what the customer asked for. A board that
+        // still says "Interested" is cosmetic and the operator can drag it.
+        let customer: Customer = demo;
+        if (demo.stage !== "won") {
+          customer = (await patchCustomer(params.id, { stage: "won" }).catch(() => null)) ?? demo;
+        }
+        return {
+          customer: withLifecycle(customer, await lifecycleByDemo(params.id)),
+          user: toPublicUser(moved.user),
+          copied: moved.copied,
+        };
+      } catch (error) {
+        return status(500, jsonError(error));
+      }
+    },
+    { params: t.Object({ id: t.String({ maxLength: 64 }) }) },
   )
 
   // Remove a prospect and, by the foreign keys, its calls, views and notes with it.

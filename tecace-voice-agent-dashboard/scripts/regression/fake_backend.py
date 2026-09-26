@@ -618,7 +618,41 @@ def prospects() -> list[dict]:
     for record in (harbor, cedar):
         if record["id"] in DEMO_MINUTES:
             record["demoMinutes"] = DEMO_MINUTES[record["id"]]
+    # The lifecycle routes/demo.ts merges into every customer (db/customerLifecycle.ts): the
+    # permanent code, and the phase read off the linked account's stage.
+    for code, record in (("CUST-0001", harbor), ("CUST-0002", cedar)):
+        record.update(customerCode=code, **_lifecycle(record["id"]))
     return [harbor, cedar]
+
+
+def _linked_account(demo_id: str) -> dict | None:
+    return next((u for u in (ADMIN, USER, DEMO_CUSTOMER) if u.get("businessId") == demo_id), None)
+
+
+def _lifecycle(demo_id: str) -> dict:
+    account = _linked_account(demo_id)
+    status = account["status"] if account else None
+    phase = ("onboarding" if status == "pre-production"
+             else "production" if status == "production" else "demo")
+    return {"phase": phase, "accountEmail": account["email"] if account else None}
+
+
+def demo_onboard_route(wanted: str, caller: dict):
+    """POST /demo/customers/<id>/onboard: the account linked to the demo moves to pre-production.
+
+    Stateful for the run, like the lifecycle routes under /auth/users, so /auth/me answers the new
+    stage afterwards and the dashboard leaves the demo-only view."""
+    match = _demo_customer(wanted)
+    if match is None:
+        return 404, DEMO_NOT_FOUND
+    account = caller if caller["role"] != "admin" else _linked_account(wanted)
+    if account is None:
+        return 409, {"error": "Link an account to this customer first — onboarding moves that account."}
+    if account["status"] in ("pre-production", "production"):
+        return 409, {"error": "This customer is already past the demo."}
+    account["status"] = "pre-production"
+    customer = {**_bare(match), "stage": "won", **_lifecycle(wanted)}
+    return 200, {"customer": customer, "user": account, "copied": True}
 
 
 def _bare(record: dict) -> dict:
@@ -1202,13 +1236,19 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
             # This mirrors `auth/guard.ts`'s `authenticateDemo` — the harness would otherwise pass
             # against a fake that is more permissive than the service.
             own = user.get("businessId") if user.get("status") == "demo" else None
-            if not own or method not in ("GET", "PATCH") or not rest.startswith("/customers/"):
+            onboard = method == "POST" and rest.endswith("/onboard")
+            if (not own or (method not in ("GET", "PATCH") and not onboard)
+                    or not rest.startswith("/customers/")):
                 return 403, DEMO_FORBIDDEN
             wanted = rest[len("/customers/"):]
+            if onboard:
+                wanted = wanted[:-len("/onboard")]
             if wanted != own:
                 # Somebody else's record, or one of the sub-paths (/notes, /calls): not found and not
                 # forbidden, so the refusal says nothing about which ids are real.
                 return 404, {"error": "Customer not found."}
+        if method == "POST" and rest.startswith("/customers/") and rest.endswith("/onboard"):
+            return demo_onboard_route(unquote(rest[len("/customers/"):-len("/onboard")]), user)
         return demo_route(method, rest, query, body)
     if user is None:
         return 401, {"message": "Not signed in."}

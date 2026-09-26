@@ -174,6 +174,35 @@ def main() -> int:
                     check("...and it did read its own",
                           any(f"/demo/customers/{OWN_ID}" in a for a in asked))
 
+                    # ---- their way out of the demo: Start onboarding (last — it moves the account)
+                    page.goto(f"{base}/", wait_until="networkidle")
+                    page.wait_for_timeout(700)
+                    body = page.inner_text("body")
+                    check("they are offered onboarding",
+                          page.get_by_role("button", name="Start onboarding").count() == 1, body[:300])
+                    check("...and see their customer ID", "CUST-0001" in body, body[:300])
+                    page.get_by_role("button", name="Start onboarding").click()
+                    dialog = page.get_by_role("dialog")
+                    dialog.wait_for()
+                    check("the confirmation says it can't be undone",
+                          "can't be undone" in dialog.inner_text(), dialog.inner_text()[:200])
+                    dialog.get_by_role("button", name="Start onboarding").click()
+                    try:
+                        page.wait_for_function("location.hash.startsWith('#/business')", timeout=8000)
+                        landed = True
+                    except Exception:
+                        landed = False
+                    check("confirming lands them on their business information", landed,
+                          page.evaluate("location.hash"))
+                    check("...having asked the backend to move them",
+                          any(a.startswith("POST ") and a.endswith(f"/demo/customers/{OWN_ID}/onboard")
+                              for a in asked))
+                    page.wait_for_timeout(700)
+                    labels = [b.inner_text().strip() for b in rail.get_by_role("button").all()]
+                    check("the demo-only rail is gone", "My receptionist" not in labels, str(labels))
+                    check("...and Business information is in it",
+                          any("Business information" in l for l in labels), str(labels))
+
                     check("no page errors", not errors, "; ".join(errors[:3]))
                     browser.close()
             finally:

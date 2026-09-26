@@ -751,3 +751,18 @@ a 502 saying why.
 every background run started so far has finished — a handle for a test that would otherwise be
 racing a background promise, and for a graceful shutdown that wants to give one a chance to land.
 It does not, and cannot, make the run survive the process.
+
+## Customer lifecycle (2026-09-25) — not a promo port
+
+- `demo_customers.customer_seq` (sequence `customer_code_seq`) and generated `customer_code`
+  (`CUST-0001`, width grows past 9999). Existing rows are numbered once by `created_at` in a DO block
+  under an advisory lock (`db/client.ts`); nothing writes the code, and numbers are never reused.
+- Every `/demo` response carrying a customer (`GET /customers`, `/crm`, `/customers/:id`, POST
+  create, research, PATCH) has `customerCode`, `phase` and `accountEmail` merged in by
+  `db/customerLifecycle.ts`. Additive: the promo shapes are otherwise unchanged. `phase` is derived
+  from the linked account's `users.status` (pre-production → onboarding, production → production,
+  else demo) — not stored.
+- New `POST /demo/customers/:id/onboard` (`authenticateDemo` + `ownsDemo`; admin may call it for the
+  linked account). Copies the demo into business information unless the account already has some,
+  sets `pre-production`, marks the CRM stage `won`. 409 past the demo / no linked account, 422 thin
+  demo. Shares `startOnboarding` (`business/promote.ts`) with `/auth/users/:id/promote`.

@@ -119,6 +119,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // `#/overview` or a bookmarked `#/demos/pipeline` lands on their own page rather than on an empty
   // screen or a permission error. The backend refuses the rest for that account regardless
   // (`auth/guard.ts`), which is what makes this a tidy front end rather than the protection.
+  const { refresh: refreshUser } = useAuth();
   const demoOnly = user.status === "demo";
   const view = demoOnly ? "demoProspect" : routeView;
   const isDemoView = DEMO_VIEWS.has(view);
@@ -320,7 +321,17 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             (isAdmin ? (
               <DemosView view={view} id={routeId} />
             ) : demoOnly ? (
-              <DemosView view={view} id={routeId} operator={false} />
+              <DemosView
+                view={view}
+                id={routeId}
+                operator={false}
+                onOnboarded={async () => {
+                  // The account is now pre-production: re-read it, which lifts the demo-only view,
+                  // and land on the business information they are about to fill in.
+                  await refreshUser();
+                  navigate({ view: "business", id: undefined });
+                }}
+              />
             ) : (
               <p className="muted ta-body-2">Only an admin can see the demos.</p>
             ))}

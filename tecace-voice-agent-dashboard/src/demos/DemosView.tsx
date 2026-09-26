@@ -18,16 +18,19 @@ export function DemosView({
   view,
   id,
   operator = true,
+  onOnboarded,
 }: {
   view: ViewId;
   id: string | undefined;
   operator?: boolean;
+  /** The customer started onboarding from their demo page. */
+  onOnboarded?: () => void | Promise<void>;
 }) {
   if (!operator) {
     return (
       <DemosGate>
         {id && isPromoId(id) ? (
-          <ProspectScreen key={id} id={id} operator={false} />
+          <ProspectScreen key={id} id={id} operator={false} onOnboarded={onOnboarded} />
         ) : (
           <p className="ta-body-2 text-muted-foreground">
             Your demo isn't set up yet. We'll be in touch as soon as it is.

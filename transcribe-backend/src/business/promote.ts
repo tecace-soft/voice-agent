@@ -1,8 +1,9 @@
 import type { BusinessProfile as StructuredProfile, CustomerPrompts } from "../demo/types.js";
 import { deriveFromProfile } from "./derive.js";
 import { normalizeProfile } from "./profileShape.js";
-import { saveProfile } from "../db/businessProfiles.js";
+import { findProfile, saveProfile } from "../db/businessProfiles.js";
 import type { BusinessProfile } from "../db/businessProfiles.js";
+import { setLifecycleById, type UserRecord } from "../db/users.js";
 
 // Moving a business out of the demo and into the product, once.
 //
@@ -98,5 +99,29 @@ export async function promoteToBusiness(
       language: demo.language ?? null,
     },
   );
+}
+
+/**
+ * Demo → onboarding for one account: its own business information, then the stage.
+ *
+ * The copy happens only when the account has no business information yet. One that already has some
+ * keeps it — it is the customer's, possibly with their edits on top — and only the stage moves.
+ * Callers that must refuse in that case (the admin's `/promote`) check before calling.
+ *
+ * `pre-production`, not `production`: the number still has to be assigned and a transfer number
+ * typed in, neither of which a demo has. They can see and edit everything; nothing is answering yet.
+ *
+ * Throws PromotionError when a copy is needed and the demo is too thin to make one; the stage is not
+ * touched in that case.
+ */
+export async function startOnboarding(
+  userId: string,
+  demo: Promotable,
+): Promise<{ user: UserRecord; profile: BusinessProfile; copied: boolean }> {
+  const existing = await findProfile(userId);
+  const profile = existing ?? (await promoteToBusiness(userId, demo));
+  const user = await setLifecycleById(userId, { status: "pre-production" });
+  if (!user) throw new Error(`No account ${userId} to move to onboarding.`);
+  return { user, profile, copied: !existing };
 }
 

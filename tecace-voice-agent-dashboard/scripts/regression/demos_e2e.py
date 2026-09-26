@@ -414,6 +414,17 @@ def demo_nav(page, label: str):
         "button", name=label, exact=True)
 
 
+def open_customers(page):
+    """Click Customers and wait until the list is what's on screen.
+
+    Without the wait, a lookup made straight after the click can run against the page being left:
+    the Demo Overview's recent-calls table also links "Harbor Dental" (once per call), so a strict
+    `get_by_role("link", name="Harbor Dental")` resolved to four elements there and failed."""
+    demo_nav(page, "Customers").click()
+    page.wait_for_function("location.hash.startsWith('#/demos/prospects')")
+    page.get_by_role("heading", name="Customers", level=1).wait_for()
+
+
 def open_page(browser, token: str | None, url: str, demo_requests: list[str], page_errors: list[str]):
     ctx = browser.new_context(viewport={"width": 1440, "height": 900}, reduced_motion="reduce")
     init = ["try { localStorage.clear(); } catch (e) {}", "localStorage.setItem('theme', 'light');",
@@ -491,7 +502,7 @@ def run() -> int:
                           page.locator('.sidebar-group[data-group="demos"] .nav-item').count() == 3)
                     check("admin: no demo request on a transcribe view", reqs == [], str(reqs))
 
-                    demo_nav(page, "Customers").click()
+                    open_customers(page)
                     harbor_link = page.get_by_role("link", name="Harbor Dental", exact=True)
                     harbor_link.wait_for()
                     rows = page.locator("main .tw table tbody tr")
@@ -692,7 +703,7 @@ def run() -> int:
                         print(f"       (fully shadowed by the promo's own copy: {', '.join(shadowed)})")
 
                     # --- The prospect page (the promo's real customer page) ---
-                    demo_nav(page, "Customers").click()
+                    open_customers(page)
                     harbor_link.wait_for()
                     harbor_link.click()
                     page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
@@ -1074,7 +1085,7 @@ def run() -> int:
                     page.evaluate("() => { window.__holdMic = true; }")
                     call_now.click()
                     page.wait_for_function("() => window.__micHeld === true")
-                    demo_nav(page, "Customers").click()
+                    open_customers(page)
                     harbor_link.wait_for()
                     after_leave = len(reqs)
                     page.evaluate("() => { window.__holdMic = false; window.__releaseMic(); }")
@@ -1120,7 +1131,7 @@ def run() -> int:
                         page.wait_for_timeout(100)
                     if not held:
                         raise HarnessError("the test call never sent its session request")
-                    demo_nav(page, "Customers").click()
+                    open_customers(page)
                     harbor_link.wait_for()
                     fulfill_json(held[0], 200, {"callId": "held42", "sessionId": "sess_held42",
                                                 "sdp": "v=0\r\n", "greeting": "Hi."})
@@ -1208,7 +1219,7 @@ def run() -> int:
                           settled(page, f"() => ({STATUS_BADGE_JS})() === 'Researching'"),
                           f"badge={page.evaluate(STATUS_BADGE_JS)}")
 
-                    demo_nav(page, "Customers").click()
+                    open_customers(page)
                     harbor_link.wait_for()
                     harbor_link.click()
                     page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
@@ -1329,7 +1340,7 @@ def run() -> int:
                     held.clear()
 
                     # Back to a board that matches the fake for the rest of the checks.
-                    demo_nav(page, "Customers").click()
+                    open_customers(page)
                     harbor_link.wait_for()
                     demo_nav(page, "CRM").click()
                     main_tw.get_by_text("Left a voicemail with the owner.").wait_for()
