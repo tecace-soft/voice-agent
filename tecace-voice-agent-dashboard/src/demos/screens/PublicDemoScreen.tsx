@@ -146,7 +146,7 @@ export function PublicDemoScreen({
   const questions = suggestedQuestions({ faqs: profile.faqs });
   const knows = { table: "the menu", pickup: "what's in stock", "service visit": "the work you do" }[businessNouns(category).booking as string] ?? "the services";
   const can = [
-    capabilities.transfers.length ? `put you through to ${capabilities.transfers[0]!.name.toLowerCase()}` : "",
+    capabilities.transfers.length ? "put you through to the right person" : "",
     capabilities.links.length ? "text you a link" : "",
     capabilities.appointments ? `book a ${capabilities.appointments.title.toLowerCase()}` : "",
     "take a message",
