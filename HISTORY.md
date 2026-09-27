@@ -13,6 +13,11 @@ Format:
 
 ---
 
+## 2026-09-27 · bottomup32 · integration (merge + deploy check)
+- Merged `feature/appointments` into Main-Hans (fast-forward, 0978d69). Not merged: `proposal/customer-master-backend` (superseded by the customer-ID and lifecycle work) and `origin/michael/drive_attempt` (Michael's experiment). Backend 517/517 with `SKIP_PROMO_PARITY=1` (parity is pinned to Michael's local promo path; against a local promo clone at HEAD it's 11/12, a pre-existing sync gap). Dashboard 286/286; all 8 regression scripts pass.
+- ⚠ Deploy risk: `transcribe-app-backend` (and both dashboards) build a Preview for every pushed branch (no Ignored Build Step), and the backend's `DATABASE_URL` is set for Preview too. Pushing Main-Hans creates a preview backend on the PRODUCTION DB, and its first request runs this branch's self-migrations there (customer-code re-coding, phase-gate backfill, new tables). Previews are behind Vercel SSO, so only a team member opening it triggers this. Don't push Main-Hans until either Preview `DATABASE_URL` is removed/pointed at a Neon branch, or an Ignored Build Step skips non-`master` branches (Michael's call).
+- New Vercel project plan: separate backend + dashboard projects, backend `DATABASE_URL` on a Neon branch (not production), dashboard `BACKEND_URL` → new backend, backend `CORS_ORIGIN` → new dashboard URL.
+
 ## 2026-09-27 · bottomup32 · dashboard (settings studio, closer to the B mockup)
 - Demo page header is one row (business, badges, segmented tabs, operator controls); stat cards moved into the Activity tab; the studio now fits one screen under it.
 - Transfers, links and message scenarios: compact rows (coloured type tags, mono numbers) that open their form in place (`InlineEditor`, `ScenarioRow`, `Tag` in `settings/sections/shared.tsx`) instead of a dialog.
