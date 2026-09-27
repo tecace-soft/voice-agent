@@ -124,8 +124,10 @@ def main() -> int:
                     check("the row opens a lifecycle panel", panel.count() == 1)
                     check("...offering the Demos customers to link to",
                           panel.get_by_label("Demo customer", exact=True).count() == 1)
-                    check("...and the four stages",
-                          len(panel.get_by_label("Stage", exact=True).locator("option").all()) == 4)
+                    stage_options = [o.get_attribute("value") for o in
+                                     panel.get_by_label("Stage", exact=True).locator("option").all()]
+                    check("...and the stages short of production",
+                          stage_options == ["unassigned", "demo", "pre-production"], str(stage_options))
 
                     # ---- the copy is refused until there is something to copy FROM
                     copy_button = panel.get_by_role("button", name="Copy demo into their business")
@@ -149,19 +151,22 @@ def main() -> int:
                     # ---- the stage is its own decision, at its own endpoint
                     page.wait_for_timeout(300)
                     panel = page.get_by_role("group", name="Lifecycle for Sam Customer")
-                    panel.get_by_label("Stage", exact=True).select_option("production")
+                    panel.get_by_label("Stage", exact=True).select_option("demo")
                     page.wait_for_timeout(700)
                     stages = [s for s in sent if s[0] == "POST" and s[1].endswith("/status")]
                     check("changing the stage POSTs /auth/users/<id>/status", len(stages) == 1,
                           str(stages)[:200])
                     if stages:
                         check("...carrying the stage alone — linking is not re-sent with it",
-                              json.loads(stages[0][2] or "{}") == {"status": "production"},
+                              json.loads(stages[0][2] or "{}") == {"status": "demo"},
                               stages[0][2][:120])
                     page.wait_for_timeout(300)
                     check("...and the table shows it",
-                          "Production" in page.get_by_role("row")
+                          "Demo" in page.get_by_role("row")
                           .filter(has_text="Sam Customer").first.inner_text())
+                    panel = page.get_by_role("group", name="Lifecycle for Sam Customer")
+                    check("no Go live outside onboarding",
+                          panel.get_by_role("button", name="Go live").count() == 0)
 
                     # ---- the copy itself
                     panel = page.get_by_role("group", name="Lifecycle for Sam Customer")
@@ -179,6 +184,31 @@ def main() -> int:
                     # ---- what the panel promises, in the page's own words
                     check("the panel says the copy happens once",
                           "Copying happens once" in after)
+
+                    # ---- Go live: the only way into production, behind the checklist
+                    page.wait_for_timeout(300)
+                    panel = page.get_by_role("group", name="Lifecycle for Sam Customer")
+                    checklist = panel.get_by_label("Go live checklist")
+                    check("an account being set up shows the Go live checklist", checklist.count() == 1)
+                    listed = checklist.inner_text() if checklist.count() else ""
+                    check("...read from /business/readiness for that account",
+                          any(s[0] == "GET" and "/business/readiness?userId=u-sam" in s[1] for s in sent),
+                          str([s[1] for s in sent if "readiness" in s[1]])[:200])
+                    check("...listing the number and the published settings",
+                          "A phone number is assigned" in listed and "Call settings are published" in listed,
+                          listed[:300])
+                    go_live = panel.get_by_role("button", name="Go live")
+                    check("Go live is offered once every required item is ticked",
+                          go_live.count() == 1 and not go_live.is_disabled())
+                    go_live.click()
+                    page.wait_for_timeout(800)
+                    lives = [s for s in sent if s[0] == "POST" and s[1].endswith("/go-live")]
+                    check("Go live POSTs /auth/users/<id>/go-live", len(lives) == 1, str(lives)[:200])
+                    check("...and the table shows production",
+                          "Production" in page.get_by_role("row")
+                          .filter(has_text="Sam Customer").first.inner_text())
+                    check("...and the page says the line is on",
+                          "phone line is on" in page.inner_text("body"))
 
                     check("no page errors", not errors, "; ".join(errors[:3]))
                     browser.close()

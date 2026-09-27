@@ -329,16 +329,3 @@ export function RequestSetup({
     </Card>
   );
 }
-
-/**
- * The old name, kept so the page that renders it needs no change until the settings rework lands.
- * `onOnboarded` is not called any more: a request does not leave the demo, an admin's Approve does.
- */
-export function StartOnboarding({
-  customer,
-}: {
-  customer: Customer;
-  onOnboarded?: () => void | Promise<void>;
-}) {
-  return <RequestSetup customer={customer} />;
-}

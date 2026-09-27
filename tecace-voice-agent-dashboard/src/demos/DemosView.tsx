@@ -19,7 +19,6 @@ export function DemosView({
   view,
   id,
   operator = true,
-  onOnboarded,
   section,
   onSection,
 }: {
@@ -29,8 +28,6 @@ export function DemosView({
   section?: SectionId;
   onSection?: (section: SectionId) => void;
   operator?: boolean;
-  /** The customer started onboarding from their demo page. */
-  onOnboarded?: () => void | Promise<void>;
 }) {
   if (!operator) {
     return (
@@ -40,7 +37,6 @@ export function DemosView({
             key={id}
             id={id}
             operator={false}
-            onOnboarded={onOnboarded}
             section={section}
             onSection={onSection}
           />

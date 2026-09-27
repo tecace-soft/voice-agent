@@ -643,23 +643,81 @@ def _lifecycle(demo_id: str) -> dict:
     status = account["status"] if account else None
     phase = ("onboarding" if status == "pre-production"
              else "production" if status == "production" else "demo")
-    return {"phase": phase, "accountEmail": account["email"] if account else None}
+    return {"phase": phase, "accountEmail": account["email"] if account else None,
+            # Phase gates: the open request, the last decline and when the line went live, kept on
+            # the account for the run as the backend keeps them on `users`.
+            "request": account.get("request") if account else None,
+            "declined": account.get("declined") if account else None,
+            "liveAt": account.get("liveAt") if account else None}
+
+
+def demo_request_route(wanted: str, caller: dict, body: bytes):
+    """POST /demo/customers/<id>/request-onboarding: the demo customer asks to be set up."""
+    match = _demo_customer(wanted)
+    if match is None:
+        return 404, DEMO_NOT_FOUND
+    account = caller if caller["role"] != "admin" else _linked_account(wanted)
+    if account is None:
+        return 409, {"error": "Link an account to this customer first."}
+    if account["status"] != "demo":
+        return 409, {"error": "This customer is already past the demo."}
+    note = ((_demo_json(body) or {}).get("note") or "").strip() or None
+    previous = account.get("request")
+    account["request"] = {"requestedAt": previous["requestedAt"] if previous else iso(NOW),
+                          "note": note}
+    account["declined"] = None
+    return 200, {"customer": {**_bare(match), **_lifecycle(wanted)}}
+
+
+def demo_decline_route(wanted: str, body: bytes):
+    """POST /demo/customers/<id>/decline-request (admin): close the request with a note."""
+    match = _demo_customer(wanted)
+    if match is None:
+        return 404, DEMO_NOT_FOUND
+    account = _linked_account(wanted)
+    if account is None or not account.get("request"):
+        return 409, {"error": "There is no open request to decline."}
+    note = ((_demo_json(body) or {}).get("note") or "").strip() or None
+    account["request"] = None
+    account["declined"] = {"declinedAt": iso(NOW), "note": note}
+    return 200, {"customer": {**_bare(match), **_lifecycle(wanted)}}
+
+
+def readiness(account: dict) -> dict:
+    """GET /business/readiness, as business/readiness.ts answers it. Sam has a number (NUMBERS) and,
+    in this fake, published settings; nobody else has either."""
+    has_number = any(n["userId"] == account["id"] for n in NUMBERS)
+    published = account["id"] == USER["id"]
+    items = [
+        {"id": "business_info", "ok": True, "required": True, "label": "Business information is filled in"},
+        {"id": "settings_published", "ok": published, "required": True, "label": "Call settings are published"},
+        {"id": "number_assigned", "ok": has_number, "required": True, "label": "A phone number is assigned"},
+        {"id": "published_matches_number", "ok": published and has_number, "required": True,
+         "label": "Published settings work with that number"},
+        {"id": "contact_number", "ok": False, "required": False,
+         "label": "A number to reach the business is on file"},
+    ]
+    return {"status": account["status"], "ready": all(i["ok"] or not i["required"] for i in items),
+            "items": items}
 
 
 def demo_onboard_route(wanted: str, caller: dict):
-    """POST /demo/customers/<id>/onboard: the account linked to the demo moves to pre-production.
+    """POST /demo/customers/<id>/onboard (admin only, the Approve): the linked account moves to
+    pre-production.
 
     Stateful for the run, like the lifecycle routes under /auth/users, so /auth/me answers the new
     stage afterwards and the dashboard leaves the demo-only view."""
     match = _demo_customer(wanted)
     if match is None:
         return 404, DEMO_NOT_FOUND
-    account = caller if caller["role"] != "admin" else _linked_account(wanted)
+    account = _linked_account(wanted)
     if account is None:
         return 409, {"error": "Link an account to this customer first — onboarding moves that account."}
     if account["status"] in ("pre-production", "production"):
         return 409, {"error": "This customer is already past the demo."}
     account["status"] = "pre-production"
+    account["request"] = None
+    account["declined"] = None
     customer = {**_bare(match), "stage": "won", **_lifecycle(wanted)}
     return 200, {"customer": customer, "user": account, "copied": True}
 
@@ -1222,7 +1280,8 @@ def demo_public_route(method: str, path: str, raw_body: bytes):
 
 # --- Dispatch -------------------------------------------------------------------------------------
 
-CUSTOMER_MAY_EDIT = {"profile", "prompts", "regeneratePrompts", "agentName", "voice", "language", "callSound"}
+# routes/demo.ts DEMO_READ_ONLY: the answer to a demo customer's every PATCH of their own record.
+DEMO_READ_ONLY = "Your receptionist can be changed once it is being set up. Ask us to set it up first."
 
 
 def route(method: str, path: str, query: dict, user: dict | None, body: bytes = b""):
@@ -1243,30 +1302,30 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
             return 401, DEMO_UNAUTHORIZED
         rest = path[len("/demo"):]
         if user["role"] != "admin":
-            # A demo-stage customer reaches exactly two handlers, and only for their own record:
-            # `GET` and `PATCH /demo/customers/:id`. Everything else is the operator's pipeline.
-            # This mirrors `auth/guard.ts`'s `authenticateDemo` — the harness would otherwise pass
+            # A demo-stage customer reaches, for their own record only: `GET /demo/customers/:id`,
+            # `POST .../request-onboarding`, and `PATCH`, which is always refused: the demo is
+            # read-only for them (phase gates). Everything else is the operator's pipeline. This
+            # mirrors `auth/guard.ts`'s `authenticateDemo` — the harness would otherwise pass
             # against a fake that is more permissive than the service.
             own = user.get("businessId") if user.get("status") == "demo" else None
-            onboard = method == "POST" and rest.endswith("/onboard")
-            if (not own or (method not in ("GET", "PATCH") and not onboard)
+            asks = method == "POST" and rest.endswith("/request-onboarding")
+            if (not own or (method not in ("GET", "PATCH") and not asks)
                     or not rest.startswith("/customers/")):
                 return 403, DEMO_FORBIDDEN
             wanted = rest[len("/customers/"):]
-            if onboard:
-                wanted = wanted[:-len("/onboard")]
+            if asks:
+                wanted = wanted[:-len("/request-onboarding")]
             if wanted != own:
                 # Somebody else's record, or one of the sub-paths (/notes, /calls): not found and not
                 # forbidden, so the refusal says nothing about which ids are real.
                 return 404, {"error": "Customer not found."}
-            # The backend's CUSTOMER_MAY_EDIT: a customer's save may carry only the receptionist's
-            # own fields, and one that carries anything else is refused by name. Without this the
-            # fake was kinder than the service and a customer Save that always 403s passed here.
             if method == "PATCH":
-                sent = _demo_json(body) or {}
-                forbidden = sorted(k for k, v in sent.items() if v is not None and k not in CUSTOMER_MAY_EDIT)
-                if forbidden:
-                    return 403, {"error": f"Only an admin can change {', '.join(forbidden)}."}
+                return 403, {"error": DEMO_READ_ONLY}
+        if method == "POST" and rest.startswith("/customers/") and rest.endswith("/request-onboarding"):
+            return demo_request_route(unquote(rest[len("/customers/"):-len("/request-onboarding")]),
+                                      user, body)
+        if method == "POST" and rest.startswith("/customers/") and rest.endswith("/decline-request"):
+            return demo_decline_route(unquote(rest[len("/customers/"):-len("/decline-request")]), body)
         if method == "POST" and rest.startswith("/customers/") and rest.endswith("/onboard"):
             return demo_onboard_route(unquote(rest[len("/customers/"):-len("/onboard")]), user)
         return demo_route(method, rest, query, body)
@@ -1299,8 +1358,24 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
             target["businessId"] = payload.get("businessId") or None
             return 200, {"user": target}
         if action == "status":
-            target["status"] = payload.get("status") or "unassigned"
+            wanted_status = payload.get("status") or "unassigned"
+            if wanted_status == "production" and target["status"] != "production":
+                return 409, {"error": "use_go_live",
+                             "message": "Use Go live to move an account to production."}
+            target["status"] = wanted_status
             return 200, {"user": target}
+        if action == "go-live":
+            if target["status"] != "pre-production":
+                return 409, {"error": "not_onboarding",
+                             "message": "Only an account that is being set up can go live."}
+            check = readiness(target)
+            if not check["ready"]:
+                unmet = [i for i in check["items"] if i["required"] and not i["ok"]]
+                return 409, {"error": "not_ready", "unmet": [i["id"] for i in unmet],
+                             "message": "Not ready yet: " + "; ".join(i["label"].lower() for i in unmet) + "."}
+            target["status"] = "production"
+            target["liveAt"] = iso(NOW)
+            return 200, {"user": target, "readiness": check}
         if action == "promote":
             if not target.get("businessId"):
                 return 409, {"error": "not_linked",
@@ -1327,6 +1402,10 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
         return 200, {"open": 1}
     if path == "/feedback" and method == "GET":
         return 200, {"feedback": FEEDBACK, "open": 1}
+    if path == "/business/readiness" and method == "GET":
+        wanted = (query.get("userId") or [None])[0] if admin else None
+        account = next((u for u in (ADMIN, USER, DEMO_CUSTOMER) if u["id"] == wanted), user)
+        return 200, readiness(account)
     if path == "/business/numbers" and method == "GET":
         return 200, {"numbers": NUMBERS}
     if path == "/business/profile" and method == "GET":

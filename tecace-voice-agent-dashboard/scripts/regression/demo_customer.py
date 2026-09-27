@@ -207,34 +207,33 @@ def main() -> int:
                           not [a for a in asked if a.startswith("PATCH ")],
                           str([a for a in asked if a.startswith("PATCH ")]))
 
-                    # ---- their way out of the demo: Start onboarding (last — it moves the account)
+                    # ---- their way out of the demo: they ASK to be set up (phase gates). An admin
+                    # approves; until then they stay in the demo (last — it changes the account).
                     page.goto(f"{base}/", wait_until="networkidle")
                     page.wait_for_timeout(700)
                     body = page.inner_text("body")
-                    check("they are offered onboarding",
-                          page.get_by_role("button", name="Start onboarding").count() == 1, body[:300])
+                    check("they are offered a setup request, not a way to move themselves",
+                          page.get_by_role("button", name="Request setup").count() == 1
+                          and page.get_by_role("button", name="Start onboarding").count() == 0,
+                          body[:300])
                     check("...and see their customer ID", "HADE-0001" in body, body[:300])
-                    page.get_by_role("button", name="Start onboarding").click()
+                    page.get_by_role("button", name="Request setup").click()
                     dialog = page.get_by_role("dialog")
                     dialog.wait_for()
-                    check("the confirmation says it can't be undone",
-                          "can't be undone" in dialog.inner_text(), dialog.inner_text()[:200])
-                    dialog.get_by_role("button", name="Start onboarding").click()
-                    try:
-                        page.wait_for_function("location.hash.startsWith('#/business')", timeout=8000)
-                        landed = True
-                    except Exception:
-                        landed = False
-                    check("confirming lands them on their business information", landed,
-                          page.evaluate("location.hash"))
-                    check("...having asked the backend to move them",
-                          any(a.startswith("POST ") and a.endswith(f"/demo/customers/{OWN_ID}/onboard")
-                              for a in asked))
-                    page.wait_for_timeout(700)
+                    dialog.get_by_label("Anything we should know? (optional)").fill("Start next month")
+                    dialog.get_by_role("button", name="Send request").click()
+                    page.wait_for_timeout(900)
+                    requests = [a for a in asked
+                                if a.startswith("POST ") and a.endswith(f"/demo/customers/{OWN_ID}/request-onboarding")]
+                    check("sending asks the backend at /request-onboarding", len(requests) == 1,
+                          str([a for a in asked if a.startswith("POST ")]))
+                    check("...and never tries to onboard itself",
+                          not [a for a in asked if a.endswith("/onboard")])
+                    after = page.inner_text("body")
+                    check("the card then says the request is in", "Setup requested" in after, after[:300])
                     labels = [b.inner_text().strip() for b in rail.get_by_role("button").all()]
-                    check("the demo-only rail is gone", "My receptionist" not in labels, str(labels))
-                    check("...and Business information is in it",
-                          any("Business information" in l for l in labels), str(labels))
+                    check("...and they are still in the demo-only view", "My receptionist" in labels,
+                          str(labels))
 
                     check("no page errors", not errors, "; ".join(errors[:3]))
                     browser.close()

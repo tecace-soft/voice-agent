@@ -1175,3 +1175,21 @@ the edits inside it that let the ported editors and screen serve it.
   operator-only sections (transfers, links, messages, test, launch) shown as a preview with examples
   where nothing is set up, and an example call (`settings/simulator/ExampleCallPanel.tsx`) linking to
   their `/c/<id>` page in place of the test call. No tabs are shown to them.
+
+## Phase gates (2026-09-27) — not a promo port
+
+Spec: `docs/superpowers/specs/2026-09-27-phase-gates-design.md`.
+- **`lib/types.ts`** — `Customer` gains optional `request`, `declined`, `liveAt` (the backend merges
+  them next to `phase`).
+- **`components/admin/Lifecycle.tsx`** — `StartOnboarding` is replaced by `RequestSetup`: the demo
+  customer asks to be set up (optional note, `POST /customers/:id/request-onboarding`) and the card
+  then reads "Setup requested", or shows the admin's decline note with "Ask again". It never moves
+  the account. `LifecycleNotice` shows the operator an open request with Approve
+  (`POST /customers/:id/onboard`, now admin-only) and Decline (`POST /customers/:id/decline-request`
+  with a note); both take an optional `onChanged`. `LifecycleBadges` adds a "Setup requested" badge.
+- **`screens/ProspectScreen.tsx`** — renders `RequestSetup` for the customer (always, no longer
+  behind `onOnboarded`) and passes `mergeLifecycle` to both cards, which copies only the lifecycle
+  fields (phase, request, declined, liveAt, accountEmail, stage) into the draft so unsaved operator
+  edits survive. `onOnboarded` is removed from `ProspectScreen`, `DemosView` and `App.tsx`.
+- **`components/admin/CustomerTable.tsx`** — phase filter gains "Setup requested (n)"; the Phase cell
+  shows a "Setup requested" badge next to the phase.

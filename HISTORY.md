@@ -13,6 +13,18 @@ Format:
 
 ---
 
+## 2026-09-27 06:40 · bottomup32 · dashboard (phase gates, UI)
+- Demo customer: "Start onboarding" → **Request setup** (optional note); they stay in the demo until an admin approves. Operator's demo page: open request with **Approve** / **Decline** (note). Demo › Customers: "Setup requested" filter + badge.
+- Accounts › Stage: production is no longer in the select; an account in pre-production shows the Go live checklist (`GET /business/readiness?userId=`) and a **Go live** button. Business page: a pre-production account sees its checklist instead of "Answering calls to …".
+- `onOnboarded` removed from `App.tsx` / `DemosView` / `ProspectScreen`. Regression: `fake_backend.py` gains request/decline/go-live/readiness; `demo_customer.py` and `accounts_lifecycle.py` check the new flow.
+- ⚠ Demos owner: `Lifecycle.tsx`, `ProspectScreen.tsx` (two lines + `mergeLifecycle`), `CustomerTable.tsx`, `types.ts` (PORTING.md).
+
+## 2026-09-27 06:40 · bottomup32 · transcribe-backend (phase gates, backend)
+- DB (self-migrating, additive): `users.onboarding_requested_at`, `onboarding_request_note`, `onboarding_declined_at`, `onboarding_decline_note`, `live_at` (+ probe). One-time backfill: a non-admin `unassigned` account with an assigned number AND a live business profile becomes `production` (today: the one live receptionist customer).
+- API: new `POST /demo/customers/:id/request-onboarding` (customer), `POST /demo/customers/:id/decline-request` (admin), `GET /business/readiness` (`?userId` for admin), `POST /auth/users/:id/go-live` (admin; 409 `not_ready` + `unmet`). Customer bodies gain `request`, `declined`, `liveAt`.
+- Behaviour changes: demo customers can no longer PATCH their demo (403); `/demo/customers/:id/onboard` is admin-only (= Approve); `/auth/users/:id/status` refuses `production` (409 `use_go_live`); `/business/config` answers `assigned:false, reason:"not_live_stage"` for `demo`/`pre-production` accounts; publishing call settings is 403 for demo accounts.
+- ⚠ Michael: production ownership moves to this work (spec `docs/superpowers/specs/2026-09-27-phase-gates-design.md`). Confirm the backfill before deploy; DB backup first. ⚠ Dashboard: "Start onboarding" must become "Request setup" (next commit).
+
 ## 2026-09-27 06:10 · bottomup32 · dashboard (call forwarding guide)
 - New settings section `forwarding` ("Call forwarding", Go live group) in `src/settings/sections/ForwardingSection.tsx`: missed calls vs every call, dial codes per carrier (AT&T/T-Mobile, Verizon, landline, business phone apps) filled with the assistant's number, turn-off codes, how to test. Routes `#/business/forwarding`, `#/demos/prospects/<id>/forwarding`; `SECTION_IDS` gained `"forwarding"`.
 - `SettingsSection.guide?: boolean` — a guide section stays clickable on the read-only demo-customer screen (no disabled fieldset). Launch instructions lost its inline code table; it now links to Call forwarding.
@@ -23,11 +35,6 @@ Format:
 - Demo page (`ProspectScreen`): tabs outside the card, Test call only in the Settings tab. The demo's own customer now sees ALL sections read-only (no Save, no PATCH) with examples and an example call linking to their `/c/<id>`. New `src/settings/examples.tsx` (start-from-example templates, sample call exchanges, tips) used by admin and customer views.
 - Regression: `demo_customer.py` expects the read-only preview; `demos_e2e.py` checks the studio layout and clicks the Settings tab before the test call. All scripts pass (run with `BACKEND_URL=http://127.0.0.1:<harness port>`).
 - ⚠ Demos owner: ProspectScreen layout changed (PORTING.md). ⚠ Worktrees: never `git worktree remove` a worktree holding a `node_modules` junction — git follows it and deletes the real packages.
-## 2026-09-27 · bottomup32 · transcribe-backend (phase gates, backend)
-- DB (self-migrating, additive): `users.onboarding_requested_at`, `onboarding_request_note`, `onboarding_declined_at`, `onboarding_decline_note`, `live_at` (+ probe). One-time backfill: a non-admin `unassigned` account with an assigned number AND a live business profile becomes `production` (today: the one live receptionist customer).
-- API: new `POST /demo/customers/:id/request-onboarding` (customer), `POST /demo/customers/:id/decline-request` (admin), `GET /business/readiness` (`?userId` for admin), `POST /auth/users/:id/go-live` (admin; 409 `not_ready` + `unmet`). Customer bodies gain `request`, `declined`, `liveAt`.
-- Behaviour changes: demo customers can no longer PATCH their demo (403); `/demo/customers/:id/onboard` is admin-only (= Approve); `/auth/users/:id/status` refuses `production` (409 `use_go_live`); `/business/config` answers `assigned:false, reason:"not_live_stage"` for `demo`/`pre-production` accounts; publishing call settings is 403 for demo accounts.
-- ⚠ Michael: production ownership moves to this work (spec `docs/superpowers/specs/2026-09-27-phase-gates-design.md`). Confirm the backfill before deploy; DB backup first. ⚠ Dashboard: "Start onboarding" must become "Request setup" (next commit).
 
 ## 2026-09-27 · bottomup32 · transcribe-backend (customer IDs)
 - DB (self-migrating): `demo_customers.customer_code` is now `<4 letters from business name>-<seq>` (e.g. `GLHF-0009`, `HMAB-0011`) instead of `CUST-0009`. Set once by trigger `demo_customers_code_guard` on INSERT; any later UPDATE of it raises; renaming the business keeps it. Numbers unchanged.

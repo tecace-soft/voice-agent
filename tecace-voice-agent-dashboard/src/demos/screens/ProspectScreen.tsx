@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ActivityTab } from "@/components/admin/ActivityTab";
 import { AddDemoTimeMenu } from "@/components/admin/AddDemoTimeMenu";
-import { LifecycleBadges, LifecycleNotice, StartOnboarding } from "@/components/admin/Lifecycle";
+import { LifecycleBadges, LifecycleNotice, RequestSetup } from "@/components/admin/Lifecycle";
 import { ResearchInputsPanel } from "@/components/admin/ResearchInputsPanel";
 import { SharePanel } from "@/components/admin/SharePanel";
 import { SourcesPanel } from "@/components/research/SourcesPanel";
@@ -56,7 +56,6 @@ type Payload = {
 export function ProspectScreen({
   id,
   operator = true,
-  onOnboarded,
   section,
   onSection,
 }: {
@@ -65,8 +64,6 @@ export function ProspectScreen({
   /** Dashboard-only: the open settings section, held in the URL. */
   section?: SectionId;
   onSection?: (section: SectionId) => void;
-  /** Dashboard-only: the customer started onboarding and is leaving the demo. */
-  onOnboarded?: () => void | Promise<void>;
 }) {
   const [data, setData] = useState<Payload | null>(null);
   const [draft, setDraft] = useState<Customer | null>(null);
@@ -213,6 +210,24 @@ export function ProspectScreen({
     );
   }
 
+  // A request, an Approve or a Decline (Lifecycle.tsx) answers with the whole record; only its
+  // lifecycle is taken, so an operator's unsaved edits on this page survive it. Dashboard-only
+  // (PORTING.md: phase gates).
+  function mergeLifecycle(customer: Customer) {
+    const lifecycle = {
+      phase: customer.phase,
+      request: customer.request,
+      declined: customer.declined,
+      liveAt: customer.liveAt,
+      accountEmail: customer.accountEmail,
+      stage: customer.stage,
+    };
+    setDraft((current) => (current ? { ...current, ...lifecycle } : current));
+    setData((current) =>
+      current ? { ...current, customer: { ...current.customer, ...lifecycle } } : current,
+    );
+  }
+
   const stalled = draft ? isResearchStalled(draft) : false;
 
   if (!data || !draft) {
@@ -289,10 +304,11 @@ export function ProspectScreen({
         }
       />
 
-      {operator ? <LifecycleNotice customer={draft} /> : null}
-      {!operator && onOnboarded ? (
-        <StartOnboarding customer={draft} onOnboarded={onOnboarded} />
-      ) : null}
+      {operator ? (
+        <LifecycleNotice customer={draft} onChanged={mergeLifecycle} />
+      ) : (
+        <RequestSetup customer={draft} onChanged={mergeLifecycle} />
+      )}
 
       {draft.status === "error" && draft.error ? (
         <div className="bg-destructive/10 ta-label-1 text-destructive rounded-lg p-3">
