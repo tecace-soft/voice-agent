@@ -28,6 +28,7 @@
   --radius-sm: 10px; /* icon buttons, menu items */
   --radius-card: 16px; /* cards */
   --sidebar-w: 232px;
+  --rail-w: 56px; /* the sidebar folded to icons, while the settings studio is open */
   --topbar-h: 56px;
   --font-head: var(--font-sans); /* Pretendard */
   --font-body: var(--font-sans); /* Pretendard */
@@ -328,6 +329,84 @@ code {
   max-width: 1440px;
   margin: 0 auto;
   padding: 24px;
+}
+/* The settings studio (src/chrome.tsx) takes the whole content area: panes run to the edges and are
+   divided by hairlines, so there is no page padding or width cap around them. */
+.content-bleed {
+  max-width: none;
+  padding: 0;
+}
+
+/* ---- the studio's chrome: the sidebar as an icon rail, the top bar carrying the page's row ---- */
+.topbar-slot {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topbar-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.topbar-slot:empty,
+.topbar-end:empty {
+  display: none;
+}
+.app[data-nav="rail"] .sidebar {
+  width: var(--rail-w);
+}
+.app[data-nav="rail"] .sidebar-brand {
+  justify-content: center;
+  padding: 0;
+}
+.app[data-nav="rail"] .brand-text,
+.app[data-nav="rail"] .sidebar-meta,
+.app[data-nav="rail"] .user-text,
+.app[data-nav="rail"] .sidebar-user .icon-btn {
+  display: none;
+}
+.app[data-nav="rail"] .sidebar-group {
+  padding: 8px 8px 0;
+}
+.app[data-nav="rail"] .sidebar-group + .sidebar-group {
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+}
+/* Labels stay in the accessibility tree (the button's name); only their box goes. */
+.app[data-nav="rail"] .sidebar-group-label,
+.app[data-nav="rail"] .nav-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.app[data-nav="rail"] .nav-item {
+  position: relative;
+  justify-content: center;
+  padding: 0;
+}
+.app[data-nav="rail"] .nav-count {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  min-width: 8px;
+  height: 8px;
+  padding: 0;
+  font-size: 0;
+  background: var(--danger);
+}
+.app[data-nav="rail"] .nav-count-info {
+  background: var(--primary);
+}
+.app[data-nav="rail"] .sidebar-user {
+  justify-content: center;
+  padding: 10px 0;
 }
 .view {
   display: flex;

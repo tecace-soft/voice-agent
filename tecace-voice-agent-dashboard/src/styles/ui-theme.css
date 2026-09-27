@@ -242,4 +242,9 @@
   .ta-caption-1{font-family:var(--ui-font-sans);font-weight:500;font-size:12px;line-height:16px;letter-spacing:0.0252em}
   .ta-caption-2{font-family:var(--ui-font-sans);font-weight:500;font-size:11px;line-height:14px;letter-spacing:0.0311em}
   .ta-numeric{font-family:var(--ui-font-display);font-variant-numeric:tabular-nums;font-weight:600}
+  /* The settings studio's density (B2, src/settings/SettingsShell.tsx): body copy at 13.5px and
+     labels at 13px, the way Retell's and Vercel's settings read. More specific than the scale above. */
+  .settings-studio .ta-body-2{font-size:13.5px;line-height:20px}
+  .settings-studio .ta-label-1{font-size:13px;line-height:19px}
+  .settings-studio .ta-headline-2{font-size:15px;line-height:22px}
 }

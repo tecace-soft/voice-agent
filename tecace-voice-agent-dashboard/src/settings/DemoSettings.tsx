@@ -50,6 +50,8 @@ type Props = {
   aside?: ReactNode;
   asideTitle?: string;
   asideBadge?: string;
+  /** The console draws its own tabs and padding (the operator's test call). */
+  asideBare?: boolean;
   /** The right of the settings bar (Save, or the preview's note). */
   toolbar?: (section: SectionId) => ReactNode;
   phase?: Phase;
@@ -215,6 +217,7 @@ export function DemoSettings(props: Props) {
       aside={props.aside}
       asideTitle={props.asideTitle}
       asideBadge={props.asideBadge}
+      asideBare={props.asideBare}
       toolbar={props.toolbar}
       phase={props.phase ?? "demo"}
       readOnly={!operator}

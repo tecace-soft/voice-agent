@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Pause, Play, Plus, Trash2 } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, Pause, Phone, Play, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -70,7 +70,14 @@ function blankScenario(): TransferScenario {
   };
 }
 
-export function TransferCallsSection({ binding }: { binding: CallSettingsBinding }) {
+export function TransferCallsSection({
+  binding,
+  notes,
+}: {
+  binding: CallSettingsBinding;
+  /** Under the intro: an older single transfer number still in use, the admin's waterfall switch. */
+  notes?: ReactNode;
+}) {
   const scenarios = binding.value.transfer.scenarios;
   const [editing, setEditing] = useState<{ scenario: TransferScenario; index: number } | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -136,10 +143,11 @@ export function TransferCallsSection({ binding }: { binding: CallSettingsBinding
     <div>
       {binding.publishBar}
       <SectionIntro>
-        When a caller asks for a person or a team, or describes something that needs one, the assistant
-        puts them through. It only transfers when a caller asks or when a scenario's conditions match,
-        and never outside that scenario's hours — then it takes a message instead.
+        Put callers through to a person when they ask, or when a situation below comes up. Only inside each
+        transfer's hours; outside them, the assistant takes a message.
       </SectionIntro>
+
+      {notes}
 
       {rowError ? <FieldMessage>{rowError}</FieldMessage> : null}
 
@@ -166,7 +174,18 @@ export function TransferCallsSection({ binding }: { binding: CallSettingsBinding
           whenever someone asks for a person.
         </EmptyState>
       ) : (
-        <div className="overflow-hidden rounded-xl border">
+        <div className="overflow-hidden rounded-[10px] border" role="table" aria-label="Transfers">
+          {/* Column heads, lined up with each row's summary (ScenarioRow's `meta`) and its switch. */}
+          <div
+            role="row"
+            className="bg-muted/50 text-muted-foreground/80 hidden items-center gap-4 border-b py-2 pr-3 pl-4 text-[11px] tracking-[0.05em] uppercase @2xl:flex"
+          >
+            <span role="columnheader" className="flex-1">Name</span>
+            <span role="columnheader" className="w-[76px]">Type</span>
+            <span role="columnheader" className="w-32">Rings</span>
+            <span role="columnheader" className="w-36">When</span>
+            <span role="columnheader" className={readOnly ? "w-7 text-right" : "w-16 text-right"}>On</span>
+          </div>
           <ul className="divide-y">
             {editing?.index === -1 ? <li>{editor}</li> : null}
             {rows.map((scenario, index) => {
@@ -180,8 +199,11 @@ export function TransferCallsSection({ binding }: { binding: CallSettingsBinding
                   main={
                     <>
                       <span className="flex items-center gap-2">
-                        <span className="ta-label-1 truncate">{scenario.name}</span>
-                        <Tag tone={MODE_TONE[scenario.mode]}>{MODE_LABEL[scenario.mode]}</Tag>
+                        <span className="ta-label-1 truncate font-semibold!">{scenario.name}</span>
+                        {/* On narrow screens the columns are hidden, so the type rides with the name. */}
+                        <span className="@2xl:hidden">
+                          <Tag tone={MODE_TONE[scenario.mode]}>{MODE_LABEL[scenario.mode]}</Tag>
+                        </span>
                         {showingExamples ? <Tag>Example</Tag> : null}
                         {!scenario.enabled ? <Tag>Off</Tag> : null}
                       </span>
@@ -191,13 +213,23 @@ export function TransferCallsSection({ binding }: { binding: CallSettingsBinding
                     </>
                   }
                   meta={
-                    <span className="flex w-44 flex-col items-end text-right">
-                      <span className="ta-caption-1 w-full truncate font-mono">{scenario.numbers.map(displayPhone).join(" → ")}</span>
-                      <span className="ta-caption-2 text-muted-foreground w-full truncate">{hoursSummary(scenario.hours)}</span>
-                    </span>
+                    <>
+                      <span className="w-[76px]">
+                        <Tag tone={MODE_TONE[scenario.mode]}>{MODE_LABEL[scenario.mode]}</Tag>
+                      </span>
+                      <span className="w-32 truncate font-mono text-[12px]" title={scenario.numbers.map(displayPhone).join(" → ")}>
+                        {displayPhone(scenario.numbers[0] ?? "")}
+                        {scenario.numbers.length > 1 ? (
+                          <span className="text-muted-foreground"> +{scenario.numbers.length - 1}</span>
+                        ) : null}
+                      </span>
+                      <span className="text-muted-foreground w-36 truncate text-[12px]" title={hoursSummary(scenario.hours)}>
+                        {hoursSummary(scenario.hours)}
+                      </span>
+                    </>
                   }
                   actions={
-                    <>
+                    <span className="flex items-center justify-end gap-1">
                       <Switch
                         checked={scenario.enabled}
                         // A waterfall on an account without the feature can be kept but not switched on.
@@ -210,10 +242,11 @@ export function TransferCallsSection({ binding }: { binding: CallSettingsBinding
                         size="icon-sm"
                         aria-label={`Delete ${scenario.name}`}
                         onClick={() => void remove(scenario.id)}
+                        className="text-muted-foreground hover:text-destructive"
                       >
                         <Trash2 />
                       </Button>
-                    </>
+                    </span>
                   }
                 >
                   {editor}
@@ -222,12 +255,12 @@ export function TransferCallsSection({ binding }: { binding: CallSettingsBinding
             })}
           </ul>
           {readOnly ? null : (
-            <div className="bg-muted/30 flex flex-wrap items-center gap-3 border-t px-4 py-2.5">
-              <span className="ta-caption-1 text-muted-foreground">
-                {scenarios.length} of {MAX_SCENARIOS} · click a row to edit it
+            <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-2 border-t px-4 py-2.5">
+              <span className="ta-caption-1">
+                {scenarios.length} of {MAX_SCENARIOS}
               </span>
               <span className="flex-1" />
-              {full ? null : <ExamplePicker examples={TRANSFER_EXAMPLES} onPick={fromExample} label="Add an example" />}
+              {full ? null : <ExamplePicker examples={TRANSFER_EXAMPLES} onPick={fromExample} label="Start from" />}
               <Button
                 variant="outline"
                 size="sm"
@@ -242,44 +275,40 @@ export function TransferCallsSection({ binding }: { binding: CallSettingsBinding
         </div>
       )}
 
-      <p className="ta-headline-2 mt-8 mb-3">Transfer types</p>
-      <div className="mb-6 grid gap-3 md:grid-cols-3">
+      {/* What the three types do: text under the list, not three more boxes. */}
+      <div className="mt-6 grid gap-4 border-t pt-4 md:grid-cols-3" aria-label="Transfer types">
         {(["cold", "warm", "waterfall"] as TransferMode[]).map((mode) => (
-          <div key={mode} className="rounded-xl border p-4">
-            <p className="ta-label-1">
-              {MODE_LABEL[mode]}
+          <div key={mode}>
+            <p className="flex items-center gap-2">
+              <Tag tone={MODE_TONE[mode]}>{MODE_LABEL[mode]}</Tag>
               {mode === "waterfall" && !binding.waterfallAllowed ? (
-                <span className="ta-caption-2 text-muted-foreground ml-2">Not on your plan</span>
+                <span className="ta-caption-2 text-muted-foreground">Not on your plan</span>
               ) : null}
             </p>
-            <p className="ta-caption-1 text-muted-foreground mt-1">{MODE_EXPLAINER[mode]}</p>
+            <p className="ta-caption-1 text-muted-foreground mt-1.5 leading-[17px]">{MODE_EXPLAINER[mode]}</p>
           </div>
         ))}
       </div>
 
-      <div className="bg-primary/5 mb-6 rounded-xl border p-4">
-        <p className="ta-label-1">The number warm transfers come from</p>
+      {/* Where warm transfers ring from, in one line. */}
+      <p className="ta-caption-1 text-muted-foreground mt-4 flex items-start gap-2 border-t pt-3.5">
+        <Phone className="mt-px size-3.5 shrink-0" />
         {binding.agentNumber ? (
-          <>
-            <p className="ta-headline-2 mt-1">{displayPhone(binding.agentNumber)}</p>
-            <p className="ta-caption-1 text-muted-foreground mt-1">
-              Save this number in your contacts. When the assistant has a call to hand over, it rings you
-              from this number first.
-            </p>
-          </>
+          <span>
+            Warm transfers ring you from{" "}
+            <span className="text-foreground font-mono">{displayPhone(binding.agentNumber)}</span>, your
+            assistant's number. Save it in your contacts so you know it's a call being handed over.
+          </span>
+        ) : binding.mode === "demo" ? (
+          <span>A demo has no phone line. Once this business goes live, warm transfers ring from its assistant's number.</span>
         ) : (
-          <p className="ta-caption-1 text-muted-foreground mt-1">
-            {binding.mode === "demo"
-              ? "A demo has no phone line. Once this business goes live, transfers ring from its assistant's number."
-              : "You'll see it here once a phone number is assigned to your assistant."}
-          </p>
+          <span>Warm transfers ring you from your assistant's number, shown here once one is assigned.</span>
         )}
-      </div>
+      </p>
 
-      <div className="mt-8">
+      <div className="mt-6">
         <TransferExchange businessName={binding.businessName} scenario={sample} />
       </div>
-
     </div>
   );
 }

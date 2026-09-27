@@ -263,10 +263,10 @@ export function ScenarioRow({
           onClick={onToggle}
           aria-expanded={open}
           aria-label={label}
-          className="flex min-w-0 flex-1 items-center gap-4 py-3 pl-4 text-left disabled:cursor-default"
+          className="flex min-w-0 flex-1 items-center gap-4 py-2.5 pl-4 text-left disabled:cursor-default"
         >
           <span className="min-w-0 flex-1">{main}</span>
-          {meta ? <span className="hidden shrink-0 items-center gap-4 md:flex">{meta}</span> : null}
+          {meta ? <span className="hidden shrink-0 items-center gap-4 @2xl:flex">{meta}</span> : null}
         </button>
         {actions}
       </div>

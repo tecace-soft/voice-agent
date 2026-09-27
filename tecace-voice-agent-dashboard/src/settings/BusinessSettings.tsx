@@ -3,6 +3,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import type { BusinessProfile as DemoBusinessProfile, CustomerPrompts } from "@/lib/types";
 import { DEFAULT_VOICE } from "@/lib/types";
+import { quotedGreeting } from "@/lib/prompt";
 import {
   getCallSettings,
   getSessionPreview,
@@ -18,7 +19,7 @@ import type { AgentNumber, BehaviourDefault, BusinessProfile } from "../api/type
 import { accountErrorMessage } from "../auth";
 import type { SectionId } from "../routing";
 import { displayPhone, withDefaults, type CallSettings, type StoredCallSettings } from "./callSettings";
-import { SaveRow, SettingsShell, type SettingsSection } from "./SettingsShell";
+import { SaveRow, SettingsShell, type Phase, type SettingsSection } from "./SettingsShell";
 import { PublishControl, makeUpdater, type CallSettingsBinding } from "./sections/shared";
 import { TransferCallsSection } from "./sections/TransferCallsSection";
 import { AppointmentsSection } from "./sections/AppointmentsSection";
@@ -58,6 +59,10 @@ type Props = {
   section: SectionId | undefined;
   onSection: (section: SectionId) => void;
   onSaved: (profile: BusinessProfile) => void;
+  /** Where the account is, when the page knows better than the profile (an account being set up). */
+  phase?: Phase;
+  /** A line across the top of the studio: the Go live checklist, a line that isn't answering yet. */
+  notice?: ReactNode;
 };
 
 type Saving = "knowledge" | "faqs" | "agent" | "rules" | "prompts" | "rebuild" | null;
@@ -241,7 +246,7 @@ export function BusinessSettings(props: Props) {
 
   const legacyTransfer =
     profile.transferNumber && calls && calls.draft.transfer.scenarios.length === 0 ? (
-      <div className="bg-primary/10 ta-caption-1 text-primary mb-6 rounded-lg p-3">
+      <div className="bg-primary/5 ta-caption-1 text-primary mb-5 rounded-lg px-3 py-2.5">
         Callers who ask for a person are put through to {displayPhone(profile.transferNumber)}, the number you set
         up before transfer scenarios existed. Add a transfer and publish it to replace that.
       </div>
@@ -249,7 +254,7 @@ export function BusinessSettings(props: Props) {
 
   const waterfallAdmin =
     props.isAdmin && userId && calls ? (
-      <label className="bg-muted/40 mb-6 flex items-center justify-between gap-4 rounded-xl border p-4">
+      <label className="mb-5 flex items-center justify-between gap-4 border-y py-2.5">
         <span>
           <span className="ta-label-1 block">Waterfall transfers on this account</span>
           <span className="ta-caption-1 text-muted-foreground">Admin only. A higher-plan feature.</span>
@@ -342,11 +347,15 @@ export function BusinessSettings(props: Props) {
       id: "transfers",
       badge: calls?.dirty ? "Draft" : undefined,
       render: callsSection((binding) => (
-        <>
-          {waterfallAdmin}
-          {legacyTransfer}
-          <TransferCallsSection binding={binding} />
-        </>
+        <TransferCallsSection
+          binding={binding}
+          notes={
+            <>
+              {legacyTransfer}
+              {waterfallAdmin}
+            </>
+          }
+        />
       )),
     },
     {
@@ -397,9 +406,11 @@ export function BusinessSettings(props: Props) {
       sections={sections}
       active={props.section}
       onSelect={props.onSection}
-      phase={profile.isLive && props.number ? "live" : "onboarding"}
+      phase={props.phase ?? (profile.isLive && props.number ? "live" : "onboarding")}
       asideTitle="Test call"
       asideBadge="Uses your draft"
+      asideBare={Boolean(calls)}
+      notice={props.notice}
       aside={
         calls ? (
           <BusinessTestConsole
@@ -410,6 +421,7 @@ export function BusinessSettings(props: Props) {
             businessName={businessName}
             agentNumber={calls.agentNumber}
             agentName={agent.agentName || undefined}
+            greetingLine={quotedGreeting(prompts.greeting)}
           />
         ) : (
           <p className={callsError ? "ta-body-2 text-destructive" : "ta-body-2 text-muted-foreground"}>
@@ -421,7 +433,7 @@ export function BusinessSettings(props: Props) {
         calls && (PUBLISHED_SECTIONS.includes(current) || calls.dirty) ? (
           <PublishControl dirty={calls.dirty} publishedAt={calls.publishedAt} onPublish={publish} />
         ) : (
-          <span className="ta-caption-1 text-muted-foreground">Each section saves on its own.</span>
+          <span className="ta-caption-1 text-muted-foreground whitespace-nowrap">Each section saves on its own</span>
         )
       }
     />

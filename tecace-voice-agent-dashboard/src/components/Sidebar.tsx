@@ -184,6 +184,8 @@ export function Sidebar({
                 type="button"
                 className={`nav-item${isActive ? " is-active" : ""}`}
                 aria-current={isActive ? "page" : undefined}
+                // The tooltip for the icon rail the settings studio folds this into (src/chrome.tsx).
+                title={item.label}
                 onClick={() => onSelect(item.id)}
               >
                 <ItemIcon size={16} />
@@ -221,7 +223,7 @@ export function Sidebar({
         </div>
 
         <div className="sidebar-user">
-          <span className="avatar" aria-hidden="true">
+          <span className="avatar" aria-hidden="true" title={user.name}>
             {initials(user)}
           </span>
           <span className="user-text">

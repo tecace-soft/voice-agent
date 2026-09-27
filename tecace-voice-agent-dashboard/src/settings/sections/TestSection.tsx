@@ -4,6 +4,7 @@ import type { TestCallRecord, TestUsage } from "../../api/types";
 import { accountErrorMessage } from "../../auth";
 import { displayPhone, type CallSettings } from "../callSettings";
 import { SectionIntro } from "../SettingsShell";
+import { ExampleCallPanel } from "../simulator/ExampleCallPanel";
 import { TestCallPanel } from "../simulator/TestCallPanel";
 import { eventLine } from "../simulator/eventLabels";
 
@@ -69,6 +70,7 @@ export function BusinessTestConsole({
   businessName,
   agentNumber,
   agentName,
+  greetingLine,
 }: {
   test: TestCalls;
   agentName?: string;
@@ -77,27 +79,59 @@ export function BusinessTestConsole({
   settings: CallSettings;
   businessName: string;
   agentNumber: string | null;
+  /** The greeting as callers hear it, for the Example call tab. */
+  greetingLine?: string | null;
 }) {
+  const usage = test.usage;
   return (
-    <div className="flex flex-col gap-3">
-      <UsageLine usage={test.usage} />
-      {test.out ? (
-        <p className="ta-label-1 text-destructive" role="alert">
-          You've used this month's test-call minutes. Ask us if you need more.
-        </p>
-      ) : null}
-      <TestCallPanel
-        api={businessTestFetch}
-        customerId={userId ?? profileUserId}
-        settings={settings}
-        businessName={businessName}
-        businessPhone={agentNumber ? displayPhone(agentNumber) : null}
-        agentName={agentName}
-        disabled={test.out}
-        onEnded={test.reload}
-        bookingTool={(name, args) => runCalendarTool(name, args, userId)}
-      />
-    </div>
+    <TestCallPanel
+      api={businessTestFetch}
+      customerId={userId ?? profileUserId}
+      settings={settings}
+      businessName={businessName}
+      businessPhone={agentNumber ? displayPhone(agentNumber) : null}
+      agentName={agentName}
+      disabled={test.out}
+      onEnded={test.reload}
+      bookingTool={(name, args) => runCalendarTool(name, args, userId)}
+      notice={
+        test.out ? (
+          <p className="ta-label-1 text-destructive border-b px-4 py-2.5" role="alert">
+            You've used this month's test-call minutes. Ask us if you need more.
+          </p>
+        ) : null
+      }
+      example={
+        <ExampleCallPanel
+          businessName={businessName}
+          agentName={agentName ?? ""}
+          greetingLine={greetingLine ?? null}
+          settings={settings}
+        />
+      }
+      footer={
+        <>
+          <span>
+            Test minutes{" "}
+            {usage ? (
+              usage.unlimited ? (
+                <>
+                  <b className="text-foreground">unlimited</b> (admin)
+                </>
+              ) : (
+                <>
+                  <b className="text-foreground">{minutes(usage.usedSec)}</b> of {minutes(usage.capSec)} this month
+                </>
+              )
+            ) : (
+              "…"
+            )}
+          </span>
+          <span className="flex-1" />
+          <span>Uses your draft</span>
+        </>
+      }
+    />
   );
 }
 

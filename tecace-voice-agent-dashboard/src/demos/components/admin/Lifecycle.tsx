@@ -1,5 +1,5 @@
 import { demoFetch } from "@/api";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -223,9 +223,15 @@ export function LifecycleNotice({
 export function RequestSetup({
   customer,
   onChanged,
+  variant = "card",
+  extra,
 }: {
   customer: Customer;
   onChanged?: (next: Customer) => void;
+  /** "strip": one line across the top of the settings studio (B2), instead of a card. */
+  variant?: "card" | "strip";
+  /** The strip's second line: how the demo has been used. */
+  extra?: ReactNode;
 }) {
   const [current, update] = useCustomer(customer, onChanged);
   const [open, setOpen] = useState(false);
@@ -252,6 +258,86 @@ export function RequestSetup({
   }
 
   const requested = current.request;
+  const dialog = (
+      <Dialog open={open} onOpenChange={(next) => !busy && setOpen(next)}>
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="ta-headline-1">Request setup</DialogTitle>
+            <DialogDescription className="ta-body-2">
+              We&apos;ll review your request and get back to you. Once it&apos;s approved, your
+              receptionist is copied into your own business information, where you can edit it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="request-note" className="ta-label-1">
+              Anything we should know? (optional)
+            </Label>
+            <Textarea
+              id="request-note"
+              value={note}
+              maxLength={MAX_NOTE}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="For example: we'd like to start next month."
+            />
+          </div>
+          <ErrorLine error={error} />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
+              Cancel
+            </Button>
+            <Button onClick={() => void send()} disabled={busy}>
+              {busy ? "Sending" : "Send request"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+  );
+
+  if (variant === "strip") {
+    return (
+      <div className="bg-primary/5 flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 md:px-6">
+        <div className="min-w-0 flex-1">
+          <p className="ta-caption-1">
+            {requested ? (
+              <>
+                <b className="font-semibold">Setup requested</b> on {shortDate(requested.requestedAt)}. We&apos;ll be in
+                touch to set it up for your business. Until then, this is a preview: everything your receptionist
+                knows and does, read only.
+              </>
+            ) : (
+              <>
+                <b className="font-semibold">A preview of your receptionist, read only.</b> Everything it knows and
+                does. Want it for your business? Request setup, and you can then change any of it and test it before
+                it takes real calls.
+              </>
+            )}
+            {!requested && current.declined ? (
+              <span className="text-foreground"> Not yet{current.declined.note ? `: ${current.declined.note}` : "."}</span>
+            ) : null}
+          </p>
+          <p className="ta-caption-1 text-muted-foreground mt-0.5">
+            {current.customerCode ? (
+              <>
+                Your customer ID: <span className="font-mono">{current.customerCode}</span>
+                {extra ? " · " : null}
+              </>
+            ) : null}
+            {extra}
+          </p>
+        </div>
+        {requested ? (
+          <StatusBadge kind="caution">Waiting for us</StatusBadge>
+        ) : (
+          <Button size="sm" onClick={() => setOpen(true)}>
+            {current.declined ? "Ask again" : "Request setup"}
+            <ArrowRight className="size-4" />
+          </Button>
+        )}
+        {dialog}
+      </div>
+    );
+  }
+
   return (
     <Card className="rounded-xl border shadow-none">
       <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4 md:p-6">
@@ -294,38 +380,7 @@ export function RequestSetup({
         )}
       </CardContent>
 
-      <Dialog open={open} onOpenChange={(next) => !busy && setOpen(next)}>
-        <DialogContent className="max-w-md rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="ta-headline-1">Request setup</DialogTitle>
-            <DialogDescription className="ta-body-2">
-              We&apos;ll review your request and get back to you. Once it&apos;s approved, your
-              receptionist is copied into your own business information, where you can edit it.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="request-note" className="ta-label-1">
-              Anything we should know? (optional)
-            </Label>
-            <Textarea
-              id="request-note"
-              value={note}
-              maxLength={MAX_NOTE}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder="For example: we'd like to start next month."
-            />
-          </div>
-          <ErrorLine error={error} />
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button onClick={() => void send()} disabled={busy}>
-              {busy ? "Sending" : "Send request"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {dialog}
     </Card>
   );
 }

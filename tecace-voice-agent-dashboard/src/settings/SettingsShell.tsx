@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TopbarEnd, useHasTopbar, useStudioChrome } from "../chrome";
 import type { SectionId } from "../routing";
 
 // The receptionist's settings as a studio: a grouped menu, the open section, and the test console
@@ -33,6 +34,10 @@ import type { SectionId } from "../routing";
 // "change something, call, change again", so the call stays on screen while you edit. The same shell
 // serves a demo (the operator, and read-only for the demo's own customer), a business in onboarding
 // and a live one — so the screen a customer first sees in their demo is the one they later run.
+//
+// It takes the whole screen (the B2 layout): no card around it, panes divided by hairlines, the app
+// sidebar folded to an icon rail and the bar's controls in the app's own top bar (src/chrome.tsx).
+// Where the studio is, Demo › Onboarding › Live sits at the foot of the menu.
 //
 // Wide screens (≥1280px) show the console as a resizable pane; between 1024 and 1280 it slides over
 // the section from the bar's Test call button; below 1024 the menu becomes a picker and the console
@@ -82,6 +87,8 @@ type Props = {
   asideTitle?: string;
   /** A marker beside the console's title: "Uses draft", "Example". */
   asideBadge?: string;
+  /** The console draws its own header (tabs) and padding: the test call. */
+  asideBare?: boolean;
   /** The right of the bar, for the open section: Save, Publish, a status. */
   toolbar?: (section: SectionId) => ReactNode;
   /** Where this receptionist is on the way to a live line. */
@@ -95,15 +102,22 @@ type Props = {
 const WIDTH_KEY = "settings-console-width";
 const MIN_W = 300;
 const MAX_W = 560;
+const DEFAULT_W = 380;
 
 function storedWidth(): number {
   try {
     const n = Number(localStorage.getItem(WIDTH_KEY));
-    return n >= MIN_W && n <= MAX_W ? n : 340;
+    return n >= MIN_W && n <= MAX_W ? n : DEFAULT_W;
   } catch {
-    return 340;
+    return DEFAULT_W;
   }
 }
+
+const PHASE_NOTE: Record<Phase, string> = {
+  demo: "Everything here carries over to onboarding.",
+  onboarding: "Test in the app. The phone line stays off until go live.",
+  live: "Answering real calls with what's published.",
+};
 
 export function SettingsShell({
   sections,
@@ -112,6 +126,7 @@ export function SettingsShell({
   aside,
   asideTitle = "Test call",
   asideBadge,
+  asideBare = false,
   toolbar,
   phase,
   readOnly = false,
@@ -125,6 +140,10 @@ export function SettingsShell({
   );
   const [width, setWidth] = useState(storedWidth);
   const main = useRef<HTMLDivElement | null>(null);
+  // In the dashboard the studio has the whole screen: the sidebar folds to a rail and the bar's
+  // controls join the app's top bar (src/chrome.tsx). Elsewhere (tests) it keeps a bar of its own.
+  useStudioChrome(true);
+  const inTopbar = useHasTopbar();
 
   // A new section starts at its top, not wherever the last one was scrolled to.
   useEffect(() => {
@@ -161,67 +180,91 @@ export function SettingsShell({
     handle.addEventListener("pointerup", up);
   }
 
+  const panelLabel = open ? "Hide panel" : asideTitle;
+  const controls = (
+    <>
+      {toolbar ? toolbar(current.id) : null}
+      {aside ? (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="hidden lg:inline-flex"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-label={panelLabel}
+          title={panelLabel}
+        >
+          {open ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
+        </Button>
+      ) : null}
+    </>
+  );
+
   return (
-    <div className="bg-card flex flex-col overflow-hidden rounded-2xl border lg:h-[calc(100dvh-var(--topbar-h,56px)-8rem)] lg:min-h-[600px]">
-      <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2.5">
-        {phase ? <PhaseSteps phase={phase} /> : null}
-        <div className="flex-1" />
-        {toolbar ? toolbar(current.id) : null}
-        {aside ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="hidden lg:inline-flex"
-            onClick={() => setOpen((o) => !o)}
-            aria-expanded={open}
-          >
-            {open ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
-            {open ? "Hide panel" : asideTitle}
-          </Button>
-        ) : null}
-      </div>
+    <div className="settings-studio flex flex-col lg:h-[calc(100dvh-var(--topbar-h,56px)-var(--studio-above,0px))] lg:min-h-[560px]">
+      {inTopbar ? (
+        <TopbarEnd>
+          <span className="bg-border hidden h-5 w-px lg:block" aria-hidden />
+          {controls}
+        </TopbarEnd>
+      ) : (
+        <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2">
+          <div className="flex-1" />
+          {controls}
+        </div>
+      )}
       {notice ? <div className="border-b">{notice}</div> : null}
 
       <div className="relative flex min-h-0 flex-1 flex-col lg:flex-row">
-        <nav aria-label="Receptionist settings" className="hidden w-56 shrink-0 overflow-y-auto border-r p-3 lg:block">
-          <div className="flex flex-col gap-4">
-            {groups.map((group) => (
-              <div key={group.label}>
-                <p className="ta-caption-2 text-muted-foreground px-3 pb-1 tracking-wide uppercase">{group.label}</p>
-                <ul className="flex flex-col gap-0.5">
-                  {group.ids.map((id) => {
-                    const section = byId.get(id)!;
-                    const { label, icon: Icon } = SECTION_META[id];
-                    const selected = id === current.id;
-                    return (
-                      <li key={id}>
-                        <button
-                          type="button"
-                          onClick={() => onSelect(id)}
-                          aria-current={selected ? "page" : undefined}
-                          className={`ta-label-1 flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left transition-colors ${
-                            selected
-                              ? "bg-primary/10 text-primary"
-                              : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                          }`}
-                        >
-                          <Icon className="size-4 shrink-0" />
-                          <span className="flex-1">{label}</span>
-                          <Badge text={section.badge} />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ))}
-          </div>
+        <nav
+          aria-label="Receptionist settings"
+          className="hidden w-[216px] shrink-0 flex-col gap-3 overflow-y-auto border-r px-2.5 pt-3 pb-2 lg:flex"
+        >
+          {groups.map((group) => (
+            <div key={group.label}>
+              <p className="text-muted-foreground/80 px-2.5 pb-1 text-[10.5px] font-medium tracking-[0.06em] uppercase">
+                {group.label}
+              </p>
+              <ul className="flex flex-col">
+                {group.ids.map((id) => {
+                  const section = byId.get(id)!;
+                  const { label, icon: Icon } = SECTION_META[id];
+                  const selected = id === current.id;
+                  return (
+                    <li key={id}>
+                      <button
+                        type="button"
+                        onClick={() => onSelect(id)}
+                        aria-current={selected ? "page" : undefined}
+                        className={`flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-[13px] transition-colors ${
+                          selected
+                            ? "bg-muted text-foreground font-semibold"
+                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                        }`}
+                      >
+                        <Icon className="size-4 shrink-0" />
+                        <span className="flex-1 truncate">{label}</span>
+                        <Badge text={section.badge} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+          {phase ? (
+            <div className="mt-auto flex flex-col gap-1.5 border-t px-2.5 pt-3">
+              <PhaseSteps phase={phase} />
+              <p className="text-muted-foreground/80 text-[11.5px] leading-snug">{PHASE_NOTE[phase]}</p>
+            </div>
+          ) : null}
         </nav>
 
         <div ref={main} className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-4xl p-4 md:px-6 md:py-5">
+          <div className="w-full max-w-[860px] px-4 py-5 md:px-9 md:pt-6 md:pb-16">
             {/* Narrow screens: the menu becomes a picker above the section. */}
-            <div className="mb-4 lg:hidden">
+            <div className="mb-4 flex flex-col gap-3 lg:hidden">
+              {phase ? <PhaseSteps phase={phase} /> : null}
               <Select value={current.id} onValueChange={(value) => value && onSelect(value as SectionId)}>
                 <SelectTrigger aria-label="Settings section" className="w-full">
                   <SelectValue>{meta.label}</SelectValue>
@@ -236,8 +279,8 @@ export function SettingsShell({
                 </SelectContent>
               </Select>
             </div>
-            <section aria-labelledby="settings-section-title">
-              <h2 id="settings-section-title" className="ta-headline-1 mb-2">
+            <section aria-labelledby="settings-section-title" className="@container">
+              <h2 id="settings-section-title" className="mb-1 text-[20px] leading-7 font-semibold tracking-[-0.015em]">
                 {meta.label}
               </h2>
               {/* A disabled fieldset turns off every input and button inside it at once; the
@@ -266,17 +309,25 @@ export function SettingsShell({
             <aside
               aria-label={asideTitle}
               style={{ "--console-w": `${width}px` } as React.CSSProperties}
-              className={`bg-card flex min-h-0 w-full shrink-0 flex-col border-t lg:w-(--console-w) lg:border-t-0 lg:border-l ${
+              className={`bg-background flex min-h-0 w-full shrink-0 flex-col border-t lg:w-(--console-w) lg:border-t-0 lg:border-l ${
                 open ? "" : "lg:hidden"
               } lg:max-xl:absolute lg:max-xl:inset-y-0 lg:max-xl:right-0 lg:max-xl:z-10 lg:max-xl:shadow-lg`}
             >
-              <div className="flex items-center gap-2 border-b px-4 py-3">
-                <p className="ta-label-1">{asideTitle}</p>
-                {asideBadge ? (
-                  <span className="ta-caption-2 bg-muted text-muted-foreground rounded-full px-2 py-0.5">{asideBadge}</span>
-                ) : null}
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto p-4">{aside}</div>
+              {asideBare ? (
+                aside
+              ) : (
+                <>
+                  <div className="flex h-11 shrink-0 items-center gap-2 border-b px-4">
+                    <p className="ta-label-1">{asideTitle}</p>
+                    {asideBadge ? (
+                      <span className="ta-caption-2 bg-muted text-muted-foreground rounded-full px-2 py-0.5">
+                        {asideBadge}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto p-4">{aside}</div>
+                </>
+              )}
             </aside>
           </>
         ) : null}
@@ -308,18 +359,18 @@ const PHASES: { id: Phase; label: string }[] = [
 export function PhaseSteps({ phase }: { phase: Phase }) {
   const at = PHASES.findIndex((p) => p.id === phase);
   return (
-    <ol className="flex items-center gap-1.5" aria-label="Where this receptionist is">
+    <ol className="flex items-center gap-1.5 text-[12px]" aria-label="Where this receptionist is">
       {PHASES.map((p, i) => (
         <li key={p.id} className="flex items-center gap-1.5">
-          {i > 0 ? <span className="bg-border h-px w-4" aria-hidden /> : null}
+          {i > 0 ? (
+            <span className="text-muted-foreground/60" aria-hidden>
+              ›
+            </span>
+          ) : null}
           <span
             aria-current={i === at ? "step" : undefined}
-            className={`ta-caption-1 flex items-center gap-1 rounded-full px-2 py-0.5 ${
-              i === at
-                ? "bg-primary text-primary-foreground"
-                : i < at
-                  ? "text-primary"
-                  : "text-muted-foreground"
+            className={`flex items-center gap-1 ${
+              i === at ? "text-primary font-semibold" : i < at ? "text-foreground" : "text-muted-foreground/70"
             }`}
           >
             {i < at ? <Check className="size-3" /> : null}
@@ -333,7 +384,7 @@ export function PhaseSteps({ phase }: { phase: Phase }) {
 
 /** The line under a section title that says what the section is for. */
 export function SectionIntro({ children }: { children: ReactNode }) {
-  return <p className="ta-body-2 text-muted-foreground mb-6 max-w-2xl">{children}</p>;
+  return <p className="ta-body-2 text-muted-foreground mb-6 max-w-[62ch]">{children}</p>;
 }
 
 /** A save row for the sections that save themselves (a business). */

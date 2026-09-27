@@ -14,8 +14,9 @@ type Props = {
   agentName: string;
   greetingLine: string | null;
   settings: CallSettings;
-  /** The demo page, where the customer can call their receptionist. */
-  demoLink: string;
+  /** The demo page, where the customer can call their receptionist. Without it (the operator's
+   * Example call tab, beside a real test call) only the example is shown. */
+  demoLink?: string;
   /** The demo is paused or not ready: the page would say it's unavailable. */
   unavailable?: boolean;
 };
@@ -29,6 +30,7 @@ export function ExampleCallPanel({ businessName, agentName, greetingLine, settin
 
   return (
     <div className="flex flex-col gap-4">
+      {demoLink ? (
       <div className="bg-muted/40 flex flex-col gap-3 rounded-xl border p-4">
         <p className="ta-label-1">Call your receptionist</p>
         <p className="ta-caption-1 text-muted-foreground">
@@ -43,6 +45,7 @@ export function ExampleCallPanel({ businessName, agentName, greetingLine, settin
           </Button>
         )}
       </div>
+      ) : null}
 
       <div>
         <p className="ta-label-1 mb-1">An example call</p>

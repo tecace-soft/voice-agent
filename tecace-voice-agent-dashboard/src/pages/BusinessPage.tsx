@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
   getBusinessProfile,
   getReadiness,
@@ -14,6 +14,7 @@ import type {
   MailboxScope,
 } from "../api/types";
 import { accountErrorMessage } from "../auth";
+import { TopbarMain } from "../chrome";
 import { BusinessSettings } from "../settings/BusinessSettings";
 import type { SectionId } from "../routing";
 import { IconAlert, IconChevronLeft, IconChevronRight, IconPhone } from "../icons";
@@ -22,8 +23,9 @@ import { formatPhone } from "../lib";
 // What the voice agent says about a customer's business, and where they change it.
 //
 // A customer starts by describing their business in their own words; the backend reads that into the
-// structured profile. From then on the receptionist is configured in the settings screen below the
-// status card (src/settings/BusinessSettings.tsx): what it knows, how it sounds, who it transfers
+// structured profile. From then on the receptionist is configured in the settings studio, which takes
+// the whole screen with the business's name and line status in the app's top bar
+// (src/settings/BusinessSettings.tsx): what it knows, how it sounds, who it transfers
 // to, which links it texts, and how to switch the line on.
 
 const PLACEHOLDER = `Paste anything you already have — your website's About page, a services list, an email you send new customers. Plain sentences work just as well.
@@ -339,132 +341,180 @@ export function BusinessPage({
     );
   }
 
-  return (
-    <div className="view">
-      {isAdmin && viewing && (
-        <div className="viewing-as" role="status">
-          <button type="button" className="btn btn-quiet" onClick={() => onScope?.(undefined)}>
-            <IconChevronLeft size={14} />
-            All customers
-          </button>
-          <span className="ta-label-1">
-            Editing <strong>{viewing.name}</strong>'s business information
-          </span>
-          <span className="ta-caption-2 muted">{viewing.email}</span>
-        </div>
-      )}
-      <section className="card">
-        <div className="card-toolbar">
-          <div>
-            <div className="card-title ta-headline-2">
-              {profile?.businessName || "Your business"}
-            </div>
-            <div className="card-sub ta-caption-1">
-              {profile
-                ? "Answering as this business. Details are further down the page."
-                : "Add your business information and the assistant will start answering as you."}
-            </div>
+  // No business information yet: the page is one card asking for it, in the ordinary chrome.
+  if (!profile) {
+    return (
+      <div className="view">
+        {isAdmin && viewing && (
+          <div className="viewing-as" role="status">
+            <button type="button" className="btn btn-quiet" onClick={() => onScope?.(undefined)}>
+              <IconChevronLeft size={14} />
+              All customers
+            </button>
+            <span className="ta-label-1">
+              Editing <strong>{viewing.name}</strong>'s business information
+            </span>
+            <span className="ta-caption-2 muted">{viewing.email}</span>
           </div>
-          <button
-            type="button"
-            className={profile ? "btn btn-quiet" : "btn btn-primary"}
-            onClick={startEditing}
-          >
-            {profile ? "Edit" : "Add your business information"}
-          </button>
-        </div>
-
-        <div className="business-status">
-          {state === "empty" && (
+        )}
+        <section className="card">
+          <div className="card-toolbar">
+            <div>
+              <div className="card-title ta-headline-2">Your business</div>
+              <div className="card-sub ta-caption-1">
+                Add your business information and the assistant will start answering as you.
+              </div>
+            </div>
+            <button type="button" className="btn btn-primary" onClick={startEditing}>
+              Add your business information
+            </button>
+          </div>
+          <div className="business-status">
             <p className="ta-body-2 muted">
               Nothing here yet. Add your business information and the assistant will start answering
               as you. Until then it still picks up — it takes a message and offers to put people
               through, it just doesn't say who it's answering for.
             </p>
-          )}
-          {state === "empty" && (
             <p className="ta-caption-1 muted business-transfer">
               You'll also be able to set a number for the assistant to forward callers to when they
               ask for a person.
             </p>
-          )}
-          {state === "not-live" && (
-            <p className="notice notice-slim" role="status">
-              <IconAlert size={14} />
-              We couldn't get enough from what you wrote to answer as your business — it needs at
-              least your name and what you do. The assistant is taking messages in the meantime.
-            </p>
-          )}
-          {onboarding && readiness && (
-            <div className="readiness" role="status" aria-label="Go live checklist">
-              <p className="ta-body-2">
-                {viewing ? "This business is" : "You're"} being set up. The phone line stays off
-                until everything required below is ticked and{" "}
-                {viewing ? "you switch it on from the Accounts page" : "we switch it on"}. Test
-                calls in the app work in the meantime.
-              </p>
-              <ul className="readiness-list">
-                {readiness.items.map((item) => (
-                  <li
-                    key={item.id}
-                    className={`ta-label-1 ${item.ok ? "is-ok" : item.required ? "is-missing" : "is-advice"}`}
-                  >
-                    <span aria-hidden>{item.ok ? "✓" : item.required ? "✕" : "!"}</span>
-                    <span>
-                      {item.label}
-                      {!item.required && !item.ok ? " (recommended)" : ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {!onboarding && state === "no-number" && (
-            <p className="notice notice-slim" role="status">
-              <IconAlert size={14} />
-              Saved, but not in use yet — you don't have a phone number assigned. Ask your
-              administrator to assign one and this starts answering calls straight away.
-            </p>
-          )}
-          {!onboarding && state === "live" && number && (
-            <p className="business-live ta-label-1">
-              <IconPhone size={14} />
-              Answering calls to {formatPhone(number.phoneE164)}
-              {justSaved && <span className="badge badge-success">Updated</span>}
-            </p>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
-      {/*
-        Everything the assistant knows, says and may do, as one settings screen with a menu — the
-        same one a demo's page has (src/settings/). It replaced a column of cards (how it answers,
-        how it behaves, who it transfers to) and the Knowledge and Prompt tabs.
-      */}
-      {profile && (
-        <div className="tw">
-          <BusinessSettings
-            profile={profile}
-            number={number}
-            standard={standard}
-            needsReread={needsReread}
-            factsStale={factsStale}
-            rereading={rereading}
-            onReread={() => void onReread()}
-            onEditDescription={startEditing}
-            userId={targetId}
-            isAdmin={isAdmin}
-            section={section}
-            onSection={(next) => onSection?.(next)}
-            onSaved={(next) => {
-              setProfile(next);
-              setJustSaved(true);
-              // The header and the live state read the same row.
-              void load(true);
-            }}
-          />
-        </div>
-      )}
+  // The business card, folded into the app's top bar (B2, src/chrome.tsx): whose business this is,
+  // and whether the line is answering. What the card said at length goes in one line across the top
+  // of the settings.
+  const name = profile.businessName || "Your business";
+  const status =
+    onboarding ? (
+      <Pill tone="amber">Being set up</Pill>
+    ) : state === "live" && number ? (
+      <Pill tone="green">
+        <IconPhone size={12} />
+        Answering {formatPhone(number.phoneE164)}
+      </Pill>
+    ) : state === "no-number" ? (
+      <Pill tone="amber">No number yet</Pill>
+    ) : (
+      <Pill tone="red">Taking messages only</Pill>
+    );
+
+  const header = (
+    <>
+      <nav className="ta-label-1 flex min-w-16 shrink items-center gap-1.5 overflow-hidden whitespace-nowrap" aria-label="Breadcrumb">
+        <span className="hidden items-center gap-1.5 lg:flex">
+        {isAdmin ? (
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => onScope?.(undefined)}
+            title="All customers"
+          >
+            Business information
+          </button>
+        ) : (
+          <span className="text-muted-foreground">Business information</span>
+        )}
+        <span className="text-muted-foreground/60" aria-hidden>
+          /
+        </span>
+        </span>
+        <h1 className="ta-label-1 truncate font-semibold!" title={viewing ? `${viewing.name} · ${viewing.email}` : undefined}>
+          {name}
+        </h1>
+      </nav>
+      <span className="flex shrink-0 items-center gap-1.5">
+        {status}
+        {justSaved ? <Pill tone="blue">Updated</Pill> : null}
+      </span>
+      <span className="flex-1" />
+    </>
+  );
+
+  const notice =
+    onboarding && readiness ? (
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-2.5" role="status" aria-label="Go live checklist">
+        <span className="ta-caption-1">
+          {viewing ? "Being set up." : "You're being set up."} The line stays off until everything required is ticked
+          and {viewing ? "you switch it on from Accounts" : "we switch it on"}. Test calls work meanwhile.
+        </span>
+        <ul className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {readiness.items.map((item) => (
+            <li
+              key={item.id}
+              className={`ta-caption-1 flex items-center gap-1 ${
+                item.ok ? "text-success" : item.required ? "text-destructive" : "text-warning"
+              }`}
+            >
+              <span aria-hidden>{item.ok ? "✓" : item.required ? "✕" : "!"}</span>
+              {item.label}
+              {!item.required && !item.ok ? " (recommended)" : ""}
+            </li>
+          ))}
+        </ul>
+      </div>
+    ) : state === "not-live" ? (
+      <p className="bg-destructive/5 ta-caption-1 flex items-center gap-2 px-4 py-2.5" role="status">
+        <IconAlert size={14} />
+        We couldn't get enough from what you wrote to answer as your business — it needs at least your name and
+        what you do. The assistant is taking messages in the meantime.
+      </p>
+    ) : state === "no-number" ? (
+      <p className="bg-warning/5 ta-caption-1 flex items-center gap-2 px-4 py-2.5" role="status">
+        <IconAlert size={14} />
+        Saved, but not in use yet — there's no phone number assigned. Ask your administrator to assign one and this
+        starts answering calls straight away.
+      </p>
+    ) : null;
+
+  return (
+    /*
+      Everything the assistant knows, says and may do, as one settings screen with a menu — the same
+      one a demo's page has (src/settings/). It takes the whole screen, with this page's header in the
+      app's top bar.
+    */
+    <div className="tw">
+      <TopbarMain>{header}</TopbarMain>
+      <BusinessSettings
+        profile={profile}
+        number={number}
+        standard={standard}
+        needsReread={needsReread}
+        factsStale={factsStale}
+        rereading={rereading}
+        onReread={() => void onReread()}
+        onEditDescription={startEditing}
+        userId={targetId}
+        isAdmin={isAdmin}
+        section={section}
+        onSection={(next) => onSection?.(next)}
+        phase={onboarding ? "onboarding" : undefined}
+        notice={notice}
+        onSaved={(next) => {
+          setProfile(next);
+          setJustSaved(true);
+          // The header and the live state read the same row.
+          void load(true);
+        }}
+      />
     </div>
+  );
+}
+
+function Pill({ tone, children }: { tone: "green" | "amber" | "red" | "blue"; children: ReactNode }) {
+  const colour = {
+    green: "bg-success/15 text-success",
+    amber: "bg-warning/15 text-warning",
+    red: "bg-destructive/10 text-destructive",
+    blue: "bg-primary/10 text-primary",
+  }[tone];
+  return (
+    <span className={`ta-caption-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold whitespace-nowrap ${colour}`}>
+      {children}
+    </span>
   );
 }

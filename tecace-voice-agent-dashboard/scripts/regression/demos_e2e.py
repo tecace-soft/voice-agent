@@ -183,17 +183,32 @@ STAT_JS = """
 STUDIO_JS = """
 () => {
   const scope = document.querySelector('main .tw');
-  const tabs = scope.querySelector('[role=tablist]');
+  // B2: the page's row (breadcrumb, badges, tabs) is in the app's top bar, the sidebar is an icon
+  // rail, and the studio runs edge to edge with no card around it.
+  const bar = document.querySelector('header.topbar .topbar-slot');
+  const tabs = bar && bar.querySelector('[role=tablist]');
   const aside = scope.querySelector('aside[aria-label="Test call"]');
   const title = scope.querySelector('#settings-section-title');
+  const studio = scope.querySelector('.settings-studio');
   const call = aside && aside.querySelector('button[aria-label="Call now"],'
     + ' button[aria-label="Start a new call"], button[aria-label="End the call"]');
+  const consoleTabs = aside ? [...aside.querySelectorAll('[aria-label="Test console"] button')]
+    .map((b) => b.textContent.trim().replace(/\\d+$/, '')) : [];
+  const sidebar = document.querySelector('.sidebar').getBoundingClientRect();
   return {
+    tabsInBar: Boolean(tabs),
     tabsInCard: Boolean(tabs && tabs.closest('.rounded-xl')),
-    tabs: tabs ? Math.round(tabs.getBoundingClientRect().width) : 0,
+    crumbs: bar ? bar.querySelector('nav[aria-label="Breadcrumb"]').textContent.replace(/\\s+/g, ' ').trim() : '',
+    oldCrumbs: document.querySelectorAll('header.topbar nav.crumbs').length,
+    rail: document.querySelector('.app').dataset.nav,
+    sidebar: Math.round(sidebar.width),
+    studioLeft: studio ? Math.round(studio.getBoundingClientRect().left) : -1,
+    studioRadius: studio ? getComputedStyle(studio).borderTopLeftRadius : '',
     page: Math.round(scope.getBoundingClientRect().width),
     aside: aside ? Math.round(aside.getBoundingClientRect().width) : 0,
     section: title ? Math.round(title.closest('section').getBoundingClientRect().width) : 0,
+    consoleTabs,
+    phaseInMenu: Boolean(scope.querySelector('nav[aria-label="Receptionist settings"] ol[aria-label="Where this receptionist is"]')),
     hasCall: Boolean(call),
   };
 }
@@ -275,14 +290,15 @@ DEMO_TIME_LABELS = ["10 minutes", "30 minutes", "60 minutes"]
 DEMO_TIME_BUTTON = re.compile(r"^Demo time: \d+ min$")
 # Every Add-time button on screen, in order, so a top-up can be seen landing on all of them
 # without the page being read again.
-DEMO_TIME_SHOWN_JS = ("() => [...document.querySelectorAll('main .tw button')]"
+DEMO_TIME_SHOWN_JS = ("() => [...document.querySelectorAll('main .tw button, header.topbar .tw button')]"
                       ".map((b) => b.innerText.trim()).filter((t) => t.startsWith('Demo time:'))")
 # The prospect page's status badge ("Researching" / "Ready" / "Error" / "Stalled"). Found through
 # the <h1> rather than by class, because PageHeader is the only place the badge sits beside one —
 # the tabs below hold badges of their own.
 STATUS_BADGE_JS = """
 () => {
-  const h1 = document.querySelector('main .tw h1');
+  // The page's h1 is in the app's top bar (B2): breadcrumb nav > h1, the badges beside the nav.
+  const h1 = document.querySelector('header.topbar .tw h1') || document.querySelector('main .tw h1');
   const header = h1 && h1.parentElement && h1.parentElement.parentElement;
   const badge = header && header.querySelector('[data-slot="badge"]');
   return badge ? badge.textContent.trim() : null;
@@ -709,11 +725,13 @@ def run() -> int:
                     check("Customers stays highlighted on a prospect",
                           page.locator(".nav-item.is-active").inner_text().strip() == "Customers")
 
-                    main_tw = page.locator("main .tw")
+                    # The page's own row lives in the app's top bar (B2), so "the page" is both.
+                    main_tw = page.locator("main .tw, header.topbar .tw")
                     stats = {t: page.evaluate(STAT_JS, t)
                              for t in ("Link opens", "Calls", "Minutes", "Average call")}
-                    check("prospect: header names the business and its address",
-                          main_tw.get_by_text("12 Wharf St, Portland, ME", exact=True).is_visible())
+                    check("prospect: the top bar names the business, with its address on hover",
+                          page.locator("header.topbar h1").inner_text().strip() == "Harbor Dental"
+                          and page.locator("header.topbar h1").get_attribute("title") == "12 Wharf St, Portland, ME")
                     check("prospect: the stat cards show the backend's numbers",
                           stats == {"Link opens": "14", "Calls": "3", "Minutes": "9", "Average call": "3:00"},
                           str(stats))
@@ -721,17 +739,27 @@ def run() -> int:
                     page.get_by_role("tab", name="Settings").click()
                     page.locator("main .tw aside[aria-label='Test call']").wait_for()
                     layout = page.evaluate(STUDIO_JS)
-                    check("prospect: the tabs sit in the header, outside any card; the test call is the settings console",
-                          not layout["tabsInCard"] and layout["aside"] >= 300 and layout["hasCall"]
-                          and layout["section"] >= 540,
+                    check("prospect: the tabs sit in the app's top bar, outside any card; the test call is the settings console",
+                          layout["tabsInBar"] and not layout["tabsInCard"] and layout["aside"] >= 300
+                          and layout["hasCall"] and layout["section"] >= 700,
                           str(layout))
+                    check("prospect (B2): one bar, breadcrumb Customers / Harbor Dental, no 'Demo / Detail' crumbs",
+                          layout["crumbs"] == "Customers/Harbor Dental" and layout["oldCrumbs"] == 0, str(layout))
+                    check("prospect (B2): the sidebar folds to a 56px icon rail",
+                          layout["rail"] == "rail" and layout["sidebar"] == 56, str(layout))
+                    check("prospect (B2): the studio runs edge to edge, no card, from the rail's edge",
+                          layout["studioLeft"] == 56 and layout["studioRadius"] == "0px", str(layout))
+                    check("prospect (B2): the console's tabs are Test call / Example call / Events",
+                          layout["consoleTabs"] == ["Test call", "Example call", "Events"], str(layout))
+                    check("prospect (B2): Demo › Onboarding › Live sits at the foot of the settings menu",
+                          layout["phaseInMenu"], str(layout))
                     # The orb above the call panel, and the one that replaced the sidebar's
                     # voicemail icon. Both are the same component and the same film; what is
                     # asserted is that the scoped utilities actually reached each of them — a
                     # 64/28px circle showing the centre of the frame, not a stretched square.
                     orb = page.evaluate(ORB_JS, 'main .tw aside video')
-                    check("prospect: the orb leads the console's call row, circular and 44px",
-                          orb["found"] and orb["tag"] == "VIDEO" and orb["w"] == 44 and orb["h"] == 44
+                    check("prospect: the orb leads the console's call row, circular and 40px",
+                          orb["found"] and orb["tag"] == "VIDEO" and orb["w"] == 40 and orb["h"] == 40
                           and orb["radiusPx"] >= orb["w"] / 2 and orb["objectFit"] == "cover"
                           and orb["src"] == "/voice-orb.mp4" and orb["poster"] == "/voice-orb.png"
                           and orb["muted"] and orb["loop"] and orb["ariaHidden"] == "true",
@@ -1176,7 +1204,10 @@ def run() -> int:
                     cedar_link.wait_for()
                     cedar_link.click()
                     page.get_by_role("heading", name="Cedar Bakery", level=1).wait_for()
-                    re_research = main_tw.get_by_role("button", name="Re-research")
+                    # B2: Re-research is in the top bar's "More actions" menu.
+                    main_tw.get_by_role("button", name="More actions").click()
+                    re_research = page.locator("[data-tw-portal] [role=menu]").get_by_role("menuitem", name="Re-research")
+                    re_research.wait_for()
                     check("research: a prospect mid-research says so, and offers Re-research",
                           page.evaluate(STATUS_BADGE_JS) == "Researching"
                           and re_research.count() == 1 and re_research.is_enabled(),
@@ -1193,7 +1224,7 @@ def run() -> int:
                     check("research: ... and says it finished", new_toast(page, "Research finished."))
                     check("research: ... and the answer lands on the page without a reload",
                           settled(page, f"() => ({STATUS_BADGE_JS})() === 'Ready'")
-                          and main_tw.get_by_text("8 Mill Lane, Portland, ME", exact=True).is_visible(),
+                          and page.locator("header.topbar h1").get_attribute("title") == "8 Mill Lane, Portland, ME",
                           f"badge={page.evaluate(STATUS_BADGE_JS)}")
 
                     # ResearchInputsPanel's own run button — the second trigger for the same

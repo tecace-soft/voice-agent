@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { countOpenFeedback, countUnseenFailures, getTranscribeStats } from "./api/backend";
 import type { AuthUser, MailboxScope, TranscribeStats } from "./api/types";
 import { useAuth } from "./auth";
+import { ChromeContext } from "./chrome";
 import { Sidebar, type ViewId } from "./components/Sidebar";
 import { MailboxPicker } from "./components/MailboxPicker";
 import { DemosView } from "./demos/DemosView";
@@ -109,6 +110,19 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // Open by default on a desktop-width screen; on narrow screens the rail is an overlay, so it
   // starts closed and the header's toggle brings it in.
   const [navOpen, setNavOpen] = useState(() => window.innerWidth >= 900);
+  // The settings studio asks for the whole screen (src/chrome.tsx): the sidebar folds to an icon rail
+  // — the header's toggle unfolds it — and the top bar carries the page's own row.
+  const [studio, setStudio] = useState(false);
+  const [railOpen, setRailOpen] = useState(false);
+  const [slotMain, setSlotMain] = useState<HTMLDivElement | null>(null);
+  const [slotEnd, setSlotEnd] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (studio) setRailOpen(false);
+  }, [studio]);
+  const chrome = useMemo(() => ({ setStudio, main: slotMain, end: slotEnd }), [slotMain, slotEnd]);
+  const navState = studio ? (railOpen ? "open" : "rail") : navOpen ? "open" : "closed";
+  const toggleNav = () => (studio ? setRailOpen((o) => !o) : setNavOpen((o) => !o));
+  const closeNav = () => (studio ? setRailOpen(false) : setNavOpen(false));
   // Admin surfaces only — see `people.ts`. `isAdmin` is read below, so this is declared after it.
   const accountNames = useAccountNames(user.role === "admin");
   // Which mailbox is on screen. Admins choose; for everyone else it stays undefined and the backend
@@ -189,11 +203,12 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
     // For a demo-stage account there is one destination, and it needs the record id in the path.
     if (demoOnly) navigate({ view: "demoProspect", id: user.businessId ?? undefined });
     else navigate({ view: id });
-    if (window.innerWidth < 900) setNavOpen(false);
+    if (window.innerWidth < 900) closeNav();
   };
 
   return (
-    <div className="app" data-nav={navOpen ? "open" : "closed"}>
+    <ChromeContext.Provider value={chrome}>
+    <div className="app" data-nav={navState}>
       <Sidebar
         active={view}
         onSelect={openView}
@@ -206,19 +221,23 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
         user={user}
         onSignOut={onSignOut}
       />
-      <div className="nav-scrim" onClick={() => setNavOpen(false)} aria-hidden="true" />
+      <div className="nav-scrim" onClick={closeNav} aria-hidden="true" />
 
       <div className="shell">
         <header className="topbar">
           <button
             type="button"
             className="icon-btn"
-            aria-label={navOpen ? "Hide navigation" : "Show navigation"}
-            aria-expanded={navOpen}
-            onClick={() => setNavOpen((o) => !o)}
+            aria-label={navState === "open" ? "Hide navigation" : "Show navigation"}
+            aria-expanded={navState === "open"}
+            onClick={toggleNav}
           >
             <IconPanelLeft size={16} />
           </button>
+          {/* The studio's own row goes here (src/chrome.tsx); only mounted while a page asks for it,
+              so every other view's markup is what it was. */}
+          {studio && <div className="topbar-slot tw" ref={setSlotMain} />}
+          {!studio && (
           <nav className="crumbs ta-label-1" aria-label="Breadcrumb">
             <span className="muted">{isDemoView ? "Demo" : "Transcribe"}</span>
             <span className="muted" aria-hidden="true">
@@ -228,9 +247,13 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
               {demoOnly ? "My receptionist" : VIEW_TITLES[view]}
             </span>
           </nav>
+          )}
           <div className="topbar-actions">
-            {isAdmin && !isDemoView && <MailboxPicker value={mailbox} onChange={setMailbox} />}
-            {!isDemoView && (
+            {studio && <div className="topbar-end tw" ref={setSlotEnd} />}
+            {/* The studio's pages say whose settings these are in their own breadcrumb, and read no
+                transcription stats, so neither the picker nor Refresh applies there. */}
+            {isAdmin && !isDemoView && !studio && <MailboxPicker value={mailbox} onChange={setMailbox} />}
+            {!isDemoView && !studio && (
               <button
                 type="button"
                 className="btn btn-primary"
@@ -245,7 +268,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           </div>
         </header>
 
-        <main className="content">
+        <main className={studio ? "content content-bleed" : "content"}>
           {/* The accounts view doesn't depend on the stats, so a stats failure shouldn't hide it. */}
           {error && !STANDALONE_VIEWS.has(view) && !(showMailbox && perPersonViews.has(view)) && (
             <p className="error ta-body-2">{error}</p>
@@ -343,6 +366,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
         </main>
       </div>
     </div>
+    </ChromeContext.Provider>
   );
 }
 

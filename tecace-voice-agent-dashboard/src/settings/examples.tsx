@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { Lightbulb, MessageSquareText, PhoneForwarded, Smartphone } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
   DEFAULT_COLLECT_BEFORE,
   DEFAULT_LINK_TEXT,
@@ -174,12 +173,17 @@ export function ExamplePicker<T extends { key: string; label: string }>({
   label?: string;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-1.5">
       <span className="ta-caption-1 text-muted-foreground">{label}:</span>
       {examples.map((example) => (
-        <Button key={example.key} variant="outline" size="sm" onClick={() => onPick(example)}>
+        <button
+          key={example.key}
+          type="button"
+          onClick={() => onPick(example)}
+          className="text-foreground hover:border-primary hover:text-primary rounded-full border border-dashed px-2.5 py-0.5 text-[12px] transition-colors"
+        >
           {example.label}
-        </Button>
+        </button>
       ))}
     </div>
   );
@@ -200,11 +204,11 @@ export function ExampleExchange({
   footnote?: ReactNode;
 }) {
   return (
-    <div className="bg-muted/30 rounded-xl border p-4">
+    <div className="border-t pt-4">
       <p className="ta-label-1 mb-3 flex items-center gap-2">
         {icon}
         {title}
-        <span className="ta-caption-2 bg-background text-muted-foreground rounded-full border px-2 py-0.5">Example</span>
+        <span className="ta-caption-2 bg-muted text-muted-foreground rounded-full px-2 py-0.5">Example</span>
       </p>
       <ul className="flex flex-col gap-2">
         {lines.map((line, i) =>
@@ -215,8 +219,8 @@ export function ExampleExchange({
           ) : (
             <li
               key={i}
-              className={`ta-body-2 max-w-[85%] rounded-2xl px-3 py-2 ${
-                line.who === "agent" ? "bg-background self-start border" : "bg-primary text-primary-foreground self-end"
+              className={`max-w-[80%] rounded-2xl px-3 py-1.5 text-[13px] leading-5 ${
+                line.who === "agent" ? "bg-muted self-start" : "bg-primary text-primary-foreground self-end"
               }`}
             >
               {line.text}
@@ -299,7 +303,7 @@ export function MessageExchange({ scenario }: { scenario?: MessageScenario }) {
 /** A short list of dos and don'ts, with an example of each. */
 export function Tips({ title = "Tips", items }: { title?: string; items: { good: string; avoid?: string }[] }) {
   return (
-    <div className="rounded-xl border p-4">
+    <div className="border-t pt-4">
       <p className="ta-label-1 mb-2 flex items-center gap-2">
         <Lightbulb className="size-4" />
         {title}

@@ -141,7 +141,7 @@ def main() -> int:
                           page.get_by_label("Business name", exact=True).count() == 1)
                     check("...read-only: the fields can't be edited",
                           page.get_by_label("Business name", exact=True).is_disabled())
-                    check("...and it says so", "A preview of your receptionist's settings" in body, body[:400])
+                    check("...and it says so, in one line with Request setup", "A preview of your receptionist, read only." in body and "Request setup" in body, body[:400])
                     # Read off the menu itself, wherever it is shown at this width: the side menu, or
                     # the picker's options once it is opened.
                     menu = page.locator("nav[aria-label='Receptionist settings']")

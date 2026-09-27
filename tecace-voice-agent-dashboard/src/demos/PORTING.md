@@ -1211,3 +1211,23 @@ Spec: `docs/superpowers/specs/2026-09-27-phase-gates-design.md`.
 - **`components/public/SchedulePanel.tsx`** — an integration tile with `soon` shows a "Coming soon"
   tag, and the section's line under "Connect it to what you already use" says the untagged ones
   connect in a few clicks after sign-up. Nothing on the public page connects anything.
+
+
+## B2 layout: the studio takes the whole screen (2026-09-27) — dashboard-only
+
+- **`screens/ProspectScreen.tsx`** — calls `useStudioChrome(true)` (`src/chrome.tsx`) on every tab:
+  the app sidebar folds to a 56px icon rail and the page's header row moves into the app's top bar
+  through `TopbarMain` (breadcrumb "Customers / <business>" — the business name is the `h1`, its
+  address the `h1`'s `title` — status and lifecycle badges, the tabs, the Live link switch, Demo
+  time, and a "More actions" menu holding **Re-research** and "Open the demo page"). The "Demo /
+  Detail" crumbs are gone on this page. Activity, Sources and Share get their own padding (the
+  content area has none here). The lifecycle notices sit in a strip under the bar whose height is
+  passed to the studio as `--studio-above`. For the demo's own customer the "Want this
+  receptionist…" card and the studio's preview notice are one strip (`RequestSetup variant="strip"`,
+  with the customer ID and the demo's use). The operator's console is `TestCallPanel` drawn edge to
+  edge (`asideBare`) with an Example call tab (`ExampleCallPanel` without `demoLink`) and a footer;
+  the customer's console title is "Example call".
+- **`components/admin/Lifecycle.tsx`** — `RequestSetup` gains `variant?: "card" | "strip"` and
+  `extra?: ReactNode`; the card is unchanged, the strip is one line with the same button and dialog.
+- **`styles/ui-theme.css`** (the promo's type scale block) — three `.settings-studio .ta-*` lines
+  narrow body copy to 13.5px, labels to 13px and headline-2 to 15px inside the settings studio only.

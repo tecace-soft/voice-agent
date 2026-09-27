@@ -267,7 +267,7 @@ def main() -> int:
                     for label in ("Voice prompt", "Backend prompt"):
                         check(f"Custom training: the {label} box is there",
                               page.get_by_label(label, exact=True).count() == 1)
-                    page.get_by_role("button", name="Show").click()
+                    page.get_by_role("button", name="Show", exact=True).click()
                     page.wait_for_timeout(700)
                     check("Custom training: the preview reads the composed session",
                           any("/business/session-preview" in x[1] for x in sent)
@@ -307,15 +307,24 @@ def main() -> int:
                     scoped = page.evaluate(
                         """() => {
                           const nav = document.querySelector('nav[aria-label="Receptionist settings"]');
-                          const card = document.querySelector('.card');
+                          const h1 = document.querySelector('header.topbar .topbar-slot h1');
                           return {
                             navInTw: Boolean(nav && nav.closest('.tw')),
-                            cardOutsideTw: Boolean(card) && !card.closest('.tw'),
+                            cards: document.querySelectorAll('main .card').length,
+                            barTitle: h1 ? h1.textContent.trim() : null,
+                            barInTw: Boolean(h1 && h1.closest('.tw')),
+                            rail: document.querySelector('.app').dataset.nav,
+                            picker: document.querySelectorAll('header.topbar select').length,
                           };
                         }"""
                     )
                     check("the settings render inside the .tw boundary", scoped["navInTw"] is True)
-                    check("...and the page's own cards stay outside it", scoped["cardOutsideTw"] is True)
+                    # B2: the business card is folded into the app's top bar, the sidebar is an icon
+                    # rail, and the transcribe-only mailbox picker and Refresh are gone from the bar.
+                    check("B2: the business card is folded into the top bar (name there, no card on the page)",
+                          scoped["cards"] == 0 and bool(scoped["barTitle"]) and scoped["barInTw"], str(scoped))
+                    check("B2: the sidebar is an icon rail and the bar has no mailbox picker",
+                          scoped["rail"] == "rail" and scoped["picker"] == 0, str(scoped))
 
                     check("no page errors", not errors, "; ".join(errors[:3]))
                     browser.close()
