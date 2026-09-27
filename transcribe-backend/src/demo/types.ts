@@ -113,6 +113,12 @@ export type Customer = {
   prompts: CustomerPrompts;
   voice: string;
   callSound?: CallSound;
+  /**
+   * Dashboard-only (see PORTING.md): what this demo's receptionist may do on a call — transfers,
+   * links, message scenarios. Shape in `business/callSettings.ts`. Copied to the business at
+   * onboarding. Never in `publicView`.
+   */
+  callSettings?: import("../business/callSettings.js").CallSettings;
   agentName: string;
   /**
    * The language the receptionist opens in. Absent means English, which is

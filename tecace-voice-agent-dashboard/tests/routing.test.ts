@@ -41,6 +41,34 @@ describe("parseHash", () => {
   });
 });
 
+describe("settings sections", () => {
+  it("reads an optional section on the Business page and a prospect", () => {
+    expect(parseHash("#/business")).toEqual({ view: "business", mailbox: undefined });
+    expect(parseHash("#/business/transfers")).toEqual({
+      view: "business",
+      mailbox: undefined,
+      section: "transfers",
+    });
+    expect(parseHash("#/demos/prospects/AbC/faqs")).toEqual({
+      view: "demoProspect",
+      mailbox: undefined,
+      id: "AbC",
+      section: "faqs",
+    });
+  });
+
+  it("refuses a section that does not exist", () => {
+    expect(parseHash("#/business/nope").view).toBe("overview");
+  });
+
+  it("writes and round-trips a section", () => {
+    const route: Route = { view: "business", mailbox: "jane@tecace.com", section: "text-link" };
+    expect(formatHash(route)).toBe("#/business/text-link?mailbox=jane%40tecace.com");
+    expect(parseHash(formatHash(route))).toEqual(route);
+    expect(formatHash({ view: "business", mailbox: undefined })).toBe("#/business");
+  });
+});
+
 describe("formatHash", () => {
   it("writes a record id into its segment, encoded", () => {
     expect(formatHash({ view: "demoProspect", mailbox: undefined, id: "a/b" })).toBe(

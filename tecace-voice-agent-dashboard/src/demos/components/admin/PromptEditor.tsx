@@ -37,6 +37,13 @@ type Props = {
    * control that cannot change anything is worse than a missing one.
    */
   showCallSound?: boolean;
+  /**
+   * Dashboard-only (see PORTING.md): which blocks to show. "identity" is name, voice, language and
+   * Rebuild; "prompts" is the three prompt boxes. Default both — every existing caller.
+   */
+  sections?: ("identity" | "prompts")[];
+  /** Dashboard-only (see PORTING.md): the settings screen puts Rebuild with the prompts instead. */
+  hideRebuild?: boolean;
   prompts: CustomerPrompts;
   onAgentNameChange: (value: string) => void;
   onVoiceChange: (value: string) => void;
@@ -92,6 +99,8 @@ export function PromptEditor({
   onRegenerate,
   regenerating,
   showCallSound = true,
+  sections = ["identity", "prompts"],
+  hideRebuild = false,
 }: Props) {
   const sound = resolveCallSound(callSound);
   const selected = LIVE_VOICE_OPTIONS.find((option) => option.id === voice);
@@ -99,6 +108,8 @@ export function PromptEditor({
 
   return (
     <div className="space-y-6">
+      {sections.includes("identity") && (
+      <>
       {/*
         Two columns, not four. The detail page gives this panel two thirds of
         the width, and four columns put "Gleam · North American" and
@@ -168,12 +179,14 @@ export function PromptEditor({
             The accent stays the voice&rsquo;s, whatever language it speaks.
           </p>
         </div>
+        {!hideRebuild && (
         <div className="flex items-end">
           <Button variant="outline" onClick={onRegenerate} disabled={regenerating}>
             <RefreshCw className="size-4" />
             {regenerating ? "Rebuilding" : "Rebuild from data"}
           </Button>
         </div>
+        )}
       </div>
 
       {showCallSound ? (
@@ -232,7 +245,11 @@ export function PromptEditor({
         </div>
       </div>
       ) : null}
+      </>
+      )}
 
+      {sections.includes("prompts") && (
+      <>
       {prompts.edited ? (
         <div className="bg-primary/10 ta-caption-1 text-primary rounded-lg p-3">
           These prompts were edited by hand. Re-research keeps them unless you rebuild.
@@ -260,6 +277,8 @@ export function PromptEditor({
         value={prompts.greeting}
         onChange={(greeting) => onPromptsChange({ ...prompts, greeting, edited: true })}
       />
+      </>
+      )}
     </div>
   );
 }

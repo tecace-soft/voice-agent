@@ -12,6 +12,7 @@
 //    the screens format.
 
 import type { DemoCallRow, DemoCustomerRow, DemoEventRow, DemoNoteRow } from "./map.js";
+import type { CallSettings } from "../business/callSettings.js";
 import type {
   BusinessProfile,
   CallLog,
@@ -65,6 +66,7 @@ export function fromCustomerRow(row: DemoCustomerRow): Customer {
     // and an unresearched row has neither. `""` keeps the type honest; the promo never wrote one.
     voice: row.voice ?? "",
     callSound: (row.callSound as CallSound | null) ?? undefined,
+    callSettings: (row.callSettings as CallSettings | null | undefined) ?? undefined,
     agentName: row.agentName ?? "",
     language: row.language ?? undefined,
     demoMinutes: row.demoMinutes ?? undefined,

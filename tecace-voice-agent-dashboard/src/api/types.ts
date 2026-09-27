@@ -334,3 +334,40 @@ export interface CallMinutes {
   previousMinutes: number;
   updatedAt: string | null;
 }
+
+/** What `GET /business/session-preview` returns: the whole of what a call would be told. */
+export interface SessionPreview {
+  settings: "draft" | "published";
+  live: string;
+  backend: string;
+  greetingLine: string;
+  tools: string[];
+  transfers: string[];
+  /** A hand-edited prompt from before the current builder; the screen suggests a rebuild. */
+  promptsOutdated: boolean;
+}
+
+/** This month's in-app test-call allowance. Admins are not held to it. */
+export interface TestUsage {
+  usedSec: number;
+  capSec: number;
+  remainingSec: number;
+  unlimited?: boolean;
+}
+
+/** One in-app test call, as `GET /business/test/calls` lists it. */
+export interface TestCallRecord {
+  id: string;
+  startedAt: string;
+  endedAt: string | null;
+  status: "started" | "completed" | "failed" | "abandoned";
+  durationSec: number | null;
+  transcript: { speaker: "caller" | "receptionist"; text: string }[];
+  events: { at: string; type: string; data: Record<string, unknown> }[];
+  review: { tested?: string; worked?: string; struggled?: string; gaps?: string[]; sentiment?: string } | null;
+}
+
+export interface TestCallsResponse {
+  calls: TestCallRecord[];
+  usage: TestUsage;
+}

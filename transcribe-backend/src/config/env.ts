@@ -155,6 +155,8 @@ export const env = {
   researchSearchContext,
   // A browser that sends no timezone, or a value that is not one.
   defaultTimezone: process.env.DEFAULT_TIMEZONE || "America/Los_Angeles",
+  // Seconds of in-app test calling a business gets per calendar month, unless an admin sets its own.
+  testSecondsPerMonth: Math.max(0, Number(process.env.APP_TEST_SECONDS_PER_MONTH) || 1800),
   monthlyCap,
   capWarnAt,
   overageRate,

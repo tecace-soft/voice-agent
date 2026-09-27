@@ -10,20 +10,17 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ActivityTab } from "@/components/admin/ActivityTab";
 import { AddDemoTimeMenu } from "@/components/admin/AddDemoTimeMenu";
-import { KnowledgeEditor } from "@/components/admin/KnowledgeEditor";
 import { LifecycleBadges, LifecycleNotice, StartOnboarding } from "@/components/admin/Lifecycle";
-import { SchedulePanel } from "@/components/public/SchedulePanel";
-import { PromptEditor } from "@/components/admin/PromptEditor";
 import { ResearchInputsPanel } from "@/components/admin/ResearchInputsPanel";
 import { SharePanel } from "@/components/admin/SharePanel";
 import { SourcesPanel } from "@/components/research/SourcesPanel";
 import { PageHeader, StatCard, StatusBadge, statusKind } from "@/components/admin/shared";
-import { CallPanel } from "@/components/call/CallPanel";
-import { Transcript } from "@/components/call/Transcript";
-import { VoiceOrb } from "@/components/call/VoiceOrb";
-import { useLiveCall } from "@/hooks/useLiveCall";
 import { formatDuration, isResearchStalled } from "@/lib/analytics";
 import { readJson } from "@/lib/http";
+import { DemoSettings } from "../../settings/DemoSettings";
+import { TestCallPanel } from "../../settings/simulator/TestCallPanel";
+import { withDefaults } from "../../settings/callSettings";
+import type { SectionId } from "../../routing";
 import type {
   CallLog,
   CrmNote,
@@ -57,9 +54,14 @@ export function ProspectScreen({
   id,
   operator = true,
   onOnboarded,
+  section,
+  onSection,
 }: {
   id: string;
   operator?: boolean;
+  /** Dashboard-only: the open settings section, held in the URL. */
+  section?: SectionId;
+  onSection?: (section: SectionId) => void;
   /** Dashboard-only: the customer started onboarding and is leaving the demo. */
   onOnboarded?: () => void | Promise<void>;
 }) {
@@ -69,7 +71,6 @@ export function ProspectScreen({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [researching, setResearching] = useState(false);
   // Calls from this panel are the operator's own and stay out of the numbers.
-  const call = useLiveCall(id, draft?.callSound, { api: demoFetch, isTest: true });
 
   const load = useCallback(async () => {
     try {
@@ -92,12 +93,6 @@ export function ProspectScreen({
   }, [load]);
 
   // Refresh the call list once a test call finishes.
-  useEffect(() => {
-    if (call.state === "ended") {
-      const timer = setTimeout(() => void load(), 1200);
-      return () => clearTimeout(timer);
-    }
-  }, [call.state, load]);
 
   async function save(partial?: Partial<Customer>) {
     if (!draft) return;
@@ -124,10 +119,22 @@ export function ProspectScreen({
         profile: partial?.profile ?? draft.profile,
         prompts: partial?.prompts ?? draft.prompts,
       };
+      // Dashboard-only (see PORTING.md): a demo's own customer may send only the receptionist's
+      // fields (the backend's CUSTOMER_MAY_EDIT) — the full body was refused with a 403 every time.
+      const sent = operator
+        ? body
+        : {
+            profile: body.profile,
+            prompts: body.prompts,
+            agentName: body.agentName,
+            voice: body.voice,
+            language: body.language,
+            callSound: body.callSound,
+          };
       const response = await demoFetch(`/customers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(sent),
       });
       const payload = await readJson<{ customer: Customer }>(response);
       setDraft(payload.customer);
@@ -168,6 +175,31 @@ export function ProspectScreen({
 
   // Only the minutes are taken from the answer, so edits not yet saved stay in
   // the draft rather than being replaced by the stored record.
+  async function rebuildPrompts() {
+    if (!draft) return;
+    setSaving(true);
+    try {
+      const response = await demoFetch(`/customers/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profile: draft.profile,
+          agentName: draft.agentName,
+          voice: draft.voice,
+          language: draft.language,
+          regeneratePrompts: true,
+        }),
+      });
+      const payload = await readJson<{ customer: Customer }>(response);
+      setDraft(payload.customer);
+      toast.success("Prompts rebuilt from the data.");
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : "Could not rebuild.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function addedTime(customer: Customer) {
     setDraft((current) => (current ? { ...current, demoMinutes: customer.demoMinutes } : current));
     setData((current) =>
@@ -292,17 +324,15 @@ export function ProspectScreen({
               it knows, how it sounds, what happened on it.
             */}
             {/* The customer opens on Knowledge, because Activity is not one of their tabs. */}
-            <Tabs defaultValue={operator ? "activity" : "knowledge"}>
+            {/*
+              Dashboard-only (see PORTING.md): the promo's Knowledge, Schedule and Prompt tabs are one
+              Settings tab here — the shared receptionist settings (src/settings/), the same screen a
+              business gets after onboarding, including transfers, links and message scenarios.
+            */}
+            <Tabs defaultValue={operator && !section ? "activity" : "settings"}>
               <TabsList variant="line" className="w-full justify-start">
                 {operator && <TabsTrigger value="activity">Activity</TabsTrigger>}
-                <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
-                <TabsTrigger value="schedule">
-                  Schedule
-                  <span className="ta-caption-2 text-muted-foreground ml-1.5">
-                    (Mockup)
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger value="prompt">Prompt</TabsTrigger>
+                <TabsTrigger value="settings">Settings</TabsTrigger>
                 {operator && <TabsTrigger value="sources">Sources</TabsTrigger>}
                 {operator && <TabsTrigger value="share">Share</TabsTrigger>}
               </TabsList>
@@ -313,65 +343,17 @@ export function ProspectScreen({
                 </TabsContent>
               )}
 
-              <TabsContent value="knowledge" className="pt-4">
-                <KnowledgeEditor
-                  profile={draft.profile}
-                  onChange={(profile) => setDraft({ ...draft, profile })}
-                />
-              </TabsContent>
-
-              {/*
-                The same panel the prospect sees, so the hours edited above can
-                be checked against the week they produce without leaving the
-                page. It reads the profile in the draft, not the saved record.
-              */}
-              <TabsContent value="schedule" className="pt-4">
-                <SchedulePanel profile={draft.profile} agentName={draft.agentName} />
-              </TabsContent>
-
-              <TabsContent value="prompt" className="pt-4">
-                <PromptEditor
-                  agentName={draft.agentName}
-                  voice={draft.voice}
-                  language={draft.language}
-                  callSound={draft.callSound}
-                  onCallSoundChange={(callSound) => setDraft({ ...draft, callSound })}
-                  prompts={draft.prompts}
-                  regenerating={saving}
-                  onAgentNameChange={(agentName) => setDraft({ ...draft, agentName })}
-                  onVoiceChange={(voice) => setDraft({ ...draft, voice })}
-                  onLanguageChange={(language) => {
-                    // The greeting is written in the language, so the prompts
-                    // have to be rebuilt for the change to reach the call.
-                    setDraft({ ...draft, language });
-                    void save({ language });
-                  }}
-                  onPromptsChange={(prompts) => setDraft({ ...draft, prompts })}
-                  onRegenerate={async () => {
-                    setSaving(true);
-                    try {
-                      const response = await demoFetch(`/customers/${id}`, {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          profile: draft.profile,
-                          agentName: draft.agentName,
-                          voice: draft.voice,
-                          language: draft.language,
-                          regeneratePrompts: true,
-                        }),
-                      });
-                      const payload = await readJson<{ customer: Customer }>(response);
-                      setDraft(payload.customer);
-                      toast.success("Prompts rebuilt from the data.");
-                    } catch (caught) {
-                      toast.error(
-                        caught instanceof Error ? caught.message : "Could not rebuild.",
-                      );
-                    } finally {
-                      setSaving(false);
-                    }
-                  }}
+              <TabsContent value="settings" className="pt-4">
+                <DemoSettings
+                  customerId={id}
+                  draft={draft}
+                  setDraft={(change) => setDraft((current) => (current ? change(current) : current))}
+                  save={save}
+                  onRebuild={() => void rebuildPrompts()}
+                  rebuilding={saving}
+                  operator={operator}
+                  section={section}
+                  onSection={(next) => onSection?.(next)}
                 />
               </TabsContent>
 
@@ -411,31 +393,21 @@ export function ProspectScreen({
             <CardTitle className="ta-headline-2">Test call</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-1 flex-col gap-4">
-            {/* The orb sits above the panel rather than inside it: CallPanel is a verbatim port
-                and takes no `meters`, so the live analysers are wired here, where `call` lives. */}
-            <div className="flex justify-center">
-              <VoiceOrb state={call.state} meters={call.meters} size={64} />
-            </div>
-            <CallPanel
-              compact
-              state={call.state}
-              elapsedSec={call.elapsedSec}
-              usageSec={call.usageSec}
-              muted={call.muted}
-              error={call.error}
+            {/*
+              Dashboard-only (see PORTING.md): the test call is the settings screen's TestCallPanel —
+              the same orb, panel and transcript, plus the simulated phone line for the tools the
+              composed session now carries (transfers, links, messages).
+            */}
+            <TestCallPanel
+              api={demoFetch}
+              customerId={id}
+              settings={withDefaults(draft.callSettings)}
+              businessName={draft.profile.name || draft.businessName}
+              businessPhone={draft.profile.phone ?? null}
+              callSound={draft.callSound}
               disabled={draft.status !== "ready" || !draft.active}
-              onDial={call.dial}
-              onHangup={call.hangup}
-              onToggleMute={call.toggleMute}
-              onReset={call.reset}
+              onEnded={() => void load()}
             />
-            <div className="min-h-64 flex-1 overflow-y-auto rounded-lg border">
-              <Transcript
-                entries={call.transcript}
-                thinking={call.thinking}
-                emptyMessage="Call to hear how the receptionist answers."
-              />
-            </div>
           </CardContent>
         </Card>
         )}

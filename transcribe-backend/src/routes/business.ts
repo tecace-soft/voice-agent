@@ -19,7 +19,17 @@ import { ExtractionError, MAX_SOURCE_CHARS } from "../tools/extractBusiness.js";
 import { extractProfile } from "../tools/extractProfile.js";
 import { normalizeProfile } from "../business/profileShape.js";
 import { deriveFromProfile } from "../business/derive.js";
-import { buildPrompts, resolvePrompts } from "../demo/prompt.js";
+import { resolveSessionPrompts } from "../session/prompts.js";
+import { CallSettingsError, validateCallSettings } from "../business/callSettings.js";
+import {
+  findCallSettings,
+  publishCallSettings,
+  saveCallSettingsDraft,
+  setWaterfallAllowed,
+} from "../db/callSettings.js";
+import { composeSession } from "../session/compose.js";
+import { fromBusinessRow } from "../session/records.js";
+import { promptsOutdated } from "../session/prompts.js";
 import type { BusinessProfile as StructuredProfile } from "../demo/types.js";
 import {
   assignAgentNumber,
@@ -53,6 +63,11 @@ const NUMBERS_ARE_ADMIN = "Only an admin can manage the agent's phone numbers.";
  * what a customer may keep, not on what a caller may hear.
  */
 const MAX_PROFILE_CHARS = 120_000;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Twenty scenarios of three kinds with long descriptions is well under this. */
+const MAX_CALL_SETTINGS_CHARS = 200_000;
 
 const ADD_DETAILS_FIRST =
   "Add your business information first — until then the assistant answers neutrally.";
@@ -252,14 +267,13 @@ export const business = new Elysia({ prefix: "/business" })
           // two tab endpoints follow: an untouched set is rebuilt from the new data, a hand-written
           // one is left alone. Re-reading a description is exactly when a customer who wrote their
           // own prompt would otherwise lose it, without asking for a rebuild and without being told.
-          prompts: existing?.prompts
-            ? resolvePrompts({
-                current: existing.prompts,
-                profile,
-                agentName: identity.agentName ?? "",
-                language: existing.language ?? undefined,
-              })
-            : buildPrompts(profile, identity.agentName ?? "", existing?.language ?? undefined),
+          prompts: resolveSessionPrompts({
+            current: existing?.prompts,
+            profile,
+            agentName: identity.agentName ?? "",
+            language: existing?.language ?? undefined,
+            greeting: identity.greeting,
+          }),
           voice: existing?.voice ?? null,
           language: existing?.language ?? null,
         };
@@ -480,11 +494,12 @@ export const business = new Elysia({ prefix: "/business" })
         throw err;
       }
 
-      const prompts = resolvePrompts({
-        current: existing.prompts ?? buildPrompts(profile, existing.agentName ?? "", existing.language ?? undefined),
+      const prompts = resolveSessionPrompts({
+        current: existing.prompts,
         profile,
         agentName: existing.agentName ?? "",
         language: existing.language ?? undefined,
+        greeting: existing.greeting,
       });
 
       const saved = await saveStructured(
@@ -540,16 +555,17 @@ export const business = new Elysia({ prefix: "/business" })
       // customer had changed nothing: the editor posts back the text it is showing, which was built
       // under the OLD language and agent name, while the comparison rebuilt it under the new ones.
       // Changing the language dropdown alone was enough to freeze the English prompt forever.
-      const prompts = existing.prompts
-        ? resolvePrompts({
-            current: existing.prompts,
-            submitted: body.prompts as never,
-            profile,
-            agentName: existing.agentName ?? "",
-            language: language ?? undefined,
-            regenerate: body.rebuild === true,
-          })
-        : buildPrompts(profile, existing.agentName ?? "", language ?? undefined);
+      // The session builder (session/prompts.ts), not the demo's: a business's stored prompts are
+      // persona and knowledge only, and the rules come from the rule book at call time.
+      const prompts = resolveSessionPrompts({
+        current: existing.prompts,
+        submitted: existing.prompts ? (body.prompts as never) : null,
+        profile,
+        agentName: existing.agentName ?? "",
+        language: language ?? undefined,
+        greeting: existing.greeting,
+        regenerate: body.rebuild === true,
+      });
 
       const saved = await saveStructured(
         target,
@@ -603,5 +619,147 @@ export const business = new Elysia({ prefix: "/business" })
         agentName: t.Optional(t.String({ maxLength: 200 })),
         greeting: t.Optional(t.String({ maxLength: 1000 })),
       }),
+    },
+  )
+
+  // ---- call settings: transfers, text-a-link, message scenarios --------------------------------
+  //
+  // Edited as a draft and published on purpose. The draft is what the settings screens show and what
+  // an in-app test call uses; callers get the published copy, and only once someone presses Publish.
+  // The rules for what may be saved are in business/callSettings.ts, shared with the demo side.
+  .get(
+    "/call-settings",
+    async ({ headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      const target = profileTargetFor(user, query.userId);
+      const [settings, number] = await Promise.all([findCallSettings(target), findNumberForUser(target)]);
+      return { ...settings, agentNumber: number?.phoneE164 ?? null };
+    },
+    { query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }) },
+  )
+
+  .put(
+    "/call-settings",
+    async ({ body, headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      const target = profileTargetFor(user, query.userId);
+
+      const size = JSON.stringify(body.draft ?? null).length;
+      if (size > MAX_CALL_SETTINGS_CHARS) {
+        return status(413, { error: "call_settings_too_large", message: "That's more than we can store." });
+      }
+      const [current, number] = await Promise.all([findCallSettings(target), findNumberForUser(target)]);
+      let draft;
+      try {
+        draft = validateCallSettings(body.draft, {
+          agentNumber: number?.phoneE164 ?? null,
+          waterfallAllowed: current.waterfallAllowed,
+        });
+      } catch (err) {
+        if (err instanceof CallSettingsError) {
+          return status(400, { error: "invalid_call_settings", field: err.field, message: err.message });
+        }
+        throw err;
+      }
+      const saved = await saveCallSettingsDraft(target, draft);
+      return { ...saved, agentNumber: number?.phoneE164 ?? null };
+    },
+    {
+      query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }),
+      // Shaped by validateCallSettings, not by the schema — see /knowledge for why. The size cap is
+      // the guard against a body that is not an edit.
+      body: t.Object({ draft: t.Unknown() }),
+    },
+  )
+
+  .post(
+    "/call-settings/publish",
+    async ({ headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      const target = profileTargetFor(user, query.userId);
+      const [current, number] = await Promise.all([findCallSettings(target), findNumberForUser(target)]);
+      if (!current.dirty) {
+        return status(409, { error: "nothing_to_publish", message: "There are no changes to publish." });
+      }
+      // Checked again at publish, against today's facts: a draft saved (or copied from a demo) before
+      // a number was assigned, or before waterfall was switched off, must not reach callers as it
+      // stands. What callers get is the re-checked copy, and the draft is brought in line with it.
+      let checked;
+      try {
+        checked = validateCallSettings(current.draft, {
+          agentNumber: number?.phoneE164 ?? null,
+          waterfallAllowed: current.waterfallAllowed,
+        });
+      } catch (err) {
+        if (err instanceof CallSettingsError) {
+          return status(400, { error: "invalid_call_settings", field: err.field, message: err.message });
+        }
+        throw err;
+      }
+      const published = await publishCallSettings(target, checked);
+      return { ...published, agentNumber: number?.phoneE164 ?? null };
+    },
+    { query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }) },
+  )
+
+  // Exactly what a call would be told, for the Custom training screen: the rule book, the
+  // business's prompts and instructions, and the blocks its settings produce right now. `draft` is
+  // what an in-app test call gets; `published` is what the phone line gets.
+  .get(
+    "/session-preview",
+    async ({ headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      const target = profileTargetFor(user, query.userId);
+      const [row, settings] = await Promise.all([findProfile(target), findCallSettings(target)]);
+      const record = row ? fromBusinessRow(row) : null;
+      if (!record) return status(409, { error: "no_profile", message: ADD_DETAILS_FIRST });
+      const which = query.settings === "published" ? "published" : "draft";
+      const callSettings = which === "published" ? settings.published : settings.draft;
+      const session = composeSession({
+        record,
+        callSettings,
+        channel: which === "published" ? "phone" : "app-test",
+        now: new Date(),
+        timeZone: (callSettings ?? settings.draft).timezone ?? env.timezone,
+        waterfallAllowed: settings.waterfallAllowed,
+        neverPublished: settings.published === null,
+      });
+      return {
+        settings: which,
+        live: session.live,
+        backend: session.backend,
+        greetingLine: session.greetingLine,
+        tools: session.tools.map((t) => t.name),
+        transfers: session.transfers.map((t) => t.name),
+        promptsOutdated: promptsOutdated(row?.prompts),
+      };
+    },
+    {
+      query: t.Object({
+        userId: t.Optional(t.String({ maxLength: 64 })),
+        settings: t.Optional(t.String({ maxLength: 16 })),
+      }),
+    },
+  )
+
+  // Waterfall transfers are a plan feature. Only an admin turns them on for an account.
+  .put(
+    "/call-settings/waterfall",
+    async ({ body, headers, query, status }) => {
+      const caller = await authenticateAdmin(headers.authorization, "Only an admin can change which features an account has.");
+      if ("denied" in caller) return status(caller.denied, caller.body);
+      const target = query.userId?.trim();
+      if (!target || !UUID.test(target)) return status(400, { error: "missing_user", message: "Say which account." });
+      if (!(await findUserById(target))) return status(404, { error: "not_found", message: "No such account." });
+      const saved = await setWaterfallAllowed(target, body.allowed);
+      return { ...saved, agentNumber: (await findNumberForUser(target))?.phoneE164 ?? null };
+    },
+    {
+      query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }),
+      body: t.Object({ allowed: t.Boolean() }),
     },
   );

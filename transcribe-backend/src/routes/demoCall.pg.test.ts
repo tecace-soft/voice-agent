@@ -504,17 +504,13 @@ describe("POST /demo/session", () => {
     expect(row.transcript).toEqual([]);
   });
 
-  it("sends the configured model, the customer's voice, and the prompt with the clock on it", async () => {
+  it("sends the configured model, the customer's voice, and the composed session", async () => {
     const res = await asAdmin("POST", "/demo/session", {
       customerId: A,
       sdp: OFFER_SDP,
       timeZone: TIME_ZONE,
     });
     expect(res.status).toBe(200);
-
-    // Built right after the answer came back, so the route's `new Date()` and this one are the same
-    // minute; every line but the wall clock is compared literally, and that one by shape.
-    const clock = callClock(new Date(), TIME_ZONE, HOURS as any);
     const today = zonedToday(new Date(), TIME_ZONE);
 
     const sent = sentTo("/live/sessions");
@@ -529,28 +525,22 @@ describe("POST /demo/session", () => {
     expect(session.audio).toEqual({ output: { voice: "meridian" } });
     expect(session.store).toBe(false);
 
-    // The stored prompt, then the clock, exactly as the promo appends them.
-    expect(session.instructions.startsWith(`${LIVE_PROMPT}\n\n`)).toBe(true);
-    for (const clockLine of clock.split("\n").filter(Boolean)) {
-      if (clockLine.startsWith("- It is ")) continue;
-      expect(session.instructions).toContain(clockLine);
-    }
-    // The one line that carries the time of day, and the timezone the browser asked for.
-    expect(session.instructions).toContain(
-      `- It is ${today.long}, ${today.year}, `,
-    );
-    expect(session.instructions).toMatch(
-      /- It is .+, \d{4}, \d{1,2}:\d{2}\s?[AP]M \(America\/Chicago\)\./,
-    );
-    // The book only appears when the hours are known, which is what makes the seed's hours worth
-    // having: a route that appended an empty clock would pass the two checks above.
-    expect(session.instructions).toContain("The book for the next seven days:");
+    // Dashboard-only (see PORTING.md): the composed session — the rule book first, then the demo's
+    // hand-edited prompt as it stands, then the clock with the timezone the browser asked for.
+    expect(session.instructions).toContain("# Triage");
+    expect(session.instructions).toContain(LIVE_PROMPT);
+    expect(session.instructions.indexOf("# Triage")).toBeLessThan(session.instructions.indexOf(LIVE_PROMPT));
+    expect(session.instructions).toContain(`- It is ${today.long}, ${today.year}, `);
+    expect(session.instructions).toMatch(/- It is .+, \d{4}, \d{1,2}:\d{2}\s?[AP]M \(America\/Chicago\)\./);
+    expect(session.instructions).toContain("# This call");
 
-    // The model that takes the booking gets the other prompt, and the same clock.
+    // The delegate gets the backend prompt and the tools the dashboard simulates.
     expect(session.delegation.type).toBe("responses");
     expect(session.delegation.responses.model).toBe(env.openaiBackendModel);
-    expect(session.delegation.responses.instructions.startsWith(`${BACKEND_PROMPT}\n\n`)).toBe(true);
-    expect(session.delegation.responses.instructions).toContain("Right now:");
+    expect(session.delegation.responses.instructions).toContain(BACKEND_PROMPT);
+    const tools = session.delegation.responses.tools.map((tool: { name: string }) => tool.name);
+    expect(tools).toEqual(["take_message", "end_call"]);
+    expect(session.delegation.responses.parallel_tool_calls).toBe(false);
   });
 
   it("takes the call row back when OpenAI refuses, leaving no started row behind", async () => {

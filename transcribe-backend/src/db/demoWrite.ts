@@ -19,6 +19,7 @@
 // `rows.ts`, so a caller gets exactly what a loader would have given it.
 
 import { randomBytes } from "node:crypto";
+import type { CallSettings } from "../business/callSettings.js";
 import { extendDemoMinutes } from "../demo/analytics.js";
 import { languageOf } from "../demo/languages.js";
 import type { DemoCallRow, DemoCustomerRow, DemoNoteRow } from "../demo/map.js";
@@ -64,6 +65,7 @@ const customerColumns = () => sql`
   c.sources,
   c.prompts,
   c.call_sound        AS "callSound",
+  c.call_settings     AS "callSettings",
   c.voice,
   c.agent_name        AS "agentName",
   c.language,
@@ -148,6 +150,8 @@ export interface CustomerPatch {
   voice?: string;
   language?: string;
   callSound?: CallSound;
+  /** Dashboard-only (see PORTING.md): already checked by `validateCallSettings` in the route. */
+  callSettings?: CallSettings;
   profile?: BusinessProfile;
   prompts?: Partial<CustomerPrompts>;
   regeneratePrompts?: boolean;
@@ -227,6 +231,7 @@ export async function patchCustomer(id: string, patch: CustomerPatch): Promise<C
       followUpAt:
         patch.followUpAt !== undefined ? patch.followUpAt || undefined : customer.followUpAt,
       callSound: patch.callSound ?? customer.callSound,
+      callSettings: patch.callSettings ?? customer.callSettings,
       profile: patch.profile ?? customer.profile,
       updatedAt: new Date().toISOString(),
     };
@@ -262,6 +267,7 @@ export async function patchCustomer(id: string, patch: CustomerPatch): Promise<C
         last_contacted_at = ${next.lastContactedAt ?? null},
         follow_up_at      = ${next.followUpAt ?? null},
         call_sound        = ${jsonb(next.callSound)},
+        call_settings     = ${jsonb(next.callSettings)},
         profile           = ${jsonb(next.profile)},
         prompts           = ${jsonb(next.prompts)},
         updated_at        = ${next.updatedAt}

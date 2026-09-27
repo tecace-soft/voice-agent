@@ -130,9 +130,28 @@ def main() -> int:
                         check(f"...no {gone!r} in the rail", gone not in labels, str(labels))
 
                     # ---- their own tabs, and not the operator's
-                    for tab in ("Knowledge", "Prompt", "Schedule"):
-                        check(f"the {tab} tab is theirs",
-                              page.get_by_role("tab", name=tab).count() == 1)
+                    # Their Knowledge, Schedule and Prompt tabs are one Settings tab now: the shared
+                    # receptionist settings, opening on what the receptionist knows.
+                    check("the Settings tab is theirs", page.get_by_role("tab", name="Settings").count() == 1)
+                    check("...opening on Business information",
+                          page.locator("#settings-section-title").inner_text().strip() == "Business information")
+                    check("...with the knowledge editor in it",
+                          page.get_by_label("Business name", exact=True).count() == 1)
+                    # Read off the menu itself, wherever it is shown at this width: the side menu, or
+                    # the picker's options once it is opened. Reading the page text alone passed
+                    # whatever the sections were, because the side menu is hidden below 2xl.
+                    menu = page.locator("nav[aria-label='Receptionist settings']")
+                    if menu.is_visible():
+                        offered = menu.inner_text()
+                    else:
+                        page.get_by_label("Settings section").click()
+                        page.get_by_role("option").first.wait_for()
+                        offered = " ".join(o.inner_text() for o in page.get_by_role("option").all())
+                        page.keyboard.press("Escape")
+                    check("...and the menu was read", "Business information" in offered, offered[:200])
+                    for operator_only in ("Transfer calls", "Text a link", "Take a message", "Test & improve"):
+                        check(f"...and no {operator_only!r} — the operator sets those up",
+                              operator_only not in offered, offered[:200])
                     for tab in ("Activity", "Sources", "Share"):
                         check(f"the {tab} tab is not",
                               page.get_by_role("tab", name=tab).count() == 0)
@@ -145,6 +164,15 @@ def main() -> int:
                           "Test call" not in body, body[:300])
                     check("but they can save their own corrections",
                           page.get_by_role("button", name="Save", exact=True).count() >= 1)
+                    # ...and the save is accepted: it carries only the fields they may edit.
+                    with page.expect_response(lambda r: r.request.method == "PATCH" and "/demo/customers/" in r.url) as res:
+                        page.get_by_role("button", name="Save", exact=True).first.click()
+                    patch = res.value
+                    check("...and Save is accepted, not refused", patch.status == 200, f"{patch.status} {patch.text()[:200]}")
+                    sent_keys = set((patch.request.post_data_json or {}).keys())
+                    check("...carrying only the receptionist's own fields",
+                          sent_keys <= {"profile", "prompts", "agentName", "voice", "language", "callSound"},
+                          str(sorted(sent_keys)))
 
                     # ---- the URL is not a way out
                     for hash_path, why in [

@@ -865,8 +865,17 @@ def run() -> int:
                           f"{unreviewed} buttons, {body}")
                     check("activity: ... and says Reviewed.", new_toast(page, "Reviewed."))
 
-                    # Knowledge
-                    main_tw.get_by_role("tab", name="Knowledge").click()
+                    # Settings: the promo's Knowledge, Schedule and Prompt tabs are one tab here — the
+                    # shared receptionist settings (src/settings/). At this width the section menu is
+                    # the picker above the section.
+                    def open_setting(label: str) -> None:
+                        main_tw.get_by_label("Settings section").click()
+                        page.get_by_role("option", name=label).click()
+                        page.wait_for_timeout(300)
+
+                    main_tw.get_by_role("tab", name="Settings").click()
+                    check("settings: opens on Business information",
+                          main_tw.locator("#settings-section-title").inner_text().strip() == "Business information")
                     phone = main_tw.get_by_label("Phone", exact=True)
                     phone.wait_for()
                     check("knowledge: the fields hold the profile",
@@ -884,8 +893,7 @@ def run() -> int:
                           and body["profile"]["name"] == "Harbor Dental", str(body.get("profile")))
                     check("knowledge: ... and says Saved.", new_toast(page, "Saved."))
 
-                    # Schedule (a mock-up drawn from the profile's hours)
-                    main_tw.get_by_role("tab", name=re.compile(r"^Schedule")).click()
+                    # Schedule (a mock-up drawn from the profile's hours), now under the hours it shows
                     main_tw.get_by_role("heading", name="A week on the book").wait_for()
                     week = page.evaluate("""() => [...document.querySelectorAll('main .tw .grid-cols-7 > div')]
                         .map((col) => [...col.querySelectorAll(':scope > div:first-child p')]
@@ -898,8 +906,9 @@ def run() -> int:
                           main_tw.get_by_text(re.compile(r"is a mock-up drawn from Harbor Dental")).is_visible())
                     snapshot("schedule")
 
-                    # Prompt
-                    main_tw.get_by_role("tab", name="Prompt").click()
+                    # Prompt: in Custom training, behind Advanced
+                    open_setting("Custom training")
+                    main_tw.get_by_role("button", name="Advanced: prompts").click()
                     greeting = main_tw.get_by_label("Greeting", exact=True)
                     greeting.wait_for()
                     check("prompt: the three prompts are shown",

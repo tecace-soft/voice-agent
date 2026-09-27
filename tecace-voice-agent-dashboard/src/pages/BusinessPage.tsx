@@ -2,8 +2,6 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   getBusinessProfile,
   listAccounts,
-  saveAgentIdentity,
-  saveHouseRules,
   saveBusinessProfile,
 } from "../api/backend";
 import type {
@@ -14,36 +12,17 @@ import type {
   MailboxScope,
 } from "../api/types";
 import { accountErrorMessage } from "../auth";
-import { BusinessTabs } from "./BusinessTabs";
+import { BusinessSettings } from "../settings/BusinessSettings";
+import type { SectionId } from "../routing";
 import { IconAlert, IconChevronLeft, IconChevronRight, IconPhone } from "../icons";
-import { formatDateTime, formatPhone } from "../lib";
+import { formatPhone } from "../lib";
 
 // What the voice agent says about a customer's business, and where they change it.
 //
-// The customer writes ONE thing: a description of their business, in their own words. Everything
-// the agent speaks is produced from that by the backend. They never see or edit a prompt, because
-// asking a dentist to write one is asking the wrong person.
-//
-// The read view is therefore also the PREVIEW, and that is the point of splitting read from edit.
-// Nobody can review a prompt, but anyone can read "here is what we'll say about you" and notice
-// that their closing time is wrong. Without it, a customer's only feedback would come from a caller.
-
-// Mirrors the agent's own AGENT_NAME default and the backend's MAX_* caps. Shown only as a hint
-// and a soft cap — the backend validates for real and says what to fix — but if the agent's default
-// name is ever changed, this hint is the other place that knows it.
-const DEFAULT_AGENT_NAME = "Tess";
-const MAX_AGENT_NAME = 40;
-const MAX_GREETING = 240;
-
-/** A worked example in the customer's own terms, using whatever name they've typed so far. */
-function greetingExample(name: string): string {
-  const who = name.trim() || DEFAULT_AGENT_NAME;
-  return `Hello, you've reached {business}, this is ${who}. How may I help you today?`;
-}
-
-// Customers should not write their own recording notice: the agent splices the required one in,
-// and a second copy would have callers told twice.
-const discloseNote = " Any call-recording notice is added for you.";
+// A customer starts by describing their business in their own words; the backend reads that into the
+// structured profile. From then on the receptionist is configured in the settings screen below the
+// status card (src/settings/BusinessSettings.tsx): what it knows, how it sounds, who it transfers
+// to, which links it texts, and how to switch the line on.
 
 const PLACEHOLDER = `Paste anything you already have — your website's About page, a services list, an email you send new customers. Plain sentences work just as well.
 
@@ -59,300 +38,17 @@ function stateOf(profile: BusinessProfile | null, number: AgentNumber | null): S
 }
 
 
-/**
- * What this business wants the assistant to do differently — its own card, its own save.
- *
- * Separate from the description for the same reason the greeting is: the description is a paste box
- * a model reads facts out of, and these are instructions used as written. It is also the setting a
- * business changes most often once they have heard a few calls, so it does not belong three clicks
- * inside an edit form.
- */
-function HouseRulesCard({
-  profile,
-  standard,
-  userId,
-  onSaved,
-}: {
-  profile: BusinessProfile;
-  standard: BehaviourDefault[];
-  userId?: string;
-  onSaved: () => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [rules, setRules] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [justSaved, setJustSaved] = useState(false);
-
-  const lines = (profile.houseRules ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
-
-  function startEditing() {
-    setRules(profile.houseRules ?? "");
-    setError(null);
-    setJustSaved(false);
-    setEditing(true);
-  }
-
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      await saveHouseRules(rules.trim(), userId);
-      setEditing(false);
-      setJustSaved(true);
-      onSaved();
-    } catch (e) {
-      setError(accountErrorMessage(e, "Couldn't save that. Nothing was changed."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <section className="card">
-      <div className="card-toolbar">
-        <div>
-          <div className="card-title ta-headline-2">How it behaves on a call</div>
-          <div className="card-sub ta-caption-1">
-            Your own instructions to the assistant, in your words — what to mention, what to leave
-            alone, what to tell people who ask. One per line.
-          </div>
-        </div>
-        {!editing && (
-          <button type="button" className="btn btn-quiet" onClick={startEditing}>
-            {lines.length ? "Change" : "Set this up"}
-          </button>
-        )}
-      </div>
-
-      {!editing ? (
-        <div className="business-status">
-          <div className="field-label ta-caption-1">On every call, as standard</div>
-          <ul className="fact-list">
-            {standard.map((rule) => (
-              <li key={rule.does} className="ta-body-2">
-                {rule.does}
-                {rule.because && <div className="ta-caption-2 muted">{rule.because}</div>}
-              </li>
-            ))}
-          </ul>
-
-          <div className="field-label ta-caption-1">Your own instructions</div>
-          {lines.length ? (
-            <ul className="fact-list">
-              {lines.map((line) => (
-                <li key={line} className="ta-body-2">
-                  {line}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="ta-body-2 muted">
-              None yet. Add a line for anything you would tell a new receptionist on their first
-              day — it is followed on top of everything above.
-            </p>
-          )}
-          {justSaved && <span className="badge badge-success">Updated</span>}
-        </div>
-      ) : (
-        <form className="inline-form" onSubmit={onSubmit}>
-          <label className="field">
-            <span className="field-label ta-caption-1">One instruction per line</span>
-            <textarea
-              className="input textarea"
-              value={rules}
-              onChange={(e) => setRules(e.target.value.slice(0, MAX_HOUSE_RULES))}
-              rows={6}
-              autoFocus
-              placeholder={
-                "Mention that tips for services are cash only.\n" +
-                "Tell first-time guests to arrive fifteen minutes early.\n" +
-                "Don't discuss other spas."
-              }
-            />
-            <span className="field-hint ta-caption-2 muted">
-              These are followed on top of the way the assistant already works: it will still never
-              say something is booked, never promise what your team will do, never answer from
-              anything but your business details, and always ask before putting a caller through.
-              {rules.length > MAX_HOUSE_RULES - 200 && (
-                <> {MAX_HOUSE_RULES - rules.length} characters left.</>
-              )}
-            </span>
-          </label>
-          {error && (
-            <p className="error ta-body-2" role="alert">
-              {error}
-            </p>
-          )}
-          <div className="inline-form-actions">
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </button>
-            <button
-              type="button"
-              className="btn btn-quiet"
-              onClick={() => setEditing(false)}
-              disabled={saving}
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-    </section>
-  );
-}
-
-/**
- * How the assistant answers the phone — its own card, because it is its own decision.
- *
- * Deliberately NOT part of the business-description form. That form is a paste box: you write what
- * your business is and a model reads facts out of it. This is the opposite kind of setting — two
- * short values, used exactly as typed, that change what a caller hears in the first three seconds.
- * Editing one should never mean re-saving the other.
- */
-function IdentityCard({
-  profile,
-  userId,
-  onSaved,
-}: {
-  profile: BusinessProfile;
-  userId?: string;
-  onSaved: () => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState("");
-  const [hello, setHello] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [justSaved, setJustSaved] = useState(false);
-
-  // What a caller actually hears, placeholders resolved. This is the only place a customer can
-  // check it — they never ring their own line.
-  const spoken = (profile.greeting || greetingExample(profile.agentName ?? ""))
-    .replace(/\{business\}/g, profile.businessName ?? "your business")
-    .replace(/\{agent\}/g, profile.agentName || DEFAULT_AGENT_NAME);
-
-  function startEditing() {
-    setName(profile.agentName ?? "");
-    setHello(profile.greeting ?? "");
-    setError(null);
-    setJustSaved(false);
-    setEditing(true);
-  }
-
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      await saveAgentIdentity(name.trim(), hello.trim(), userId);
-      setEditing(false);
-      setJustSaved(true);
-      onSaved();
-    } catch (e) {
-      setError(accountErrorMessage(e, "Couldn't save that."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <section className="card">
-      <div className="card-toolbar">
-        <div>
-          <div className="card-title ta-headline-2">How it answers the phone</div>
-          <div className="card-sub ta-caption-1">
-            The name it gives and the first words a caller hears. Nothing here is read from your
-            business description — it is said exactly as you write it.
-          </div>
-        </div>
-        {!editing && (
-          <button type="button" className="btn btn-quiet" onClick={startEditing}>
-            {profile.greeting || profile.agentName ? "Change" : "Set this up"}
-          </button>
-        )}
-      </div>
-
-      {!editing ? (
-        <div className="business-status">
-          <p className="business-greeting ta-body-2">
-            <span className="field-label ta-caption-1">
-              Callers hear{!profile.greeting && " (the standard greeting)"}
-            </span>
-            <q>{spoken}</q>
-            {justSaved && <span className="badge badge-success">Updated</span>}
-          </p>
-        </div>
-      ) : (
-        <form className="feedback-form" onSubmit={onSubmit}>
-          {error && (
-            <p className="error ta-label-1" role="alert">
-              {error}
-            </p>
-          )}
-          <label className="field">
-            <span className="field-label ta-caption-1">What the assistant is called</span>
-            <input
-              className="input"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={DEFAULT_AGENT_NAME}
-              maxLength={MAX_AGENT_NAME}
-              autoFocus
-            />
-            <span className="field-hint ta-caption-2 muted">
-              Leave it empty to use {DEFAULT_AGENT_NAME}.
-            </span>
-          </label>
-
-          <label className="field">
-            <span className="field-label ta-caption-1">The first thing it says</span>
-            <textarea
-              className="input textarea"
-              value={hello}
-              onChange={(e) => setHello(e.target.value.slice(0, MAX_GREETING))}
-              rows={2}
-              placeholder={greetingExample(name)}
-            />
-            <span className="field-hint ta-caption-2 muted">
-              Word for word. Leave it empty for the standard greeting. Write{" "}
-              <code>{"{business}"}</code> or <code>{"{agent}"}</code> and we'll fill those in.
-              {discloseNote}
-              {hello.trim().length > 0 && ` · ${hello.trim().length} of ${MAX_GREETING}`}
-            </span>
-          </label>
-
-          <div className="inline-form-actions">
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </button>
-            <button
-              type="button"
-              className="btn btn-quiet"
-              onClick={() => setEditing(false)}
-              disabled={saving}
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-    </section>
-  );
-}
-
-// The backend's own limit (MAX_HOUSE_RULES). Enforced here too so the box stops rather than
-// letting someone type a page and have the save rejected.
-const MAX_HOUSE_RULES = 1500;
-
 export function BusinessPage({
   isAdmin = false,
   scope,
   onScope,
+  section,
+  onSection,
 }: {
   isAdmin?: boolean;
+  /** Which settings section is open, held in the URL. */
+  section?: SectionId;
+  onSection?: (section: SectionId) => void;
   /** Which customer an admin is looking at, held in the URL so a refresh stays put. */
   scope?: MailboxScope;
   onScope?: (next: MailboxScope) => void;
@@ -398,13 +94,16 @@ export function BusinessPage({
       .catch(() => setCustomers([]));
   }, [isAdmin]);
 
-  const load = useCallback(() => {
+  // `quiet` re-reads without the Loading screen: after a settings section saves, the page only needs
+  // its header and live state brought up to date, and swapping the whole page for "Loading…" would
+  // unmount the settings screen and throw away every other section's unsaved edits.
+  const load = useCallback((quiet = false) => {
     // An admin who hasn't picked anyone yet has nothing to load.
     if (isAdmin && !targetId) {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!quiet) setLoading(true);
     getBusinessProfile(targetId)
       .then((r) => {
         setProfile(r.profile);
@@ -703,120 +402,34 @@ export function BusinessPage({
         </div>
       </section>
 
-      {profile && <IdentityCard profile={profile} userId={targetId} onSaved={load} />}
-      {profile && (
-        <HouseRulesCard
-          profile={profile}
-          standard={standard}
-          userId={targetId}
-          onSaved={load}
-        />
-      )}
-
-      {profile && (
-        <section className="card">
-          <div className="card-toolbar">
-            <div>
-              <div className="card-title ta-headline-2">When someone asks for a person</div>
-              <div className="card-sub ta-caption-1">
-                {profile.transferNumber
-                  ? "The assistant offers to put them through, and this is the phone that rings."
-                  : "No number set, so the assistant doesn't offer to put anyone through — it takes a message and passes it on instead."}
-              </div>
-            </div>
-            <button type="button" className="btn btn-quiet" onClick={startEditing}>
-              {profile.transferNumber ? "Change" : "Add a number"}
-            </button>
-          </div>
-          {profile.transferTopics && (
-            <p className="business-topics ta-caption-1 muted">
-              Also put through: {profile.transferTopics}
-            </p>
-          )}
-          <p className="business-transfer">
-            {profile.transferNumber ? (
-              <span className="number-cell ta-headline-2">
-                <IconPhone size={16} />
-                {formatPhone(profile.transferNumber)}
-              </span>
-            ) : (
-              <span className="muted ta-body-2">Not set — calls are never forwarded.</span>
-            )}
-          </p>
-        </section>
-      )}
-
       {/*
-        What the assistant knows, and what it is told — the same two editors a demo prospect gets.
-        This replaced a read-only list of fact sentences: the list was the preview half of the
-        read/edit split, and a customer who spotted a wrong closing time in it had to go and reword
-        a paragraph to fix it. Now they change the closing time.
-
-        The re-read stays with it, because it is still the thing that rebuilds everything below from
-        the description.
+        Everything the assistant knows, says and may do, as one settings screen with a menu — the
+        same one a demo's page has (src/settings/). It replaced a column of cards (how it answers,
+        how it behaves, who it transfers to) and the Knowledge and Prompt tabs.
       */}
       {profile && (
-        <section className="card">
-          <div className="card-toolbar">
-            <div>
-              <div className="card-title ta-headline-2">What the assistant knows about you</div>
-              <div className="card-sub ta-caption-1">
-                Only this. It answers from what is here and defers anything else to a person — so if
-                something is wrong, callers will hear it wrong.
-              </div>
-            </div>
-            {factsStale && (
-              <button type="button" className="btn btn-primary" onClick={onReread} disabled={rereading}>
-                {rereading ? "Reading it again…" : "Read my details again"}
-              </button>
-            )}
-          </div>
-          {factsStale && (
-            <p className="notice-inline ta-body-2" role="status">
-              These were read from your description by an older version of the assistant, and it can
-              take in more than it could then — so some of what you wrote may be missing here.
-              Reading your details again fixes it. Nothing you typed changes.
-            </p>
-          )}
-
-          <BusinessTabs
+        <div className="tw">
+          <BusinessSettings
             profile={profile}
-            userId={targetId}
+            number={number}
+            standard={standard}
             needsReread={needsReread}
+            factsStale={factsStale}
+            rereading={rereading}
+            onReread={() => void onReread()}
+            onEditDescription={startEditing}
+            userId={targetId}
+            isAdmin={isAdmin}
+            section={section}
+            onSection={(next) => onSection?.(next)}
             onSaved={(next) => {
               setProfile(next);
               setJustSaved(true);
-              // The header, the facts count and the live state all read the same row.
-              void load();
+              // The header and the live state read the same row.
+              void load(true);
             }}
           />
-
-          {profile.extractedAt && (
-            <p className="muted ta-caption-1 view-foot">
-              Read from what you wrote on {formatDateTime(profile.extractedAt)}. It will never quote
-              a price you haven't given, agree a deadline, or discuss a contract — those always go to
-              a person.
-            </p>
-          )}
-        </section>
-      )}
-
-      {profile && (
-        <section className="card">
-          <div className="card-toolbar">
-            <div>
-              <div className="card-title ta-headline-2">Your business information</div>
-              <div className="card-sub ta-caption-1">
-                Your own words, kept as you saved them. Everything the assistant knows is read from
-                this.
-              </div>
-            </div>
-            <button type="button" className="btn btn-primary" onClick={startEditing}>
-              Edit
-            </button>
-          </div>
-          <p className="business-source-read ta-body-2">{profile.sourceText}</p>
-        </section>
+        </div>
       )}
     </div>
   );

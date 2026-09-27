@@ -4,6 +4,9 @@ import { normalizeProfile } from "./profileShape.js";
 import { findProfile, saveProfile } from "../db/businessProfiles.js";
 import type { BusinessProfile } from "../db/businessProfiles.js";
 import { setLifecycleById, type UserRecord } from "../db/users.js";
+import { seedCallSettingsDraft } from "../db/callSettings.js";
+import { readCallSettings, type CallSettings } from "./callSettings.js";
+import { resolveSessionPrompts } from "../session/prompts.js";
 
 // Moving a business out of the demo and into the product, once.
 //
@@ -34,6 +37,8 @@ export interface Promotable {
   language?: string | null;
   /** The research briefing, which becomes the description a later re-read would work from. */
   dossier: string;
+  /** Transfers, links and message scenarios the operator set up on the demo. */
+  callSettings?: CallSettings | null;
 }
 
 /**
@@ -91,10 +96,17 @@ export async function promoteToBusiness(
     },
     {
       profile,
-      // The prospect's prompts travel as they stand, hand edits and all: what they heard on the
-      // demo call is what their line should open with. `edited` comes with them, so a prompt
-      // somebody wrote by hand stays frozen on the new side too.
-      prompts: demo.prompts,
+      // A hand-edited prompt travels as it stands and stays frozen: what they heard on the demo
+      // call is what their line should open with. One nobody edited is rebuilt by the business
+      // builder (session/prompts.ts) — the demo's says "this is a demo line", and a business's
+      // prompts hold persona and knowledge only, with the rules added at call time. A hand edit
+      // from the demo reads as out of date there, and the Custom training screen suggests a rebuild.
+      prompts: resolveSessionPrompts({
+        current: demo.prompts,
+        profile,
+        agentName: demo.agentName,
+        language: demo.language ?? undefined,
+      }),
       voice: demo.voice ?? null,
       language: demo.language ?? null,
     },
@@ -120,6 +132,10 @@ export async function startOnboarding(
 ): Promise<{ user: UserRecord; profile: BusinessProfile; copied: boolean }> {
   const existing = await findProfile(userId);
   const profile = existing ?? (await promoteToBusiness(userId, demo));
+  // The demo's call settings become the business's draft — never published: nothing a demo set up
+  // reaches a real caller until the business has looked at it and pressed Publish. Seeded only when
+  // the business has no settings yet, the same once-only rule as the profile.
+  if (demo.callSettings) await seedCallSettingsDraft(userId, readCallSettings(demo.callSettings));
   const user = await setLifecycleById(userId, { status: "pre-production" });
   if (!user) throw new Error(`No account ${userId} to move to onboarding.`);
   return { user, profile, copied: !existing };

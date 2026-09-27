@@ -1,4 +1,5 @@
 import type { ViewId } from "../components/Sidebar";
+import type { SectionId } from "../routing";
 import { DemosGate } from "./DemosGate";
 import { OverviewScreen } from "./screens/OverviewScreen";
 import { PipelineScreen } from "./screens/PipelineScreen";
@@ -19,9 +20,14 @@ export function DemosView({
   id,
   operator = true,
   onOnboarded,
+  section,
+  onSection,
 }: {
   view: ViewId;
   id: string | undefined;
+  /** Dashboard-only: the open settings section on a prospect's page. */
+  section?: SectionId;
+  onSection?: (section: SectionId) => void;
   operator?: boolean;
   /** The customer started onboarding from their demo page. */
   onOnboarded?: () => void | Promise<void>;
@@ -30,7 +36,14 @@ export function DemosView({
     return (
       <DemosGate>
         {id && isPromoId(id) ? (
-          <ProspectScreen key={id} id={id} operator={false} onOnboarded={onOnboarded} />
+          <ProspectScreen
+            key={id}
+            id={id}
+            operator={false}
+            onOnboarded={onOnboarded}
+            section={section}
+            onSection={onSection}
+          />
         ) : (
           <p className="ta-body-2 text-muted-foreground">
             Your demo isn't set up yet. We'll be in touch as soon as it is.
@@ -46,7 +59,7 @@ export function DemosView({
       {view === "demoProspects" && <ProspectsScreen />}
       {/* Only a well-formed id reaches ProspectScreen (kept verbatim), which puts it in a demo path. */}
       {view === "demoProspect" &&
-        (id && isPromoId(id) ? <ProspectScreen key={id} id={id} /> : <ProspectsScreen />)}
+        (id && isPromoId(id) ? <ProspectScreen key={id} id={id} section={section} onSection={onSection} /> : <ProspectsScreen />)}
       {view === "demoPipeline" && <PipelineScreen />}
     </DemosGate>
   );

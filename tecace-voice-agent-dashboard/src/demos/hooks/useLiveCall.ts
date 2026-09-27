@@ -27,7 +27,27 @@ type LiveEvent = {
   reason?: string;
   delegation?: { id?: string };
   client_event_id?: string;
+  /** Dashboard-only (see PORTING.md): a delegate's own event, wrapped in `response.event`. */
+  event?: {
+    type?: string;
+    item?: { type?: string; status?: string; call_id?: string; name?: string; arguments?: string };
+  };
 };
+
+/**
+ * Dashboard-only (see PORTING.md): a function call from the delegate, and what to do about it.
+ *
+ * The receptionist's tools (transfer_call, send_link, take_message, end_call) run on the delegate
+ * model, which asks the client to run them — the phone agent does it for real, the settings
+ * screen's test call simulates them. `output` goes back as the function's result; `resume: false`
+ * sends it without asking for another response (the call is being handed over or ended); `hangup`
+ * closes the call after the receptionist has had a moment to finish speaking.
+ */
+export type ToolCall = { callId: string; name: string; args: Record<string, unknown> };
+export type ToolResult = { output: string; resume?: boolean; hangup?: boolean };
+
+/** How long a closing line gets to play before a simulated hang-up or hand-over. */
+const TOOL_HANGUP_MS = 2500;
 
 /**
  * `session.instructions.append` is the documented way to make the receptionist
@@ -101,6 +121,13 @@ export type CallOptions = {
    * concurrency seats; an operator's test call does neither.
    */
   isTest?: boolean;
+  /**
+   * Dashboard-only (see PORTING.md): run a tool call. Without it, tool calls are ignored exactly as
+   * before — the public page's sessions carry no tools.
+   */
+  onToolCall?: (call: ToolCall) => Promise<ToolResult>;
+  /** Dashboard-only: extra fields for the end-of-call report (the simulated tool events). */
+  reportExtras?: () => Record<string, unknown>;
 };
 
 export function useLiveCall(
@@ -147,6 +174,12 @@ export function useLiveCall(
   // where the page may be gone, and a call started after that has no UI and
   // is never reported.
   const aliveRef = useRef(true);
+  // Dashboard-only: tool handling, read through refs so a new handler never restarts a call.
+  const toolRef = useRef(options.onToolCall);
+  toolRef.current = options.onToolCall;
+  const extrasRef = useRef(options.reportExtras);
+  extrasRef.current = options.reportExtras;
+  const seenToolCallsRef = useRef<Set<string>>(new Set());
 
   // Settings changed in the admin panel apply to the next call, since the
   // audio graph is built when the call starts.
@@ -201,6 +234,7 @@ export function useLiveCall(
         durationSec,
         endReason,
         transcript: transcriptRef.current,
+        ...(extrasRef.current?.() ?? {}),
       });
       const url = `/calls/${callId}`;
 
@@ -348,6 +382,44 @@ export function useLiveCall(
         case "session.delegation.created":
           setThinking(true);
           break;
+        case "response.event": {
+          // Dashboard-only (see PORTING.md): a function call finished by the delegate. Run it
+          // (simulated, on the settings screen) and hand the result back the way the phone agent
+          // does: `response.item.create` with the output, then `response.create` to carry on.
+          const inner = event.event;
+          const item = inner?.item;
+          const handler = toolRef.current;
+          if (!handler || inner?.type !== "response.output_item.done" || item?.type !== "function_call") break;
+          if ((item.status ?? "completed") !== "completed" || !item.call_id) break;
+          if (seenToolCallsRef.current.has(item.call_id)) break;
+          seenToolCallsRef.current.add(item.call_id);
+          let args: Record<string, unknown> = {};
+          try {
+            args = JSON.parse(item.arguments || "{}") as Record<string, unknown>;
+          } catch {
+            // Arguments that are not JSON reach the handler as none at all.
+          }
+          const callId = item.call_id;
+          void handler({ callId, name: item.name ?? "", args })
+            .then((result) => {
+              send({
+                type: "response.item.create",
+                event_id: `tool_${callId}`,
+                item: { type: "function_call_output", call_id: callId, output: result.output },
+              });
+              if (result.resume !== false) send({ type: "response.create", event_id: `resume_${callId}` });
+              if (result.hangup) setTimeout(() => closeCall(`tool_${item.name ?? "call"}`), TOOL_HANGUP_MS);
+            })
+            .catch(() => {
+              send({
+                type: "response.item.create",
+                event_id: `tool_${callId}`,
+                item: { type: "function_call_output", call_id: callId, output: JSON.stringify({ error: "failed" }) },
+              });
+              send({ type: "response.create", event_id: `resume_${callId}` });
+            });
+          break;
+        }
         case "session.usage.updated":
           if (typeof event.usage?.seconds === "number") {
             usageRef.current = event.usage.seconds;
@@ -391,6 +463,7 @@ export function useLiveCall(
     endReasonRef.current = undefined;
     reportedRef.current = false;
     callIdRef.current = null;
+    seenToolCallsRef.current = new Set();
     setState("connecting");
 
     try {

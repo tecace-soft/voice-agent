@@ -107,6 +107,11 @@ export type Customer = {
   prompts: CustomerPrompts;
   voice: string;
   callSound?: CallSound;
+  /**
+   * Dashboard-only (see PORTING.md): transfers, links and message scenarios — transcribe-backend's
+   * `demo_customers.call_settings`. The shape is `src/settings/callSettings.ts`.
+   */
+  callSettings?: import("../../settings/callSettings").CallSettings;
   agentName: string;
   /**
    * The language the receptionist opens in. Absent means English, which is

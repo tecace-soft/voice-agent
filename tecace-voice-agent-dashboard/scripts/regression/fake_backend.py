@@ -200,6 +200,15 @@ PROFILE = {
     "language": "en",
 }
 
+EMPTY_CALL_SETTINGS = {
+    "transfer": {"waterfallEnabled": False, "scenarios": []},
+    "messages": {"scenarios": []},
+    "links": {"scenarios": []},
+    "sms": {"doubleOptIn": True},
+}
+CALL_SETTINGS = {"draft": json.loads(json.dumps(EMPTY_CALL_SETTINGS)), "published": None, "publishedAt": None,
+                 "dirty": False, "waterfallAllowed": False, "agentNumber": "+14255550100"}
+
 CALLS = [
     {"id": "c-1", "userId": "u-sam", "dialled": "+14255550100", "caller": "+15551234567",
      "callerName": "Jordan Lee", "callbackNumber": "+15551234567", "request": "Book a cleaning",
@@ -1213,6 +1222,9 @@ def demo_public_route(method: str, path: str, raw_body: bytes):
 
 # --- Dispatch -------------------------------------------------------------------------------------
 
+CUSTOMER_MAY_EDIT = {"profile", "prompts", "regeneratePrompts", "agentName", "voice", "language", "callSound"}
+
+
 def route(method: str, path: str, query: dict, user: dict | None, body: bytes = b""):
     """Returns (status, body). `user` is None when no/unknown bearer token was sent."""
     if path == "/auth/setup-state":
@@ -1247,6 +1259,14 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
                 # Somebody else's record, or one of the sub-paths (/notes, /calls): not found and not
                 # forbidden, so the refusal says nothing about which ids are real.
                 return 404, {"error": "Customer not found."}
+            # The backend's CUSTOMER_MAY_EDIT: a customer's save may carry only the receptionist's
+            # own fields, and one that carries anything else is refused by name. Without this the
+            # fake was kinder than the service and a customer Save that always 403s passed here.
+            if method == "PATCH":
+                sent = _demo_json(body) or {}
+                forbidden = sorted(k for k, v in sent.items() if v is not None and k not in CUSTOMER_MAY_EDIT)
+                if forbidden:
+                    return 403, {"error": f"Only an admin can change {', '.join(forbidden)}."}
         if method == "POST" and rest.startswith("/customers/") and rest.endswith("/onboard"):
             return demo_onboard_route(unquote(rest[len("/customers/"):-len("/onboard")]), user)
         return demo_route(method, rest, query, body)
@@ -1335,6 +1355,53 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
                                  else {**(prompts or PROFILE["prompts"]), "edited": True},
                                  "voice": sent.get("voice") or PROFILE["voice"],
                                  "language": sent.get("language") or PROFILE["language"]}}
+    # ---- call settings: a draft the screens edit, a published copy, and the Publish between them.
+    # Stateful for the length of a run, like the lifecycle fakes: the page shows what the save
+    # returned, so a stub that answered with a fixed body would hide a screen that loses an edit.
+    if path == "/business/call-settings" and method == "GET":
+        return 200, CALL_SETTINGS
+    if path == "/business/call-settings" and method == "PUT":
+        draft = (json.loads(body or b"{}") or {}).get("draft")
+        if not isinstance(draft, dict):
+            return 400, {"error": "invalid_call_settings", "message": "Send a draft."}
+        # One of the backend's rules, so the harness can see a refusal land under its field.
+        for i, scenario in enumerate((draft.get("transfer") or {}).get("scenarios") or []):
+            for j, number in enumerate(scenario.get("numbers") or []):
+                if "".join(ch for ch in number if ch.isdigit()).endswith("4255550100"):
+                    return 400, {"error": "invalid_call_settings",
+                                 "field": f"transfer.scenarios[{i}].numbers[{j}]",
+                                 "message": "That's the number the assistant answers on — it would ring itself."}
+        CALL_SETTINGS["draft"] = draft
+        CALL_SETTINGS["dirty"] = draft != CALL_SETTINGS["published"]
+        return 200, CALL_SETTINGS
+    if path == "/business/call-settings/publish" and method == "POST":
+        if not CALL_SETTINGS["dirty"]:
+            return 409, {"error": "nothing_to_publish", "message": "There are no changes to publish."}
+        CALL_SETTINGS["published"] = json.loads(json.dumps(CALL_SETTINGS["draft"]))
+        CALL_SETTINGS["publishedAt"] = iso(NOW)
+        CALL_SETTINGS["dirty"] = False
+        return 200, CALL_SETTINGS
+    if path == "/business/session-preview" and method == "GET":
+        which = (query.get("settings") or ["draft"])[0]
+        return 200, {"settings": which, "live": "# How this call works\n(composed voice prompt)",
+                     "backend": "(composed backend prompt)", "greetingLine": "Sam's Dental, this is Alex.",
+                     "tools": ["take_message", "end_call"], "transfers": [], "promptsOutdated": False}
+    # ---- a business's in-app test calls: the list and allowance the Test section reads. Dialling
+    # itself is not faked here (demos_e2e drives the call hook against the demo's routes).
+    if path == "/business/test/calls" and method == "GET":
+        return 200, {"calls": [{
+            "id": "t-1", "startedAt": iso(NOW - timedelta(hours=2)), "endedAt": iso(NOW - timedelta(hours=2)),
+            "status": "completed", "durationSec": 75, "transcript": [],
+            "events": [{"at": iso(NOW - timedelta(hours=2)), "type": "transfer_final", "data": {"success": True}}],
+            "review": {"tested": "Asked for billing", "worked": "Put them through", "struggled": "", "gaps": []},
+        }], "usage": {"usedSec": 75, "capSec": 1800, "remainingSec": 1725, "unlimited": False}}
+    if path == "/business/identity" and method == "PUT":
+        sent = json.loads(body or b"{}")
+        return 200, {"profile": {**PROFILE, "agentName": sent.get("agentName") or None,
+                                 "greeting": sent.get("greeting") or None}}
+    if path == "/business/house-rules" and method == "PUT":
+        sent = json.loads(body or b"{}")
+        return 200, {"profile": {**PROFILE, "houseRules": sent.get("houseRules") or None}}
     if path == "/calls":
         return 200, {"calls": CALLS}
     if path == "/usage/minutes":
@@ -1379,6 +1446,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):  # noqa: N802
         self._handle("POST")
+
+    def do_PUT(self):  # noqa: N802 — the business saves; without it every PUT was a 501
+        self._handle("PUT")
 
     def do_PATCH(self):  # noqa: N802
         self._handle("PATCH")

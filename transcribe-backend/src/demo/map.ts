@@ -22,6 +22,8 @@ export interface DemoCustomerRow {
   sources: unknown;
   prompts: unknown;
   callSound: unknown;
+  /** Not in the promo's export; only ever read back from our own column. */
+  callSettings?: unknown;
   voice: string | null;
   agentName: string | null;
   language: string | null;

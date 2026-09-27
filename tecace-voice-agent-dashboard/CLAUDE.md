@@ -101,6 +101,18 @@ The header of `src/styles/index.css` explains the layer order and why; read it b
 - Routes live in `src/routing.ts` `PATHS` (a `Record<ViewId, string>` — add every new view there;
   `:id` marks a record segment, e.g. `demos/prospects/:id`). `DEMO_VIEWS` lists the Demos views.
 
+## Receptionist settings (`src/settings/`)
+
+- One settings screen with a left menu serves a real business (`BusinessSettings`, inside
+  `pages/BusinessPage.tsx`) and a demo (`DemoSettings`, the Settings tab of `ProspectScreen`). The
+  sections are controlled editors; the two containers own saving (a business saves per section to
+  `/business/*`; a demo rides on the page's own Save, except call settings, which PATCH at once).
+- Transfers, Text a link and Take a message are **call settings** (`callSettings.ts`, mirroring
+  transcribe-backend's `business/callSettings.ts`). A business edits a draft and publishes it; the
+  phone line only ever uses the published copy.
+- The open section is in the URL (`#/business/transfers`, `#/demos/prospects/<id>/faqs`); new
+  sections need an id in `SECTION_IDS` (`src/routing.ts`) and an entry in `SECTION_META`.
+
 ## Proving nothing broke
 
 Run all three after any styling change:
@@ -111,10 +123,10 @@ Run all three after any styling change:
 - `python scripts/regression/tw_probe.py` — checks the Tailwind side inside and outside `.tw`.
 - `python scripts/regression/demos_e2e.py` — walks the Demos section against a fake backend
   (`fake_backend.py`).
-- `python scripts/regression/business_tabs.py` — opens the Business page's Knowledge and Prompt
-  tabs in a browser: the demo's fields hold a real business's profile, Save goes to
-  `/business/knowledge` and `/business/prompts` (never a `/demo/` route), a prompt edit is marked
-  edited, Rebuild sends `rebuild` and no prompts, and the `.tw` boundary holds.
+- `python scripts/regression/business_tabs.py` — opens the Business page's receptionist settings
+  (`src/settings/`): the ten-item menu, each section holding the business's data and saving to its
+  own `/business/*` endpoint (never `/demo/`), a transfer saved as a draft, refused by the backend
+  under its field, then published, the composed-session preview, and the `.tw` boundary.
 - `python scripts/regression/public_page.py` — opens a demo link (`/c/<id>`) in a browser: the page
   renders the business and not the dashboard, carries none of the operator's fields, the scenarios
   and pricing links navigate, an unknown or unready id is the quiet page, `/` is still the

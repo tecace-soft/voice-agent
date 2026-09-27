@@ -478,6 +478,96 @@ export async function initDb(): Promise<void> {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_demo_notes_customer_at ON demo_notes (customer_id, at DESC)`;
+
+  // ---- call settings: transfers, text-a-link, message scenarios ----------------------------------
+  //
+  // What the assistant may DO on a call, as opposed to what it knows (profile) or how it sounds
+  // (prompts, voice). Shape and limits live in src/business/callSettings.ts; this only stores it.
+  //
+  // Two copies on purpose. `draft` is what the settings screens edit and what an in-app test call
+  // uses; `published` is what a real phone call uses, and it changes only when someone presses
+  // Publish. A half-finished transfer scenario must never reach a stranger's call just because it
+  // was saved. NULL published means "never published" — the phone agent then falls back to the
+  // single transfer_number above, exactly as before any of this existed.
+  await sql`
+    CREATE TABLE IF NOT EXISTS business_call_settings (
+      user_id      UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      draft        JSONB NOT NULL,
+      published    JSONB,
+      published_at TIMESTAMPTZ,
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  // Waterfall transfers are a plan feature: only an admin switches them on for an account, and the
+  // customer's own saves are checked against it.
+  await sql`ALTER TABLE business_call_settings ADD COLUMN IF NOT EXISTS waterfall_allowed BOOLEAN NOT NULL DEFAULT false`;
+  // A demo has no phone line, so one copy: what the operator's test call uses. Copied into the
+  // business's draft once, at onboarding — the same one-way hand-off as the profile.
+  await sql`ALTER TABLE demo_customers ADD COLUMN IF NOT EXISTS call_settings JSONB`;
+
+  // In-app test calls for real businesses. The demo's own test calls stay in demo_calls, which is
+  // keyed by a demo record; these belong to an account. Kept as rows rather than a counter because
+  // the monthly allowance is a SUM over this month, and the transcript and review are what the
+  // customer reads back afterwards.
+  await sql`
+    CREATE TABLE IF NOT EXISTS app_test_calls (
+      id              TEXT PRIMARY KEY,
+      user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      placed_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+      live_session_id TEXT,
+      started_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+      ended_at        TIMESTAMPTZ,
+      status          TEXT NOT NULL CHECK (status IN ('started','completed','failed','abandoned')),
+      duration_sec    INTEGER CHECK (duration_sec IS NULL OR duration_sec >= 0),
+      end_reason      TEXT,
+      transcript      JSONB NOT NULL DEFAULT '[]'::jsonb,
+      events          JSONB NOT NULL DEFAULT '[]'::jsonb,
+      review          JSONB
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_app_test_calls_user_started ON app_test_calls (user_id, started_at DESC)`;
+  // Test minutes a customer may spend per calendar month. NULL means the service default; an admin
+  // raises or lowers it per account.
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS test_seconds_cap INTEGER`;
+
+  // What happened during a call beyond the words: transfer attempts and their outcome, links
+  // offered and texted, consent replies. Keyed by Twilio's CallSid for a phone call (the one id both
+  // legs of a transferred call share) or by the test call's id for an in-app one.
+  await sql`
+    CREATE TABLE IF NOT EXISTS call_events (
+      id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id      UUID REFERENCES users(id) ON DELETE CASCADE,
+      call_sid     TEXT,
+      test_call_id TEXT,
+      at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+      type         TEXT NOT NULL,
+      data         JSONB NOT NULL DEFAULT '{}'::jsonb
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_call_events_sid ON call_events (call_sid, at)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_call_events_test ON call_events (test_call_id, at)`;
+
+  // Whether a phone number has agreed to receive texts from a business. Per business, not global:
+  // agreeing to one company's links is not agreeing to every company's. `pending` holds links asked
+  // for before the YES arrived, sent the moment it does.
+  await sql`
+    CREATE TABLE IF NOT EXISTS sms_consents (
+      user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      phone_e164 TEXT NOT NULL,
+      status     TEXT NOT NULL CHECK (status IN ('pending','opted_in','opted_out')),
+      pending    JSONB NOT NULL DEFAULT '[]'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, phone_e164)
+    )
+  `;
+
+  // Both legs of a transferred call are one call. The agent posts a record per leg; keyed by
+  // CallSid, the second leg merges into the first instead of listing the caller twice.
+  await sql`ALTER TABLE inbound_calls ADD COLUMN IF NOT EXISTS call_sid TEXT`;
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_inbound_calls_call_sid
+      ON inbound_calls (call_sid) WHERE call_sid IS NOT NULL
+  `;
 }
 
 // Ensure the schema is ready before serving requests, at most once per process (cached promise).
@@ -519,6 +609,13 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM demo_calls LIMIT 1`;
     await sql`SELECT 1 FROM demo_call_events LIMIT 1`;
     await sql`SELECT 1 FROM demo_notes LIMIT 1`;
+    await sql`SELECT waterfall_allowed FROM business_call_settings LIMIT 1`;
+    await sql`SELECT call_settings FROM demo_customers LIMIT 1`;
+    await sql`SELECT 1 FROM app_test_calls LIMIT 1`;
+    await sql`SELECT test_seconds_cap FROM users LIMIT 1`;
+    await sql`SELECT 1 FROM call_events LIMIT 1`;
+    await sql`SELECT 1 FROM sms_consents LIMIT 1`;
+    await sql`SELECT call_sid FROM inbound_calls LIMIT 1`;
     return;
   } catch {
     await initDb();

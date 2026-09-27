@@ -1120,3 +1120,45 @@ Customers screens — no new route or sidebar item.
 - **`DemosView.tsx`** — passes `onOnboarded` through on the customer branch.
 - Outside `src/demos/`: `src/auth.tsx` gains `refresh()`; `src/App.tsx` passes an `onOnboarded` that
   refreshes the user (which lifts the demo-only view) and navigates to `business`.
+
+## Receptionist settings (2026-09-26) — not a promo port
+
+Dashboard-only. The shared settings screen lives OUTSIDE `src/demos/` (`src/settings/`); these are
+the edits inside it that let the ported editors and screen serve it.
+
+- **`components/admin/KnowledgeEditor.tsx`** — optional `sections?: KnowledgeSection[]` (`details`,
+  `hours`, `services`, `policies`, `highlights`, `faqs`); each block renders only when listed, with a
+  separator only between shown blocks. Default is all six, so every existing caller is unchanged.
+- **`components/admin/PromptEditor.tsx`** — optional `sections?: ("identity" | "prompts")[]` (default
+  both) and `hideRebuild?: boolean` (default false). Same default-preserving rule.
+- **`screens/ProspectScreen.tsx`** — the Knowledge, Schedule and Prompt tabs are one **Settings** tab
+  rendering `DemoSettings` (`src/settings/DemoSettings.tsx`); the customer's default tab is
+  `settings`. The inline "rebuild prompts" handler became a named `rebuildPrompts()` with the same
+  PATCH body. New optional `section` / `onSection` props (the open section, held in the URL).
+  `KnowledgeEditor`, `PromptEditor` and `SchedulePanel` are no longer imported here — `DemoSettings`
+  renders them.
+- **`DemosView.tsx`** — passes `section` / `onSection` to `ProspectScreen` on both branches.
+- **`lib/types.ts`** — `Customer.callSettings?` (transfers, links, message scenarios; shape in
+  `src/settings/callSettings.ts`), matching transcribe-backend's `demo_customers.call_settings`.
+- Outside `src/demos/`: `src/routing.ts` gains an optional trailing `:section?` segment (only the ids
+  in `SECTION_IDS` match) on `business` and `demoProspect`; `src/App.tsx` passes the section through;
+  `src/pages/BusinessTabs.tsx` is deleted (its job is `src/settings/BusinessSettings.tsx`).
+- **`screens/ProspectScreen.tsx`, review fixes (2026-09-26):** a demo customer's `save()` now sends
+  only `CUSTOMER_MAY_EDIT` keys (`profile`, `prompts`, `agentName`, `voice`, `language`,
+  `callSound`) — the full body was refused with a 403 on every Save. The tab list opens on
+  Settings when the URL names a section. `DemoSettings` receives a functional `setDraft`, so a save
+  that lands late cannot undo newer typing.
+- **Call sound** is back for demos: `AgentProfileSection` passes `callSound` / `onCallSoundChange`
+  to `PromptEditor` (the Prompt tab used to host it).
+
+## In-app test calls with simulated tools (2026-09-26, phase 2) — not a promo port
+
+- **`hooks/useLiveCall.ts`** — `CallOptions` gains optional `onToolCall` and `reportExtras`. With
+  `onToolCall`, a `response.event` wrapping `response.output_item.done` (a `function_call`) is run
+  once per `call_id` and answered with `response.item.create` (`function_call_output`) then
+  `response.create` (unless the result says `resume: false`; `hangup` closes the call 2.5 s later).
+  Without it, tool calls are ignored exactly as before (the public page). `reportExtras` fields are
+  spread into the end-of-call report. `LiveEvent` gains the wrapped `event`.
+- **`screens/ProspectScreen.tsx`** — the Test call card renders `TestCallPanel`
+  (`src/settings/simulator/`) instead of the orb/panel/transcript trio; the page-level `useLiveCall`
+  and its reload-on-end effect moved into it (`onEnded`).

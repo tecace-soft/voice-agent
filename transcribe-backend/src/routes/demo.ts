@@ -1,4 +1,9 @@
 import { Elysia, t } from "elysia";
+import { CallSettingsError, readCallSettings, validateCallSettings, type CallSettings } from "../business/callSettings.js";
+import { composeSession } from "../session/compose.js";
+import { fromDemoCustomer } from "../session/records.js";
+import { liveSessionConfig } from "../session/live.js";
+import { promptsOutdated } from "../session/prompts.js";
 import { authenticateAdmin, authenticateDemo, ownsDemo } from "../auth/guard.js";
 import { env } from "../config/env.js";
 import {
@@ -15,7 +20,7 @@ import {
   testCalls,
   withinDays,
 } from "../demo/analytics.js";
-import { callClock, safeTimeZone } from "../demo/callClock.js";
+import { safeTimeZone } from "../demo/callClock.js";
 import { CALL_MAX_SEC } from "../demo/callLimits.js";
 import { reviewCall, reviewable } from "../demo/callReview.js";
 import { isMapsUrl } from "../demo/maps.js";
@@ -655,6 +660,21 @@ export const demo = new Elysia({ prefix: "/demo" })
         return status(400, { error: "Minutes to add must be positive." });
       }
 
+      // Call settings are ours, not the promo's, and are checked like a business's: a demo is where
+      // an operator sets up the transfers a customer will start from. Waterfall is allowed on a demo
+      // (the operator shows what a plan can do), and there is no agent number to rule out.
+      let callSettings: CallSettings | undefined;
+      if (body.callSettings !== undefined) {
+        try {
+          callSettings = validateCallSettings(body.callSettings, { waterfallAllowed: true });
+        } catch (err) {
+          if (err instanceof CallSettingsError) {
+            return status(400, { error: err.message, field: err.field });
+          }
+          throw err;
+        }
+      }
+
       // `callSound`, `profile` and `prompts` are whole objects the editor round-trips untouched.
       // The promo validated none of them — `body.profile ?? customer.profile` — so they are taken
       // as they arrive rather than re-described here, where a stricter schema would turn a field
@@ -663,6 +683,7 @@ export const demo = new Elysia({ prefix: "/demo" })
         ...body,
         stage: body.stage as CustomerStage | undefined,
         callSound: body.callSound as CallSound | undefined,
+        callSettings,
         profile: body.profile as BusinessProfile | undefined,
         prompts: body.prompts as Partial<CustomerPrompts> | undefined,
       };
@@ -703,6 +724,7 @@ export const demo = new Elysia({ prefix: "/demo" })
         followUpAt: t.Optional(t.Union([t.String(), t.Null()])),
         language: t.Optional(t.String()),
         callSound: t.Optional(t.Unknown()),
+        callSettings: t.Optional(t.Unknown()),
         profile: t.Optional(t.Unknown()),
         prompts: t.Optional(t.Unknown()),
         regeneratePrompts: t.Optional(t.Boolean()),
@@ -767,6 +789,39 @@ export const demo = new Elysia({ prefix: "/demo" })
       } catch (error) {
         return status(500, jsonError(error));
       }
+    },
+    { params: t.Object({ id: t.String({ maxLength: 64 }) }) },
+  )
+
+  // What this demo's test call is told, for the settings screen's preview. Operator only, like the
+  // test call itself. Dashboard-only (see PORTING.md): the promo has no such route.
+  .get(
+    "/customers/:id/session-preview",
+    async ({ headers, params, status }) => {
+      const caller = await authenticateAdmin(headers.authorization, DEMO_IS_ADMIN);
+      if ("denied" in caller) return status(caller.denied, caller.body);
+      const customer = await getCustomer(params.id);
+      if (!customer) return status(404, { error: "Customer not found." });
+      const settings = readCallSettings(customer.callSettings);
+      const session = composeSession({
+        record: fromDemoCustomer(customer),
+        callSettings: settings,
+        channel: "app-test",
+        now: new Date(),
+        timeZone: settings.timezone ?? env.timezone,
+        // A demo shows what the product can do, and has no phone line to have published to.
+        waterfallAllowed: true,
+        neverPublished: true,
+      });
+      return {
+        settings: "draft",
+        live: session.live,
+        backend: session.backend,
+        greetingLine: session.greetingLine,
+        tools: session.tools.map((t) => t.name),
+        transfers: session.transfers.map((t) => t.name),
+        promptsOutdated: promptsOutdated(customer.prompts),
+      };
     },
     { params: t.Object({ id: t.String({ maxLength: 64 }) }) },
   )
@@ -1007,32 +1062,24 @@ export const demo = new Elysia({ prefix: "/demo" })
         return status(500, jsonError(error));
       }
 
-      // The stored prompts cannot know what day it is, so the date goes on here,
-      // per call, and onto both: the voice hears "tomorrow" and the model it
-      // delegates to is the one that takes the booking.
-      const clock = callClock(
-        new Date(),
-        safeTimeZone(body.timeZone, env.defaultTimezone),
-        customer.profile.hours,
-      );
+      // Dashboard-only (see PORTING.md): the operator's test call is built by the session composer,
+      // exactly as a business's test call and its phone line are — the rule book, the demo's
+      // prompts, its transfers, links and message scenarios, and the clock — with the tools the
+      // dashboard simulates. The promo sent the stored prompts plus the call clock. The public demo
+      // page (`demoPublic.ts`) still does; it has no one to simulate a tool for.
+      const composed = composeSession({
+        record: fromDemoCustomer(customer),
+        callSettings: customer.callSettings,
+        channel: "app-test",
+        now: new Date(),
+        timeZone: readCallSettings(customer.callSettings).timezone
+          ?? safeTimeZone(body.timeZone, env.defaultTimezone),
+        waterfallAllowed: true,
+        neverPublished: true,
+      });
 
       try {
-        const session = await createLiveSession(
-          {
-            model: env.openaiLiveModel,
-            instructions: `${customer.prompts.live}\n\n${clock}`,
-            audio: { output: { voice: customer.voice } },
-            delegation: {
-              type: "responses",
-              responses: {
-                model: env.openaiBackendModel,
-                instructions: `${customer.prompts.backend}\n\n${clock}`,
-              },
-            },
-            store: false,
-          },
-          sdp,
-        );
+        const session = await createLiveSession(liveSessionConfig(composed, customer.voice), sdp);
 
         await attachLiveSession(call.id, session.id);
 
@@ -1040,7 +1087,7 @@ export const demo = new Elysia({ prefix: "/demo" })
           callId: call.id,
           sessionId: session.id,
           sdp: session.sdp,
-          greeting: customer.prompts.greeting,
+          greeting: composed.greeting,
           // How long this one call may run. The browser hangs up when it is reached,
           // so a demo cannot be overrun by one long call, and a test call is still
           // held to the ten minute ceiling.

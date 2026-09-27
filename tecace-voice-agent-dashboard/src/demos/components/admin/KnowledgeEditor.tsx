@@ -7,10 +7,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import type { BusinessProfile } from "@/lib/types";
 
+/** Dashboard-only (see PORTING.md): which parts to show, for the settings menus that split them. */
+export type KnowledgeSection = "details" | "hours" | "services" | "policies" | "highlights" | "faqs";
+
 type Props = {
   profile: BusinessProfile;
   onChange: (profile: BusinessProfile) => void;
+  sections?: KnowledgeSection[];
 };
+
+const ALL_SECTIONS: KnowledgeSection[] = ["details", "hours", "services", "policies", "highlights", "faqs"];
 
 const DAYS = [
   "Monday",
@@ -59,13 +65,18 @@ function SectionHeader({ title, action }: { title: string; action?: React.ReactN
   );
 }
 
-export function KnowledgeEditor({ profile, onChange }: Props) {
+export function KnowledgeEditor({ profile, onChange, sections = ALL_SECTIONS }: Props) {
   function patch(partial: Partial<BusinessProfile>) {
     onChange({ ...profile, ...partial });
   }
+  const show = (section: KnowledgeSection) => sections.includes(section);
+  const shown = ALL_SECTIONS.filter(show);
+  const separatorBefore = (section: KnowledgeSection) =>
+    show(section) && shown.indexOf(section) > 0 ? <Separator /> : null;
 
   return (
     <div className="space-y-6">
+      {show("details") && (
       <div className="grid gap-4 md:grid-cols-2">
         <Field
           id="name"
@@ -104,9 +115,11 @@ export function KnowledgeEditor({ profile, onChange }: Props) {
           onChange={(value) => patch({ rating: value ? Number(value) : undefined })}
         />
       </div>
+      )}
 
-      <Separator />
+      {separatorBefore("hours")}
 
+      {show("hours") && (
       <div className="space-y-3">
         <SectionHeader
           title="Hours"
@@ -180,9 +193,11 @@ export function KnowledgeEditor({ profile, onChange }: Props) {
           </div>
         ))}
       </div>
+      )}
 
-      <Separator />
+      {separatorBefore("services")}
 
+      {show("services") && (
       <div className="space-y-3">
         <SectionHeader
           title="Services"
@@ -239,9 +254,11 @@ export function KnowledgeEditor({ profile, onChange }: Props) {
           </div>
         ))}
       </div>
+      )}
 
-      <Separator />
+      {separatorBefore("policies")}
 
+      {show("policies") && (
       <div className="space-y-4">
         <SectionHeader title="Policies" />
         <div className="grid gap-4 md:grid-cols-2">
@@ -266,9 +283,11 @@ export function KnowledgeEditor({ profile, onChange }: Props) {
           ))}
         </div>
       </div>
+      )}
 
-      <Separator />
+      {separatorBefore("highlights")}
 
+      {show("highlights") && (
       <div className="space-y-3">
         <SectionHeader title="Highlights" />
         <Textarea
@@ -286,9 +305,11 @@ export function KnowledgeEditor({ profile, onChange }: Props) {
           }
         />
       </div>
+      )}
 
-      <Separator />
+      {separatorBefore("faqs")}
 
+      {show("faqs") && (
       <div className="space-y-3">
         <SectionHeader
           title="Caller questions"
@@ -341,6 +362,7 @@ export function KnowledgeEditor({ profile, onChange }: Props) {
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }

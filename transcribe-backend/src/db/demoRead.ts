@@ -37,6 +37,7 @@ const customerColumns = () => sql`
   research_notes    AS "researchNotes",
   profile, dossier, sources, prompts,
   call_sound        AS "callSound",
+  call_settings     AS "callSettings",
   voice,
   agent_name        AS "agentName",
   language,

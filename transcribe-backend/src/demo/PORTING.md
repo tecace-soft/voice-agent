@@ -766,3 +766,26 @@ It does not, and cannot, make the run survive the process.
   linked account). Copies the demo into business information unless the account already has some,
   sets `pre-production`, marks the CRM stage `won`. 409 past the demo / no linked account, 422 thin
   demo. Shares `startOnboarding` (`business/promote.ts`) with `/auth/users/:id/promote`.
+
+## Call settings and the session composer (2026-09-26) — not a promo port
+
+- `demo_customers.call_settings` (JSONB, nullable). Surfaced as `Customer.callSettings` (`types.ts`,
+  `map.ts` `DemoCustomerRow.callSettings?`, `rows.ts`, both column lists in `db/demoRead.ts` and
+  `db/demoWrite.ts`). Shape and rules: `business/callSettings.ts`.
+- `PATCH /demo/customers/:id` accepts `callSettings`, validated by `validateCallSettings` (waterfall
+  allowed on a demo, no agent number). A bad value is a 400 `{ error, field }`. Not in
+  `CUSTOMER_MAY_EDIT` (operator only) and not in `publicView`.
+- New `GET /demo/customers/:id/session-preview` (admin): what the demo's test call is told, from
+  `session/compose.ts`.
+- `startOnboarding` copies `callSettings` into the business's call-settings **draft** (never
+  published), once. Unedited demo prompts are rebuilt with the business builder
+  (`session/prompts.ts`); hand-edited ones travel as they are (was: all prompts copied verbatim).
+- `prompt.ts`, `callClock.ts`, `hours.ts`, `languages.ts` are NOT edited: `session/` imports their
+  exported helpers only, so the parity table above is unaffected.
+
+- **`POST /demo/session` (phase 2):** the operator's test call is built by `composeSession`
+  (channel `app-test`, the demo's call settings, waterfall allowed) and sent through
+  `session/live.ts` `liveSessionConfig` — rule book, prompts, blocks, clock, and the delegate's
+  `tools` (`strict: false`, `parallel_tool_calls: false`). The promo sent `prompts.live` + call
+  clock. `greeting` in the response is the composed greeting instruction. `demoPublic.ts` is
+  unchanged (the public page simulates no tools).

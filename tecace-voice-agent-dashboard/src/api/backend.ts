@@ -10,6 +10,9 @@ import type {
   CustomerPrompts,
   DemoBusinessProfile,
   PollerHeartbeat,
+  SessionPreview,
+  TestCallsResponse,
+  TestUsage,
   TranscribeFailure,
   AuthUser,
   MailboxScope,
@@ -23,6 +26,7 @@ import type {
   TranscribeAnalytics,
   TranscribeStats,
 } from "./types";
+import type { CallSettings, StoredCallSettings } from "../settings/callSettings";
 
 // Single place that talks to the backend API. Base URL comes from BACKEND_URL (set in .env locally
 // and in the Vercel project for production), injected by vite.config.ts as __BACKEND_URL__ — see
@@ -68,10 +72,13 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
 
 export class BackendError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /** Which input the backend refused, when it says (call settings do): "transfer.scenarios[0].name". */
+  field?: string;
+  constructor(message: string, status: number, field?: string) {
     super(message);
     this.name = "BackendError";
     this.status = status;
+    this.field = field;
   }
 }
 
@@ -101,9 +108,11 @@ async function request<T>(
   const text = await res.text();
   if (!res.ok) {
     let message = `Request failed (${res.status}).`;
+    let field: string | undefined;
     try {
       const body = JSON.parse(text);
       if (body?.message) message = body.message;
+      if (typeof body?.field === "string") field = body.field;
     } catch {
       /* keep the default */
     }
@@ -113,7 +122,7 @@ async function request<T>(
       setToken(null);
       onUnauthorized?.();
     }
-    throw new BackendError(message, res.status);
+    throw new BackendError(message, res.status, field);
   }
   return (text ? JSON.parse(text) : {}) as T;
 }
@@ -433,6 +442,62 @@ export function saveAgentIdentity(
     `/business/identity${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
     { body: { agentName, greeting } },
   );
+}
+
+// ---- call settings: transfers, text-a-link, message scenarios ----
+
+const asUser = (userId?: string) => (userId ? `?userId=${encodeURIComponent(userId)}` : "");
+
+/** The draft the settings screens edit, the published copy callers get, and whether they differ. */
+export function getCallSettings(userId?: string): Promise<StoredCallSettings> {
+  return get<StoredCallSettings>(`/business/call-settings${asUser(userId)}`);
+}
+
+/** Save the draft. A refusal is a BackendError whose `field` names the input to fix. */
+export function saveCallSettingsDraft(draft: CallSettings, userId?: string): Promise<StoredCallSettings> {
+  return request<StoredCallSettings>("PUT", `/business/call-settings${asUser(userId)}`, { body: { draft } });
+}
+
+/** Make the draft what callers get. */
+export function publishCallSettings(userId?: string): Promise<StoredCallSettings> {
+  return request<StoredCallSettings>("POST", `/business/call-settings/publish${asUser(userId)}`);
+}
+
+/** Admin only: turn waterfall transfers on or off for an account. */
+export function setWaterfallAllowed(userId: string, allowed: boolean): Promise<StoredCallSettings> {
+  return request<StoredCallSettings>("PUT", `/business/call-settings/waterfall${asUser(userId)}`, {
+    body: { allowed },
+  });
+}
+
+/**
+ * The business's in-app test-call routes, as a raw fetch — the shape the shared call hook dials
+ * through (`useLiveCall` reads the responses itself). `/session` and `/calls/:id` under
+ * `/business/test`, with the signed-in token.
+ */
+export function businessTestFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  if (token) headers.set("authorization", `Bearer ${token}`);
+  return fetch(`${BASE_URL}/business/test${path}`, { ...init, headers });
+}
+
+/** Recent test calls and this month's allowance. */
+export function getTestCalls(userId?: string): Promise<TestCallsResponse> {
+  return get<TestCallsResponse>(`/business/test/calls${asUser(userId)}`);
+}
+
+/** Admin only: one account's monthly test seconds, or null for the default. */
+export function setTestSecondsCap(userId: string, seconds: number | null): Promise<{ usage: TestUsage }> {
+  return request<{ usage: TestUsage }>("PUT", `/business/test/cap${asUser(userId)}`, { body: { seconds } });
+}
+
+/** Exactly what a call is told, for the Custom training preview. */
+export function getSessionPreview(
+  which: "draft" | "published",
+  userId?: string,
+): Promise<SessionPreview> {
+  const q = new URLSearchParams({ settings: which, ...(userId ? { userId } : {}) });
+  return get<SessionPreview>(`/business/session-preview?${q.toString()}`);
 }
 
 // ---- calls the agent answered ----
