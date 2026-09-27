@@ -48,12 +48,14 @@ function refusal(error: unknown): { status: 400 | 401 | 502; body: { error: stri
 /** The booking rules, the hours and the zone a business's calls use. Draft for the app, published for the phone. */
 async function bookingContext(userId: string, which: "draft" | "published"): Promise<BookingContext & { businessEmail?: string }> {
   const [settings, row, user] = await Promise.all([findCallSettings(userId), findProfile(userId), findUserById(userId)]);
-  const chosen = which === "published" ? (settings.published ?? settings.draft) : settings.draft;
+  // The phone uses only what was published. Nothing published yet means no booking on the phone,
+  // even when the draft has it switched on — callers get settings once somebody presses Publish.
+  const chosen = which === "published" ? settings.published : settings.draft;
   return {
     userId,
-    rules: chosen.appointments,
+    rules: chosen ? chosen.appointments : { ...settings.draft.appointments, enabled: false },
     profileHours: row?.profile?.hours,
-    timeZone: chosen.timezone ?? env.timezone,
+    timeZone: (chosen ?? settings.draft).timezone ?? env.timezone,
     businessEmail: user?.email,
   };
 }

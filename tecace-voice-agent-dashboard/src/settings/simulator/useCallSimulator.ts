@@ -126,6 +126,7 @@ export function useCallSimulator(
           }
           return { output: JSON.stringify(result), resume: true };
         } catch {
+          if (call.name === "book_appointment") log(event("booking_failed", {}));
           return {
             output: JSON.stringify({ ok: false, error: "The calendar couldn't be reached. Take a message with the time they want." }),
             resume: true,

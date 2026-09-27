@@ -13,6 +13,12 @@ Format:
 
 ---
 
+## 2026-09-27 · bottomup32 · transcribe-backend, dashboard (Appointments: fix + end-to-end tests)
+- Fix: `POST /business/calendar/agent-tool` (phone) booked under the DRAFT rules when nothing had ever been published (`calendar.ts` `bookingContext` fell back to the draft). It now uses only the published copy; never published = booking off on the phone. The in-app test tool still uses the draft.
+- New `transcribe-backend/src/routes/appointments.e2e.pg.test.ts` (30 tests, fake CalDAV server behind mocked fetch): connect / refuse, target, rules validation, session tools on/off, openings vs busy time, test booking (`[Test]`), phone booking under published rules, tenancy, disconnect. New `tecace-voice-agent-dashboard/tests/appointments-simulator.test.ts` (11 tests).
+- Test console events: a refused booking now shows the backend's reason ("Booking refused: No calendar is connected."); a runner that throws logs `booking_failed`.
+- Staging deployment (separate from production): Vercel `voice-agent-3-phases` (dashboard) + `va-staging-backend` on Neon branch `staging` (copied from main 2026-09-27). Deployed by CLI from `git archive`; neither project is git-linked. ⚠ No GEMINI_API_KEY there yet (business-description extraction off).
+
 ## 2026-09-27 · bottomup32 · dashboard (settings studio B2: full screen, one bar, icon rail)
 - New `src/chrome.tsx`: a page can ask for the studio chrome (`useStudioChrome`) and fill the app's top bar (`TopbarMain` / `TopbarEnd`). While asked, `App.tsx` folds the sidebar to a 56px icon rail (`.app[data-nav="rail"]`, the header toggle unfolds it), drops the content padding (`.content-bleed`), and hides the "Demo / Detail" crumbs, the mailbox picker and Refresh. The slots only mount while asked, so every other view's markup is unchanged (`compare.py` IDENTICAL).
 - `SettingsShell`: no card; menu 216px with Demo › Onboarding › Live at its foot; content up to 860px; console 380px (resizable), `asideBare` for consoles that draw their own tabs. Toolbar (Save / Publish / saved state) + panel toggle go to the top bar's end. Density: `.settings-studio` narrows `.ta-body-2/.ta-label-1/.ta-headline-2`.
