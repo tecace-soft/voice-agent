@@ -177,25 +177,24 @@ STAT_JS = """
 }
 """
 
-# The prospect page's detail grid: the tabs card, how far it spans, and what is in the column
-# beside it. The promo's layout is three tracks with the tabs card over two of them and the
-# "Test call" card in the third — restored with the test call on 2026-09-23.
-TABS_CARD_JS = """
+# The prospect page's layout since the settings studio (2026-09-27, see src/demos/PORTING.md): the
+# detail tabs run across the page outside any card, and the Test call is the settings studio's
+# console — an <aside> beside the open section — rather than the promo's third grid column.
+STUDIO_JS = """
 () => {
-  const card = document.querySelector('main .tw [role=tablist]').closest('.rounded-xl');
-  const grid = card.parentElement;
-  const cards = [...grid.children];
-  const panel = grid.querySelector('button[aria-label="Call now"],'
+  const scope = document.querySelector('main .tw');
+  const tabs = scope.querySelector('[role=tablist]');
+  const aside = scope.querySelector('aside[aria-label="Test call"]');
+  const title = scope.querySelector('#settings-section-title');
+  const call = aside && aside.querySelector('button[aria-label="Call now"],'
     + ' button[aria-label="Start a new call"], button[aria-label="End the call"]');
   return {
-    card: Math.round(card.getBoundingClientRect().width),
-    grid: Math.round(grid.getBoundingClientRect().width),
-    tracks: getComputedStyle(grid).gridTemplateColumns.trim().split(/\\s+/).length,
-    span: getComputedStyle(card).gridColumnStart,
-    siblings: cards.length,
-    tabsIndex: cards.indexOf(card),
-    panelIndex: panel ? cards.indexOf(panel.closest('.rounded-xl')) : -1,
-    panelTitle: panel ? panel.closest('.rounded-xl').querySelector('.ta-headline-2').textContent.trim() : null,
+    tabsInCard: Boolean(tabs && tabs.closest('.rounded-xl')),
+    tabs: tabs ? Math.round(tabs.getBoundingClientRect().width) : 0,
+    page: Math.round(scope.getBoundingClientRect().width),
+    aside: aside ? Math.round(aside.getBoundingClientRect().width) : 0,
+    section: title ? Math.round(title.closest('section').getBoundingClientRect().width) : 0,
+    hasCall: Boolean(call),
   };
 }
 """
@@ -236,7 +235,7 @@ ORB_JS = """
 # own controls rather than beside or below them.
 ORB_CENTRED_JS = """
 () => {
-  const video = document.querySelector('main .tw video');
+  const video = document.querySelector('main .tw aside video');
   const content = video.parentElement.parentElement;
   const button = content.querySelector('button');
   const orb = video.getBoundingClientRect();
@@ -721,22 +720,19 @@ def run() -> int:
                     check("prospect: the stat cards show the backend's numbers",
                           stats == {"Link opens": "14", "Calls": "3", "Minutes": "9", "Average call": "3:00"},
                           str(stats))
-                    # The promo's three-column detail grid, back with the test call: the tabs card
-                    # over two tracks and the "Test call" panel in the third.
-                    layout = page.evaluate(TABS_CARD_JS)
-                    check("prospect: three grid tracks, the tabs card spanning two, the call panel in the third",
-                          layout["tracks"] == 3 and layout["siblings"] == 2
-                          and layout["span"] == "span 2" and layout["tabsIndex"] == 0
-                          and layout["panelIndex"] == 1 and layout["panelTitle"] == "Test call"
-                          # Two of three equal tracks plus the 16px gap between them:
-                          # 3 * card == 2 * grid - gap.
-                          and abs(layout["card"] * 3 - (layout["grid"] * 2 - 16)) <= 6,
+                    # The tabs across the page; the Test call is the settings studio's console.
+                    page.get_by_role("tab", name="Settings").click()
+                    page.locator("main .tw aside[aria-label='Test call']").wait_for()
+                    layout = page.evaluate(STUDIO_JS)
+                    check("prospect: the tabs run across the page, outside any card; the test call is the settings console",
+                          not layout["tabsInCard"] and layout["tabs"] >= layout["page"] - 2
+                          and layout["aside"] >= 300 and layout["hasCall"] and layout["section"] >= 540,
                           str(layout))
                     # The orb above the call panel, and the one that replaced the sidebar's
                     # voicemail icon. Both are the same component and the same film; what is
                     # asserted is that the scoped utilities actually reached each of them — a
                     # 64/28px circle showing the centre of the frame, not a stretched square.
-                    orb = page.evaluate(ORB_JS, 'main .tw video')
+                    orb = page.evaluate(ORB_JS, 'main .tw aside video')
                     check("prospect: the orb sits above the call panel, circular and 64px",
                           orb["found"] and orb["tag"] == "VIDEO" and orb["w"] == 64 and orb["h"] == 64
                           and orb["radiusPx"] >= orb["w"] / 2 and orb["objectFit"] == "cover"
@@ -744,8 +740,9 @@ def run() -> int:
                           and orb["muted"] and orb["loop"] and orb["ariaHidden"] == "true",
                           str(orb))
                     centred = page.evaluate(ORB_CENTRED_JS)
-                    check("prospect: ... centred in the Test call card, above the panel",
+                    check("prospect: ... centred in the Test call console, above the panel",
                           centred["centred"] and centred["abovePanel"], str(centred))
+                    page.get_by_role("tab", name="Activity").click()
                     brand = page.evaluate(ORB_JS, '.sidebar-brand video')
                     check("sidebar: the brand mark is the orb, in a .tw island so the utilities apply",
                           brand["found"] and brand["inTw"] and brand["parentClass"] == "tw"
@@ -869,8 +866,13 @@ def run() -> int:
                     # shared receptionist settings (src/settings/). At this width the section menu is
                     # the picker above the section.
                     def open_setting(label: str) -> None:
-                        main_tw.get_by_label("Settings section").click()
-                        page.get_by_role("option", name=label).click()
+                        # The side menu from 1024px up; the picker below that.
+                        menu = main_tw.locator("nav[aria-label='Receptionist settings']")
+                        if menu.is_visible():
+                            menu.get_by_role("button", name=label).click()
+                        else:
+                            main_tw.get_by_label("Settings section").click()
+                            page.get_by_role("option", name=label).click()
                         page.wait_for_timeout(300)
 
                     main_tw.get_by_role("tab", name="Settings").click()
@@ -886,7 +888,7 @@ def run() -> int:
                     page.evaluate(MARK_TOASTS_JS)
                     with page.expect_request(lambda r: r.method == "PATCH"
                                              and r.url.endswith("/demo/customers/pr0SPct1")) as req:
-                        main_tw.get_by_role("button", name="Save", exact=True).click()
+                        main_tw.get_by_role("button", name="Save", exact=True).first.click()
                     body = req.value.post_data_json
                     check("knowledge: Save PATCHes the edited profile",
                           body["profile"]["phone"] == "+1 207 555 0199"
@@ -920,7 +922,7 @@ def run() -> int:
                     page.evaluate(MARK_TOASTS_JS)
                     with page.expect_request(lambda r: r.method == "PATCH"
                                              and r.url.endswith("/demo/customers/pr0SPct1")) as req:
-                        main_tw.get_by_role("button", name="Save", exact=True).click()
+                        main_tw.get_by_role("button", name="Save", exact=True).first.click()
                     body = req.value.post_data_json
                     check("prompt: an edited prompt is saved with prompts.edited true",
                           body["prompts"]["edited"] is True
@@ -1002,6 +1004,8 @@ def run() -> int:
                     # the offer, so the granted path is walked too: the answer is taken, the line
                     # rings (nothing is listening on the candidates, so it rings until it is hung
                     # up), and hanging up reports the call to POST /demo/calls/<callId>.
+                    # The test call is the Settings tab's console now.
+                    main_tw.get_by_role("tab", name="Settings").click()
                     call_now = main_tw.get_by_role("button", name="Call now")
                     end_call = main_tw.get_by_role("button", name="End the call")
                     again = main_tw.get_by_role("button", name="Start a new call")
@@ -1108,6 +1112,7 @@ def run() -> int:
                           len(mics) == 3 and all(t.endswith(":ended") for t in mics[2]), str(mics))
                     harbor_link.click()
                     page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
+                    main_tw.get_by_role("tab", name="Settings").click()
 
                     # The billed case: the backend GRANTS the session after the admin has left. The
                     # session request is held (not answered) until the page is gone, then answered

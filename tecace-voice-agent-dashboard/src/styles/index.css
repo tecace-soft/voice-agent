@@ -43,5 +43,21 @@
 @layer utilities {
   @scope (.tw) {
     @tailwind utilities;
+
+    /* Receptionist settings shown read-only (a demo's own customer, src/settings/SettingsShell.tsx):
+       the disabled fieldset turns every control off; these keep the values readable rather than
+       greyed, and take away the buttons that would only have edited something. After the utilities
+       and more specific than `disabled:opacity-50`, so they win inside this layer. */
+    .settings-readonly :is(input, textarea, select, [role="switch"], [data-slot="select-trigger"]):disabled {
+      opacity: 1;
+      cursor: default;
+    }
+    /* Base UI switches are spans, which a fieldset cannot disable. */
+    .settings-readonly [role="switch"] {
+      pointer-events: none;
+    }
+    .settings-readonly button:disabled:not([role="switch"]):not([data-slot="select-trigger"]):not([role="tab"]) {
+      display: none;
+    }
   }
 }

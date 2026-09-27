@@ -43,6 +43,7 @@ import {
   type Window,
 } from "../callSettings";
 import { SectionIntro } from "../SettingsShell";
+import { ExamplePicker, TRANSFER_EXAMPLES, TransferExchange } from "../examples";
 import {
   EmptyState,
   FieldMessage,
@@ -107,6 +108,15 @@ export function TransferCallsSection({ binding }: { binding: CallSettingsBinding
   }
 
   const full = scenarios.length >= MAX_SCENARIOS;
+  const readOnly = Boolean(binding.readOnly);
+  // Nothing set up yet and nothing to edit with: show what it could look like instead of an empty box.
+  const showingExamples = readOnly && scenarios.length === 0;
+  const rows = showingExamples
+    ? TRANSFER_EXAMPLES.map((e) => ({ ...e.scenario(), numbers: e.sampleNumbers }))
+    : scenarios;
+  const fromExample = (example: (typeof TRANSFER_EXAMPLES)[number]) =>
+    setEditing({ scenario: example.scenario(), index: -1 });
+  const sample = scenarios.find((s) => s.enabled) ?? scenarios[0];
 
   return (
     <div>
@@ -117,6 +127,113 @@ export function TransferCallsSection({ binding }: { binding: CallSettingsBinding
         and never outside that scenario's hours — then it takes a message instead.
       </SectionIntro>
 
+      {rowError ? <FieldMessage>{rowError}</FieldMessage> : null}
+
+      {showingExamples ? (
+        <p className="ta-caption-1 text-muted-foreground mb-2">
+          Examples of what you can set up. Your TecAce team sets these up with you during onboarding.
+        </p>
+      ) : null}
+
+      {rows.length === 0 ? (
+        <EmptyState
+          title="No transfers yet"
+          action={
+            <div className="flex flex-col items-center gap-3">
+              <Button onClick={() => setEditing({ scenario: blankScenario(), index: -1 })}>
+                <Plus className="size-4" />
+                Add a transfer
+              </Button>
+              <ExamplePicker examples={TRANSFER_EXAMPLES} onPick={fromExample} />
+            </div>
+          }
+        >
+          Add a transfer so callers can reach a person or team. Until then, the assistant takes a message
+          whenever someone asks for a person.
+        </EmptyState>
+      ) : (
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Rings</TableHead>
+                <TableHead>When</TableHead>
+                <TableHead className="text-right">On</TableHead>
+                <TableHead className="w-24" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((scenario, index) => (
+                <TableRow key={scenario.id}>
+                  <TableCell>
+                    <span className="ta-label-1">{scenario.name}</span>
+                    {showingExamples ? (
+                      <span className="ta-caption-2 bg-muted text-muted-foreground ml-2 rounded-full px-2 py-0.5">Example</span>
+                    ) : null}
+                    {scenario.description ? (
+                      <span className="ta-caption-1 text-muted-foreground block max-w-xs truncate">
+                        {scenario.description}
+                      </span>
+                    ) : null}
+                  </TableCell>
+                  <TableCell>{MODE_LABEL[scenario.mode]}</TableCell>
+                  <TableCell className="ta-caption-1">
+                    {scenario.numbers.map(displayPhone).join(" → ")}
+                  </TableCell>
+                  <TableCell className="ta-caption-1">{hoursSummary(scenario.hours)}</TableCell>
+                  <TableCell className="text-right">
+                    <Switch
+                      checked={scenario.enabled}
+                      // A waterfall on an account without the feature can be kept but not switched on.
+                      disabled={readOnly || (scenario.mode === "waterfall" && !binding.waterfallAllowed)}
+                      onCheckedChange={(checked) => void toggle(scenario.id, checked)}
+                      aria-label={`Turn the ${scenario.name} transfer ${scenario.enabled ? "off" : "on"}`}
+                    />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Edit ${scenario.name}`}
+                      onClick={() => setEditing({ scenario, index })}
+                    >
+                      <Pencil />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Delete ${scenario.name}`}
+                      onClick={() => void remove(scenario.id)}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {readOnly ? null : (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button
+                variant="outline"
+                disabled={full}
+                onClick={() => setEditing({ scenario: blankScenario(), index: -1 })}
+              >
+                <Plus className="size-4" />
+                Add a transfer
+              </Button>
+              <span className="ta-caption-1 text-muted-foreground">
+                {scenarios.length} of {MAX_SCENARIOS}
+              </span>
+              {full ? null : <ExamplePicker examples={TRANSFER_EXAMPLES} onPick={fromExample} label="Or add an example" />}
+            </div>
+          )}
+        </>
+      )}
+
+      <p className="ta-headline-2 mt-8 mb-3">Transfer types</p>
       <div className="mb-6 grid gap-3 md:grid-cols-3">
         {(["cold", "warm", "waterfall"] as TransferMode[]).map((mode) => (
           <div key={mode} className="rounded-xl border p-4">
@@ -150,96 +267,9 @@ export function TransferCallsSection({ binding }: { binding: CallSettingsBinding
         )}
       </div>
 
-      {rowError ? <FieldMessage>{rowError}</FieldMessage> : null}
-
-      {scenarios.length === 0 ? (
-        <EmptyState
-          title="No transfers yet"
-          action={
-            <Button onClick={() => setEditing({ scenario: blankScenario(), index: -1 })}>
-              <Plus className="size-4" />
-              Add a transfer
-            </Button>
-          }
-        >
-          Add a transfer so callers can reach a person or team. Until then, the assistant takes a message
-          whenever someone asks for a person.
-        </EmptyState>
-      ) : (
-        <>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Rings</TableHead>
-                <TableHead>When</TableHead>
-                <TableHead className="text-right">On</TableHead>
-                <TableHead className="w-24" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {scenarios.map((scenario, index) => (
-                <TableRow key={scenario.id}>
-                  <TableCell>
-                    <span className="ta-label-1">{scenario.name}</span>
-                    {scenario.description ? (
-                      <span className="ta-caption-1 text-muted-foreground block max-w-xs truncate">
-                        {scenario.description}
-                      </span>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>{MODE_LABEL[scenario.mode]}</TableCell>
-                  <TableCell className="ta-caption-1">
-                    {scenario.numbers.map(displayPhone).join(" → ")}
-                  </TableCell>
-                  <TableCell className="ta-caption-1">{hoursSummary(scenario.hours)}</TableCell>
-                  <TableCell className="text-right">
-                    <Switch
-                      checked={scenario.enabled}
-                      // A waterfall on an account without the feature can be kept but not switched on.
-                      disabled={scenario.mode === "waterfall" && !binding.waterfallAllowed}
-                      onCheckedChange={(checked) => void toggle(scenario.id, checked)}
-                      aria-label={`Turn the ${scenario.name} transfer ${scenario.enabled ? "off" : "on"}`}
-                    />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Edit ${scenario.name}`}
-                      onClick={() => setEditing({ scenario, index })}
-                    >
-                      <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Delete ${scenario.name}`}
-                      onClick={() => void remove(scenario.id)}
-                    >
-                      <Trash2 />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <div className="mt-4 flex items-center gap-3">
-            <Button
-              variant="outline"
-              disabled={full}
-              onClick={() => setEditing({ scenario: blankScenario(), index: -1 })}
-            >
-              <Plus className="size-4" />
-              Add a transfer
-            </Button>
-            <span className="ta-caption-1 text-muted-foreground">
-              {scenarios.length} of {MAX_SCENARIOS}
-            </span>
-          </div>
-        </>
-      )}
+      <div className="mt-8">
+        <TransferExchange businessName={binding.businessName} scenario={sample} />
+      </div>
 
       {editing ? (
         <TransferDialog

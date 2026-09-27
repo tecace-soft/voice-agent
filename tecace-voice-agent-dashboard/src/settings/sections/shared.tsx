@@ -21,6 +21,8 @@ export type CallSettingsBinding = {
   waterfallAllowed: boolean;
   /** Business only: the Publish bar, shared by the three sections. */
   publishBar?: ReactNode;
+  /** Shown but not editable: a demo's own customer, before onboarding. */
+  readOnly?: boolean;
 };
 
 /**
@@ -126,7 +128,57 @@ export function PublishBar({
   );
 }
 
-/** A switch-sized "on/off" label pair for list rows. */
+/**
+ * The Publish button and the state it acts on, compact enough for the settings bar. Callers keep the
+ * published copy until it is pressed; the in-app test call uses the draft.
+ */
+export function PublishControl({
+  dirty,
+  publishedAt,
+  onPublish,
+}: {
+  dirty: boolean;
+  publishedAt: string | null;
+  onPublish: () => Promise<void>;
+}) {
+  const [publishing, setPublishing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function publish() {
+    setPublishing(true);
+    setError(null);
+    try {
+      await onPublish();
+    } catch (e) {
+      setError(toFieldError(e, "Couldn't publish. Nothing changed for callers.").message);
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      {error ? (
+        <span className="ta-caption-1 text-destructive" role="alert">
+          {error}
+        </span>
+      ) : (
+        <span className="ta-caption-1 text-muted-foreground flex items-center gap-1.5">
+          {dirty ? <span className="bg-warning size-1.5 rounded-full" aria-hidden /> : null}
+          {dirty
+            ? "Unpublished changes. Callers get the last published version; test calls use this draft."
+            : publishedAt
+              ? `Published ${new Date(publishedAt).toLocaleString()}`
+              : "Not published yet"}
+        </span>
+      )}
+      <Button size="sm" onClick={() => void publish()} disabled={!dirty || publishing}>
+        {publishing ? "Publishing" : "Publish"}
+      </Button>
+    </div>
+  );
+}
+
 export function EmptyState({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-8 text-center">

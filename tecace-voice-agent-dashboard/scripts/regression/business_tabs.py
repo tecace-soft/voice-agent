@@ -89,6 +89,7 @@ with socketserver.TCPServer(("127.0.0.1", {APP_PORT}), H) as httpd:
 MENU = (
     "Business information", "Agent profile", "FAQs", "Take a message", "Appointments",
     "Text a link", "Transfer calls", "Custom training", "Test & improve", "Launch instructions",
+    "Call forwarding",
 )
 
 
@@ -282,8 +283,20 @@ def main() -> int:
 
                     # ---- Launch instructions
                     open_section("Launch instructions")
-                    check("Launch: the forwarding codes carry the assistant's number",
-                          "**61*4255550100#" in page.inner_text("main"))
+                    check("Launch: points to the call forwarding guide",
+                          page.get_by_role("button", name="Set up call forwarding").count() == 1)
+
+                    # ---- Call forwarding
+                    page.get_by_role("button", name="Set up call forwarding").click()
+                    page.wait_for_timeout(300)
+                    body = page.inner_text("main")
+                    check("Forwarding: the button opens the guide", "#/business/forwarding" in page.url, page.url)
+                    check("Forwarding: missed-call codes carry the assistant's number",
+                          "**61*4255550100#" in body and "**67*4255550100#" in body, body[:400])
+                    page.get_by_role("radio", name="Every call").click()
+                    page.get_by_role("tab", name="Verizon").click()
+                    body = page.inner_text("main")
+                    check("Forwarding: every call on Verizon", "*724255550100" in body, body[:400])
 
                     check("...and nothing went to a demo endpoint",
                           not any("/demo/" in x[1] for x in sent),

@@ -1162,3 +1162,16 @@ the edits inside it that let the ported editors and screen serve it.
 - **`screens/ProspectScreen.tsx`** — the Test call card renders `TestCallPanel`
   (`src/settings/simulator/`) instead of the orb/panel/transcript trio; the page-level `useLiveCall`
   and its reload-on-end effect moved into it (`onEnded`).
+
+## Settings studio and the customer's read-only preview (2026-09-27) — not a promo port
+
+- **`screens/ProspectScreen.tsx`** — the promo's three-column detail grid (tabs card over two tracks,
+  Test call card in the third) is gone. The tabs run across the page outside any card; the Settings
+  tab is the settings studio (`src/settings/SettingsShell.tsx`: grouped menu, section, and the test
+  call as a resizable console), so the Test call is only in the Settings tab now. The page-header
+  Save stays for the operator; the studio's bar has its own Save with an unsaved-changes marker.
+- The demo's own customer (`operator` false) no longer edits anything: no Save, every settings
+  section shown read-only (a disabled fieldset + `.settings-readonly` in `src/styles/index.css`), the
+  operator-only sections (transfers, links, messages, test, launch) shown as a preview with examples
+  where nothing is set up, and an example call (`settings/simulator/ExampleCallPanel.tsx`) linking to
+  their `/c/<id>` page in place of the test call. No tabs are shown to them.

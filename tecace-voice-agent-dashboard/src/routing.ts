@@ -56,6 +56,7 @@ export const SECTION_IDS = [
   "custom-training",
   "test",
   "launch",
+  "forwarding",
 ] as const;
 export type SectionId = (typeof SECTION_IDS)[number];
 const UNATTRIBUTED = "unattributed";

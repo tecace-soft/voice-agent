@@ -6,11 +6,12 @@ import type { BusinessProfile as DemoBusinessProfile, CallSound, Customer, Custo
 import type { SessionPreview } from "../api/types";
 import type { SectionId } from "../routing";
 import { withDefaults, type CallSettings } from "./callSettings";
-import { SettingsShell, SectionIntro, type SettingsSection } from "./SettingsShell";
+import { SettingsShell, SectionIntro, type Phase, type SettingsSection } from "./SettingsShell";
 import { makeUpdater, type CallSettingsBinding } from "./sections/shared";
 import { TransferCallsSection } from "./sections/TransferCallsSection";
 import { TextLinkSection } from "./sections/TextLinkSection";
 import { TakeMessageSection } from "./sections/TakeMessageSection";
+import { ForwardingSection } from "./sections/ForwardingSection";
 import {
   AgentProfileSection,
   AppointmentsSection,
@@ -28,6 +29,10 @@ import {
 // draft on a demo, because a demo has no phone line for a half-finished scenario to reach. They are
 // the operator's to set up (the demo's own customer cannot send them; the backend refuses), and they
 // become the business's draft at onboarding.
+//
+// The demo's own customer sees every section, read-only: what their receptionist knows and does, and
+// — where nothing is set up yet — examples of what it could do. It's the screen they'll run after
+// onboarding, so nothing about it is new to them when they get there.
 
 type Props = {
   customerId: string;
@@ -41,8 +46,15 @@ type Props = {
   operator: boolean;
   section: SectionId | undefined;
   onSection: (section: SectionId) => void;
-  /** The test call, shown in the Test section. */
-  testCall?: ReactNode;
+  /** The console beside the settings: the operator's test call, or the customer's example call. */
+  aside?: ReactNode;
+  asideTitle?: string;
+  asideBadge?: string;
+  /** The right of the settings bar (Save, or the preview's note). */
+  toolbar?: (section: SectionId) => ReactNode;
+  phase?: Phase;
+  /** Across the top of the settings, under the bar. */
+  notice?: ReactNode;
 };
 
 /** A PATCH whose refusal keeps the backend's `field`, so the form can point at the input. */
@@ -92,19 +104,13 @@ export function DemoSettings(props: Props) {
     // Waterfall is always available on a demo: the operator is showing what the product can do.
     waterfallAllowed: true,
     update: update.current,
+    readOnly: !operator,
   };
 
   const setProfile = (profile: DemoBusinessProfile) => setDraft((current) => ({ ...current, profile }));
-  const pageSaveNote = (
-    <p className="ta-caption-1 text-muted-foreground mt-6">Use Save at the top of the page to keep changes here.</p>
-  );
-
-  const operatorOnly = (render: () => ReactNode) => () =>
-    operator ? (
-      render()
-    ) : (
-      <SectionIntro>Your TecAce team sets this up with you. It's ready to use once you go live.</SectionIntro>
-    );
+  const pageSaveNote = operator ? (
+    <p className="ta-caption-1 text-muted-foreground mt-6">Press Save in the bar above to keep changes here.</p>
+  ) : null;
 
   const sections: SettingsSection[] = [
     {
@@ -138,14 +144,10 @@ export function DemoSettings(props: Props) {
       id: "faqs",
       render: () => <FaqsSection profile={draft.profile} onChange={setProfile} footer={pageSaveNote} />,
     },
-    ...(operator
-      ? ([
-          { id: "take-message", render: operatorOnly(() => <TakeMessageSection binding={binding} />) },
-          { id: "appointments", badge: "Soon", render: () => <AppointmentsSection /> },
-          { id: "text-link", render: operatorOnly(() => <TextLinkSection binding={binding} />) },
-          { id: "transfers", render: operatorOnly(() => <TransferCallsSection binding={binding} />) },
-        ] as SettingsSection[])
-      : []),
+    { id: "take-message", render: () => <TakeMessageSection binding={binding} /> },
+    { id: "appointments", badge: "Soon", render: () => <AppointmentsSection /> },
+    { id: "text-link", render: () => <TextLinkSection binding={binding} /> },
+    { id: "transfers", render: () => <TransferCallsSection binding={binding} /> },
     {
       id: "custom-training",
       render: () => (
@@ -167,33 +169,96 @@ export function DemoSettings(props: Props) {
         />
       ),
     },
-    ...(operator
-      ? ([
-          {
-            id: "test",
-            render: () => (
-              <TestSection>
-                <p className="ta-body-2 text-muted-foreground">
-                  Use the Test call panel beside these settings. It dials this demo with its current transfers,
-                  links and message scenarios, and lets you play the phone being rung and the caller's texts.
-                </p>
-              </TestSection>
-            ),
-          },
-        ] as SettingsSection[])
-      : []),
     {
-      id: "launch",
+      id: "test",
+      render: () =>
+        operator ? (
+          <TestSection>
+            <p className="ta-body-2 text-muted-foreground">
+              Use the Test call panel beside these settings. It dials this demo with its current transfers, links
+              and message scenarios, and lets you play the phone being rung and the caller's texts. Change
+              something, then call again: there's nothing to publish on a demo.
+            </p>
+          </TestSection>
+        ) : (
+          <div>
+            <SectionIntro>
+              Hear your receptionist for yourself: open your demo page from the panel beside these settings and
+              call it from your browser. After onboarding, you test here instead, with your own changes, before
+              callers get them.
+            </SectionIntro>
+          </div>
+        ),
+    },
+    { id: "launch", render: () => <Journey operator={operator} /> },
+    {
+      id: "forwarding",
+      guide: true,
       render: () => (
-        <div>
-          <SectionIntro>
-            A demo has no phone line. When this business starts onboarding, everything set up here — including
-            transfers, links and message scenarios — carries over, and this is where they switch their line on.
-          </SectionIntro>
-        </div>
+        <ForwardingSection
+          agentNumber={null}
+          notice={
+            operator
+              ? "A demo has no phone line. This is the guide the business follows once it goes live, with its number filled in."
+              : "Your receptionist gets its own number when you go live, and the codes below fill in with it."
+          }
+        />
       ),
     },
   ];
 
-  return <SettingsShell sections={sections} active={props.section} onSelect={props.onSection} narrow />;
+  return (
+    <SettingsShell
+      sections={sections}
+      active={props.section}
+      onSelect={props.onSection}
+      aside={props.aside}
+      asideTitle={props.asideTitle}
+      asideBadge={props.asideBadge}
+      toolbar={props.toolbar}
+      phase={props.phase ?? "demo"}
+      readOnly={!operator}
+      notice={props.notice}
+    />
+  );
+}
+
+const STEPS: { title: string; body: string }[] = [
+  {
+    title: "Demo",
+    body: "Try the receptionist we built from your business, and see everything it can do.",
+  },
+  {
+    title: "Onboarding",
+    body: "Check what it knows, set up transfers, links and messages, and test calls in the app before callers get them.",
+  },
+  {
+    title: "Live",
+    body: "We give your receptionist a phone number. You forward your calls to it, and it answers the ones you miss.",
+  },
+];
+
+/** Demo › onboarding › live, spelled out, for a demo's launch section. */
+function Journey({ operator }: { operator: boolean }) {
+  return (
+    <div>
+      <SectionIntro>
+        {operator
+          ? "A demo has no phone line. When this business starts onboarding, everything set up here — including transfers, links and message scenarios — carries over, and this is where they switch their line on."
+          : "Your receptionist is in its demo. Here's the way to a live line; everything you see in these settings comes with you."}
+      </SectionIntro>
+      <ol className="grid gap-3 md:grid-cols-3">
+        {STEPS.map((step, i) => (
+          <li key={step.title} className={`rounded-xl border p-4 ${i === 0 ? "border-primary bg-primary/5" : ""}`}>
+            <p className="ta-caption-1 text-muted-foreground">Step {i + 1}</p>
+            <p className="ta-headline-2 mt-1">
+              {step.title}
+              {i === 0 ? <span className="ta-caption-2 text-primary ml-2">{operator ? "Now" : "You're here"}</span> : null}
+            </p>
+            <p className="ta-caption-1 text-muted-foreground mt-2">{step.body}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
 }

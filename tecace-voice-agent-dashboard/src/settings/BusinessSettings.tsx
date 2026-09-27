@@ -19,11 +19,12 @@ import { accountErrorMessage } from "../auth";
 import type { SectionId } from "../routing";
 import { displayPhone, withDefaults, type CallSettings, type StoredCallSettings } from "./callSettings";
 import { SaveRow, SettingsShell, type SettingsSection } from "./SettingsShell";
-import { PublishBar, makeUpdater, type CallSettingsBinding } from "./sections/shared";
+import { PublishControl, makeUpdater, type CallSettingsBinding } from "./sections/shared";
 import { TransferCallsSection } from "./sections/TransferCallsSection";
 import { TextLinkSection } from "./sections/TextLinkSection";
 import { TakeMessageSection } from "./sections/TakeMessageSection";
-import { BusinessTestSection } from "./sections/TestSection";
+import { ForwardingSection } from "./sections/ForwardingSection";
+import { BusinessTestConsole, BusinessTestSection, useTestCalls } from "./sections/TestSection";
 import {
   AgentProfileSection,
   AppointmentsSection,
@@ -38,8 +39,9 @@ import {
 // endpoint — the same split the old cards and tabs had, because a business's settings are stored
 // separately on purpose (editing a greeting must never reword what the assistant knows).
 //
-// The three call-settings sections save a DRAFT and share one Publish bar; callers keep the
-// published copy until it is pressed. Everything else saves straight through, as before.
+// The three call-settings sections save a DRAFT, published from the settings bar; callers keep the
+// published copy until it is pressed, and the test call beside the settings uses the draft.
+// Everything else saves straight through, as before.
 
 type Props = {
   profile: BusinessProfile;
@@ -82,6 +84,7 @@ export function BusinessSettings(props: Props) {
   const [error, setError] = useState<{ where: Saving; message: string } | null>(null);
   const [calls, setCalls] = useState<StoredCallSettings | null>(null);
   const [callsError, setCallsError] = useState<string | null>(null);
+  const test = useTestCalls(userId);
 
   // Drafts start over only when the account changes (an admin switching customer). A save in one
   // section must not reset the others: each section takes its own saved value back in `run`, and
@@ -216,21 +219,16 @@ export function BusinessSettings(props: Props) {
     agentNumber: stored.agentNumber,
     waterfallAllowed: stored.waterfallAllowed,
     update: updateCalls.current,
-    publishBar: (
-      <PublishBar
-        dirty={stored.dirty}
-        publishedAt={stored.publishedAt}
-        onPublish={async () => {
-          // After any save still in flight, so what is published is what the screen shows.
-          await callsQueue.current.catch(() => undefined);
-          const updated = await publishCallSettings(userId);
-          const draft = withDefaults(updated.draft);
-          latestCalls.current = draft;
-          setCalls({ ...updated, draft });
-        }}
-      />
-    ),
   });
+
+  const publish = async () => {
+    // After any save still in flight, so what is published is what the screen shows.
+    await callsQueue.current.catch(() => undefined);
+    const updated = await publishCallSettings(userId);
+    const draft = withDefaults(updated.draft);
+    latestCalls.current = draft;
+    setCalls({ ...updated, draft });
+  };
 
   const callsSection = (render: (binding: CallSettingsBinding) => ReactNode) => () =>
     calls ? (
@@ -369,18 +367,7 @@ export function BusinessSettings(props: Props) {
         />
       ),
     },
-    {
-      id: "test",
-      render: callsSection((binding) => (
-        <BusinessTestSection
-          userId={userId}
-          profileUserId={profile.userId}
-          settings={binding.value}
-          businessName={binding.businessName}
-          agentNumber={binding.agentNumber}
-        />
-      )),
-    },
+    { id: "test", render: () => <BusinessTestSection test={test} /> },
     {
       id: "launch",
       render: () => (
@@ -388,10 +375,51 @@ export function BusinessSettings(props: Props) {
           agentNumber={props.number?.phoneE164 ?? null}
           live={profile.isLive}
           published={Boolean(calls?.publishedAt) && !calls?.dirty}
+          onOpenForwarding={() => props.onSection("forwarding")}
         />
       ),
     },
+    {
+      id: "forwarding",
+      guide: true,
+      render: () => <ForwardingSection agentNumber={props.number?.phoneE164 ?? null} />,
+    },
   ];
 
-  return <SettingsShell sections={sections} active={props.section} onSelect={props.onSection} />;
+  const PUBLISHED_SECTIONS: SectionId[] = ["transfers", "text-link", "take-message"];
+  const businessName = profile.businessName ?? profile.profile?.name ?? "";
+
+  return (
+    <SettingsShell
+      sections={sections}
+      active={props.section}
+      onSelect={props.onSection}
+      phase={profile.isLive && props.number ? "live" : "onboarding"}
+      asideTitle="Test call"
+      asideBadge="Uses your draft"
+      aside={
+        calls ? (
+          <BusinessTestConsole
+            test={test}
+            userId={userId}
+            profileUserId={profile.userId}
+            settings={calls.draft}
+            businessName={businessName}
+            agentNumber={calls.agentNumber}
+          />
+        ) : (
+          <p className={callsError ? "ta-body-2 text-destructive" : "ta-body-2 text-muted-foreground"}>
+            {callsError ?? "Loading…"}
+          </p>
+        )
+      }
+      toolbar={(current) =>
+        calls && (PUBLISHED_SECTIONS.includes(current) || calls.dirty) ? (
+          <PublishControl dirty={calls.dirty} publishedAt={calls.publishedAt} onPublish={publish} />
+        ) : (
+          <span className="ta-caption-1 text-muted-foreground">Each section saves on its own.</span>
+        )
+      }
+    />
+  );
 }

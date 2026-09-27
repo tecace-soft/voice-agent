@@ -2,6 +2,8 @@
 
 The rule this checks is "a demo customer sees only the demo": one item in the rail, their own record
 and no other, none of the operator's controls on it, and no way to reach the rest by typing a URL.
+Inside it, their receptionist's settings are a read-only preview: every section, nothing editable,
+examples where nothing is set up yet, and an example call pointing at their own demo link.
 
 The backend refuses all of it for that account as well — `routes/tenancy.pg.test.ts` is where that is
 proved. What can only be checked here is that the dashboard does not OFFER what would be refused,
@@ -129,17 +131,19 @@ def main() -> int:
                                  "Answered calls", "Customers", "CRM", "Send feedback"):
                         check(f"...no {gone!r} in the rail", gone not in labels, str(labels))
 
-                    # ---- their own tabs, and not the operator's
-                    # Their Knowledge, Schedule and Prompt tabs are one Settings tab now: the shared
-                    # receptionist settings, opening on what the receptionist knows.
-                    check("the Settings tab is theirs", page.get_by_role("tab", name="Settings").count() == 1)
-                    check("...opening on Business information",
+                    # ---- their settings: every section, as a read-only preview
+                    # No tabs: Activity, Sources and Share are the operator's, and Settings is all that's left.
+                    for tab in ("Activity", "Sources", "Share", "Settings"):
+                        check(f"no {tab} tab", page.get_by_role("tab", name=tab).count() == 0)
+                    check("the settings open on Business information",
                           page.locator("#settings-section-title").inner_text().strip() == "Business information")
-                    check("...with the knowledge editor in it",
+                    check("...showing what the receptionist knows",
                           page.get_by_label("Business name", exact=True).count() == 1)
+                    check("...read-only: the fields can't be edited",
+                          page.get_by_label("Business name", exact=True).is_disabled())
+                    check("...and it says so", "A preview of your receptionist's settings" in body, body[:400])
                     # Read off the menu itself, wherever it is shown at this width: the side menu, or
-                    # the picker's options once it is opened. Reading the page text alone passed
-                    # whatever the sections were, because the side menu is hidden below 2xl.
+                    # the picker's options once it is opened.
                     menu = page.locator("nav[aria-label='Receptionist settings']")
                     if menu.is_visible():
                         offered = menu.inner_text()
@@ -148,31 +152,29 @@ def main() -> int:
                         page.get_by_role("option").first.wait_for()
                         offered = " ".join(o.inner_text() for o in page.get_by_role("option").all())
                         page.keyboard.press("Escape")
-                    check("...and the menu was read", "Business information" in offered, offered[:200])
-                    for operator_only in ("Transfer calls", "Text a link", "Take a message", "Test & improve"):
-                        check(f"...and no {operator_only!r} — the operator sets those up",
-                              operator_only not in offered, offered[:200])
-                    for tab in ("Activity", "Sources", "Share"):
-                        check(f"the {tab} tab is not",
-                              page.get_by_role("tab", name=tab).count() == 0)
+                    for section in ("Business information", "Transfer calls", "Text a link", "Take a message",
+                                    "Test & improve", "Launch instructions"):
+                        check(f"...the menu previews {section!r} too", section in offered, offered[:200])
+
+                    # A section with nothing set up shows examples of what it can do, and no way to add.
+                    page.goto(f"{base}/#/demos/prospects/{OWN_ID}/text-link", wait_until="networkidle")
+                    page.wait_for_timeout(700)
+                    main = page.inner_text("main")
+                    check("Text a link: examples stand in for an empty list",
+                          "Examples of what you can set up" in main and "Example" in main, main[:400])
+                    check("...with a sample call", "How it sounds on a call" in main, main[:400])
+                    check("...and no Add button", page.get_by_role("button", name="Add a link").count() == 0)
 
                     # ---- none of the operator's controls
                     check("no live switch", page.get_by_label("Toggle the demo link").count() == 0)
                     check("no re-research", page.get_by_role("button", name="Re-research").count() == 0)
                     check("no demo-time menu", "Add time" not in body, body[:300])
                     check("no test-call panel — the allowance lives on their own demo link",
-                          "Test call" not in body, body[:300])
-                    check("but they can save their own corrections",
-                          page.get_by_role("button", name="Save", exact=True).count() >= 1)
-                    # ...and the save is accepted: it carries only the fields they may edit.
-                    with page.expect_response(lambda r: r.request.method == "PATCH" and "/demo/customers/" in r.url) as res:
-                        page.get_by_role("button", name="Save", exact=True).first.click()
-                    patch = res.value
-                    check("...and Save is accepted, not refused", patch.status == 200, f"{patch.status} {patch.text()[:200]}")
-                    sent_keys = set((patch.request.post_data_json or {}).keys())
-                    check("...carrying only the receptionist's own fields",
-                          sent_keys <= {"profile", "prompts", "agentName", "voice", "language", "callSound"},
-                          str(sorted(sent_keys)))
+                          "Test call" not in page.inner_text("body"))
+                    check("...an example call instead, pointing at their demo page",
+                          page.locator(f"a[href$='/c/{OWN_ID}']").count() == 1)
+                    check("no Save: nothing here is theirs to change yet",
+                          page.get_by_role("button", name="Save", exact=True).count() == 0)
 
                     # ---- the URL is not a way out
                     for hash_path, why in [
@@ -201,6 +203,9 @@ def main() -> int:
                           str([a for a in asked if OTHER_ID in a]))
                     check("...and it did read its own",
                           any(f"/demo/customers/{OWN_ID}" in a for a in asked))
+                    check("...and changed nothing: no PATCH was sent",
+                          not [a for a in asked if a.startswith("PATCH ")],
+                          str([a for a in asked if a.startswith("PATCH ")]))
 
                     # ---- their way out of the demo: Start onboarding (last — it moves the account)
                     page.goto(f"{base}/", wait_until="networkidle")

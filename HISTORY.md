@@ -13,6 +13,17 @@ Format:
 
 ---
 
+## 2026-09-27 06:10 · bottomup32 · dashboard (call forwarding guide)
+- New settings section `forwarding` ("Call forwarding", Go live group) in `src/settings/sections/ForwardingSection.tsx`: missed calls vs every call, dial codes per carrier (AT&T/T-Mobile, Verizon, landline, business phone apps) filled with the assistant's number, turn-off codes, how to test. Routes `#/business/forwarding`, `#/demos/prospects/<id>/forwarding`; `SECTION_IDS` gained `"forwarding"`.
+- `SettingsSection.guide?: boolean` — a guide section stays clickable on the read-only demo-customer screen (no disabled fieldset). Launch instructions lost its inline code table; it now links to Call forwarding.
+- Frontend only, no API change. `business_tabs.py` checks moved from Launch to Call forwarding.
+
+## 2026-09-27 · bottomup32 · dashboard (settings studio + customer preview)
+- `src/settings/SettingsShell.tsx` rewritten as a studio (layout B): grouped menu (Business / Calls / Tuning / Go live, `SECTION_GROUPS`), the section, and a resizable test console, each scrolling on its own under one bar (Save or Publish, Demo › Onboarding › Live stepper). Props `aside`, `toolbar(section)`, `phase`, `readOnly`, `notice`; `narrow` removed. Business Publish moved from each section into the bar (`PublishControl`); the business test call is the console (`useTestCalls` shared with Test & improve).
+- Demo page (`ProspectScreen`): tabs outside the card, Test call only in the Settings tab. The demo's own customer now sees ALL sections read-only (no Save, no PATCH) with examples and an example call linking to their `/c/<id>`. New `src/settings/examples.tsx` (start-from-example templates, sample call exchanges, tips) used by admin and customer views.
+- Regression: `demo_customer.py` expects the read-only preview; `demos_e2e.py` checks the studio layout and clicks the Settings tab before the test call. All scripts pass (run with `BACKEND_URL=http://127.0.0.1:<harness port>`).
+- ⚠ Demos owner: ProspectScreen layout changed (PORTING.md). ⚠ Worktrees: never `git worktree remove` a worktree holding a `node_modules` junction — git follows it and deletes the real packages.
+
 ## 2026-09-27 · bottomup32 · transcribe-backend (customer IDs)
 - DB (self-migrating): `demo_customers.customer_code` is now `<4 letters from business name>-<seq>` (e.g. `GLHF-0009`, `HMAB-0011`) instead of `CUST-0009`. Set once by trigger `demo_customers_code_guard` on INSERT; any later UPDATE of it raises; renaming the business keeps it. Numbers unchanged.
 - The old generated column is converted and existing rows re-coded once on the first request of the new backend (`migrateIfNeeded` now probes for the trigger). The currently deployed backend keeps working with the new schema.

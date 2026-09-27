@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,8 +17,11 @@ import { SourcesPanel } from "@/components/research/SourcesPanel";
 import { PageHeader, StatCard, StatusBadge, statusKind } from "@/components/admin/shared";
 import { formatDuration, isResearchStalled } from "@/lib/analytics";
 import { readJson } from "@/lib/http";
+import { quotedGreeting } from "@/lib/prompt";
+import { customerLink } from "@/lib/share";
 import { DemoSettings } from "../../settings/DemoSettings";
 import { TestCallPanel } from "../../settings/simulator/TestCallPanel";
+import { ExampleCallPanel } from "../../settings/simulator/ExampleCallPanel";
 import { withDefaults } from "../../settings/callSettings";
 import type { SectionId } from "../../routing";
 import type {
@@ -192,6 +195,7 @@ export function ProspectScreen({
       });
       const payload = await readJson<{ customer: Customer }>(response);
       setDraft(payload.customer);
+      setData((current) => (current ? { ...current, customer: payload.customer } : current));
       toast.success("Prompts rebuilt from the data.");
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : "Could not rebuild.");
@@ -227,6 +231,10 @@ export function ProspectScreen({
   }
 
   const { stats, calls } = data;
+  // Unsaved edits to the record. Call settings save on their own, so they don't count.
+  const withoutCalls = (customer: Customer) => ({ ...customer, callSettings: undefined });
+  const dirty = JSON.stringify(withoutCalls(draft)) !== JSON.stringify(withoutCalls(data.customer));
+  const businessName = draft.profile.name || draft.businessName;
 
   return (
     <>
@@ -272,9 +280,11 @@ export function ProspectScreen({
                 </Button>
               </>
             )}
-            <Button onClick={() => save()} disabled={saving}>
-              {saving ? "Saving" : "Save"}
-            </Button>
+            {operator && (
+              <Button onClick={() => save()} disabled={saving}>
+                {saving ? "Saving" : "Save"}
+              </Button>
+            )}
           </div>
         }
       />
@@ -315,103 +325,129 @@ export function ProspectScreen({
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className={`rounded-xl border shadow-none ${operator ? "lg:col-span-2" : "lg:col-span-3"}`}>
-          <CardContent className="p-4 md:p-6">
-            {/*
-              No CRM tab. The pipeline reads across every prospect at once, so
-              it lives at /admin/crm; what is left here is this one demo — what
-              it knows, how it sounds, what happened on it.
-            */}
-            {/* The customer opens on Knowledge, because Activity is not one of their tabs. */}
-            {/*
-              Dashboard-only (see PORTING.md): the promo's Knowledge, Schedule and Prompt tabs are one
-              Settings tab here — the shared receptionist settings (src/settings/), the same screen a
-              business gets after onboarding, including transfers, links and message scenarios.
-            */}
-            <Tabs defaultValue={operator && !section ? "activity" : "settings"}>
-              <TabsList variant="line" className="w-full justify-start">
-                {operator && <TabsTrigger value="activity">Activity</TabsTrigger>}
-                <TabsTrigger value="settings">Settings</TabsTrigger>
-                {operator && <TabsTrigger value="sources">Sources</TabsTrigger>}
-                {operator && <TabsTrigger value="share">Share</TabsTrigger>}
-              </TabsList>
+      {/*
+        Dashboard-only (see PORTING.md): the promo's Knowledge, Schedule and Prompt tabs are one Settings
+        tab here — the shared receptionist settings (src/settings/), the same screen a business gets
+        after onboarding, with the test call as its console. The tabs sit outside any card so the
+        settings get the page's full width. The demo's own customer sees the settings read-only, with
+        an example call in place of the (unmetered) test call.
+      */}
+      <Tabs defaultValue={operator && !section ? "activity" : "settings"}>
+        {operator && (
+          <TabsList variant="line" className="w-full justify-start">
+            <TabsTrigger value="activity">Activity</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
+            <TabsTrigger value="sources">Sources</TabsTrigger>
+            <TabsTrigger value="share">Share</TabsTrigger>
+          </TabsList>
+        )}
 
-              {operator && (
-                <TabsContent value="activity" className="pt-4">
-                  <ActivityTab calls={calls} customerId={id} onChanged={load} />
-                </TabsContent>
-              )}
+        {operator && (
+          <TabsContent value="activity" className="pt-4">
+            <Card className="rounded-xl border shadow-none">
+              <CardContent className="p-4 md:p-6">
+                <ActivityTab calls={calls} customerId={id} onChanged={load} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
-              <TabsContent value="settings" className="pt-4">
-                <DemoSettings
+        <TabsContent value="settings" className={operator ? "pt-4" : ""}>
+          <DemoSettings
+            customerId={id}
+            draft={draft}
+            setDraft={(change) => setDraft((current) => (current ? change(current) : current))}
+            save={save}
+            onRebuild={() => void rebuildPrompts()}
+            rebuilding={saving}
+            operator={operator}
+            section={section}
+            onSection={(next) => onSection?.(next)}
+            phase="demo"
+            asideTitle={operator ? "Test call" : "Try it"}
+            asideBadge={operator ? "Phone line simulated" : "Example"}
+            aside={
+              operator ? (
+                <TestCallPanel
+                  api={demoFetch}
                   customerId={id}
-                  draft={draft}
-                  setDraft={(change) => setDraft((current) => (current ? change(current) : current))}
-                  save={save}
-                  onRebuild={() => void rebuildPrompts()}
-                  rebuilding={saving}
-                  operator={operator}
-                  section={section}
-                  onSection={(next) => onSection?.(next)}
+                  settings={withDefaults(draft.callSettings)}
+                  businessName={businessName}
+                  businessPhone={draft.profile.phone ?? null}
+                  callSound={draft.callSound}
+                  disabled={draft.status !== "ready" || !draft.active}
+                  onEnded={() => void load()}
                 />
-              </TabsContent>
+              ) : (
+                <ExampleCallPanel
+                  businessName={businessName}
+                  agentName={draft.agentName}
+                  greetingLine={quotedGreeting(draft.prompts.greeting)}
+                  settings={withDefaults(draft.callSettings)}
+                  demoLink={customerLink(id)}
+                  unavailable={draft.status !== "ready" || !draft.active}
+                />
+              )
+            }
+            toolbar={(current) =>
+              !operator ? (
+                <span className="ta-caption-1 text-muted-foreground">Preview · read only</span>
+              ) : current === "transfers" || current === "text-link" || current === "take-message" ? (
+                <span className="ta-caption-1 text-muted-foreground">Saved as you go. Nothing to publish on a demo.</span>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <span className="ta-caption-1 text-muted-foreground flex items-center gap-1.5">
+                    {dirty ? <span className="bg-warning size-1.5 rounded-full" aria-hidden /> : null}
+                    {dirty ? "Unsaved changes" : "All changes saved"}
+                  </span>
+                  <Button size="sm" onClick={() => save()} disabled={saving || !dirty}>
+                    {saving ? "Saving" : "Save"}
+                  </Button>
+                </div>
+              )
+            }
+            notice={
+              operator ? undefined : (
+                <p className="bg-primary/5 ta-caption-1 px-4 py-2.5">
+                  A preview of your receptionist's settings: everything it knows and can do. Start onboarding to
+                  change any of it.
+                </p>
+              )
+            }
+          />
+        </TabsContent>
 
-              {operator && (
-              <TabsContent value="sources" className="space-y-6 pt-4">
+        {operator && (
+          <TabsContent value="sources" className="pt-4">
+            <Card className="rounded-xl border shadow-none">
+              <CardContent className="space-y-6 p-4 md:p-6">
                 <ResearchInputsPanel
                   customer={draft}
                   onChange={(partial) => setDraft({ ...draft, ...partial })}
                   onResearch={() => research(false)}
                   researching={researching}
                 />
-                <SourcesPanel
-                  dossier={draft.dossier}
-                  sources={draft.sources}
-                  researchedAt={draft.researchedAt}
-                />
-              </TabsContent>
-              )}
+                <SourcesPanel dossier={draft.dossier} sources={draft.sources} researchedAt={draft.researchedAt} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
-              {operator && (
-              <TabsContent value="share" className="pt-4">
+        {operator && (
+          <TabsContent value="share" className="pt-4">
+            <Card className="rounded-xl border shadow-none">
+              <CardContent className="p-4 md:p-6">
                 <SharePanel
                   customer={draft}
                   stats={stats}
                   onChange={(partial) => setDraft({ ...draft, ...partial })}
                   onAddedTime={addedTime}
                 />
-              </TabsContent>
-              )}
-            </Tabs>
-          </CardContent>
-        </Card>
-
-        {operator && (
-        <Card className="flex flex-col rounded-xl border shadow-none">
-          <CardHeader>
-            <CardTitle className="ta-headline-2">Test call</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-1 flex-col gap-4">
-            {/*
-              Dashboard-only (see PORTING.md): the test call is the settings screen's TestCallPanel —
-              the same orb, panel and transcript, plus the simulated phone line for the tools the
-              composed session now carries (transfers, links, messages).
-            */}
-            <TestCallPanel
-              api={demoFetch}
-              customerId={id}
-              settings={withDefaults(draft.callSettings)}
-              businessName={draft.profile.name || draft.businessName}
-              businessPhone={draft.profile.phone ?? null}
-              callSound={draft.callSound}
-              disabled={draft.status !== "ready" || !draft.active}
-              onEnded={() => void load()}
-            />
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </TabsContent>
         )}
-      </div>
+      </Tabs>
     </>
   );
 }

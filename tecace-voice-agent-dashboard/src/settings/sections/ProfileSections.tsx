@@ -13,6 +13,7 @@ import type { BehaviourDefault, SessionPreview } from "../../api/types";
 import { displayPhone } from "../callSettings";
 import { SectionIntro } from "../SettingsShell";
 import { FieldMessage, toFieldError } from "./shared";
+import { GREETING_EXAMPLES, INSTRUCTION_EXAMPLES, Tips } from "../examples";
 
 // The settings sections that edit what the receptionist knows and how it sounds. Each is a
 // controlled editor; the container decides whether it saves itself (a business, with `footer`) or
@@ -79,6 +80,25 @@ export function FaqsSection({
         <>
           <KnowledgeEditor profile={profile} onChange={onChange} sections={["faqs"]} />
           {footer}
+          <div className="mt-8">
+            <Tips
+              title="Writing answers callers understand"
+              items={[
+                {
+                  good: "Q: Do you take walk-ins? A: Yes, most weekdays. Weekends are busy, so booking ahead is best.",
+                  avoid: "A: See website.",
+                },
+                {
+                  good: "A: You can book online at olympus spa dot com, slash book.",
+                  avoid: "A: https://olympusspa.com/book?ref=phone",
+                },
+                {
+                  good: "Keep each answer to one or two sentences, the way you'd say it on the phone.",
+                  avoid: "Pasting a whole price list into one answer. Put prices under Business information.",
+                },
+              ]}
+            />
+          </div>
         </>
       ) : (
         <p className="ta-body-2 text-muted-foreground">Add your business information first.</p>
@@ -151,6 +171,20 @@ export function AgentProfileSection({
             Word for word. Leave it empty for the standard greeting. Write {"{business}"} or {"{agent}"} and we
             fill them in. Any call-recording notice is added for you.
           </p>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <span className="ta-caption-1 text-muted-foreground">Try one:</span>
+            {GREETING_EXAMPLES.map((greeting) => (
+              <Button
+                key={greeting}
+                variant="outline"
+                size="sm"
+                className="h-auto max-w-full py-1 text-left whitespace-normal"
+                onClick={() => onChange({ ...value, greeting })}
+              >
+                {greeting}
+              </Button>
+            ))}
+          </div>
         </div>
       ) : null}
       {heard ? (
@@ -230,6 +264,24 @@ export function CustomTrainingSection({
           <p className="ta-caption-1 text-muted-foreground">
             One per line — anything you'd tell a new receptionist on their first day.
           </p>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <span className="ta-caption-1 text-muted-foreground">Add an example:</span>
+            {INSTRUCTION_EXAMPLES.map((line) => (
+              <Button
+                key={line}
+                variant="outline"
+                size="sm"
+                className="h-auto max-w-full py-1 text-left whitespace-normal"
+                disabled={(houseRules ?? "").includes(line)}
+                onClick={() => {
+                  const current = (houseRules ?? "").trimEnd();
+                  onHouseRulesChange(current ? `${current}\n${line}` : line);
+                }}
+              >
+                {line}
+              </Button>
+            ))}
+          </div>
           {houseRulesFooter}
         </div>
       ) : null}
@@ -390,17 +442,12 @@ export function TestSection({ children }: { children?: ReactNode }) {
   );
 }
 
-const FORWARDING = [
-  { carrier: "AT&T, T-Mobile", all: "**21*{n}#", busy: "**67*{n}#", noAnswer: "**61*{n}#", off: "##21#" },
-  { carrier: "Verizon", all: "*72{n}", busy: "*90{n}", noAnswer: "*92{n}", off: "*73" },
-  { carrier: "Landline (most)", all: "*72{n}", busy: "", noAnswer: "", off: "*73" },
-];
-
 export function LaunchSection({
   agentNumber,
   live,
   published,
   checklist,
+  onOpenForwarding,
 }: {
   agentNumber: string | null;
   /** The business has enough information to answer as itself. */
@@ -409,8 +456,9 @@ export function LaunchSection({
   published: boolean;
   /** Anything else worth a line, e.g. SMS registration. */
   checklist?: { done: boolean; label: string; hint?: string }[];
+  /** Opens the Call forwarding section, which has the codes. */
+  onOpenForwarding?: () => void;
 }) {
-  const digits = agentNumber?.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "") ?? "";
   const steps = [
     { done: live, label: "Business information is filled in", hint: "At least your name and what you do." },
     { done: Boolean(agentNumber), label: "A phone number is assigned to your assistant", hint: "Your administrator assigns it." },
@@ -450,42 +498,14 @@ export function LaunchSection({
             <p className="ta-headline-1">{displayPhone(agentNumber)}</p>
           </div>
           <p className="ta-headline-2 mb-2">Forward your calls</p>
-          <p className="ta-caption-1 text-muted-foreground mb-3">
-            Dial the code from the phone you want to forward. Codes vary by carrier and plan — check with yours if
-            one doesn't take.
+          <p className="ta-body-2 text-muted-foreground mb-3">
+            Point your business line at this number — for missed calls or every call. Callers keep dialling the
+            number they know.
           </p>
-          <div className="overflow-x-auto">
-            <table className="ta-body-2 w-full text-left">
-              <thead className="ta-caption-1 text-muted-foreground">
-                <tr>
-                  <th className="py-2 pr-4">Carrier</th>
-                  <th className="py-2 pr-4">When busy</th>
-                  <th className="py-2 pr-4">When unanswered</th>
-                  <th className="py-2 pr-4">All calls</th>
-                  <th className="py-2">Turn off</th>
-                </tr>
-              </thead>
-              <tbody>
-                {FORWARDING.map((row) => (
-                  <tr key={row.carrier} className="border-t">
-                    <td className="py-2 pr-4 ta-label-1">{row.carrier}</td>
-                    <td className="py-2 pr-4 font-mono">{row.busy.replace("{n}", digits) || "—"}</td>
-                    <td className="py-2 pr-4 font-mono">{row.noAnswer.replace("{n}", digits) || "—"}</td>
-                    <td className="py-2 pr-4 font-mono">{row.all.replace("{n}", digits)}</td>
-                    <td className="py-2 font-mono">{row.off}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="ta-caption-1 text-muted-foreground mt-4">
-            On an iPhone, turn off Live Voicemail (Settings › Apps › Phone) or it answers before the assistant can.
-            Using a VoIP system such as RingCentral, OpenPhone or Google Voice? Set the forwarding number in its
-            admin settings instead.
-          </p>
+          {onOpenForwarding ? <Button onClick={onOpenForwarding}>Set up call forwarding</Button> : null}
         </>
       ) : (
-        <p className="ta-body-2 text-muted-foreground">Forwarding codes appear here once a number is assigned.</p>
+        <p className="ta-body-2 text-muted-foreground">Once a number is assigned, forward your calls to it — see Call forwarding.</p>
       )}
     </div>
   );

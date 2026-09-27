@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { MAX_BRIEF, MAX_SCENARIOS, newId, type MessageScenario } from "../callSettings";
 import { SectionIntro } from "../SettingsShell";
+import { ExamplePicker, MESSAGE_EXAMPLES, MessageExchange } from "../examples";
 import { FieldMessage, localField, toFieldError, type CallSettingsBinding, type FieldError } from "./shared";
 
 // How the assistant takes particular kinds of message. Without any scenario it takes the caller's
@@ -38,6 +39,12 @@ export function TakeMessageSection({ binding }: { binding: CallSettingsBinding }
     }
   }
 
+  const readOnly = Boolean(binding.readOnly);
+  const showingExamples = readOnly && scenarios.length === 0;
+  const rows = showingExamples ? MESSAGE_EXAMPLES.map((e) => e.scenario()) : scenarios;
+  const fromExample = (example: (typeof MESSAGE_EXAMPLES)[number]) =>
+    setEditing({ scenario: example.scenario(), index: -1 });
+
   return (
     <div>
       {binding.publishBar}
@@ -56,15 +63,27 @@ export function TakeMessageSection({ binding }: { binding: CallSettingsBinding }
 
       {rowError ? <FieldMessage>{rowError}</FieldMessage> : null}
 
+      {showingExamples ? (
+        <p className="ta-caption-1 text-muted-foreground mb-2">
+          Examples of what you can set up. Your TecAce team sets these up with you during onboarding.
+        </p>
+      ) : null}
+
       <ul className="space-y-3">
-        {scenarios.map((scenario, index) => (
+        {rows.map((scenario, index) => (
           <li key={scenario.id} className="flex items-start gap-3 rounded-xl border p-4">
             <div className="min-w-0 flex-1">
-              <p className="ta-label-1">{scenario.name}</p>
+              <p className="ta-label-1">
+                {scenario.name}
+                {showingExamples ? (
+                  <span className="ta-caption-2 bg-muted text-muted-foreground ml-2 rounded-full px-2 py-0.5">Example</span>
+                ) : null}
+              </p>
               <p className="ta-caption-1 text-muted-foreground mt-1 whitespace-pre-line">{scenario.brief}</p>
             </div>
             <Switch
               checked={scenario.enabled}
+              disabled={readOnly}
               aria-label={`Turn ${scenario.name} ${scenario.enabled ? "off" : "on"}`}
               onCheckedChange={(enabled) =>
                 void run(() => change((list) => list.map((s) => (s.id === scenario.id ? { ...s, enabled } : s))))
@@ -88,7 +107,7 @@ export function TakeMessageSection({ binding }: { binding: CallSettingsBinding }
         ))}
       </ul>
 
-      <div className="mt-4 flex items-center gap-3">
+      <div className={readOnly ? "hidden" : "mt-4 flex flex-wrap items-center gap-3"}>
         <Button
           variant={scenarios.length ? "outline" : "default"}
           disabled={scenarios.length >= MAX_SCENARIOS}
@@ -102,6 +121,17 @@ export function TakeMessageSection({ binding }: { binding: CallSettingsBinding }
             {scenarios.length} of {MAX_SCENARIOS}
           </span>
         ) : null}
+        {scenarios.length < MAX_SCENARIOS ? (
+          <ExamplePicker
+            examples={MESSAGE_EXAMPLES}
+            onPick={fromExample}
+            label={scenarios.length ? "Or add an example" : "Start from an example"}
+          />
+        ) : null}
+      </div>
+
+      <div className="mt-8">
+        <MessageExchange scenario={scenarios.find((s) => s.enabled)} />
       </div>
 
       {editing ? (

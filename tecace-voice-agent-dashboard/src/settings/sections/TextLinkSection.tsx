@@ -26,6 +26,7 @@ import {
   type LinkScenario,
 } from "../callSettings";
 import { SectionIntro } from "../SettingsShell";
+import { ExamplePicker, LINK_EXAMPLES, LinkExchange } from "../examples";
 import {
   EmptyState,
   FieldMessage,
@@ -81,6 +82,10 @@ export function TextLinkSection({ binding }: { binding: CallSettingsBinding }) {
 
   const full = links.length >= MAX_SCENARIOS;
   const add = () => setEditing({ link: blankLink(), index: -1 });
+  const readOnly = Boolean(binding.readOnly);
+  const showingExamples = readOnly && links.length === 0;
+  const rows = showingExamples ? LINK_EXAMPLES.map((e) => ({ ...e.scenario(), url: e.sampleUrl })) : links;
+  const fromExample = (example: (typeof LINK_EXAMPLES)[number]) => setEditing({ link: example.scenario(), index: -1 });
 
   return (
     <div>
@@ -93,14 +98,23 @@ export function TextLinkSection({ binding }: { binding: CallSettingsBinding }) {
 
       {rowError ? <FieldMessage>{rowError}</FieldMessage> : null}
 
-      {links.length === 0 ? (
+      {showingExamples ? (
+        <p className="ta-caption-1 text-muted-foreground mb-2">
+          Examples of what you can set up. Your TecAce team sets these up with you during onboarding.
+        </p>
+      ) : null}
+
+      {rows.length === 0 ? (
         <EmptyState
           title="No link scenarios yet"
           action={
-            <Button onClick={add}>
-              <Plus className="size-4" />
-              Add a link
-            </Button>
+            <div className="flex flex-col items-center gap-3">
+              <Button onClick={add}>
+                <Plus className="size-4" />
+                Add a link
+              </Button>
+              <ExamplePicker examples={LINK_EXAMPLES} onPick={fromExample} />
+            </div>
           }
         >
           Add a scenario so the assistant knows when to offer a link.
@@ -117,13 +131,19 @@ export function TextLinkSection({ binding }: { binding: CallSettingsBinding }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {links.map((link, index) => (
+              {rows.map((link, index) => (
                 <TableRow key={link.id}>
-                  <TableCell className="ta-label-1">{link.triggers.join(", ")}</TableCell>
+                  <TableCell className="ta-label-1">
+                    {link.triggers.join(", ")}
+                    {showingExamples ? (
+                      <span className="ta-caption-2 bg-muted text-muted-foreground ml-2 rounded-full px-2 py-0.5">Example</span>
+                    ) : null}
+                  </TableCell>
                   <TableCell className="ta-caption-1 max-w-xs truncate">{link.url}</TableCell>
                   <TableCell className="text-right">
                     <Switch
                       checked={link.enabled}
+                      disabled={readOnly}
                       aria-label={`Turn the ${link.triggers[0] ?? "link"} link ${link.enabled ? "off" : "on"}`}
                       onCheckedChange={(enabled) =>
                         void run(
@@ -153,17 +173,24 @@ export function TextLinkSection({ binding }: { binding: CallSettingsBinding }) {
               ))}
             </TableBody>
           </Table>
-          <div className="mt-4 flex items-center gap-3">
-            <Button variant="outline" disabled={full} onClick={add}>
-              <Plus className="size-4" />
-              Add a link
-            </Button>
-            <span className="ta-caption-1 text-muted-foreground">
-              {links.length} of {MAX_SCENARIOS}
-            </span>
-          </div>
+          {readOnly ? null : (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button variant="outline" disabled={full} onClick={add}>
+                <Plus className="size-4" />
+                Add a link
+              </Button>
+              <span className="ta-caption-1 text-muted-foreground">
+                {links.length} of {MAX_SCENARIOS}
+              </span>
+              {full ? null : <ExamplePicker examples={LINK_EXAMPLES} onPick={fromExample} label="Or add an example" />}
+            </div>
+          )}
         </>
       )}
+
+      <div className="mt-8">
+        <LinkExchange businessName={binding.businessName} link={links.find((l) => l.enabled) ?? links[0]} />
+      </div>
 
       <div className="mt-8 rounded-xl border p-4">
         <label className="flex items-start justify-between gap-4">
@@ -176,6 +203,7 @@ export function TextLinkSection({ binding }: { binding: CallSettingsBinding }) {
           </span>
           <Switch
             checked={binding.value.sms.doubleOptIn}
+            disabled={readOnly}
             onCheckedChange={(on) => void setDoubleOptIn(on)}
             aria-label="Ask for consent before the first text"
           />
