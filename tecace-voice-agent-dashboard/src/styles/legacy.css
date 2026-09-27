@@ -963,6 +963,31 @@ select.input {
   grid-column: 1 / -1;
   margin: 0;
 }
+/* the Go live checklist, under the lifecycle controls of an account being set up */
+.readiness {
+  display: grid;
+  gap: 8px;
+}
+.readiness-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.readiness-list li {
+  display: flex;
+  gap: 8px;
+}
+.readiness-list .is-ok > span:first-child {
+  color: var(--success);
+}
+.readiness-list .is-missing > span:first-child {
+  color: var(--danger);
+}
+.readiness-list .is-advice > span:first-child {
+  color: var(--warning);
+}
 
 /* a generated password, shown once */
 .notice {

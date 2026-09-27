@@ -1,6 +1,8 @@
 import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   createAccount,
+  getReadiness,
+  goLiveAccount,
   listAccounts,
   promoteAccount,
   removeAccount,
@@ -9,6 +11,7 @@ import {
   setAccountBusiness,
   setAccountRole,
   setAccountStatus,
+  type Readiness,
 } from "../api/backend";
 import { ACCOUNT_STATUS_LABEL, type AccountStatus, type AuthUser, type Role } from "../api/types";
 import { demoFetch } from "../demos/api";
@@ -97,7 +100,74 @@ function PasswordNotice({
 // prospect's calls or engagement, and the list is a dropdown.
 type DemoOption = { id: string; businessName: string };
 
-const STAGES: AccountStatus[] = ["unassigned", "demo", "pre-production", "production"];
+// Production is not offered here: it switches a phone line on, so it has its own button (Go live)
+// behind the readiness checklist. It still shows for an account that is already there.
+const STAGES: AccountStatus[] = ["unassigned", "demo", "pre-production"];
+
+/**
+ * The Go live checklist for an account being set up (`GET /business/readiness?userId=`), and the
+ * button that switches its line on. Read when the panel opens and again after a refused Go live,
+ * so what it shows is what the backend just checked.
+ */
+function GoLive({
+  user,
+  busy,
+  onGoLive,
+}: {
+  user: AuthUser;
+  busy: boolean;
+  onGoLive: () => Promise<void>;
+}) {
+  const [readiness, setReadiness] = useState<Readiness | null>(null);
+  const [failed, setFailed] = useState(false);
+  const load = useCallback(() => {
+    getReadiness(user.id)
+      .then((next) => {
+        setReadiness(next);
+        setFailed(false);
+      })
+      .catch(() => setFailed(true));
+  }, [user.id]);
+  useEffect(load, [load]);
+
+  return (
+    <div className="lifecycle-note readiness" aria-label="Go live checklist">
+      <span className="field-label ta-caption-1">Go live checklist</span>
+      {failed ? (
+        <p className="ta-caption-1 muted">Couldn't read the checklist.</p>
+      ) : readiness === null ? (
+        <p className="ta-caption-1 muted">Checking…</p>
+      ) : (
+        <ul className="readiness-list">
+          {readiness.items.map((item) => (
+            <li
+              key={item.id}
+              className={`ta-label-1 ${item.ok ? "is-ok" : item.required ? "is-missing" : "is-advice"}`}
+            >
+              <span aria-hidden>{item.ok ? "✓" : item.required ? "✕" : "!"}</span>
+              <span>
+                {item.label}
+                {!item.required && !item.ok ? " (recommended)" : ""}
+                {item.detail ? <span className="muted"> · {item.detail}</span> : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="inline-form-actions">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={busy || !readiness?.ready}
+          title={readiness?.ready ? "Switch this business's phone line on" : "Tick every required item first"}
+          onClick={() => void onGoLive().finally(load)}
+        >
+          Go live
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Where a customer is in their life, for one account.
@@ -114,6 +184,7 @@ function LifecyclePanel({
   onLink,
   onStage,
   onPromote,
+  onGoLive,
 }: {
   user: AuthUser;
   demos: DemoOption[] | null;
@@ -121,6 +192,7 @@ function LifecyclePanel({
   onLink: (businessId: string | null) => void;
   onStage: (status: AccountStatus) => void;
   onPromote: () => void;
+  onGoLive: () => Promise<void>;
 }) {
   const linked = demos?.find((d) => d.id === user.businessId) ?? null;
   return (
@@ -164,6 +236,9 @@ function LifecyclePanel({
               {ACCOUNT_STATUS_LABEL[stage]}
             </option>
           ))}
+          {user.status === "production" && (
+            <option value="production">{ACCOUNT_STATUS_LABEL.production}</option>
+          )}
         </select>
       </label>
       <div className="inline-form-actions">
@@ -185,6 +260,7 @@ function LifecyclePanel({
         Copying happens once. After it, their Business information is theirs: changes there do not
         reach the demo, and changes to the demo do not reach their receptionist.
       </p>
+      {user.status === "pre-production" && <GoLive user={user} busy={busy} onGoLive={onGoLive} />}
     </div>
   );
 }
@@ -354,6 +430,21 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
       load();
     } catch (e) {
       setError(accountErrorMessage(e, "Couldn't copy that demo over."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onGoLive(user: AuthUser) {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      await goLiveAccount(user.id);
+      setNote(`${user.name}'s phone line is on. Calls to their number now reach their receptionist.`);
+      load();
+    } catch (e) {
+      setError(accountErrorMessage(e, "Couldn't switch that line on."));
     } finally {
       setBusy(false);
     }
@@ -654,6 +745,7 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
                           onLink={(businessId) => void onLink(user, businessId)}
                           onStage={(status) => void onStage(user, status)}
                           onPromote={() => void onPromote(user)}
+                          onGoLive={() => onGoLive(user)}
                         />
                       </td>
                     </tr>

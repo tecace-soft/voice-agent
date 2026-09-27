@@ -69,6 +69,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 const PHASE_FILTER_LABELS: Record<string, string> = {
   all: "All phases",
+  requested: "Setup requested",
   ...PHASE_LABELS,
 };
 
@@ -144,6 +145,11 @@ export function CustomerTable({ customers, onChanged }: Props) {
     for (const customer of customers) counts[phaseOf(customer)] += 1;
     return counts;
   }, [customers]);
+  // Demo customers waiting for an admin's Approve or Decline (PORTING.md: phase gates).
+  const requestedCount = useMemo(
+    () => customers.filter((customer) => customer.request).length,
+    [customers],
+  );
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("heat");
   const [dueOnly, setDueOnly] = useState(false);
@@ -157,7 +163,9 @@ export function CustomerTable({ customers, onChanged }: Props) {
     const filtered = customers.filter((customer) => {
       if (dueOnly && !due.has(customer.id)) return false;
       if (status !== "all" && customer.status !== status) return false;
-      if (phase !== "all" && phaseOf(customer) !== phase) return false;
+      if (phase === "requested" ? !customer.request : phase !== "all" && phaseOf(customer) !== phase) {
+        return false;
+      }
       if (!term) return true;
       return [
         customer.customerCode,
@@ -236,6 +244,7 @@ export function CustomerTable({ customers, onChanged }: Props) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All phases</SelectItem>
+            <SelectItem value="requested">Setup requested ({requestedCount})</SelectItem>
             {CUSTOMER_PHASES.map((value) => (
               <SelectItem key={value} value={value}>
                 {PHASE_LABELS[value]} ({phaseCounts[value]})
@@ -344,9 +353,14 @@ export function CustomerTable({ customers, onChanged }: Props) {
                   ) : null}
                 </TableCell>
                 <TableCell>
-                  <StatusBadge kind={PHASE_KIND[phaseOf(customer)]}>
-                    {PHASE_LABELS[phaseOf(customer)]}
-                  </StatusBadge>
+                  <span className="inline-flex flex-wrap gap-1">
+                    <StatusBadge kind={PHASE_KIND[phaseOf(customer)]}>
+                      {PHASE_LABELS[phaseOf(customer)]}
+                    </StatusBadge>
+                    {customer.request ? (
+                      <StatusBadge kind="caution">Setup requested</StatusBadge>
+                    ) : null}
+                  </span>
                 </TableCell>
                 <TableCell className="ta-label-1">
                   {customer.contactName || "—"}

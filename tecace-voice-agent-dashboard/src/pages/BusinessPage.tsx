@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   getBusinessProfile,
+  getReadiness,
   listAccounts,
   saveBusinessProfile,
+  type Readiness,
 } from "../api/backend";
 import type {
   AgentNumber,
@@ -69,6 +71,10 @@ export function BusinessPage({
   const [needsReread, setNeedsReread] = useState(false);
   const [rereading, setRereading] = useState(false);
   const [number, setNumber] = useState<AgentNumber | null>(null);
+  // The account's stage and Go live checklist. Only an account being set up (pre-production) shows
+  // it: its line is off until an admin goes live, whatever the number and profile say. Null when the
+  // read fails — the page then says what it always said.
+  const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [maxChars, setMaxChars] = useState(20_000);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -116,6 +122,9 @@ export function BusinessPage({
       })
       .catch((e) => setError(accountErrorMessage(e, "Couldn't load these business details.")))
       .finally(() => setLoading(false));
+    getReadiness(targetId)
+      .then(setReadiness)
+      .catch(() => setReadiness(null));
   }, [isAdmin, targetId]);
 
   useEffect(() => {
@@ -228,6 +237,7 @@ export function BusinessPage({
   if (error) return <p className="error ta-body-2">{error}</p>;
 
   const state = stateOf(profile, number);
+  const onboarding = readiness?.status === "pre-production";
 
   if (editing) {
     return (
@@ -385,14 +395,38 @@ export function BusinessPage({
               least your name and what you do. The assistant is taking messages in the meantime.
             </p>
           )}
-          {state === "no-number" && (
+          {onboarding && readiness && (
+            <div className="readiness" role="status" aria-label="Go live checklist">
+              <p className="ta-body-2">
+                {viewing ? "This business is" : "You're"} being set up. The phone line stays off
+                until everything required below is ticked and{" "}
+                {viewing ? "you switch it on from the Accounts page" : "we switch it on"}. Test
+                calls in the app work in the meantime.
+              </p>
+              <ul className="readiness-list">
+                {readiness.items.map((item) => (
+                  <li
+                    key={item.id}
+                    className={`ta-label-1 ${item.ok ? "is-ok" : item.required ? "is-missing" : "is-advice"}`}
+                  >
+                    <span aria-hidden>{item.ok ? "✓" : item.required ? "✕" : "!"}</span>
+                    <span>
+                      {item.label}
+                      {!item.required && !item.ok ? " (recommended)" : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {!onboarding && state === "no-number" && (
             <p className="notice notice-slim" role="status">
               <IconAlert size={14} />
               Saved, but not in use yet — you don't have a phone number assigned. Ask your
               administrator to assign one and this starts answering calls straight away.
             </p>
           )}
-          {state === "live" && number && (
+          {!onboarding && state === "live" && number && (
             <p className="business-live ta-label-1">
               <IconPhone size={14} />
               Answering calls to {formatPhone(number.phoneE164)}

@@ -241,6 +241,30 @@ export function promoteAccount(id: string): Promise<{ user: AuthUser; profile: u
   return request<{ user: AuthUser; profile: unknown }>("POST", `/auth/users/${id}/promote`, { body: {} });
 }
 
+/** One line of the Go live checklist (transcribe-backend `business/readiness.ts`). */
+export type ReadinessItem = {
+  id: string;
+  ok: boolean;
+  /** A required item blocks Go live; the others are advice. */
+  required: boolean;
+  label: string;
+  detail?: string;
+};
+export type Readiness = { status: AccountStatus; ready: boolean; items: ReadinessItem[] };
+
+/** Is the line ready to be switched on? Your own, or (admin) another account's by id. */
+export function getReadiness(userId?: string): Promise<Readiness> {
+  return get<Readiness>(`/business/readiness${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`);
+}
+
+/**
+ * Onboarding → production: switch the account's phone line on. The only way into production; the
+ * backend refuses (409, naming what is missing) until every required readiness item is ticked.
+ */
+export function goLiveAccount(id: string): Promise<{ user: AuthUser }> {
+  return request<{ user: AuthUser }>("POST", `/auth/users/${id}/go-live`, { body: {} });
+}
+
 // ---- feedback ----
 
 // Send a note. The backend takes the author from the session, so there's nothing to pass but the

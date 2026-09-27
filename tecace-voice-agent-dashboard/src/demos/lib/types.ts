@@ -137,6 +137,12 @@ export type Customer = {
   phase?: CustomerPhase;
   /** The linked account's email — how the Business pages pick this customer. */
   accountEmail?: string | null;
+  /** An open "set this up for me" from the customer, while still in the demo. */
+  request?: { requestedAt: string; note: string | null } | null;
+  /** The admin's last "not yet", shown to the customer until they ask again. */
+  declined?: { declinedAt: string; note: string | null } | null;
+  /** When the line was switched on (Go live). */
+  liveAt?: string | null;
 };
 
 export const CUSTOMER_PHASES = ["demo", "onboarding", "production"] as const;
