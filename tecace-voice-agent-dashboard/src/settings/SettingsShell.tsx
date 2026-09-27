@@ -162,7 +162,7 @@ export function SettingsShell({
   }
 
   return (
-    <div className="bg-card flex flex-col overflow-hidden rounded-2xl border lg:h-[calc(100dvh-var(--topbar-h,56px)-3rem)] lg:min-h-[620px]">
+    <div className="bg-card flex flex-col overflow-hidden rounded-2xl border lg:h-[calc(100dvh-var(--topbar-h,56px)-8rem)] lg:min-h-[600px]">
       <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2.5">
         {phase ? <PhaseSteps phase={phase} /> : null}
         <div className="flex-1" />
@@ -183,7 +183,7 @@ export function SettingsShell({
       {notice ? <div className="border-b">{notice}</div> : null}
 
       <div className="relative flex min-h-0 flex-1 flex-col lg:flex-row">
-        <nav aria-label="Receptionist settings" className="hidden w-52 shrink-0 overflow-y-auto border-r p-3 lg:block">
+        <nav aria-label="Receptionist settings" className="hidden w-56 shrink-0 overflow-y-auto border-r p-3 lg:block">
           <div className="flex flex-col gap-4">
             {groups.map((group) => (
               <div key={group.label}>

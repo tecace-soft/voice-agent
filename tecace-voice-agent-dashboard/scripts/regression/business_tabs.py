@@ -229,12 +229,13 @@ def main() -> int:
                           page.get_by_role("button", name="Publish").is_disabled())
                     page.get_by_role("button", name="Add a transfer").first.click()
                     page.wait_for_timeout(300)
-                    dialog = page.get_by_role("dialog")
+                    # The form opens in place, at the top of the list, rather than in a dialog.
+                    dialog = page.get_by_role("group", name="Add a transfer")
                     dialog.get_by_label("Name", exact=True).fill("Billing")
                     dialog.get_by_label("Number", exact=True).fill("(425) 555-0100")
                     dialog.get_by_role("button", name="Save", exact=True).click()
                     page.wait_for_timeout(700)
-                    check("Transfers: the backend's refusal shows in the dialog",
+                    check("Transfers: the backend's refusal shows in the form",
                           "ring itself" in dialog.inner_text(), dialog.inner_text()[:300])
                     dialog.get_by_label("Number", exact=True).fill("(206) 555-0134")
                     dialog.get_by_role("button", name="Save", exact=True).click()
@@ -277,7 +278,7 @@ def main() -> int:
                     body = page.inner_text("main")
                     check("Test: this month's allowance is shown", "1:15 of 30:00 test minutes used" in body, body[:300])
                     check("Test: the call panel is there", page.get_by_role("button", name="Call").count() >= 1
-                          or "Call to hear how the receptionist answers." in body)
+                          or "Call, then talk as a caller would." in body)
                     check("Test: a past call shows its review and what happened",
                           "Went well: Put them through" in body and "Transfer finished: connected" in body)
 

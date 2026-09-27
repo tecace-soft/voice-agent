@@ -188,3 +188,89 @@ export function EmptyState({ title, children, action }: { title: string; childre
     </div>
   );
 }
+
+/**
+ * A scenario's form, opened in place under its row (or at the top of the list for a new one) rather
+ * than in a dialog, so the list stays in view while it is edited. Escape cancels.
+ */
+export function InlineEditor({
+  title,
+  description,
+  onCancel,
+  children,
+}: {
+  title: string;
+  description?: string;
+  onCancel: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={title}
+      className="bg-muted/30 border-t p-4 md:p-5"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onCancel();
+      }}
+    >
+      <p className="ta-label-1">{title}</p>
+      {description ? <p className="ta-caption-1 text-muted-foreground">{description}</p> : null}
+      <div className="mt-4 space-y-5">{children}</div>
+    </div>
+  );
+}
+
+/** A small coloured label for a row: a transfer's type, "Example", "Off". */
+export function Tag({ tone = "muted", children }: { tone?: "muted" | "blue" | "amber" | "green"; children: ReactNode }) {
+  const colour = {
+    muted: "bg-muted text-muted-foreground",
+    blue: "bg-primary/10 text-primary",
+    amber: "bg-warning/15 text-warning",
+    green: "bg-success/15 text-success",
+  }[tone];
+  return <span className={`ta-caption-2 inline-flex shrink-0 items-center rounded-md px-2 py-0.5 ${colour}`}>{children}</span>;
+}
+
+/**
+ * One scenario in a list: the row opens its editor in place. The row's button covers the summary;
+ * the switch and delete sit beside it, outside the button. `data-row` keeps the row visible when the
+ * settings are read-only (see `.settings-readonly` in src/styles/index.css).
+ */
+export function ScenarioRow({
+  open,
+  onToggle,
+  label,
+  main,
+  meta,
+  actions,
+  children,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  /** What the row's button is called for a screen reader: "Edit Billing". */
+  label: string;
+  main: ReactNode;
+  meta?: ReactNode;
+  actions?: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <li>
+      <div className={`flex items-center gap-2 pr-3 ${open ? "bg-muted/30" : "hover:bg-muted/30"}`}>
+        <button
+          type="button"
+          data-row
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-label={label}
+          className="flex min-w-0 flex-1 items-center gap-4 py-3 pl-4 text-left disabled:cursor-default"
+        >
+          <span className="min-w-0 flex-1">{main}</span>
+          {meta ? <span className="hidden shrink-0 items-center gap-4 md:flex">{meta}</span> : null}
+        </button>
+        {actions}
+      </div>
+      {open ? children : null}
+    </li>
+  );
+}

@@ -5,20 +5,11 @@ import { accountErrorMessage } from "../../auth";
 import { displayPhone, type CallSettings } from "../callSettings";
 import { SectionIntro } from "../SettingsShell";
 import { TestCallPanel } from "../simulator/TestCallPanel";
+import { eventLine } from "../simulator/eventLabels";
 
 // A business's in-app test calls: the console beside the settings (the call itself and this month's
 // allowance), and the Test & improve section (the calls already made, each with the review the call
 // reviewer wrote). Both read one `useTestCalls`, so a call ending refreshes the list.
-
-const EVENT_LABEL: Record<string, string> = {
-  transfer_requested: "Transfer asked for",
-  transfer_final: "Transfer finished",
-  consent_requested: "Consent text sent",
-  link_sent: "Link texted",
-  link_blocked: "Link not sent (opted out)",
-  consent_reply: "Caller replied",
-  message_taken: "Message taken",
-};
 
 function minutes(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -26,13 +17,6 @@ function minutes(seconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function eventLine(e: TestCallRecord["events"][number]): string | null {
-  const label = EVENT_LABEL[e.type];
-  if (!label) return null;
-  if (e.type === "transfer_final") return `${label}: ${e.data.success ? "connected" : "nobody picked up"}`;
-  if (e.type === "consent_reply") return `${label} ${String(e.data.reply ?? "").toUpperCase()}`;
-  return label;
-}
 
 export type TestCalls = {
   calls: TestCallRecord[] | null;
@@ -84,8 +68,10 @@ export function BusinessTestConsole({
   settings,
   businessName,
   agentNumber,
+  agentName,
 }: {
   test: TestCalls;
+  agentName?: string;
   userId?: string;
   profileUserId: string;
   settings: CallSettings;
@@ -106,6 +92,7 @@ export function BusinessTestConsole({
         settings={settings}
         businessName={businessName}
         businessPhone={agentNumber ? displayPhone(agentNumber) : null}
+        agentName={agentName}
         disabled={test.out}
         onEnded={test.reload}
       />

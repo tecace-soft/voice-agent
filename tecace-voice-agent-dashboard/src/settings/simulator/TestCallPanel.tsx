@@ -1,22 +1,29 @@
-import { useEffect } from "react";
-import { MessageSquareText, PhoneForwarded, Smartphone } from "lucide-react";
-import { CallPanel } from "@/components/call/CallPanel";
+import { useEffect, useState } from "react";
+import { MessageSquareText, Mic, MicOff, Phone, PhoneForwarded, PhoneOff, RotateCcw, Smartphone } from "lucide-react";
+import { STATUS_TEXT, StatusDot } from "@/components/call/CallPanel";
 import { Transcript } from "@/components/call/Transcript";
 import { VoiceOrb } from "@/components/call/VoiceOrb";
 import { Button } from "@/components/ui/button";
 import { useLiveCall } from "@/hooks/useLiveCall";
-import type { CallSound } from "@/lib/types";
+import { formatDuration } from "@/lib/analytics";
+import type { CallSound, CallState } from "@/lib/types";
 import { MODE_LABEL, type CallSettings } from "../callSettings";
+import { eventLine } from "./eventLabels";
 import { ringingNumber, whisper } from "./simulate";
 import { useCallSimulator } from "./useCallSimulator";
 
-// A test call from the browser, with the phone line around it simulated.
+// A test call from the browser, with the phone line around it simulated — the settings studio's
+// console.
 //
 // The receptionist is exactly what callers get — the session is composed by the backend from the
 // same settings — but a transfer rings nobody and a link texts nobody. When the receptionist puts
-// someone through, this panel shows who would be rung and what they would hear, and the person
-// testing plays them: answer, decline, or let it ring out. Links arrive on a simulated phone, where
-// they can reply YES or STOP. What happened is sent with the call's report.
+// someone through, a card pinned under the call says who would be rung and what they would hear, and
+// the person testing plays them: answer, decline, or let it ring out. Links arrive in the Texts tab,
+// where they can reply YES or STOP. Everything that happened is in Events, and is sent with the
+// call's report.
+//
+// Laid out like a voice-agent builder's test panel: one compact call row, then the call as tabs, so
+// the transcript scrolls in its own space instead of pushing the page.
 
 type Props = {
   /** Which half of the API to dial through: the demo's or the business's test routes. */
@@ -27,13 +34,28 @@ type Props = {
   businessName: string;
   /** The number texts would come from, for the consent text's "questions" line. */
   businessPhone: string | null;
+  /** Who answers, for the call row. */
+  agentName?: string;
   callSound?: Partial<CallSound> | null;
   disabled?: boolean;
   /** Called a moment after a call ends, so the page can re-read its call list. */
   onEnded?: () => void;
 };
 
-export function TestCallPanel({ api, customerId, settings, businessName, businessPhone, callSound, disabled, onEnded }: Props) {
+type Tab = "transcript" | "texts" | "events";
+const IN_CALL = new Set<CallState>(["ringing", "connected", "ending"]);
+
+export function TestCallPanel({
+  api,
+  customerId,
+  settings,
+  businessName,
+  businessPhone,
+  agentName,
+  callSound,
+  disabled,
+  onEnded,
+}: Props) {
   const sim = useCallSimulator(settings, businessName, businessPhone);
   const call = useLiveCall(customerId, callSound, {
     api,
@@ -41,11 +63,17 @@ export function TestCallPanel({ api, customerId, settings, businessName, busines
     onToolCall: sim.onToolCall,
     reportExtras: sim.reportExtras,
   });
+  const [tab, setTab] = useState<Tab>("transcript");
 
   // A fresh simulated line for every call.
   useEffect(() => {
     if (call.state === "connecting") sim.reset();
   }, [call.state, sim.reset]);
+
+  // A text arriving is worth looking at; the tab says so by opening.
+  useEffect(() => {
+    if (sim.texts.length) setTab("texts");
+  }, [sim.texts.length]);
 
   useEffect(() => {
     if (call.state !== "ended" || !onEnded) return;
@@ -55,28 +83,71 @@ export function TestCallPanel({ api, customerId, settings, businessName, busines
 
   const pending = sim.pending;
   const heard = pending ? whisper(pending, businessName) : "";
+  const inCall = IN_CALL.has(call.state);
+  const busy = call.state === "connecting" || call.state === "ending";
+  const over = call.state === "ended" || call.state === "error";
+  const duration = call.state === "ended" ? call.usageSec || call.elapsedSec : call.elapsedSec;
+  const events = sim.events.map(eventLine).filter((line): line is string => Boolean(line));
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex justify-center">
-        <VoiceOrb state={call.state} meters={call.meters} size={64} />
+    <div className="flex h-full min-h-[420px] flex-col gap-3">
+      <div className="flex items-center gap-3">
+        <VoiceOrb state={call.state} meters={call.meters} size={44} />
+        <div className="min-w-0 flex-1">
+          <p className="ta-label-1 truncate">
+            {agentName ? `${agentName} · ` : ""}
+            {businessName || "Your receptionist"}
+          </p>
+          <p className="ta-caption-1 text-muted-foreground flex items-center gap-1.5">
+            <StatusDot state={call.state} />
+            {STATUS_TEXT[call.state]}
+            {(call.state === "connected" || call.state === "ended") && duration > 0
+              ? ` · ${formatDuration(duration)}`
+              : ""}
+          </p>
+        </div>
+        {inCall ? (
+          <>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={call.toggleMute}
+              aria-label={call.muted ? "Unmute the microphone" : "Mute the microphone"}
+            >
+              {call.muted ? <MicOff /> : <Mic />}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={call.hangup}
+              disabled={call.state === "ending"}
+              aria-label="End the call"
+            >
+              <PhoneOff className="size-4" />
+              End
+            </Button>
+          </>
+        ) : (
+          <Button
+            size="sm"
+            onClick={over ? call.reset : call.dial}
+            disabled={disabled || busy}
+            aria-label={over ? "Start a new call" : "Call now"}
+          >
+            {over ? <RotateCcw className="size-4" /> : <Phone className="size-4" />}
+            {over ? "Call again" : busy ? "Calling" : "Call"}
+          </Button>
+        )}
       </div>
-      <CallPanel
-        compact
-        state={call.state}
-        elapsedSec={call.elapsedSec}
-        usageSec={call.usageSec}
-        muted={call.muted}
-        error={call.error}
-        disabled={disabled}
-        onDial={call.dial}
-        onHangup={call.hangup}
-        onToggleMute={call.toggleMute}
-        onReset={call.reset}
-      />
+
+      {call.error ? (
+        <p className="ta-caption-1 text-destructive" role="alert">
+          {call.error}
+        </p>
+      ) : null}
 
       {pending ? (
-        <div className="border-primary/40 bg-primary/5 rounded-xl border p-3" role="status" aria-live="polite">
+        <div className="border-warning/50 bg-warning/10 rounded-xl border p-3" role="status" aria-live="polite">
           <p className="ta-label-1 flex items-center gap-2">
             <PhoneForwarded className="size-4" />
             Transferring to {pending.scenario.name} · {MODE_LABEL[pending.scenario.mode]}
@@ -106,61 +177,113 @@ export function TestCallPanel({ api, customerId, settings, businessName, busines
         </div>
       ) : null}
 
-      {sim.transferLog.length ? (
-        <p className="ta-caption-1 text-muted-foreground">Transfer: {sim.transferLog.join(" → ")}</p>
-      ) : null}
+      <div className="flex gap-4 border-b" role="group" aria-label="What happened on the call">
+        {(
+          [
+            ["transcript", "Transcript", 0],
+            ["texts", "Texts", sim.texts.length],
+            ["events", "Events", events.length + sim.messages.length],
+          ] as const
+        ).map(([id, label, count]) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={tab === id}
+            onClick={() => setTab(id)}
+            className={`ta-label-1 -mb-px border-b-2 py-1.5 transition-colors ${
+              tab === id ? "border-foreground text-foreground" : "text-muted-foreground border-transparent"
+            }`}
+          >
+            {label}
+            {count ? <span className="ta-caption-2 text-muted-foreground ml-1">{count}</span> : null}
+          </button>
+        ))}
+      </div>
 
-      {sim.texts.length ? (
-        <div className="rounded-xl border p-3">
-          <p className="ta-label-1 mb-2 flex items-center gap-2">
-            <Smartphone className="size-4" />
-            The caller's phone
-          </p>
-          <ul className="flex flex-col gap-2">
-            {sim.texts.map((text, i) => (
-              <li
-                key={i}
-                className={`ta-body-2 max-w-[85%] rounded-2xl px-3 py-2 break-words ${
-                  text.from === "business" ? "bg-muted self-start" : "bg-primary text-primary-foreground self-end"
-                }`}
-              >
-                {text.text}
-              </li>
-            ))}
-          </ul>
-          {!sim.textState.optedOut && (sim.textState.waiting.length > 0 || sim.textState.consented) ? (
-            <div className="mt-3 flex gap-2">
-              {sim.textState.waiting.length > 0 ? (
-                <Button size="sm" onClick={() => sim.reply("YES")}>
-                  Reply YES
-                </Button>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {tab === "transcript" ? (
+          <Transcript
+            entries={call.transcript}
+            thinking={call.thinking}
+            emptyMessage="Call, then talk as a caller would. Try asking for a person, or for directions."
+          />
+        ) : null}
+
+        {tab === "texts" ? (
+          sim.texts.length ? (
+            <div>
+              <p className="ta-caption-1 text-muted-foreground mb-2 flex items-center gap-2">
+                <Smartphone className="size-4" />
+                The caller's phone
+              </p>
+              <ul className="flex flex-col gap-2">
+                {sim.texts.map((text, i) => (
+                  <li
+                    key={i}
+                    className={`ta-body-2 max-w-[85%] rounded-2xl px-3 py-2 break-words ${
+                      text.from === "business" ? "bg-muted self-start" : "bg-primary text-primary-foreground self-end"
+                    }`}
+                  >
+                    {text.text}
+                  </li>
+                ))}
+              </ul>
+              {!sim.textState.optedOut && (sim.textState.waiting.length > 0 || sim.textState.consented) ? (
+                <div className="mt-3 flex gap-2">
+                  {sim.textState.waiting.length > 0 ? (
+                    <Button size="sm" onClick={() => sim.reply("YES")}>
+                      Reply YES
+                    </Button>
+                  ) : null}
+                  <Button size="sm" variant="outline" onClick={() => sim.reply("STOP")}>
+                    Reply STOP
+                  </Button>
+                </div>
               ) : null}
-              <Button size="sm" variant="outline" onClick={() => sim.reply("STOP")}>
-                Reply STOP
-              </Button>
+              {sim.textState.optedOut ? (
+                <p className="ta-caption-1 text-muted-foreground mt-2">This number has opted out; it gets no more texts.</p>
+              ) : null}
             </div>
-          ) : null}
-          {sim.textState.optedOut ? (
-            <p className="ta-caption-1 text-muted-foreground mt-2">This number has opted out; it gets no more texts.</p>
-          ) : null}
-        </div>
-      ) : null}
+          ) : (
+            <p className="ta-caption-1 text-muted-foreground py-6 text-center">
+              Texts the caller would get show up here, and you can reply YES or STOP.
+            </p>
+          )
+        ) : null}
 
-      {sim.messages.map((m, i) => (
-        <div key={i} className="rounded-xl border p-3">
-          <p className="ta-label-1 flex items-center gap-2">
-            <MessageSquareText className="size-4" />
-            Message taken{m.scenario ? ` · ${m.scenario}` : ""}
-          </p>
-          <p className="ta-body-2 mt-1">{m.message}</p>
-          <p className="ta-caption-1 text-muted-foreground mt-1">
-            {[m.callerName, m.callbackNumber, m.requestedTime].filter(Boolean).join(" · ") || "No name or number given"}
-          </p>
-        </div>
-      ))}
-
-      <div className="min-h-64 flex-1 overflow-y-auto rounded-lg border">
-        <Transcript entries={call.transcript} thinking={call.thinking} emptyMessage="Call to hear how the receptionist answers." />
+        {tab === "events" ? (
+          events.length || sim.messages.length || sim.transferLog.length ? (
+            <ul className="flex flex-col gap-2">
+              {events.map((line, i) => (
+                <li key={`e${i}`} className="ta-caption-1 border-l-2 pl-3">
+                  {line}
+                </li>
+              ))}
+              {sim.transferLog.length ? (
+                <li className="ta-caption-1 text-muted-foreground border-l-2 pl-3">
+                  Transfer: {sim.transferLog.join(" → ")}
+                </li>
+              ) : null}
+              {sim.messages.map((m, i) => (
+                <li key={`m${i}`} className="rounded-xl border p-3">
+                  <p className="ta-label-1 flex items-center gap-2">
+                    <MessageSquareText className="size-4" />
+                    Message taken{m.scenario ? ` · ${m.scenario}` : ""}
+                  </p>
+                  <p className="ta-body-2 mt-1">{m.message}</p>
+                  <p className="ta-caption-1 text-muted-foreground mt-1">
+                    {[m.callerName, m.callbackNumber, m.requestedTime].filter(Boolean).join(" · ") ||
+                      "No name or number given"}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="ta-caption-1 text-muted-foreground py-6 text-center">
+              Transfers, texts and messages from the call are listed here.
+            </p>
+          )
+        ) : null}
       </div>
     </div>
   );

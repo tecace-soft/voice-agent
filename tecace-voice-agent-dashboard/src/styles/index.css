@@ -56,7 +56,7 @@
     .settings-readonly [role="switch"] {
       pointer-events: none;
     }
-    .settings-readonly button:disabled:not([role="switch"]):not([data-slot="select-trigger"]):not([role="tab"]) {
+    .settings-readonly button:disabled:not([role="switch"]):not([data-slot="select-trigger"]):not([role="tab"]):not([data-row]) {
       display: none;
     }
   }

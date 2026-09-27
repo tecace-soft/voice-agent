@@ -406,6 +406,7 @@ export function BusinessSettings(props: Props) {
             settings={calls.draft}
             businessName={businessName}
             agentNumber={calls.agentNumber}
+            agentName={agent.agentName || undefined}
           />
         ) : (
           <p className={callsError ? "ta-body-2 text-destructive" : "ta-body-2 text-muted-foreground"}>

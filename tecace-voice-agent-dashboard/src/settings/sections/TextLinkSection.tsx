@@ -1,18 +1,9 @@
 import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import {
   DEFAULT_LINK_TEXT,
@@ -30,6 +21,9 @@ import { ExamplePicker, LINK_EXAMPLES, LinkExchange } from "../examples";
 import {
   EmptyState,
   FieldMessage,
+  InlineEditor,
+  ScenarioRow,
+  Tag,
   localField,
   toFieldError,
   type CallSettingsBinding,
@@ -86,6 +80,22 @@ export function TextLinkSection({ binding }: { binding: CallSettingsBinding }) {
   const showingExamples = readOnly && links.length === 0;
   const rows = showingExamples ? LINK_EXAMPLES.map((e) => ({ ...e.scenario(), url: e.sampleUrl })) : links;
   const fromExample = (example: (typeof LINK_EXAMPLES)[number]) => setEditing({ link: example.scenario(), index: -1 });
+  const editor = editing ? (
+    <LinkEditor
+      key={editing.link.id}
+      initial={editing.link}
+      isNew={editing.index === -1}
+      index={editing.index === -1 ? links.length : editing.index}
+      businessName={binding.businessName}
+      onCancel={() => setEditing(null)}
+      onSave={async (link) => {
+        await change((list) =>
+          list.some((l) => l.id === link.id) ? list.map((l) => (l.id === link.id ? link : l)) : [...list, link],
+        );
+        setEditing(null);
+      }}
+    />
+  ) : null;
 
   return (
     <div>
@@ -104,7 +114,7 @@ export function TextLinkSection({ binding }: { binding: CallSettingsBinding }) {
         </p>
       ) : null}
 
-      {rows.length === 0 ? (
+      {rows.length === 0 && !editing ? (
         <EmptyState
           title="No link scenarios yet"
           action={
@@ -120,72 +130,77 @@ export function TextLinkSection({ binding }: { binding: CallSettingsBinding }) {
           Add a scenario so the assistant knows when to offer a link.
         </EmptyState>
       ) : (
-        <>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>When a caller asks about</TableHead>
-                <TableHead>Link</TableHead>
-                <TableHead className="text-right">On</TableHead>
-                <TableHead className="w-24" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((link, index) => (
-                <TableRow key={link.id}>
-                  <TableCell className="ta-label-1">
-                    {link.triggers.join(", ")}
-                    {showingExamples ? (
-                      <span className="ta-caption-2 bg-muted text-muted-foreground ml-2 rounded-full px-2 py-0.5">Example</span>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="ta-caption-1 max-w-xs truncate">{link.url}</TableCell>
-                  <TableCell className="text-right">
-                    <Switch
-                      checked={link.enabled}
-                      disabled={readOnly}
-                      aria-label={`Turn the ${link.triggers[0] ?? "link"} link ${link.enabled ? "off" : "on"}`}
-                      onCheckedChange={(enabled) =>
-                        void run(
-                          () => change((list) => list.map((l) => (l.id === link.id ? { ...l, enabled } : l))),
-                          "Couldn't change that.",
-                        )
-                      }
-                    />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon-sm" aria-label="Edit link" onClick={() => setEditing({ link, index })}>
-                      <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Delete link"
-                      onClick={() =>
-                        window.confirm("Delete this link scenario?") &&
-                        void run(() => change((list) => list.filter((l) => l.id !== link.id)), "Couldn't delete that.")
-                      }
-                    >
-                      <Trash2 />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="overflow-hidden rounded-xl border">
+          <ul className="divide-y">
+            {editing?.index === -1 ? <li>{editor}</li> : null}
+            {rows.map((link, index) => {
+              const open = editing?.index === index && editing.link.id === link.id;
+              const topic = link.triggers[0] ?? "link";
+              return (
+                <ScenarioRow
+                  key={link.id}
+                  open={open}
+                  onToggle={() => setEditing(open ? null : { link, index })}
+                  label={`Edit the ${topic} link`}
+                  main={
+                    <>
+                      <span className="flex items-center gap-2">
+                        <span className="ta-label-1 truncate">{link.triggers.join(", ")}</span>
+                        {showingExamples ? <Tag>Example</Tag> : null}
+                        {!link.enabled ? <Tag>Off</Tag> : null}
+                      </span>
+                      <span className="ta-caption-1 text-muted-foreground block truncate">
+                        {linkPreview(link.text, "", binding.businessName)}
+                      </span>
+                    </>
+                  }
+                  meta={<span className="ta-caption-1 text-muted-foreground w-56 truncate font-mono">{link.url}</span>}
+                  actions={
+                    <>
+                      <Switch
+                        checked={link.enabled}
+                        disabled={readOnly}
+                        aria-label={`Turn the ${topic} link ${link.enabled ? "off" : "on"}`}
+                        onCheckedChange={(enabled) =>
+                          void run(
+                            () => change((list) => list.map((l) => (l.id === link.id ? { ...l, enabled } : l))),
+                            "Couldn't change that.",
+                          )
+                        }
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Delete link"
+                        onClick={() =>
+                          window.confirm("Delete this link scenario?") &&
+                          void run(() => change((list) => list.filter((l) => l.id !== link.id)), "Couldn't delete that.")
+                        }
+                      >
+                        <Trash2 />
+                      </Button>
+                    </>
+                  }
+                >
+                  {editor}
+                </ScenarioRow>
+              );
+            })}
+          </ul>
           {readOnly ? null : (
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <Button variant="outline" disabled={full} onClick={add}>
+            <div className="bg-muted/30 flex flex-wrap items-center gap-3 border-t px-4 py-2.5">
+              <span className="ta-caption-1 text-muted-foreground">
+                {links.length} of {MAX_SCENARIOS} · click a row to edit it
+              </span>
+              <span className="flex-1" />
+              {full ? null : <ExamplePicker examples={LINK_EXAMPLES} onPick={fromExample} label="Add an example" />}
+              <Button variant="outline" size="sm" disabled={full || editing?.index === -1} onClick={add}>
                 <Plus className="size-4" />
                 Add a link
               </Button>
-              <span className="ta-caption-1 text-muted-foreground">
-                {links.length} of {MAX_SCENARIOS}
-              </span>
-              {full ? null : <ExamplePicker examples={LINK_EXAMPLES} onPick={fromExample} label="Or add an example" />}
             </div>
           )}
-        </>
+        </div>
       )}
 
       <div className="mt-8">
@@ -216,32 +231,21 @@ export function TextLinkSection({ binding }: { binding: CallSettingsBinding }) {
         </div>
       </div>
 
-      {editing ? (
-        <LinkDialog
-          initial={editing.link}
-          index={editing.index === -1 ? links.length : editing.index}
-          businessName={binding.businessName}
-          onCancel={() => setEditing(null)}
-          onSave={async (link) => {
-            await change((list) =>
-              list.some((l) => l.id === link.id) ? list.map((l) => (l.id === link.id ? link : l)) : [...list, link],
-            );
-            setEditing(null);
-          }}
-        />
-      ) : null}
     </div>
   );
 }
 
-function LinkDialog({
+function LinkEditor({
   initial,
+  isNew,
   index,
   businessName,
   onCancel,
   onSave,
 }: {
   initial: LinkScenario;
+  /** Not in the list yet: an empty form, or one started from an example. */
+  isNew: boolean;
   index: number;
   businessName: string;
   onCancel: () => void;
@@ -279,12 +283,7 @@ function LinkDialog({
     (where?.startsWith(field) ? error?.message : null) ?? (tried ? problems[field] : null);
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent className="rounded-[20px] sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>{initial.triggers.length ? "Edit link" : "Add a link"}</DialogTitle>
-          <DialogDescription>When to offer it, and the text it arrives in.</DialogDescription>
-        </DialogHeader>
+    <InlineEditor title={isNew ? "Add a link" : "Edit link"} description="When to offer it, and the text it arrives in." onCancel={onCancel}>
         <div className="space-y-5">
           <div className="space-y-1.5">
             <Label htmlFor="link-triggers" className="ta-label-1">
@@ -331,15 +330,14 @@ function LinkDialog({
           </label>
           {error && where === undefined ? <FieldMessage>{error.message}</FieldMessage> : null}
         </div>
-        <DialogFooter>
+        <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
           <Button onClick={() => void submit()} disabled={saving}>
             {saving ? "Saving" : "Save"}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </InlineEditor>
   );
 }

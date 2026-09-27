@@ -231,22 +231,19 @@ ORB_JS = """
 }
 """
 
-# Where the Test call card's orb sits: centred across the card's content, and above the panel's
-# own controls rather than beside or below them.
+# Where the console's orb sits: at the start of the call row, level with the Call button.
 ORB_CENTRED_JS = """
 () => {
-  const video = document.querySelector('main .tw aside video');
-  const content = video.parentElement.parentElement;
-  const button = content.querySelector('button');
+  const aside = document.querySelector('main .tw aside[aria-label="Test call"]');
+  const video = aside.querySelector('video');
+  const button = aside.querySelector('button[aria-label="Call now"], button[aria-label="Start a new call"],'
+    + ' button[aria-label="End the call"]');
   const orb = video.getBoundingClientRect();
-  const box = content.getBoundingClientRect();
-  const panel = button.getBoundingClientRect();
-  const left = orb.left - box.left;
-  const right = box.right - orb.right;
+  const b = button.getBoundingClientRect();
   return {
-    centred: Math.abs(left - right) <= 1,
-    abovePanel: orb.bottom <= panel.top,
-    left: Math.round(left), right: Math.round(right),
+    level: Math.abs((orb.top + orb.bottom) / 2 - (b.top + b.bottom) / 2) <= 8,
+    leftOfButton: orb.right <= b.left,
+    orbY: Math.round((orb.top + orb.bottom) / 2), buttonY: Math.round((b.top + b.bottom) / 2),
   };
 }
 """
@@ -724,24 +721,24 @@ def run() -> int:
                     page.get_by_role("tab", name="Settings").click()
                     page.locator("main .tw aside[aria-label='Test call']").wait_for()
                     layout = page.evaluate(STUDIO_JS)
-                    check("prospect: the tabs run across the page, outside any card; the test call is the settings console",
-                          not layout["tabsInCard"] and layout["tabs"] >= layout["page"] - 2
-                          and layout["aside"] >= 300 and layout["hasCall"] and layout["section"] >= 540,
+                    check("prospect: the tabs sit in the header, outside any card; the test call is the settings console",
+                          not layout["tabsInCard"] and layout["aside"] >= 300 and layout["hasCall"]
+                          and layout["section"] >= 540,
                           str(layout))
                     # The orb above the call panel, and the one that replaced the sidebar's
                     # voicemail icon. Both are the same component and the same film; what is
                     # asserted is that the scoped utilities actually reached each of them — a
                     # 64/28px circle showing the centre of the frame, not a stretched square.
                     orb = page.evaluate(ORB_JS, 'main .tw aside video')
-                    check("prospect: the orb sits above the call panel, circular and 64px",
-                          orb["found"] and orb["tag"] == "VIDEO" and orb["w"] == 64 and orb["h"] == 64
+                    check("prospect: the orb leads the console's call row, circular and 44px",
+                          orb["found"] and orb["tag"] == "VIDEO" and orb["w"] == 44 and orb["h"] == 44
                           and orb["radiusPx"] >= orb["w"] / 2 and orb["objectFit"] == "cover"
                           and orb["src"] == "/voice-orb.mp4" and orb["poster"] == "/voice-orb.png"
                           and orb["muted"] and orb["loop"] and orb["ariaHidden"] == "true",
                           str(orb))
                     centred = page.evaluate(ORB_CENTRED_JS)
-                    check("prospect: ... centred in the Test call console, above the panel",
-                          centred["centred"] and centred["abovePanel"], str(centred))
+                    check("prospect: ... level with the Call button, to its left",
+                          centred["level"] and centred["leftOfButton"], str(centred))
                     page.get_by_role("tab", name="Activity").click()
                     brand = page.evaluate(ORB_JS, '.sidebar-brand video')
                     check("sidebar: the brand mark is the orb, in a .tw island so the utilities apply",
@@ -1028,11 +1025,11 @@ def run() -> int:
                     page.wait_for_timeout(1000)
                     refused = main_tw.locator("p[role=alert]").all_inner_texts()
                     ringing = (granted.status == 200 and not refused
-                               and main_tw.get_by_text("Ringing").count() == 1
+                               and main_tw.locator("aside").get_by_text("Ringing", exact=True).count() == 1
                                and end_call.count() == 1)
                     check("test call: the granted answer is accepted and the line is ringing",
                           ringing
-                          and main_tw.get_by_text("Call to hear how the receptionist answers.").is_visible(),
+                          and main_tw.get_by_text("Call, then talk as a caller would.", exact=False).is_visible(),
                           f"{granted.status} {refused}")
                     # "End call" sends session.close over a data channel that never opened, so the
                     # hook's own five-second timeout is what ends it: the report is the proof the

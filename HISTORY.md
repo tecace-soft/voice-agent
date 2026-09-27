@@ -13,6 +13,12 @@ Format:
 
 ---
 
+## 2026-09-27 · bottomup32 · dashboard (settings studio, closer to the B mockup)
+- Demo page header is one row (business, badges, segmented tabs, operator controls); stat cards moved into the Activity tab; the studio now fits one screen under it.
+- Transfers, links and message scenarios: compact rows (coloured type tags, mono numbers) that open their form in place (`InlineEditor`, `ScenarioRow`, `Tag` in `settings/sections/shared.tsx`) instead of a dialog.
+- Test console (`settings/simulator/TestCallPanel.tsx`) rewritten: compact call row (44px orb, Call/End, mute) + Transcript / Texts / Events tabs; pending transfer pinned above. Event labels in `simulator/eventLabels.ts`. Aria labels unchanged (`Call now`, `End the call`, `Start a new call`).
+- Regression scripts updated (`business_tabs.py` inline form, `demos_e2e.py` console row); all 8 pass. ⚠ feature/appointments: rebase TestCallPanel onto this.
+
 ## 2026-09-27 06:40 · bottomup32 · dashboard (phase gates, UI)
 - Demo customer: "Start onboarding" → **Request setup** (optional note); they stay in the demo until an admin approves. Operator's demo page: open request with **Approve** / **Decline** (note). Demo › Customers: "Setup requested" filter + badge.
 - Accounts › Stage: production is no longer in the select; an account in pre-production shows the Go live checklist (`GET /business/readiness?userId=`) and a **Go live** button. Business page: a pre-production account sees its checklist instead of "Answering calls to …".

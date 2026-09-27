@@ -1,14 +1,6 @@
 import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -16,7 +8,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { MAX_BRIEF, MAX_SCENARIOS, newId, type MessageScenario } from "../callSettings";
 import { SectionIntro } from "../SettingsShell";
 import { ExamplePicker, MESSAGE_EXAMPLES, MessageExchange } from "../examples";
-import { FieldMessage, localField, toFieldError, type CallSettingsBinding, type FieldError } from "./shared";
+import {
+  FieldMessage,
+  InlineEditor,
+  ScenarioRow,
+  Tag,
+  localField,
+  toFieldError,
+  type CallSettingsBinding,
+  type FieldError,
+} from "./shared";
 
 // How the assistant takes particular kinds of message. Without any scenario it takes the caller's
 // name and what the call is about (it already has their number); a scenario is a short brief for a
@@ -44,6 +45,23 @@ export function TakeMessageSection({ binding }: { binding: CallSettingsBinding }
   const rows = showingExamples ? MESSAGE_EXAMPLES.map((e) => e.scenario()) : scenarios;
   const fromExample = (example: (typeof MESSAGE_EXAMPLES)[number]) =>
     setEditing({ scenario: example.scenario(), index: -1 });
+  const editor = editing ? (
+    <MessageEditor
+      key={editing.scenario.id}
+      initial={editing.scenario}
+      isNew={editing.index === -1}
+      index={editing.index === -1 ? scenarios.length : editing.index}
+      onCancel={() => setEditing(null)}
+      onSave={async (scenario) => {
+        await change((list) =>
+          list.some((s) => s.id === scenario.id)
+            ? list.map((s) => (s.id === scenario.id ? scenario : s))
+            : [...list, scenario],
+        );
+        setEditing(null);
+      }}
+    />
+  ) : null;
 
   return (
     <div>
@@ -69,97 +87,100 @@ export function TakeMessageSection({ binding }: { binding: CallSettingsBinding }
         </p>
       ) : null}
 
-      <ul className="space-y-3">
-        {rows.map((scenario, index) => (
-          <li key={scenario.id} className="flex items-start gap-3 rounded-xl border p-4">
-            <div className="min-w-0 flex-1">
-              <p className="ta-label-1">
-                {scenario.name}
-                {showingExamples ? (
-                  <span className="ta-caption-2 bg-muted text-muted-foreground ml-2 rounded-full px-2 py-0.5">Example</span>
-                ) : null}
-              </p>
-              <p className="ta-caption-1 text-muted-foreground mt-1 whitespace-pre-line">{scenario.brief}</p>
-            </div>
-            <Switch
-              checked={scenario.enabled}
-              disabled={readOnly}
-              aria-label={`Turn ${scenario.name} ${scenario.enabled ? "off" : "on"}`}
-              onCheckedChange={(enabled) =>
-                void run(() => change((list) => list.map((s) => (s.id === scenario.id ? { ...s, enabled } : s))))
-              }
-            />
-            <Button variant="ghost" size="icon-sm" aria-label={`Edit ${scenario.name}`} onClick={() => setEditing({ scenario, index })}>
-              <Pencil />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`Delete ${scenario.name}`}
-              onClick={() =>
-                window.confirm(`Delete "${scenario.name}"?`) &&
-                void run(() => change((list) => list.filter((s) => s.id !== scenario.id)))
-              }
-            >
-              <Trash2 />
-            </Button>
-          </li>
-        ))}
-      </ul>
-
-      <div className={readOnly ? "hidden" : "mt-4 flex flex-wrap items-center gap-3"}>
-        <Button
-          variant={scenarios.length ? "outline" : "default"}
-          disabled={scenarios.length >= MAX_SCENARIOS}
-          onClick={() => setEditing({ scenario: { id: newId(), enabled: true, name: "", brief: "" }, index: -1 })}
-        >
-          <Plus className="size-4" />
-          Add a scenario
-        </Button>
-        {scenarios.length ? (
+      <div className="overflow-hidden rounded-xl border">
+        <ul className="divide-y">
+          {editing?.index === -1 ? <li>{editor}</li> : null}
+          {rows.map((scenario, index) => {
+            const open = editing?.index === index && editing.scenario.id === scenario.id;
+            return (
+              <ScenarioRow
+                key={scenario.id}
+                open={open}
+                onToggle={() => setEditing(open ? null : { scenario, index })}
+                label={`Edit ${scenario.name}`}
+                main={
+                  <>
+                    <span className="flex items-center gap-2">
+                      <span className="ta-label-1 truncate">{scenario.name}</span>
+                      {showingExamples ? <Tag>Example</Tag> : null}
+                      {!scenario.enabled ? <Tag>Off</Tag> : null}
+                    </span>
+                    <span className="ta-caption-1 text-muted-foreground block truncate">{scenario.brief}</span>
+                  </>
+                }
+                actions={
+                  <>
+                    <Switch
+                      checked={scenario.enabled}
+                      disabled={readOnly}
+                      aria-label={`Turn ${scenario.name} ${scenario.enabled ? "off" : "on"}`}
+                      onCheckedChange={(enabled) =>
+                        void run(() => change((list) => list.map((s) => (s.id === scenario.id ? { ...s, enabled } : s))))
+                      }
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Delete ${scenario.name}`}
+                      onClick={() =>
+                        window.confirm(`Delete "${scenario.name}"?`) &&
+                        void run(() => change((list) => list.filter((s) => s.id !== scenario.id)))
+                      }
+                    >
+                      <Trash2 />
+                    </Button>
+                  </>
+                }
+              >
+                {editor}
+              </ScenarioRow>
+            );
+          })}
+          {rows.length === 0 && !editing ? (
+            <li className="ta-caption-1 text-muted-foreground px-4 py-6 text-center">
+              No scenarios yet. Every message still gets the standard details above.
+            </li>
+          ) : null}
+        </ul>
+        <div className={readOnly ? "hidden" : "bg-muted/30 flex flex-wrap items-center gap-3 border-t px-4 py-2.5"}>
           <span className="ta-caption-1 text-muted-foreground">
             {scenarios.length} of {MAX_SCENARIOS}
+            {scenarios.length ? " · click a row to edit it" : ""}
           </span>
-        ) : null}
-        {scenarios.length < MAX_SCENARIOS ? (
-          <ExamplePicker
-            examples={MESSAGE_EXAMPLES}
-            onPick={fromExample}
-            label={scenarios.length ? "Or add an example" : "Start from an example"}
-          />
-        ) : null}
+          <span className="flex-1" />
+          {scenarios.length < MAX_SCENARIOS ? (
+            <ExamplePicker examples={MESSAGE_EXAMPLES} onPick={fromExample} label="Add an example" />
+          ) : null}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={scenarios.length >= MAX_SCENARIOS || editing?.index === -1}
+            onClick={() => setEditing({ scenario: { id: newId(), enabled: true, name: "", brief: "" }, index: -1 })}
+          >
+            <Plus className="size-4" />
+            Add a scenario
+          </Button>
+        </div>
       </div>
 
       <div className="mt-8">
         <MessageExchange scenario={scenarios.find((s) => s.enabled)} />
       </div>
 
-      {editing ? (
-        <MessageDialog
-          initial={editing.scenario}
-          index={editing.index === -1 ? scenarios.length : editing.index}
-          onCancel={() => setEditing(null)}
-          onSave={async (scenario) => {
-            await change((list) =>
-              list.some((s) => s.id === scenario.id)
-                ? list.map((s) => (s.id === scenario.id ? scenario : s))
-                : [...list, scenario],
-            );
-            setEditing(null);
-          }}
-        />
-      ) : null}
     </div>
   );
 }
 
-function MessageDialog({
+function MessageEditor({
   initial,
+  isNew,
   index,
   onCancel,
   onSave,
 }: {
   initial: MessageScenario;
+  /** Not in the list yet: an empty form, or one started from an example. */
+  isNew: boolean;
   index: number;
   onCancel: () => void;
   onSave: (scenario: MessageScenario) => Promise<void>;
@@ -195,12 +216,7 @@ function MessageDialog({
   const show = (field: "name" | "brief") => (where === field ? error?.message : null) ?? (tried ? problems[field] : null);
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent className="rounded-[20px] sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>{initial.name ? `Edit ${initial.name}` : "Add a message scenario"}</DialogTitle>
-          <DialogDescription>A situation, and what the assistant should ask in it.</DialogDescription>
-        </DialogHeader>
+    <InlineEditor title={isNew ? "Add a message scenario" : `Edit ${initial.name}`} description="A situation, and what the assistant should ask in it." onCancel={onCancel}>
         <div className="space-y-5">
           <div className="space-y-1.5">
             <Label htmlFor="message-name" className="ta-label-1">
@@ -236,15 +252,14 @@ function MessageDialog({
           </label>
           {error && where === undefined ? <FieldMessage>{error.message}</FieldMessage> : null}
         </div>
-        <DialogFooter>
+        <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
           <Button onClick={() => void submit()} disabled={saving}>
             {saving ? "Saving" : "Save"}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </InlineEditor>
   );
 }

@@ -1,14 +1,6 @@
 import { useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Pause, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Pause, Play, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -19,7 +11,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -47,6 +38,9 @@ import { ExamplePicker, TRANSFER_EXAMPLES, TransferExchange } from "../examples"
 import {
   EmptyState,
   FieldMessage,
+  InlineEditor,
+  ScenarioRow,
+  Tag,
   localField,
   toFieldError,
   type CallSettingsBinding,
@@ -59,6 +53,8 @@ import {
 // conditions that decide it and the hours it may be used. The assistant only ever learns about the
 // scenarios that are switched on and open when the call starts, so a scenario outside its hours is
 // one it cannot offer — the phone agent and the in-app test call are told the same.
+
+const MODE_TONE: Record<TransferMode, "blue" | "amber" | "green"> = { cold: "blue", warm: "amber", waterfall: "green" };
 
 function blankScenario(): TransferScenario {
   return {
@@ -117,6 +113,24 @@ export function TransferCallsSection({ binding }: { binding: CallSettingsBinding
   const fromExample = (example: (typeof TRANSFER_EXAMPLES)[number]) =>
     setEditing({ scenario: example.scenario(), index: -1 });
   const sample = scenarios.find((s) => s.enabled) ?? scenarios[0];
+  const editor = editing ? (
+    <TransferEditor
+      key={editing.scenario.id}
+      initial={editing.scenario}
+      isNew={editing.index === -1}
+      index={editing.index === -1 ? scenarios.length : editing.index}
+      waterfallAllowed={binding.waterfallAllowed}
+      onCancel={() => setEditing(null)}
+      onSave={async (scenario) => {
+        await change((list) =>
+          list.some((s) => s.id === scenario.id)
+            ? list.map((s) => (s.id === scenario.id ? scenario : s))
+            : [...list, scenario],
+        );
+        setEditing(null);
+      }}
+    />
+  ) : null;
 
   return (
     <div>
@@ -135,7 +149,7 @@ export function TransferCallsSection({ binding }: { binding: CallSettingsBinding
         </p>
       ) : null}
 
-      {rows.length === 0 ? (
+      {rows.length === 0 && !editing ? (
         <EmptyState
           title="No transfers yet"
           action={
@@ -152,85 +166,80 @@ export function TransferCallsSection({ binding }: { binding: CallSettingsBinding
           whenever someone asks for a person.
         </EmptyState>
       ) : (
-        <>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Rings</TableHead>
-                <TableHead>When</TableHead>
-                <TableHead className="text-right">On</TableHead>
-                <TableHead className="w-24" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((scenario, index) => (
-                <TableRow key={scenario.id}>
-                  <TableCell>
-                    <span className="ta-label-1">{scenario.name}</span>
-                    {showingExamples ? (
-                      <span className="ta-caption-2 bg-muted text-muted-foreground ml-2 rounded-full px-2 py-0.5">Example</span>
-                    ) : null}
-                    {scenario.description ? (
-                      <span className="ta-caption-1 text-muted-foreground block max-w-xs truncate">
-                        {scenario.description}
+        <div className="overflow-hidden rounded-xl border">
+          <ul className="divide-y">
+            {editing?.index === -1 ? <li>{editor}</li> : null}
+            {rows.map((scenario, index) => {
+              const open = editing?.index === index && editing.scenario.id === scenario.id;
+              return (
+                <ScenarioRow
+                  key={scenario.id}
+                  open={open}
+                  onToggle={() => setEditing(open ? null : { scenario, index })}
+                  label={`Edit ${scenario.name}`}
+                  main={
+                    <>
+                      <span className="flex items-center gap-2">
+                        <span className="ta-label-1 truncate">{scenario.name}</span>
+                        <Tag tone={MODE_TONE[scenario.mode]}>{MODE_LABEL[scenario.mode]}</Tag>
+                        {showingExamples ? <Tag>Example</Tag> : null}
+                        {!scenario.enabled ? <Tag>Off</Tag> : null}
                       </span>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>{MODE_LABEL[scenario.mode]}</TableCell>
-                  <TableCell className="ta-caption-1">
-                    {scenario.numbers.map(displayPhone).join(" → ")}
-                  </TableCell>
-                  <TableCell className="ta-caption-1">{hoursSummary(scenario.hours)}</TableCell>
-                  <TableCell className="text-right">
-                    <Switch
-                      checked={scenario.enabled}
-                      // A waterfall on an account without the feature can be kept but not switched on.
-                      disabled={readOnly || (scenario.mode === "waterfall" && !binding.waterfallAllowed)}
-                      onCheckedChange={(checked) => void toggle(scenario.id, checked)}
-                      aria-label={`Turn the ${scenario.name} transfer ${scenario.enabled ? "off" : "on"}`}
-                    />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Edit ${scenario.name}`}
-                      onClick={() => setEditing({ scenario, index })}
-                    >
-                      <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Delete ${scenario.name}`}
-                      onClick={() => void remove(scenario.id)}
-                    >
-                      <Trash2 />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                      {scenario.description ? (
+                        <span className="ta-caption-1 text-muted-foreground block truncate">{scenario.description}</span>
+                      ) : null}
+                    </>
+                  }
+                  meta={
+                    <span className="flex w-44 flex-col items-end text-right">
+                      <span className="ta-caption-1 w-full truncate font-mono">{scenario.numbers.map(displayPhone).join(" → ")}</span>
+                      <span className="ta-caption-2 text-muted-foreground w-full truncate">{hoursSummary(scenario.hours)}</span>
+                    </span>
+                  }
+                  actions={
+                    <>
+                      <Switch
+                        checked={scenario.enabled}
+                        // A waterfall on an account without the feature can be kept but not switched on.
+                        disabled={readOnly || (scenario.mode === "waterfall" && !binding.waterfallAllowed)}
+                        onCheckedChange={(checked) => void toggle(scenario.id, checked)}
+                        aria-label={`Turn the ${scenario.name} transfer ${scenario.enabled ? "off" : "on"}`}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Delete ${scenario.name}`}
+                        onClick={() => void remove(scenario.id)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </>
+                  }
+                >
+                  {editor}
+                </ScenarioRow>
+              );
+            })}
+          </ul>
           {readOnly ? null : (
-            <div className="mt-4 flex flex-wrap items-center gap-3">
+            <div className="bg-muted/30 flex flex-wrap items-center gap-3 border-t px-4 py-2.5">
+              <span className="ta-caption-1 text-muted-foreground">
+                {scenarios.length} of {MAX_SCENARIOS} · click a row to edit it
+              </span>
+              <span className="flex-1" />
+              {full ? null : <ExamplePicker examples={TRANSFER_EXAMPLES} onPick={fromExample} label="Add an example" />}
               <Button
                 variant="outline"
-                disabled={full}
+                size="sm"
+                disabled={full || editing?.index === -1}
                 onClick={() => setEditing({ scenario: blankScenario(), index: -1 })}
               >
                 <Plus className="size-4" />
                 Add a transfer
               </Button>
-              <span className="ta-caption-1 text-muted-foreground">
-                {scenarios.length} of {MAX_SCENARIOS}
-              </span>
-              {full ? null : <ExamplePicker examples={TRANSFER_EXAMPLES} onPick={fromExample} label="Or add an example" />}
             </div>
           )}
-        </>
+        </div>
       )}
 
       <p className="ta-headline-2 mt-8 mb-3">Transfer types</p>
@@ -271,34 +280,21 @@ export function TransferCallsSection({ binding }: { binding: CallSettingsBinding
         <TransferExchange businessName={binding.businessName} scenario={sample} />
       </div>
 
-      {editing ? (
-        <TransferDialog
-          initial={editing.scenario}
-          index={editing.index === -1 ? scenarios.length : editing.index}
-          waterfallAllowed={binding.waterfallAllowed}
-          onCancel={() => setEditing(null)}
-          onSave={async (scenario) => {
-            await change((list) =>
-              list.some((s) => s.id === scenario.id)
-                ? list.map((s) => (s.id === scenario.id ? scenario : s))
-                : [...list, scenario],
-            );
-            setEditing(null);
-          }}
-        />
-      ) : null}
     </div>
   );
 }
 
-function TransferDialog({
+function TransferEditor({
   initial,
+  isNew,
   index,
   waterfallAllowed,
   onCancel,
   onSave,
 }: {
   initial: TransferScenario;
+  /** Not in the list yet: an empty form, or one started from an example. */
+  isNew: boolean;
   index: number;
   waterfallAllowed: boolean;
   onCancel: () => void;
@@ -346,12 +342,7 @@ function TransferDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto rounded-[20px] sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{initial.name ? `Edit ${initial.name}` : "Add a transfer"}</DialogTitle>
-          <DialogDescription>Who callers can be put through to, and when.</DialogDescription>
-        </DialogHeader>
+    <InlineEditor title={isNew ? "Add a transfer" : `Edit ${initial.name}`} description="Who callers can be put through to, and when." onCancel={onCancel}>
 
         <div className="space-y-5">
           <div className="space-y-1.5">
@@ -445,16 +436,15 @@ function TransferDialog({
           {error && where === undefined ? <FieldMessage>{error.message}</FieldMessage> : null}
         </div>
 
-        <DialogFooter>
+        <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
           <Button onClick={() => void submit()} disabled={saving}>
             {saving ? "Saving" : "Save"}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </InlineEditor>
   );
 }
 

@@ -1193,3 +1193,7 @@ Spec: `docs/superpowers/specs/2026-09-27-phase-gates-design.md`.
   edits survive. `onOnboarded` is removed from `ProspectScreen`, `DemosView` and `App.tsx`.
 - **`components/admin/CustomerTable.tsx`** — phase filter gains "Setup requested (n)"; the Phase cell
   shows a "Setup requested" badge next to the phase.
+- **Follow-up (2026-09-27):** the page header is one row: business, state badges, the tabs as a
+  segmented control, and the operator's controls. The stat cards moved into the Activity tab (the
+  customer gets them as one line). On the Settings tab the header's Save is hidden — the studio bar
+  has it. The Test call console is a compact call row plus Transcript / Texts / Events tabs.

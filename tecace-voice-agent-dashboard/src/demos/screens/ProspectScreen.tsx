@@ -14,7 +14,7 @@ import { LifecycleBadges, LifecycleNotice, RequestSetup } from "@/components/adm
 import { ResearchInputsPanel } from "@/components/admin/ResearchInputsPanel";
 import { SharePanel } from "@/components/admin/SharePanel";
 import { SourcesPanel } from "@/components/research/SourcesPanel";
-import { PageHeader, StatCard, StatusBadge, statusKind } from "@/components/admin/shared";
+import { StatCard, StatusBadge, statusKind } from "@/components/admin/shared";
 import { formatDuration, isResearchStalled } from "@/lib/analytics";
 import { readJson } from "@/lib/http";
 import { quotedGreeting } from "@/lib/prompt";
@@ -31,6 +31,8 @@ import type {
   CustomerStats,
   TrackEvent,
 } from "@/lib/types";
+
+type Tab = "activity" | "settings" | "sources" | "share";
 
 type Payload = {
   customer: Customer;
@@ -70,6 +72,7 @@ export function ProspectScreen({
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [researching, setResearching] = useState(false);
+  const [tab, setTab] = useState<Tab>(operator && !section ? "activity" : "settings");
   // Calls from this panel are the operator's own and stay out of the numbers.
 
   const load = useCallback(async () => {
@@ -251,115 +254,114 @@ export function ProspectScreen({
   const dirty = JSON.stringify(withoutCalls(draft)) !== JSON.stringify(withoutCalls(data.customer));
   const businessName = draft.profile.name || draft.businessName;
 
+  const statCards = (
+    <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+      <StatCard title="Link opens" value={String(stats.views)} />
+      <StatCard title="Calls" value={String(stats.calls)} />
+      <StatCard title="Minutes" value={String(Math.round((stats.totalSec / 60) * 10) / 10)} />
+      <StatCard
+        title="Average call"
+        value={formatDuration(stats.calls ? stats.totalSec / stats.calls : 0)}
+        caption={stats.lastCallAt ? `Last call ${new Date(stats.lastCallAt).toLocaleDateString()}` : "No calls yet"}
+      />
+    </div>
+  );
+
   return (
     <>
-      <PageHeader
-        title={draft.profile.name || draft.businessName || "Unnamed business"}
-        subtitle={draft.profile.address}
-        actions={
-          <div className="flex flex-wrap items-center gap-3">
-            <StatusBadge
-              kind={stalled ? "negative" : statusKind(draft.status)}
-            >
-              {draft.status === "ready"
-                ? "Ready"
-                : draft.status === "error"
-                  ? "Error"
-                  : stalled
-                    ? "Stalled"
-                    : "Researching"}
-            </StatusBadge>
-            {/* After the research status, which stays the header's first badge as in the promo. */}
-            {operator && <LifecycleBadges customer={draft} />}
-            {operator && (
-              <>
-                <label className="ta-label-1 flex items-center gap-2">
-                  <Switch
-                    checked={draft.active}
-                    onCheckedChange={(checked) => {
-                      setDraft({ ...draft, active: checked });
-                      void save({ active: checked });
-                    }}
-                    aria-label="Toggle the demo link"
-                  />
-                  Live
-                </label>
-                <AddDemoTimeMenu
-                  customerId={id}
-                  demoMinutes={draft.demoMinutes}
-                  onAdded={addedTime}
-                />
-                <Button variant="outline" onClick={() => research(false)} disabled={researching}>
-                  <RefreshCw className="size-4" />
-                  {researching ? "Researching" : "Re-research"}
-                </Button>
-              </>
-            )}
-            {operator && (
-              <Button onClick={() => save()} disabled={saving}>
-                {saving ? "Saving" : "Save"}
-              </Button>
-            )}
-          </div>
-        }
-      />
-
-      {operator ? (
-        <LifecycleNotice customer={draft} onChanged={mergeLifecycle} />
-      ) : (
-        <RequestSetup customer={draft} onChanged={mergeLifecycle} />
-      )}
-
-      {draft.status === "error" && draft.error ? (
-        <div className="bg-destructive/10 ta-label-1 text-destructive rounded-lg p-3">
-          {draft.error}
-        </div>
-      ) : null}
-
-      {stalled ? (
-        <div className="bg-destructive/10 ta-label-1 text-destructive rounded-lg p-3">
-          Research has been running since {new Date(draft.updatedAt).toLocaleString()},
-          which is longer than it takes. The run behind it is gone. Press Re-research.
-        </div>
-      ) : null}
-
-      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        <StatCard title="Link opens" value={String(stats.views)} />
-        <StatCard title="Calls" value={String(stats.calls)} />
-        <StatCard
-          title="Minutes"
-          value={String(Math.round((stats.totalSec / 60) * 10) / 10)}
-        />
-        <StatCard
-          title="Average call"
-          value={formatDuration(stats.calls ? stats.totalSec / stats.calls : 0)}
-          caption={
-            stats.lastCallAt
-              ? `Last call ${new Date(stats.lastCallAt).toLocaleDateString()}`
-              : "No calls yet"
-          }
-        />
-      </div>
-
       {/*
-        Dashboard-only (see PORTING.md): the promo's Knowledge, Schedule and Prompt tabs are one Settings
-        tab here — the shared receptionist settings (src/settings/), the same screen a business gets
-        after onboarding, with the test call as its console. The tabs sit outside any card so the
-        settings get the page's full width. The demo's own customer sees the settings read-only, with
-        an example call in place of the (unmetered) test call.
+        Dashboard-only (see PORTING.md): laid out as the settings studio's page — one header row with
+        the business, its state, the tabs and the operator's controls, so the Settings tab's studio
+        starts near the top of the screen. The stat cards are the Activity tab's (they are about the
+        link's use); the demo's own customer gets them as one line.
       */}
-      <Tabs defaultValue={operator && !section ? "activity" : "settings"}>
-        {operator && (
-          <TabsList variant="line" className="w-full justify-start">
-            <TabsTrigger value="activity">Activity</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-            <TabsTrigger value="sources">Sources</TabsTrigger>
-            <TabsTrigger value="share">Share</TabsTrigger>
-          </TabsList>
-        )}
+      <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)}>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="ta-headline-1 truncate">{draft.profile.name || draft.businessName || "Unnamed business"}</h1>
+              <StatusBadge kind={stalled ? "negative" : statusKind(draft.status)}>
+                {draft.status === "ready"
+                  ? "Ready"
+                  : draft.status === "error"
+                    ? "Error"
+                    : stalled
+                      ? "Stalled"
+                      : "Researching"}
+              </StatusBadge>
+              {/* After the research status, which stays the header's first badge as in the promo. */}
+              {operator && <LifecycleBadges customer={draft} />}
+            </div>
+            {draft.profile.address ? (
+              <p className="ta-caption-1 text-muted-foreground truncate">{draft.profile.address}</p>
+            ) : null}
+          </div>
+          {operator && (
+            <TabsList>
+              <TabsTrigger value="activity">Activity</TabsTrigger>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
+              <TabsTrigger value="sources">Sources</TabsTrigger>
+              <TabsTrigger value="share">Share</TabsTrigger>
+            </TabsList>
+          )}
+          <div className="flex-1" />
+          {operator && (
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="ta-label-1 flex items-center gap-2">
+                <Switch
+                  checked={draft.active}
+                  onCheckedChange={(checked) => {
+                    setDraft({ ...draft, active: checked });
+                    void save({ active: checked });
+                  }}
+                  aria-label="Toggle the demo link"
+                />
+                Live
+              </label>
+              <AddDemoTimeMenu customerId={id} demoMinutes={draft.demoMinutes} onAdded={addedTime} />
+              <Button variant="outline" onClick={() => research(false)} disabled={researching}>
+                <RefreshCw className="size-4" />
+                {researching ? "Researching" : "Re-research"}
+              </Button>
+              {/* On the Settings tab, Save lives in the studio's bar beside what it saves. */}
+              {tab !== "settings" && (
+                <Button onClick={() => save()} disabled={saving}>
+                  {saving ? "Saving" : "Save"}
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 flex flex-col gap-4 empty:hidden">
+          {operator ? (
+            <LifecycleNotice customer={draft} onChanged={mergeLifecycle} />
+          ) : (
+            <RequestSetup customer={draft} onChanged={mergeLifecycle} />
+          )}
+
+          {draft.status === "error" && draft.error ? (
+            <div className="bg-destructive/10 ta-label-1 text-destructive rounded-lg p-3">{draft.error}</div>
+          ) : null}
+
+          {stalled ? (
+            <div className="bg-destructive/10 ta-label-1 text-destructive rounded-lg p-3">
+              Research has been running since {new Date(draft.updatedAt).toLocaleString()}, which is longer than it
+              takes. The run behind it is gone. Press Re-research.
+            </div>
+          ) : null}
+
+          {!operator ? (
+            <p className="ta-caption-1 text-muted-foreground">
+              Your demo so far: {stats.views} link opens · {stats.calls} calls ·{" "}
+              {Math.round((stats.totalSec / 60) * 10) / 10} minutes
+            </p>
+          ) : null}
+        </div>
 
         {operator && (
-          <TabsContent value="activity" className="pt-4">
+          <TabsContent value="activity" className="flex flex-col gap-4 pt-4">
+            {statCards}
             <Card className="rounded-xl border shadow-none">
               <CardContent className="p-4 md:p-6">
                 <ActivityTab calls={calls} customerId={id} onChanged={load} />
@@ -368,7 +370,7 @@ export function ProspectScreen({
           </TabsContent>
         )}
 
-        <TabsContent value="settings" className={operator ? "pt-4" : ""}>
+        <TabsContent value="settings" className="pt-4">
           <DemoSettings
             customerId={id}
             draft={draft}
@@ -390,6 +392,7 @@ export function ProspectScreen({
                   settings={withDefaults(draft.callSettings)}
                   businessName={businessName}
                   businessPhone={draft.profile.phone ?? null}
+                  agentName={draft.agentName}
                   callSound={draft.callSound}
                   disabled={draft.status !== "ready" || !draft.active}
                   onEnded={() => void load()}
@@ -425,7 +428,7 @@ export function ProspectScreen({
             notice={
               operator ? undefined : (
                 <p className="bg-primary/5 ta-caption-1 px-4 py-2.5">
-                  A preview of your receptionist's settings: everything it knows and can do. Start onboarding to
+                  A preview of your receptionist's settings: everything it knows and can do. Request setup to
                   change any of it.
                 </p>
               )
