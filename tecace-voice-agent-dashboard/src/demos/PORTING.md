@@ -1231,3 +1231,24 @@ Spec: `docs/superpowers/specs/2026-09-27-phase-gates-design.md`.
   `extra?: ReactNode`; the card is unchanged, the strip is one line with the same button and dialog.
 - **`styles/ui-theme.css`** (the promo's type scale block) — three `.settings-studio .ta-*` lines
   narrow body copy to 13.5px, labels to 13px and headline-2 to 15px inside the settings studio only.
+
+
+## Public demo page: the operator's settings, played out on the call (2026-09-27) — dashboard-only
+
+- **`screens/PublicDemoScreen.tsx`** — the hero is replaced by `src/public/DemoCall.tsx`, laid out
+  call first: a one-line top bar (logo, business, Demo, minutes left, Talk to us), the call card, and
+  "Try saying" cards built from the demo's call settings (`capabilities` on the public read — a
+  transfer, a text link, a booking, a message, topped up with the business's own caller questions).
+  During the call, what the receptionist does appears as cards (`src/settings/simulator/cards.tsx`,
+  prospect wording, each marked Demo); after it, a summary with one "Get this for <business>" button.
+  The call runs `useCallSimulator` over the capabilities (`src/public/capabilities.ts`); bookings go
+  to `POST /demo/public/tool` (the demo calendar). The header's "See all 9 scenarios" link and the
+  `ScenarioTeaser` card are removed. The "How it was built" card now sits folded inside a
+  "What <agent> knows" summary (hours, what it knows about, caller questions). The Schedule tab's
+  toast points at booking on the call when bookings are set up.
+- **`src/public/PublicApp.tsx`** — `PublicCustomer.capabilities` (optional; empty when absent) passed
+  to the screen. `/c/<id>/scenarios` no longer renders `PublicScenariosScreen`: it shows the demo and
+  rewrites the address to `/c/<id>`. `lib/use-cases.ts`, `ScenarioList`, `ScenarioTeaser` and
+  `PublicScenariosScreen` are kept, unused, so the page can come back.
+- **`hooks/useLiveCall.ts`** — returns `callIdNow()` (the id of the call in progress), which the
+  public page's booking tool names in its request.

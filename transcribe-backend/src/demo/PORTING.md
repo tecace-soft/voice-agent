@@ -808,3 +808,21 @@ Spec: `docs/superpowers/specs/2026-09-27-phase-gates-design.md`.
 - Every customer body also carries `request` (`{ requestedAt, note } | null`), `declined`
   (`{ declinedAt, note } | null`) and `liveAt` (`string | null`), merged by `db/customerLifecycle.ts`
   from new `users` columns. Additive.
+
+
+## Public demo call: composed, with the tools the page plays out (2026-09-27) — dashboard-only
+
+- `routes/demoPublic.ts` `POST /demo/public/session` builds the call with `composeSession(channel:
+  "public-demo")` — the rule book, the demo's prompts, its transfers, links, message scenarios and
+  (when switched on) bookings on the demo calendar — and sends it through `liveSessionConfig`, as the
+  operator's test call does. `PUBLIC_DEMO_COMPOSED=false` (env) goes back to the promo's stored
+  prompts plus the clock, with no tools. `session/compose.ts`: the public-demo channel no longer
+  drops transfers, links, messages and booking; `publicDemoBlock()` now says the page shows them and
+  nothing really happens.
+- `publicView` adds `capabilities` (`demo/publicDemo.ts publicCapabilities`): the switched-on
+  transfers (name, mode, description, what to ask first, how many phones, hours — never a number),
+  links, message scenarios, bookings (title, length, hours), `sms.doubleOptIn`, `timezone`.
+- New `POST /demo/public/tool` {customerId, callId, name, args, timeZone}: check_availability /
+  book_appointment on the demo calendar (`runDemoAppointmentTool`: the booking rules over the
+  business hours, nothing busy, nothing saved). Answers only for a started, non-test call of that
+  demo within the call ceiling; 40 requests a minute per address.

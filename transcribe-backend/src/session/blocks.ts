@@ -197,11 +197,15 @@ export function thisCallBlock(call: ThisCall): string {
   ].join("\n");
 }
 
-/** A public demo line: nothing is booked, nobody is put through, nothing is texted. */
+/**
+ * A public demo line. The prospect calls from the demo web page, which plays out transfers, texts
+ * and bookings on their screen; nothing really happens.
+ */
 export function publicDemoBlock(): string {
   return [
     "# This is a demo line",
-    "- When you take a request or a message, say once, briefly, that this is a demo, so nothing is actually booked or passed on.",
-    "- If the caller asks for a person, say no one can be put through on this line and offer to take a message.",
+    "- The caller is trying you from a demo web page. Transfers, texts and bookings are shown on their screen and don't really happen: nobody's phone rings, no text is sent, nothing is saved in a calendar, and messages aren't passed on.",
+    "- Use your tools exactly as you would on a real call, so they can see what you would do.",
+    "- The first time you transfer, text, book or take a message, say once, briefly, that on this demo it's only shown on their screen.",
   ].join("\n");
 }

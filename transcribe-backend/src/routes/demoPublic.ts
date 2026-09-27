@@ -9,6 +9,11 @@ import { DEFAULT_DEMO_MINUTES } from "../demo/types.js";
 import { getCustomer, listCalls, listLiveSessions } from "../db/demoRead.js";
 import { attachLiveSession, deleteCall, recordPageView, startCall } from "../db/demoWrite.js";
 import { applyCallReport, clientIp, jsonError, rateLimited } from "./demoCommon.js";
+import { readCallSettings } from "../business/callSettings.js";
+import { demoBookingTarget, publicCapabilities, runDemoAppointmentTool } from "../demo/publicDemo.js";
+import { composeSession } from "../session/compose.js";
+import { liveSessionConfig } from "../session/live.js";
+import { fromDemoCustomer } from "../session/records.js";
 
 // The prospect's side of the demo: the page behind a `/c/<id>` link, and the call it places.
 //
@@ -103,6 +108,9 @@ export function publicView(customer: Customer, demo: ReturnType<typeof demoAllow
     sources: customer.sources,
     researchedAt: customer.researchedAt,
     demo,
+    // Dashboard-only (PORTING.md): what the operator set up for calls — transfers, links, message
+    // scenarios, bookings — as a summary the page can show and play out. No staff phone numbers.
+    capabilities: publicCapabilities(customer.callSettings),
   };
 }
 
@@ -289,30 +297,46 @@ export const demoPublic = new Elysia({ prefix: "/demo/public" })
         return status(500, jsonError(error));
       }
 
+      // Dashboard-only (PORTING.md): composed like the operator's test call — the rule book, the
+      // demo's prompts, its transfers, links, message scenarios and demo-calendar bookings, and the
+      // clock — so the page can play the tools out. PUBLIC_DEMO_COMPOSED=false goes back to the
+      // promo's stored prompts plus the clock, with no tools.
+      const timeZone = safeTimeZone(body.timeZone, env.defaultTimezone);
+      const composed = env.publicDemoComposed
+        ? composeSession({
+            record: fromDemoCustomer(customer),
+            callSettings: customer.callSettings,
+            channel: "public-demo",
+            now: new Date(),
+            timeZone: readCallSettings(customer.callSettings).timezone ?? timeZone,
+            waterfallAllowed: true,
+            neverPublished: true,
+            booking: demoBookingTarget(customer.callSettings),
+          })
+        : null;
+
       // The stored prompts cannot know what day it is, so the date goes on here, per call, and onto
       // both: the voice hears "tomorrow" and the model it delegates to is the one that takes the
       // booking.
-      const clock = callClock(
-        new Date(),
-        safeTimeZone(body.timeZone, env.defaultTimezone),
-        customer.profile.hours,
-      );
+      const clock = callClock(new Date(), timeZone, customer.profile.hours);
 
       try {
         const session = await createLiveSession(
-          {
-            model: env.openaiLiveModel,
-            instructions: `${customer.prompts.live}\n\n${clock}`,
-            audio: { output: { voice: customer.voice } },
-            delegation: {
-              type: "responses",
-              responses: {
-                model: env.openaiBackendModel,
-                instructions: `${customer.prompts.backend}\n\n${clock}`,
+          composed
+            ? liveSessionConfig(composed, customer.voice)
+            : {
+                model: env.openaiLiveModel,
+                instructions: `${customer.prompts.live}\n\n${clock}`,
+                audio: { output: { voice: customer.voice } },
+                delegation: {
+                  type: "responses",
+                  responses: {
+                    model: env.openaiBackendModel,
+                    instructions: `${customer.prompts.backend}\n\n${clock}`,
+                  },
+                },
+                store: false,
               },
-            },
-            store: false,
-          },
           sdp,
         );
 
@@ -322,7 +346,7 @@ export const demoPublic = new Elysia({ prefix: "/demo/public" })
           callId: call.id,
           sessionId: session.id,
           sdp: session.sdp,
-          greeting: customer.prompts.greeting,
+          greeting: composed ? composed.greeting : customer.prompts.greeting,
           maxSec,
         };
       } catch (error) {
@@ -377,4 +401,67 @@ export const demoPublic = new Elysia({ prefix: "/demo/public" })
         transcript: t.Optional(t.Unknown()),
       }),
     },
+  )
+
+  /**
+   * Dashboard-only (PORTING.md): check_availability / book_appointment during a public demo call,
+   * against the demo calendar (`demo/publicDemo.ts`) — the business hours under the demo's booking
+   * rules, with nothing busy and nothing saved. The other tools the page plays out itself.
+   *
+   * It answers only for a call that belongs to this demo and is still going, so the id in a link is
+   * not enough to use it; and it is thinned per address like the dial is.
+   */
+  .post(
+    "/tool",
+    async ({ body, headers, status }) => {
+      const { customerId, callId, name } = body;
+      if (!customerId || !callId || (name !== "check_availability" && name !== "book_appointment")) {
+        return status(400, { error: "Missing or unknown tool call." });
+      }
+      if (toolRateLimited(clientIp(headers))) return status(429, { error: "Too many requests. Wait a moment." });
+      let customer: Customer | null;
+      let calls: CallLog[];
+      try {
+        customer = await getCustomer(customerId);
+        calls = customer ? await listCalls(customer.id) : [];
+      } catch (error) {
+        return status(500, jsonError(error));
+      }
+      if (unavailable(customer) || !customer) return status(404, { error: "This demo isn't available." });
+      const call = calls.find((c) => c.id === callId);
+      const live =
+        call && !call.isTest && call.status === "started" && Date.now() - Date.parse(call.startedAt) < (CALL_MAX_SEC + 120) * 1000;
+      if (!live) return status(404, { error: "That call isn't going on." });
+      const timeZone = readCallSettings(customer.callSettings).timezone ?? safeTimeZone(body.timeZone, env.defaultTimezone);
+      const args = body.args && typeof body.args === "object" ? (body.args as Record<string, unknown>) : {};
+      return runDemoAppointmentTool(name, args, {
+        settings: customer.callSettings,
+        profileHours: customer.profile.hours,
+        timeZone,
+      });
+    },
+    {
+      body: t.Object({
+        customerId: t.Optional(t.String({ maxLength: 64 })),
+        callId: t.Optional(t.String({ maxLength: 64 })),
+        name: t.Optional(t.String({ maxLength: 40 })),
+        args: t.Optional(t.Unknown()),
+        timeZone: t.Optional(t.Unknown()),
+      }),
+    },
   );
+
+/** Tool calls per address per minute: a call asks a few times; a loop asks hundreds. */
+const TOOL_LIMIT = 40;
+const toolHits = new Map<string, number[]>();
+
+function toolRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const hits = (toolHits.get(ip) ?? []).filter((at) => now - at < 60_000);
+  hits.push(now);
+  toolHits.set(ip, hits);
+  if (toolHits.size > 5000) {
+    for (const [key, times] of toolHits) if (times.every((at) => now - at >= 60_000)) toolHits.delete(key);
+  }
+  return hits.length > TOOL_LIMIT;
+}

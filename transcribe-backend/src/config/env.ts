@@ -193,6 +193,9 @@ export const env = {
   microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET?.trim() ?? "",
   // "common" lets both work/school and personal (outlook.com) accounts sign in.
   microsoftTenant: process.env.MICROSOFT_TENANT?.trim() || "common",
+  // The public demo call is composed like a test call, with the tools the demo page simulates. Set
+  // PUBLIC_DEMO_COMPOSED=false to go back to the stored prompts with no tools.
+  publicDemoComposed: (process.env.PUBLIC_DEMO_COMPOSED ?? "").trim().toLowerCase() !== "false",
 } as const;
 
 export type Env = typeof env;

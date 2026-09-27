@@ -13,6 +13,11 @@ Format:
 
 ---
 
+## 2026-09-27 · bottomup32 · transcribe-backend, dashboard (public demo page: settings played out, redesign)
+- `/c/<id>` redesigned call first: top bar, call card, "Try saying" cards generated from the demo's call settings, an action feed during the call (transfer ringing, texted link, message, demo-calendar booking — all marked Demo, nothing real), and an after-call summary. The nine-scenarios link/teaser are gone; `/c/<id>/scenarios` shows the demo.
+- API: `GET /demo/public/customers/:id` adds `capabilities` (no staff numbers). New `POST /demo/public/tool` (demo calendar; live public call of that demo only). `POST /demo/public/session` is now composed by `composeSession("public-demo")` with transfer/link/message/booking tools. ⚠ New env flag `PUBLIC_DEMO_COMPOSED` (default on; `false` = old stored prompts, no tools).
+- Shared: `src/settings/simulator/cards.tsx` (TestCallPanel now uses it; operator wording unchanged); `useLiveCall` returns `callIdNow()`. Tests: backend +7 (compose, calendar, public view, demoCall public tool/flag), dashboard `tests/public-capabilities.test.ts`; `public_page.py` updated.
+
 ## 2026-09-27 · bottomup32 · transcribe-backend, dashboard (Appointments: fix + end-to-end tests)
 - Fix: `POST /business/calendar/agent-tool` (phone) booked under the DRAFT rules when nothing had ever been published (`calendar.ts` `bookingContext` fell back to the draft). It now uses only the published copy; never published = booking off on the phone. The in-app test tool still uses the draft.
 - New `transcribe-backend/src/routes/appointments.e2e.pg.test.ts` (30 tests, fake CalDAV server behind mocked fetch): connect / refuse, target, rules validation, session tools on/off, openings vs busy time, test booking (`[Test]`), phone booking under published rules, tenancy, disconnect. New `tecace-voice-agent-dashboard/tests/appointments-simulator.test.ts` (11 tests).

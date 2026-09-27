@@ -202,11 +202,22 @@ describe("the phone channel", () => {
 });
 
 describe("the public demo", () => {
-  it("puts no one through and texts nothing", () => {
-    const session = composeSession({ record, callSettings: settings, channel: "public-demo", now, timeZone: tz, waterfallAllowed: false, neverPublished: true });
-    expect(session.tools.map((t) => t.name)).toEqual(["take_message", "end_call"]);
+  it("gets the test call's tools, which the demo page plays out, and says it's a demo", () => {
+    const session = composeSession({ record, callSettings: settings, channel: "public-demo", now, timeZone: tz, waterfallAllowed: true, neverPublished: true });
+    expect(session.tools.map((t) => t.name)).toEqual(["transfer_call", "send_link", "take_message", "end_call"]);
+    expect(session.live).toContain("# Transfers");
     expect(session.live).toContain("This is a demo line");
-    expect(session.live).not.toContain("# Transfers");
+    expect(session.live).toContain("only shown on their screen");
+    expect(session.backend).toContain("This is a demo line");
+    // Staff numbers are never read out: the model transfers by scenario id.
+    expect(session.live).not.toContain("2535550111");
+    expect(session.live).not.toContain("an in-app test call");
+  });
+
+  it("never falls back to a legacy transfer number", () => {
+    const legacy = { ...record, legacyTransferNumber: "2535550199" };
+    const session = composeSession({ record: legacy, callSettings: {}, channel: "public-demo", now, timeZone: tz, waterfallAllowed: true, neverPublished: true });
+    expect(session.tools.map((t) => t.name)).not.toContain("transfer_call");
   });
 });
 

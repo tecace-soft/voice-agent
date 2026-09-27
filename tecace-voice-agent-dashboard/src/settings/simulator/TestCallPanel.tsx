@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { CalendarCheck, MessageSquareText, Mic, MicOff, Phone, PhoneForwarded, PhoneOff, RotateCcw, Smartphone } from "lucide-react";
+import { Mic, MicOff, Phone, PhoneOff, RotateCcw } from "lucide-react";
 import { STATUS_TEXT, StatusDot } from "@/components/call/CallPanel";
 import { Transcript } from "@/components/call/Transcript";
 import { VoiceOrb } from "@/components/call/VoiceOrb";
@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { useLiveCall } from "@/hooks/useLiveCall";
 import { formatDuration } from "@/lib/analytics";
 import type { CallSound, CallState } from "@/lib/types";
-import { MODE_LABEL, type CallSettings } from "../callSettings";
+import type { CallSettings } from "../callSettings";
+import { BookingCard, MessageCard, TextsPhone, TransferCard } from "./cards";
 import { eventLine } from "./eventLabels";
-import { ringingNumber, whisper } from "./simulate";
 import { useCallSimulator, type BookingToolRunner } from "./useCallSimulator";
 
 // A test call from the browser, with the phone line around it simulated — the settings studio's
@@ -101,7 +101,6 @@ export function TestCallPanel({
   }, [call.state, onEnded]);
 
   const pending = sim.pending;
-  const heard = pending ? whisper(pending, businessName) : "";
   const inCall = IN_CALL.has(call.state);
   const busy = call.state === "connecting" || call.state === "ending";
   const over = call.state === "ended" || call.state === "error";
@@ -199,86 +198,15 @@ export function TestCallPanel({
               emptyMessage="Call, then talk as a caller would. Try asking for a person, or for directions."
             />
 
-            {pending ? (
-              <div className="border-warning/50 bg-warning/10 rounded-xl border p-3" role="status" aria-live="polite">
-                <p className="ta-label-1 text-warning flex items-center gap-2">
-                  <PhoneForwarded className="size-4" />
-                  Transferring to {pending.scenario.name} · {MODE_LABEL[pending.scenario.mode]}
-                </p>
-                <p className="ta-caption-1 text-muted-foreground mt-1">
-                  Ringing {ringingNumber(pending)}
-                  {pending.scenario.mode === "waterfall"
-                    ? ` (${pending.index + 1} of ${pending.scenario.numbers.length})`
-                    : ""}
-                  . The caller hears hold music.
-                </p>
-                {heard ? <p className="ta-body-2 mt-2">They hear: “{heard}”</p> : null}
-                <p className="ta-caption-1 text-muted-foreground mt-2">You're playing the phone being rung:</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Button size="sm" onClick={() => sim.answer("accepted")}>
-                    {pending.scenario.mode === "cold" ? "Answer" : "Press 1 (take it)"}
-                  </Button>
-                  {pending.scenario.mode !== "cold" ? (
-                    <Button size="sm" variant="outline" onClick={() => sim.answer("declined")}>
-                      Press 2 (decline)
-                    </Button>
-                  ) : null}
-                  <Button size="sm" variant="outline" onClick={() => sim.answer("no_answer")}>
-                    Let it ring out
-                  </Button>
-                </div>
-              </div>
-            ) : null}
+            {pending ? <TransferCard pending={pending} businessName={businessName} onAnswer={sim.answer} /> : null}
 
             {/* A test booking is real — it is in the calendar now — so it stays in view like a transfer. */}
             {sim.bookings.map((b, i) => (
-              <div key={`booking-${i}`} className="border-primary/30 bg-primary/10 rounded-xl border p-3" role="status">
-                <p className="ta-label-1 flex items-center gap-2">
-                  <CalendarCheck className="size-4" />
-                  Booked · {b.when}
-                </p>
-                <p className="ta-caption-1 text-muted-foreground mt-1">
-                  {[b.callerName, b.reason].filter(Boolean).join(" · ") || "No name given"} · in your calendar, marked [Test]
-                </p>
-              </div>
+              <BookingCard key={`booking-${i}`} booking={b} />
             ))}
 
             {/* Links the receptionist texted, on the caller's phone — reply YES or STOP here. */}
-            {sim.texts.length ? (
-              <div className="border-t pt-3" aria-label="Texts">
-                <p className="ta-caption-1 text-muted-foreground mb-2 flex items-center gap-2">
-                  <Smartphone className="size-4" />
-                  The caller's phone
-                </p>
-                <ul className="flex flex-col gap-2">
-                  {sim.texts.map((text, i) => (
-                    <li
-                      key={i}
-                      className={`ta-body-2 max-w-[85%] rounded-2xl px-3 py-2 break-words ${
-                        text.from === "business" ? "bg-muted self-start" : "bg-primary text-primary-foreground self-end"
-                      }`}
-                    >
-                      {text.text}
-                    </li>
-                  ))}
-                </ul>
-                {!sim.textState.optedOut && (sim.textState.waiting.length > 0 || sim.textState.consented) ? (
-                  <div className="mt-3 flex gap-2">
-                    {sim.textState.waiting.length > 0 ? (
-                      <Button size="sm" onClick={() => sim.reply("YES")}>
-                        Reply YES
-                      </Button>
-                    ) : null}
-                    <Button size="sm" variant="outline" onClick={() => sim.reply("STOP")}>
-                      Reply STOP
-                    </Button>
-                  </div>
-                ) : null}
-                {sim.textState.optedOut ? (
-                  <p className="ta-caption-1 text-muted-foreground mt-2">This number has opted out; it gets no more texts.</p>
-                ) : null}
-              </div>
-            ) : null}
+            <TextsPhone texts={sim.texts} textState={sim.textState} onReply={sim.reply} />
 
             {example && !inCall && !busy && call.transcript.length === 0 ? (
               <button
@@ -310,17 +238,7 @@ export function TestCallPanel({
                 </li>
               ) : null}
               {sim.messages.map((m, i) => (
-                <li key={`m${i}`} className="rounded-xl border p-3">
-                  <p className="ta-label-1 flex items-center gap-2">
-                    <MessageSquareText className="size-4" />
-                    Message taken{m.scenario ? ` · ${m.scenario}` : ""}
-                  </p>
-                  <p className="ta-body-2 mt-1">{m.message}</p>
-                  <p className="ta-caption-1 text-muted-foreground mt-1">
-                    {[m.callerName, m.callbackNumber, m.requestedTime].filter(Boolean).join(" · ") ||
-                      "No name or number given"}
-                  </p>
-                </li>
+                <MessageCard key={`m${i}`} message={m} />
               ))}
             </ul>
           ) : (

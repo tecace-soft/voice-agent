@@ -119,6 +119,7 @@ describe("the public demo view", () => {
         "address",
         "agentName",
         "callSound",
+        "capabilities",
         "category",
         "customerId",
         "demo",

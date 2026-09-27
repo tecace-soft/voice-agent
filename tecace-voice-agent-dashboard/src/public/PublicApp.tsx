@@ -10,7 +10,7 @@ import type { DemoAllowance } from "@/lib/analytics";
 import { isPromoId } from "@/routes";
 import { PublicDemoScreen } from "@/screens/PublicDemoScreen";
 import { PublicPricingScreen } from "@/screens/PublicPricingScreen";
-import { PublicScenariosScreen } from "@/screens/PublicScenariosScreen";
+import { emptyCapabilities, type PublicCapabilities } from "./capabilities";
 
 // The prospect's side of the app, and the only thing `c.html` loads.
 //
@@ -45,6 +45,8 @@ type PublicCustomer = {
   sources: ResearchSource[];
   researchedAt?: string;
   demo: DemoAllowance;
+  /** Dashboard-only: the operator's call settings as the page may show them (demo/publicDemo.ts). */
+  capabilities?: PublicCapabilities;
 };
 
 type Page = "demo" | "scenarios" | "pricing";
@@ -106,6 +108,13 @@ export function PublicApp() {
   const [state, setState] = useState<"loading" | "ready" | "unavailable">(
     route ? "loading" : "unavailable",
   );
+
+  // Dashboard-only (PORTING.md): the nine-scenarios page is retired. An old link to it lands on the
+  // demo, and the address bar says so.
+  useEffect(() => {
+    if (route?.page === "scenarios") window.history.replaceState(null, "", `/c/${encodeURIComponent(route.id)}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!route) return;
@@ -169,18 +178,6 @@ function Rendered({ customer, page }: { customer: PublicCustomer; page: Page }) 
   // what removed `VITE_PUBLIC_DEMO_BASE_URL`.
   const demoUrl = customerLink(customer.customerId);
 
-  if (page === "scenarios") {
-    return (
-      <PublicScenariosScreen
-        customerId={customer.customerId}
-        name={customer.name}
-        category={customer.category}
-        agentName={customer.agentName}
-        demoUrl={demoUrl}
-      />
-    );
-  }
-
   if (page === "pricing") {
     return (
       <PublicPricingScreen
@@ -215,6 +212,7 @@ function Rendered({ customer, page }: { customer: PublicCustomer; page: Page }) 
       researchedAt={customer.researchedAt}
       demo={customer.demo}
       demoUrl={demoUrl}
+      capabilities={customer.capabilities ?? emptyCapabilities()}
     />
   );
 }

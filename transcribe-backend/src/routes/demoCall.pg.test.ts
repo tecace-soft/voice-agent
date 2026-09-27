@@ -1278,6 +1278,124 @@ describe("how many people may be on one demo at once", () => {
 });
 
 // ==============================================================================================
+// Dashboard-only (PORTING.md): the public call carries what the operator set up — composed like a
+// test call, with the tools the demo page plays out — and books into the demo calendar.
+//
+// Last on A on purpose: it gives A call settings, which the admin route's assertions above do not
+// expect.
+
+describe("the public demo plays out the operator's settings", () => {
+  const PICKUP = {
+    enabled: true,
+    title: "Catering pickup",
+    durationMinutes: 15,
+    bufferMinutes: 0,
+    minNoticeMinutes: 60,
+    horizonDays: 14,
+    hours: [],
+    instructions: "",
+  };
+  let callId = "";
+
+  it("shows the page a summary of transfers, links and bookings, without a staff number", async () => {
+    const saved = await asAdmin("PATCH", `/demo/customers/${A}`, {
+      callSettings: {
+        transfer: {
+          waterfallEnabled: true,
+          scenarios: [
+            { id: "desk", enabled: true, mode: "warm", name: "Front desk", description: "Order pickups", numbers: ["4255550134"], hours: [] },
+          ],
+        },
+        links: { scenarios: [{ id: "map", enabled: true, triggers: ["directions"], url: "https://maps.example.com/harbor" }] },
+        appointments: PICKUP,
+      },
+    });
+    expect(saved.status).toBe(200);
+
+    const res = await request("GET", `/demo/public/customers/${A}`);
+    const { customer } = await json(res);
+    expect(customer.capabilities.transfers).toEqual([
+      expect.objectContaining({ id: "desk", name: "Front desk", mode: "warm", description: "Order pickups", rings: 1 }),
+    ]);
+    expect(customer.capabilities.links[0]).toEqual(expect.objectContaining({ id: "map", url: "https://maps.example.com/harbor" }));
+    expect(customer.capabilities.appointments).toEqual({ title: "Catering pickup", durationMinutes: 15, hours: [] });
+    expect(JSON.stringify(customer)).not.toContain("4255550134");
+  });
+
+  it("dials a composed session with those tools, told it's a demo line", async () => {
+    responders.live = () => Response.json({ id: "sess_public_tools", transport: { sdp: ANSWER_SDP } });
+    const res = await request("POST", "/demo/public/session", {
+      body: { customerId: A, sdp: OFFER_SDP, timeZone: TIME_ZONE, visitorId: VISITOR },
+    });
+    expect(res.status).toBe(200);
+    callId = (await json(res)).callId;
+
+    const session = sentTo("/live/sessions").body.session;
+    expect(session.instructions).toContain("# Triage");
+    expect(session.instructions).toContain(LIVE_PROMPT);
+    expect(session.instructions).toContain("This is a demo line");
+    expect(session.instructions).not.toContain("4255550134");
+    const tools = session.delegation.responses.tools.map((tool: { name: string }) => tool.name);
+    expect(tools).toEqual(["transfer_call", "send_link", "check_availability", "book_appointment", "take_message", "end_call"]);
+    expect((await callRow(callId)).is_test).toBe(false);
+  });
+
+  it("offers openings from the demo calendar and books one without saving anything", async () => {
+    const check = await request("POST", "/demo/public/tool", {
+      body: { customerId: A, callId, name: "check_availability", args: {}, timeZone: TIME_ZONE },
+    });
+    expect(check.status).toBe(200);
+    const offered = await json(check);
+    expect(offered.available).toBe(true);
+    expect(offered.openings.length).toBeGreaterThan(0);
+
+    const start = offered.openings[0].start;
+    const booked = await json(
+      await request("POST", "/demo/public/tool", {
+        body: { customerId: A, callId, name: "book_appointment", args: { start, caller_name: "Jordan" }, timeZone: TIME_ZONE },
+      }),
+    );
+    expect(booked).toEqual(expect.objectContaining({ booked: true, what: "Catering pickup", demo: true }));
+    expect(Number((await rowsOf("SELECT count(*)::int AS n FROM appointment_bookings"))[0].n)).toBe(0);
+
+    const badTime = await json(
+      await request("POST", "/demo/public/tool", {
+        body: { customerId: A, callId, name: "book_appointment", args: { start: "2020-01-01T03:00:00Z" }, timeZone: TIME_ZONE },
+      }),
+    );
+    expect(badTime.booked).toBe(false);
+  });
+
+  it("answers only for a live public call of this demo, and only the two booking tools", async () => {
+    const body = (extra: Record<string, unknown>) => ({ body: { customerId: A, callId, name: "check_availability", ...extra } });
+    expect((await request("POST", "/demo/public/tool", body({ callId: "not-a-call" }))).status).toBe(404);
+    expect((await request("POST", "/demo/public/tool", body({ customerId: U }))).status).toBe(404);
+    expect((await request("POST", "/demo/public/tool", body({ name: "transfer_call" }))).status).toBe(400);
+    const testCall = await placeCall(A);
+    expect((await request("POST", "/demo/public/tool", body({ callId: testCall }))).status).toBe(404);
+
+    await request("POST", `/demo/public/calls/${callId}`, { body: { customerId: A, status: "completed", durationSec: 30 } });
+    expect((await request("POST", "/demo/public/tool", body({}))).status).toBe(404);
+  });
+
+  it("goes back to the stored prompts with no tools when PUBLIC_DEMO_COMPOSED is off", async () => {
+    const flags = env as unknown as Record<string, unknown>;
+    flags.publicDemoComposed = false;
+    try {
+      responders.live = () => Response.json({ id: "sess_public_plain", transport: { sdp: ANSWER_SDP } });
+      const res = await request("POST", "/demo/public/session", { body: { customerId: A, sdp: OFFER_SDP, timeZone: TIME_ZONE } });
+      expect(res.status).toBe(200);
+      const session = sentTo("/live/sessions").body.session;
+      expect(session.instructions.startsWith(LIVE_PROMPT)).toBe(true);
+      expect(session.instructions).not.toContain("This is a demo line");
+      expect(session.delegation.responses.tools).toBeUndefined();
+    } finally {
+      flags.publicDemoComposed = true;
+    }
+  });
+});
+
+// ==============================================================================================
 // The promise this whole file makes.
 
 describe("the network", () => {

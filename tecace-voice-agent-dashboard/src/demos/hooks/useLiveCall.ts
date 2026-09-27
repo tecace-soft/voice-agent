@@ -100,6 +100,8 @@ export type UseLiveCall = {
   hangup: () => void;
   toggleMute: () => void;
   reset: () => void;
+  /** Dashboard-only: the id of the call in progress, or null. */
+  callIdNow: () => string | null;
 };
 
 /** How this call reaches the backend, and whether it counts as the operator testing. */
@@ -643,5 +645,8 @@ export function useLiveCall(
     hangup,
     toggleMute,
     reset,
+    // Dashboard-only (PORTING.md): the id of the call in progress, read when it is needed — the
+    // public demo page's booking tool names the call it belongs to.
+    callIdNow: () => callIdRef.current,
   };
 }

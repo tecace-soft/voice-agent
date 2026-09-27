@@ -297,8 +297,12 @@ describe("what a call is told", () => {
     expect(session.live).toContain("Ask if it's their first visit.");
     expect(session.live).toContain("BOOKING A NEW APPOINTMENT IS YOURS TO DO");
     expect(session.live).not.toContain("You are NOT the booking system");
-    // The public demo never books, whatever its settings say.
-    expect(composeSession({ ...base, channel: "public-demo", callSettings: { appointments: on }, booking }).canBook).toBe(false);
+    // The public demo books into its demo calendar when booking is on (the page plays it out; nothing
+    // is saved), and not without a booking target or with booking off.
+    const demoCal = { providerName: "demo calendar", kind: "calendar" as const };
+    expect(composeSession({ ...base, channel: "public-demo", callSettings: { appointments: on }, booking: demoCal }).canBook).toBe(true);
+    expect(composeSession({ ...base, channel: "public-demo", callSettings: { appointments: on } }).canBook).toBe(false);
+    expect(composeSession({ ...base, channel: "public-demo", callSettings: { appointments: { ...on, enabled: false } }, booking: demoCal }).canBook).toBe(false);
   });
 
   it("leaves the rule book exactly as it was when booking is off", () => {

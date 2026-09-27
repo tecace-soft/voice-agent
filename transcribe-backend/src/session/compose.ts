@@ -233,19 +233,17 @@ export function composeSession(input: ComposeInput): ComposedSession {
   const agentName = agentNameOf(record.agentName);
   const language = record.language ?? undefined;
 
+  // The public demo page gets the same tools as a test call: the page plays out the transfer, the
+  // text and the booking on the prospect's screen (nothing really happens — see publicDemoBlock).
   const demo = channel === "public-demo";
-  let transfers: TransferScenario[] = [];
-  if (!demo) {
-    transfers = activeTransfers(settings, now, timeZone, input.waterfallAllowed);
-    if (input.neverPublished && !settings.transfer.scenarios.length && record.legacyTransferNumber) {
-      transfers = [legacyScenario(record.legacyTransferNumber, record.legacyTransferTopics)];
-    }
+  let transfers: TransferScenario[] = activeTransfers(settings, now, timeZone, input.waterfallAllowed);
+  if (!demo && input.neverPublished && !settings.transfer.scenarios.length && record.legacyTransferNumber) {
+    transfers = [legacyScenario(record.legacyTransferNumber, record.legacyTransferTopics)];
   }
-  const links = demo ? [] : activeLinks(settings);
-  const messages = demo ? [] : activeMessages(settings);
+  const links = activeLinks(settings);
+  const messages = activeMessages(settings);
   const reachable = transfers.length > 0;
-  const appointments =
-    !demo && input.booking && settings.appointments.enabled ? settings.appointments : null;
+  const appointments = input.booking && settings.appointments.enabled ? settings.appointments : null;
   const canBook = appointments !== null;
 
   const tools: FunctionTool[] = [

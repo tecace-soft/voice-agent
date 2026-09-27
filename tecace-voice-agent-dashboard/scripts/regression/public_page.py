@@ -142,18 +142,27 @@ def main() -> int:
                     check("...and never the dashboard's",
                           not any("/assets/index-" in u for u in loaded), str(loaded))
 
-                    # ---- the scenarios page, reached by its own link
-                    page.get_by_text(re.compile("see all .* scenarios", re.I)).first.click()
-                    page.wait_for_load_state("networkidle")
-                    check("the scenarios link lands on the scenarios page",
-                          page.url.endswith(f"/c/{DEMO_ID}/scenarios"), page.url)
-                    scenarios = page.inner_text("body")
-                    check("...which names the business", "Harbor Dental" in scenarios)
-                    check("...and offers the way back", "Back to the demo" in scenarios)
+                    # ---- what the operator set up, as things to try on the call (B2 demo page)
+                    try_list = page.get_by_role("list", name="Things to try on the call")
+                    tries = try_list.inner_text() if try_list.count() else ""
+                    check("the call shows 'Try saying' cards from the demo's call settings",
+                          "Can I talk to someone at the front desk?" in tries and "Transfer" in tries
+                          and "Can you text me the directions?" in tries
+                          and "Can I book a cleaning for Saturday?" in tries, tries[:300])
+                    check("...and never a staff member's number",
+                          fake_backend.PUBLIC_STAFF_NUMBER not in page.content())
+                    check("the nine-scenarios link and teaser are gone",
+                          page.get_by_text(re.compile("see all .* scenarios", re.I)).count() == 0
+                          and "with sample calls" not in body)
+                    check("what the receptionist knows is summed up, the rest folded away",
+                          page.get_by_role("heading", name=re.compile("^What .* knows$")).count() == 1
+                          and page.locator("details summary", has_text="how it was built").count() == 1)
 
-                    page.get_by_text("Back to the demo").first.click()
-                    page.wait_for_load_state("networkidle")
-                    check("...and the way back works", page.url.rstrip("/").endswith(f"/c/{DEMO_ID}"), page.url)
+                    # ---- an old link to the scenarios page lands on the demo
+                    page.goto(f"{base}/c/{DEMO_ID}/scenarios", wait_until="networkidle")
+                    check("an old /scenarios link shows the demo, at the demo's own address",
+                          page.url.rstrip("/").endswith(f"/c/{DEMO_ID}")
+                          and page.get_by_role("list", name="Things to try on the call").count() == 1, page.url)
 
                     # ---- pricing
                     page.goto(f"{base}/c/{DEMO_ID}/pricing", wait_until="networkidle")

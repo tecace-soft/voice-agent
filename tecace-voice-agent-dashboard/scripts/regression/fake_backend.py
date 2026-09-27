@@ -1255,6 +1255,45 @@ def public_view(customer: dict) -> dict:
         "sources": customer["sources"],
         "researchedAt": customer.get("researchedAt"),
         "demo": demo_allowance_for(customer),
+        "capabilities": public_capabilities(PUBLIC_CALL_SETTINGS.get(customer["id"]) or customer.get("callSettings") or {}),
+    }
+
+
+# Call settings the public page is served for the demo it opens (routes/demoPublic.ts sends a summary
+# of the demo's callSettings as `capabilities`). Kept apart from the admin fixture so the operator's
+# screens in demos_e2e.py still open on a demo with nothing set up. The number is here to prove the
+# summary never carries it.
+PUBLIC_STAFF_NUMBER = "2075550142"
+PUBLIC_CALL_SETTINGS = {
+    "pr0SPct1": {
+        "transfer": {"scenarios": [{"id": "desk", "enabled": True, "mode": "warm", "name": "Front desk",
+                                    "description": "Booking changes", "numbers": [PUBLIC_STAFF_NUMBER],
+                                    "collectBefore": "", "hours": []}]},
+        "links": {"scenarios": [{"id": "map", "enabled": True, "triggers": ["directions"],
+                                 "text": "", "url": "https://maps.example.com/harbor"}]},
+        "messages": {"scenarios": []},
+        "sms": {"doubleOptIn": True},
+        "appointments": {"enabled": True, "title": "Cleaning", "durationMinutes": 30, "hours": []},
+    },
+}
+
+
+def public_capabilities(settings: dict) -> dict:
+    """demo/publicDemo.ts publicCapabilities(): the switched-on parts, no staff numbers."""
+    transfers = [t for t in (settings.get("transfer") or {}).get("scenarios", []) if t.get("enabled")]
+    links = [l for l in (settings.get("links") or {}).get("scenarios", []) if l.get("enabled")]
+    messages = [m for m in (settings.get("messages") or {}).get("scenarios", []) if m.get("enabled")]
+    appts = settings.get("appointments") or {}
+    return {
+        "transfers": [{"id": t["id"], "name": t["name"], "mode": t["mode"], "description": t.get("description", ""),
+                       "collectBefore": t.get("collectBefore", ""), "rings": len(t.get("numbers", [])),
+                       "hours": t.get("hours", [])} for t in transfers],
+        "links": [{"id": l["id"], "triggers": l.get("triggers", []), "text": l.get("text", ""), "url": l["url"]} for l in links],
+        "messages": [{"id": m["id"], "name": m["name"], "brief": m.get("brief", "")} for m in messages],
+        "appointments": ({"title": appts.get("title", "Appointment"), "durationMinutes": appts.get("durationMinutes", 30),
+                          "hours": appts.get("hours", [])} if appts.get("enabled") else None),
+        "sms": {"doubleOptIn": (settings.get("sms") or {}).get("doubleOptIn", True)},
+        "timezone": settings.get("timezone"),
     }
 
 
