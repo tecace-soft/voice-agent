@@ -13,7 +13,7 @@ import { sql } from "./client.js";
 export type CustomerPhase = "demo" | "onboarding" | "production";
 
 export interface CustomerLifecycle {
-  /** CUST-0001. Permanent: generated from a sequence, never written by anything. */
+  /** HADE-0001. Permanent: set by a trigger when the row is inserted, never changed after. */
   customerCode: string;
   phase: CustomerPhase;
   /** The linked account's email, which is how the Business pages pick a customer. */

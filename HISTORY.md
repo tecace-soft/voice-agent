@@ -13,6 +13,11 @@ Format:
 
 ---
 
+## 2026-09-27 · bottomup32 · transcribe-backend (customer IDs)
+- DB (self-migrating): `demo_customers.customer_code` is now `<4 letters from business name>-<seq>` (e.g. `GLHF-0009`, `HMAB-0011`) instead of `CUST-0009`. Set once by trigger `demo_customers_code_guard` on INSERT; any later UPDATE of it raises; renaming the business keeps it. Numbers unchanged.
+- The old generated column is converted and existing rows re-coded once on the first request of the new backend (`migrateIfNeeded` now probes for the trigger). The currently deployed backend keeps working with the new schema.
+- ⚠ Michael: backend redeploy needed; IDs people already wrote down (`CUST-xxxx`) change once — the number part stays the same. DB backup before deploy.
+
 ## 2026-09-26 · bottomup32 · transcribe-backend, dashboard (review fixes + phase 2: in-app test calls)
 - API (additive): `POST /business/test/session`, `POST /business/test/calls/:id`, `GET /business/test/calls` (recent test calls + monthly allowance), `PUT /business/test/cap` (admin). Env `APP_TEST_SECONDS_PER_MONTH` (default 1800). Test calls use the business's DRAFT call settings; customers are capped per calendar month (business timezone), admins are not.
 - Behaviour change: `POST /demo/session` (operator test call) now sends the composed session (rule book + prompts + transfer/link/message blocks + tools) instead of `prompts.live + clock`. The public demo page is unchanged.

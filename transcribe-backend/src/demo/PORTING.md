@@ -754,9 +754,15 @@ It does not, and cannot, make the run survive the process.
 
 ## Customer lifecycle (2026-09-25) — not a promo port
 
-- `demo_customers.customer_seq` (sequence `customer_code_seq`) and generated `customer_code`
-  (`CUST-0001`, width grows past 9999). Existing rows are numbered once by `created_at` in a DO block
-  under an advisory lock (`db/client.ts`); nothing writes the code, and numbers are never reused.
+- `demo_customers.customer_seq` (sequence `customer_code_seq`) and `customer_code`. Existing rows
+  are numbered once by `created_at` in a DO block under an advisory lock (`db/client.ts`); numbers
+  are never reused.
+- 2026-09-27: `customer_code` is `<4 letters from the business name>-<seq>` (`HADE-0001`, width
+  grows past 9999), was `CUST-0001`. SQL function `demo_customer_code(name, seq)`; trigger
+  `demo_customers_code_guard` sets it on INSERT (ignoring any value given) and raises on any UPDATE
+  of `customer_code`/`customer_seq`, so renames keep it. The old generated column is converted once
+  (`DROP EXPRESSION`) and its rows re-coded from their current names, numbers kept. Names with no
+  Latin letters get `CUST`. `migrateIfNeeded` probes for the trigger.
 - Every `/demo` response carrying a customer (`GET /customers`, `/crm`, `/customers/:id`, POST
   create, research, PATCH) has `customerCode`, `phase` and `accountEmail` merged in by
   `db/customerLifecycle.ts`. Additive: the promo shapes are otherwise unchanged. `phase` is derived

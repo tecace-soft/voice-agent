@@ -385,15 +385,16 @@ export async function initDb(): Promise<void> {
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_demo_customers_stage ON demo_customers (stage)`;
 
-  // The customer's permanent id, CUST-0001 and up. The nanoid above is the promo's and lives in
-  // links; this one is what people say and write down, and it survives renames of the business.
+  // The customer's permanent id, HADE-0001: four letters from the business name as it was when the
+  // customer was created, then a number. The nanoid above is the promo's and lives in links; this
+  // one is what people say and write down, and it survives renames of the business.
   //
-  // Numbered by a sequence and rendered by a generated column, so nothing can write the code itself
-  // and a number is never handed out twice (a deleted customer's number is not reused). Rows that
-  // predate the column are numbered once, oldest first, in a single DO block: one statement, so it
-  // runs in one transaction under the advisory lock, and concurrent cold starts cannot both number
-  // the same rows. The DEFAULT is only set after that, so the backfill is the only thing that ever
-  // sees a NULL. lpad's width is at least the number's own length because lpad truncates.
+  // The number comes from a sequence, so a number is never handed out twice (a deleted customer's
+  // number is not reused) and the code is unique whatever the letters are. Rows that predate the
+  // column are numbered once, oldest first, in a single DO block: one statement, so it runs in one
+  // transaction under the advisory lock, and concurrent cold starts cannot both number the same
+  // rows. The DEFAULT is only set after that, so the backfill is the only thing that ever sees a
+  // NULL.
   await sql`CREATE SEQUENCE IF NOT EXISTS customer_code_seq`;
   await sql`ALTER TABLE demo_customers ADD COLUMN IF NOT EXISTS customer_seq BIGINT`;
   await sql`
@@ -416,11 +417,106 @@ export async function initDb(): Promise<void> {
   `;
   await sql`ALTER TABLE demo_customers ALTER COLUMN customer_seq SET DEFAULT nextval('customer_code_seq')`;
   await sql`ALTER TABLE demo_customers ALTER COLUMN customer_seq SET NOT NULL`;
+
+  // The letters: the first letter of each of the first four words, then one more letter from each
+  // word in turn until there are four. Only A-Z count ("L&I" is two words, "Co." is CO), and legal
+  // suffixes, titles and small words are skipped unless nothing else is left. Harbor Dental → HADE,
+  // Meet Korean BBQ → MEKB, H Mart Bellevue → HMAB, Wowrack → WOWR. Short names are padded with X; a
+  // name with no Latin letters at all gets CUST. lpad's width is at least the number's own length
+  // because lpad truncates, so the number grows past 9999 instead of wrapping.
   await sql`
-    ALTER TABLE demo_customers ADD COLUMN IF NOT EXISTS customer_code TEXT GENERATED ALWAYS AS
-      ('CUST-' || lpad(customer_seq::text, greatest(4, length(customer_seq::text)), '0')) STORED
+    CREATE OR REPLACE FUNCTION demo_customer_code(business TEXT, seq BIGINT) RETURNS TEXT
+    LANGUAGE plpgsql IMMUTABLE AS $$
+    DECLARE
+      words TEXT[];
+      take INT[];
+      n INT;
+      remaining INT := 4;
+      progressed BOOLEAN := true;
+      prefix TEXT := '';
+    BEGIN
+      words := ARRAY(
+        SELECT w FROM unnest(regexp_split_to_array(upper(coalesce(business, '')), '[^A-Z]+'))
+          WITH ORDINALITY AS t(w, o)
+         WHERE w <> '' AND w <> ALL (ARRAY['A','AN','AND','AT','CO','COMPANY','CORP','CORPORATION',
+           'DDS','DMD','DR','FOR','IN','INC','LIMITED','LLC','LLP','LP','LTD','MD','OF','PC','PLC',
+           'PLLC','THE'])
+         ORDER BY o);
+      IF cardinality(words) = 0 THEN
+        words := ARRAY(
+          SELECT w FROM unnest(regexp_split_to_array(upper(coalesce(business, '')), '[^A-Z]+'))
+            WITH ORDINALITY AS t(w, o)
+           WHERE w <> '' ORDER BY o);
+      END IF;
+      n := least(cardinality(words), 4);
+      IF n = 0 THEN
+        prefix := 'CUST';
+      ELSE
+        take := array_fill(1, ARRAY[n]);
+        remaining := 4 - n;
+        WHILE remaining > 0 AND progressed LOOP
+          progressed := false;
+          FOR i IN 1..n LOOP
+            EXIT WHEN remaining = 0;
+            IF take[i] < length(words[i]) THEN
+              take[i] := take[i] + 1;
+              remaining := remaining - 1;
+              progressed := true;
+            END IF;
+          END LOOP;
+        END LOOP;
+        FOR i IN 1..n LOOP
+          prefix := prefix || left(words[i], take[i]);
+        END LOOP;
+        prefix := rpad(prefix, 4, 'X');
+      END IF;
+      RETURN prefix || '-' || lpad(seq::text, greatest(4, length(seq::text)), '0');
+    END $$
   `;
+
+  // The code is written once, by the trigger below, when the row is inserted; nothing else can set
+  // it or change it afterwards, and renaming the business leaves it alone. Databases from before this
+  // had `customer_code` as a generated column rendering CUST-0001: the DO block turns that into a
+  // plain column and re-codes those rows once from their current names, keeping their numbers.
+  await sql`ALTER TABLE demo_customers ADD COLUMN IF NOT EXISTS customer_code TEXT`;
+  await sql`
+    DO $$
+    DECLARE was_generated BOOLEAN;
+    BEGIN
+      PERFORM pg_advisory_xact_lock(hashtext('demo_customers.customer_code'));
+      SELECT is_generated = 'ALWAYS' INTO was_generated
+        FROM information_schema.columns
+       WHERE table_schema = current_schema() AND table_name = 'demo_customers'
+         AND column_name = 'customer_code';
+      IF was_generated THEN
+        ALTER TABLE demo_customers ALTER COLUMN customer_code DROP EXPRESSION;
+      END IF;
+      UPDATE demo_customers SET customer_code = demo_customer_code(business_name, customer_seq)
+       WHERE was_generated OR customer_code IS NULL;
+    END $$
+  `;
+  await sql`ALTER TABLE demo_customers ALTER COLUMN customer_code SET NOT NULL`;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_demo_customers_code ON demo_customers (customer_code)`;
+  await sql`
+    CREATE OR REPLACE FUNCTION demo_customers_code_guard() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      IF TG_OP = 'INSERT' THEN
+        NEW.customer_code := demo_customer_code(NEW.business_name, NEW.customer_seq);
+      ELSIF NEW.customer_code IS DISTINCT FROM OLD.customer_code
+         OR NEW.customer_seq IS DISTINCT FROM OLD.customer_seq THEN
+        RAISE EXCEPTION 'demo_customers.customer_code is permanent';
+      END IF;
+      RETURN NEW;
+    END $$
+  `;
+  // Created after the re-coding: `migrateIfNeeded` probes for it, so a database that stopped before
+  // it runs the whole schema again.
+  await sql`
+    CREATE OR REPLACE TRIGGER demo_customers_code_guard
+      BEFORE INSERT OR UPDATE ON demo_customers
+      FOR EACH ROW EXECUTE FUNCTION demo_customers_code_guard()
+  `;
 
   await sql`
     CREATE TABLE IF NOT EXISTS demo_calls (
@@ -616,6 +712,8 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM call_events LIMIT 1`;
     await sql`SELECT 1 FROM sms_consents LIMIT 1`;
     await sql`SELECT call_sid FROM inbound_calls LIMIT 1`;
+    const [guard] = await sql`SELECT 1 FROM pg_trigger WHERE tgname = 'demo_customers_code_guard'`;
+    if (!guard) throw new Error("customer codes not converted");
     return;
   } catch {
     await initDb();

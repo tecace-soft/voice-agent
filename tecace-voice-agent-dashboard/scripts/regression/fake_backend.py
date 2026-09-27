@@ -629,7 +629,7 @@ def prospects() -> list[dict]:
             record["demoMinutes"] = DEMO_MINUTES[record["id"]]
     # The lifecycle routes/demo.ts merges into every customer (db/customerLifecycle.ts): the
     # permanent code, and the phase read off the linked account's stage.
-    for code, record in (("CUST-0001", harbor), ("CUST-0002", cedar)):
+    for code, record in (("HADE-0001", harbor), ("CEBA-0002", cedar)):
         record.update(customerCode=code, **_lifecycle(record["id"]))
     return [harbor, cedar]
 

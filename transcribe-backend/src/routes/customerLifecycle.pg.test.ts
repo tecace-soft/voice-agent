@@ -5,7 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 //
 // Same harness as `lifecycle.pg.test.ts` (PGlite behind `db/client.js`, the real DDL lifted out of
 // `client.ts`, the real importer, real tokens), because what matters here is Postgres behaviour: the
-// sequence, the generated column, the backfill's ordering and idempotence, and the route moving the
+// sequence, the code trigger, the backfill's ordering and idempotence, and the route moving the
 // right account.
 //
 // Run: bun test src/routes/customerLifecycle.pg.test.ts
@@ -231,18 +231,78 @@ afterAll(async () => {
 
 // ----------------------------------------------------------------------------------------------
 describe("customer_code", () => {
-  it("gives every imported demo a CUST- code", async () => {
+  const code = async (business: string | null, seq = 1) =>
+    (await db.query<{ c: string }>("SELECT demo_customer_code($1, $2) AS c", [business, seq])).rows[0]!.c;
+
+  it("is four letters from the business name and the number", async () => {
+    const cases: Record<string, string> = {
+      "Global Harvest Foods, LLC": "GLHF",
+      "H Mart Bellevue": "HMAB",
+      "Consulate General of the Republic of Korea in Seattle": "CGRK",
+      "Meet Korean BBQ": "MEKB",
+      "SHK Group, PLLC": "SHGR",
+      "Northwest Hearth & Home": "NOHH",
+      "Seoul Trading USA Co.": "SETU",
+      "TecAce Software, Ltd.": "TESO",
+      "Dr. Philip K. Jung, DDS": "PHKJ",
+      "Washington State Department of Labor & Industries (L&I)": "WSDL",
+      Wowrack: "WOWR",
+      "H Mart": "HMAR",
+      "Al": "ALXX",
+      "The LLC": "THLL",
+      "서울식당": "CUST",
+      "": "CUST",
+    };
+    for (const [business, letters] of Object.entries(cases)) {
+      expect([business, await code(business, 7)]).toEqual([business, `${letters}-0007`]);
+    }
+    expect(await code(null)).toBe("CUST-0001");
+    // lpad truncates; the width grows with the number instead.
+    expect(await code("Wowrack", 10000)).toBe("WOWR-10000");
+  });
+
+  it("gives every imported demo a code", async () => {
     const { rows } = await db.query<{ customer_code: string }>(
       "SELECT customer_code FROM demo_customers ORDER BY customer_seq",
     );
-    expect(rows.map((row) => row.customer_code)).toEqual(["CUST-0001", "CUST-0002", "CUST-0003"]);
+    expect(rows.map((row) => row.customer_code)).toEqual(["HADE-0001", "NACA-0002", "KEDE-0003"]);
   });
 
-  it("cannot be written", async () => {
+  it("cannot be written, on insert or after", async () => {
     await expect(
-      db.query(`UPDATE demo_customers SET customer_code = 'CUST-9999' WHERE id = $1`, [RICH]),
+      db.query(`UPDATE demo_customers SET customer_code = 'HADE-9999' WHERE id = $1`, [RICH]),
     ).rejects.toThrow();
+    await expect(
+      db.query(`UPDATE demo_customers SET customer_seq = 9999 WHERE id = $1`, [RICH]),
+    ).rejects.toThrow();
+
+    const scratch = await PGlite.create();
+    await execAll(scratch, DDL);
+    await scratch.query(
+      `INSERT INTO demo_customers (id, business_name, status, created_at, updated_at, customer_code)
+       VALUES ('x', 'Cedar Bakery', 'ready', now(), now(), 'MINE-0001')`,
+    );
+    const { rows } = await scratch.query<{ customer_code: string }>("SELECT customer_code FROM demo_customers");
+    expect(rows[0]!.customer_code).toBe("CEBA-0001");
+    await scratch.close();
   });
+
+  it("stays the same when the business is renamed", async () => {
+    await db.query(`UPDATE demo_customers SET business_name = 'Harbor Smiles' WHERE id = $1`, [RICH]);
+    const { rows } = await db.query<{ customer_code: string }>(
+      "SELECT customer_code FROM demo_customers WHERE id = $1",
+      [RICH],
+    );
+    expect(rows[0]!.customer_code).toBe("HADE-0001");
+    await db.query(`UPDATE demo_customers SET business_name = 'Harbor Dental' WHERE id = $1`, [RICH]);
+  });
+
+  const codesOf = async (target: PGlite) =>
+    Object.fromEntries(
+      (
+        await target.query<{ id: string; customer_code: string }>("SELECT id, customer_code FROM demo_customers")
+      ).rows.map((row) => [row.id, row.customer_code]),
+    );
 
   it("numbers an existing database's rows oldest first, once, and carries on from there", async () => {
     const old = await PGlite.create();
@@ -253,32 +313,48 @@ describe("customer_code", () => {
     await insertDemo(old, "ccc", "'2026-01-01T00:00:00Z'");
     await execAll(old, DDL.slice(CODE_START));
 
-    const codes = async () =>
-      Object.fromEntries(
-        (
-          await old.query<{ id: string; customer_code: string }>(
-            "SELECT id, customer_code FROM demo_customers",
-          )
-        ).rows.map((row) => [row.id, row.customer_code]),
-      );
-    expect(await codes()).toEqual({ ccc: "CUST-0001", bbb: "CUST-0002", aaa: "CUST-0003" });
+    expect(await codesOf(old)).toEqual({ ccc: "CCCX-0001", bbb: "BBBX-0002", aaa: "AAAX-0003" });
 
     // The whole schema again, as a cold start does: nothing is renumbered.
     await execAll(old, DDL);
-    expect(await codes()).toEqual({ ccc: "CUST-0001", bbb: "CUST-0002", aaa: "CUST-0003" });
+    expect(await codesOf(old)).toEqual({ ccc: "CCCX-0001", bbb: "BBBX-0002", aaa: "AAAX-0003" });
 
     await insertDemo(old, "ddd");
-    expect((await codes()).ddd).toBe("CUST-0004");
+    expect((await codesOf(old)).ddd).toBe("DDDX-0004");
 
     // A deleted customer's number is not handed out again.
     await old.query(`DELETE FROM demo_customers WHERE id = 'ddd'`);
     await insertDemo(old, "eee");
-    expect((await codes()).eee).toBe("CUST-0005");
+    expect((await codesOf(old)).eee).toBe("EEEX-0005");
+    await old.close();
+  });
 
-    // lpad truncates; the width grows with the number instead.
-    await old.query(`SELECT setval('customer_code_seq', 9999)`);
-    await insertDemo(old, "fff");
-    expect((await codes()).fff).toBe("CUST-10000");
+  it("re-codes a database that has the old CUST- codes once, keeping the numbers", async () => {
+    const old = await PGlite.create();
+    await execAll(old, DDL.slice(0, CODE_START));
+    // The schema as it was before the letters: a generated CUST- column.
+    await execAll(old, [
+      "CREATE SEQUENCE IF NOT EXISTS customer_code_seq",
+      "ALTER TABLE demo_customers ADD COLUMN customer_seq BIGINT NOT NULL DEFAULT nextval('customer_code_seq')",
+      `ALTER TABLE demo_customers ADD COLUMN customer_code TEXT GENERATED ALWAYS AS
+         ('CUST-' || lpad(customer_seq::text, greatest(4, length(customer_seq::text)), '0')) STORED`,
+      "CREATE UNIQUE INDEX idx_demo_customers_code ON demo_customers (customer_code)",
+    ]);
+    await old.query(
+      `INSERT INTO demo_customers (id, business_name, status, created_at, updated_at) VALUES
+         ('gh', 'Global Harvest Foods, LLC', 'ready', now(), now()),
+         ('ko', '서울식당', 'ready', now(), now()),
+         ('hm', 'H Mart Bellevue', 'ready', now(), now())`,
+    );
+    expect(await codesOf(old)).toEqual({ gh: "CUST-0001", ko: "CUST-0002", hm: "CUST-0003" });
+
+    await execAll(old, DDL.slice(CODE_START));
+    expect(await codesOf(old)).toEqual({ gh: "GLHF-0001", ko: "CUST-0002", hm: "HMAB-0003" });
+
+    // Renamed afterwards, then a cold start: the code stays what it became.
+    await old.query(`UPDATE demo_customers SET business_name = 'Harvest Foods' WHERE id = 'gh'`);
+    await execAll(old, DDL);
+    expect((await codesOf(old)).gh).toBe("GLHF-0001");
     await old.close();
   });
 });
@@ -289,16 +365,16 @@ describe("customerCode and phase on the demo reads", () => {
     const res = await call("GET", "/demo/customers", ADMIN);
     expect(res.status).toBe(200);
     const byId = Object.fromEntries(res.body.customers.map((c: any) => [c.id, c]));
-    expect(byId[RICH].customerCode).toBe("CUST-0001");
+    expect(byId[RICH].customerCode).toBe("HADE-0001");
     expect(byId[RICH].phase).toBe("demo");
     expect(byId[THIN].accountEmail).toBeNull();
   });
 
   it("are on the CRM board and the detail page too", async () => {
     const crm = await call("GET", "/demo/crm", ADMIN);
-    expect(crm.body.customers.find((c: any) => c.id === KEEP).customerCode).toBe("CUST-0003");
+    expect(crm.body.customers.find((c: any) => c.id === KEEP).customerCode).toBe("KEDE-0003");
     const one = await call("GET", `/demo/customers/${THIN}`, ADMIN);
-    expect(one.body.customer.customerCode).toBe("CUST-0002");
+    expect(one.body.customer.customerCode).toBe("NACA-0002");
     expect(one.body.customer.phase).toBe("demo");
   });
 });
@@ -323,7 +399,7 @@ describe("POST /demo/customers/:id/onboard", () => {
     expect(res.body.user.status).toBe("pre-production");
     expect(res.body.customer.phase).toBe("onboarding");
     expect(res.body.customer.stage).toBe("won");
-    expect(res.body.customer.customerCode).toBe("CUST-0001");
+    expect(res.body.customer.customerCode).toBe("HADE-0001");
     expect((await findProfile(dana.id))?.businessName).toBe("Harbor Dental");
 
     const list = await call("GET", "/demo/customers", ADMIN);

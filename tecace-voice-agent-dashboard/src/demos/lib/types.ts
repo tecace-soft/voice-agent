@@ -131,7 +131,7 @@ export type Customer = {
   researchedAt?: string;
   // Dashboard-only (see PORTING.md): the lifecycle the backend merges into every customer it
   // returns. Optional because the promo never sent them.
-  /** The permanent customer id, CUST-0001. Survives renames; nothing edits it. */
+  /** The permanent customer id, HADE-0001: four letters from the name at creation + a number. Survives renames; nothing edits it. */
   customerCode?: string;
   /** From the linked account's stage: demo, then onboarding (pre-production), then production. */
   phase?: CustomerPhase;

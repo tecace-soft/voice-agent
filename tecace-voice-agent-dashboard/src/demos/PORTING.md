@@ -1104,7 +1104,7 @@ the whole point of the port is that there is one of each.
 Dashboard-only; the promo had no lifecycle. Everything is additive and inside the existing Demo ›
 Customers screens — no new route or sidebar item.
 
-- **`lib/types.ts`** — `Customer` gains optional `customerCode` (CUST-0001, permanent),
+- **`lib/types.ts`** — `Customer` gains optional `customerCode` (HADE-0001 — 4 letters from the name + number, was CUST-0001; permanent),
   `phase` (`demo` | `onboarding` | `production`, derived by the backend from the linked account's
   stage) and `accountEmail`; new `CUSTOMER_PHASES` / `CustomerPhase`. Optional because the promo's
   bodies never had them.

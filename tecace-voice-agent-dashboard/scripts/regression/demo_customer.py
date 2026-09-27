@@ -208,7 +208,7 @@ def main() -> int:
                     body = page.inner_text("body")
                     check("they are offered onboarding",
                           page.get_by_role("button", name="Start onboarding").count() == 1, body[:300])
-                    check("...and see their customer ID", "CUST-0001" in body, body[:300])
+                    check("...and see their customer ID", "HADE-0001" in body, body[:300])
                     page.get_by_role("button", name="Start onboarding").click()
                     dialog = page.get_by_role("dialog")
                     dialog.wait_for()
