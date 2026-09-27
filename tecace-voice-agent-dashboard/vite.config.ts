@@ -1,7 +1,20 @@
 import { fileURLToPath } from "node:url";
 
 import react from "@vitejs/plugin-react";
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig, loadEnv, type Connect, type Plugin } from "vite";
+
+// `vercel.json`'s `/c/* -> /c.html` rewrite, for `vite dev` and `vite preview`. Without it both
+// fall back to index.html, so "Open demo" (a real `/c/<id>` link) opened the dashboard locally
+// while working once deployed.
+const rewriteDemoLinks: Connect.NextHandleFunction = (req, _res, next) => {
+  if (req.url && /^\/c\/[^?#]/.test(req.url)) req.url = "/c.html";
+  next();
+};
+const demoLinkRewrite: Plugin = {
+  name: "demo-link-rewrite",
+  configureServer: (server) => void server.middlewares.use(rewriteDemoLinks),
+  configurePreviewServer: (server) => void server.middlewares.use(rewriteDemoLinks),
+};
 
 // Dev server on 5175 (the admin dashboard uses 5173 and the transcribe dashboard 5174, so all
 // three can run at once).
@@ -29,7 +42,7 @@ export default defineConfig(({ mode }) => {
   // because the regression harness builds the original transcribe-dashboard-app, which uses it.
   const backend = (env.BACKEND_URL || env.VITE_BACKEND_URL || "").replace(/\/$/, "");
   return {
-    plugins: [react()],
+    plugins: [react(), demoLinkRewrite],
     // Ported promo code imports "@/components/…", "@/lib/…" exactly as in its own repo; @/ is
     // src/demos, which mirrors the promo's layout. The regex only matches "@/" — never "@base-ui/…".
     resolve: {

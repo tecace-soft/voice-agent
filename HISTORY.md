@@ -18,6 +18,11 @@ Format:
 - The old generated column is converted and existing rows re-coded once on the first request of the new backend (`migrateIfNeeded` now probes for the trigger). The currently deployed backend keeps working with the new schema.
 - ⚠ Michael: backend redeploy needed; IDs people already wrote down (`CUST-xxxx`) change once — the number part stays the same. DB backup before deploy.
 
+## 2026-09-27 · bottomup32 · dashboard (dev server)
+- `vite.config.ts`: `vite dev` / `vite preview` now rewrite `/c/*` to `c.html`, like `vercel.json`. Before, "Open demo" (`/c/<id>`) opened the dashboard locally. No effect on the deployed build.
+- Regression on Windows: run the scripts with `BACKEND_URL=http://127.0.0.1:8899 PYTHONUTF8=1` — the dashboard `.env` otherwise wins over the harness backend, and the cp949 console crashes on "—". With both set, all seven pass.
+- ⚠ Michael: the deployed transcribe-backend is behind this branch (`/business/call-settings`, `/demo/customers/:id/onboard`, `/business/test/*` return 404; CORS preflight lacks `PATCH` and `http://localhost:5175`). Local dashboard testing needs the local backend until it is redeployed.
+
 ## 2026-09-26 · bottomup32 · transcribe-backend, dashboard (review fixes + phase 2: in-app test calls)
 - API (additive): `POST /business/test/session`, `POST /business/test/calls/:id`, `GET /business/test/calls` (recent test calls + monthly allowance), `PUT /business/test/cap` (admin). Env `APP_TEST_SECONDS_PER_MONTH` (default 1800). Test calls use the business's DRAFT call settings; customers are capped per calendar month (business timezone), admins are not.
 - Behaviour change: `POST /demo/session` (operator test call) now sends the composed session (rule book + prompts + transfer/link/message blocks + tools) instead of `prompts.live + clock`. The public demo page is unchanged.
