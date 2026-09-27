@@ -13,6 +13,10 @@ Format:
 
 ---
 
+## 2026-09-27 · bottomup32 · deploy (Vercel: previews off for non-master branches)
+- Set an Ignored Build Step on `transcribe-app-backend`, `tecace-voice-agent-dashboard` and `voice-agent-voicemail-dashboard`: `[ "$VERCEL_GIT_COMMIT_REF" != "master" ]` — only `master` builds; every other branch is skipped. This closes the risk logged below (a pushed branch's preview backend ran on the PRODUCTION DB and would self-migrate it when opened). Production deploys from `master` are unchanged.
+- ⚠ Michael: to preview a branch again, remove the step (Project → Settings → Git → Ignored Build Step) or point the backend's Preview `DATABASE_URL` at a Neon branch first. Staging lives on separate projects (`voice-agent-staging`, `va-staging-backend`, Neon branch `staging`), deployed by CLI.
+
 ## 2026-09-27 · bottomup32 · transcribe-backend, dashboard (public demo page: settings played out, redesign)
 - `/c/<id>` redesigned call first: top bar, call card, "Try saying" cards generated from the demo's call settings, an action feed during the call (transfer ringing, texted link, message, demo-calendar booking — all marked Demo, nothing real), and an after-call summary. The nine-scenarios link/teaser are gone; `/c/<id>/scenarios` shows the demo.
 - API: `GET /demo/public/customers/:id` adds `capabilities` (no staff numbers). New `POST /demo/public/tool` (demo calendar; live public call of that demo only). `POST /demo/public/session` is now composed by `composeSession("public-demo")` with transfer/link/message/booking tools. ⚠ New env flag `PUBLIC_DEMO_COMPOSED` (default on; `false` = old stored prompts, no tools).
