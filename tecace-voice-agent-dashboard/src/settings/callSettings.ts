@@ -65,12 +65,46 @@ export type LinkScenario = {
   url: string;
 };
 
+/** Booking into the connected calendar. Mirrors transcribe-backend business/callSettings.ts. */
+export type AppointmentSettings = {
+  enabled: boolean;
+  title: string;
+  durationMinutes: number;
+  bufferMinutes: number;
+  minNoticeMinutes: number;
+  horizonDays: number;
+  /** Empty means the business hours. */
+  hours: Window[];
+  instructions: string;
+};
+
+export const APPOINTMENT_LIMITS = {
+  duration: [5, 480],
+  buffer: [0, 240],
+  notice: [0, 20_160],
+  horizon: [1, 180],
+} as const;
+
+export function defaultAppointments(): AppointmentSettings {
+  return {
+    enabled: false,
+    title: "Appointment",
+    durationMinutes: 30,
+    bufferMinutes: 0,
+    minNoticeMinutes: 120,
+    horizonDays: 30,
+    hours: [],
+    instructions: "",
+  };
+}
+
 export type CallSettings = {
   timezone?: string;
   transfer: { waterfallEnabled: boolean; scenarios: TransferScenario[] };
   messages: { scenarios: MessageScenario[] };
   links: { scenarios: LinkScenario[] };
   sms: { doubleOptIn: boolean };
+  appointments: AppointmentSettings;
 };
 
 export function emptyCallSettings(): CallSettings {
@@ -79,6 +113,7 @@ export function emptyCallSettings(): CallSettings {
     messages: { scenarios: [] },
     links: { scenarios: [] },
     sms: { doubleOptIn: true },
+    appointments: defaultAppointments(),
   };
 }
 
@@ -92,6 +127,8 @@ export function withDefaults(raw: Partial<CallSettings> | null | undefined): Cal
     messages: { scenarios: raw.messages?.scenarios ?? [] },
     links: { scenarios: raw.links?.scenarios ?? [] },
     sms: { ...base.sms, ...raw.sms },
+    // Kept through every save: a section that doesn't know about appointments must not drop them.
+    appointments: { ...base.appointments, ...raw.appointments },
   };
 }
 

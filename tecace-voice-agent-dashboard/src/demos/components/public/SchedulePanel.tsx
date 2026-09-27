@@ -84,7 +84,12 @@ function IntegrationTile({
       className="hover:border-ring/60 hover:bg-accent ta-label-1 flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors"
     >
       <Mark integration={integration} />
-      <span className="truncate">{integration.name}</span>
+      <span className="flex-1 truncate">{integration.name}</span>
+      {integration.soon ? (
+        <span className="ta-caption-2 bg-muted text-muted-foreground shrink-0 rounded-full px-2 py-0.5">
+          Coming soon
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -176,7 +181,8 @@ export function SchedulePanel({ profile, agentName, onLocked }: Props) {
           <h3 className="ta-headline-2">Connect it to what you already use</h3>
           <p className="ta-caption-1 text-muted-foreground">
             The booking goes where your day already lives. Nothing is connected
-            in the demo — tell us which one you run and we set it up.
+            in the demo. Once you sign up, the ones without a Coming soon tag
+            connect in a few clicks — tell us if yours is one of the others.
           </p>
         </div>
 

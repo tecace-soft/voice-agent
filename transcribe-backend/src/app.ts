@@ -9,6 +9,7 @@ import { feedback } from "./routes/feedback.js";
 import { health } from "./routes/health.js";
 import { business } from "./routes/business.js";
 import { testCalls } from "./routes/testCalls.js";
+import { calendar } from "./routes/calendar.js";
 import { calls } from "./routes/calls.js";
 import { transcribe } from "./routes/transcribe.js";
 import { usage } from "./routes/usage.js";
@@ -55,6 +56,9 @@ export const app = new Elysia()
   .use(transcribe)
   .use(business)
   .use(testCalls)
+  // Calendar connections and the booking tools. Its OAuth callback is the one route under it with
+  // no session; see the file.
+  .use(calendar)
   .use(calls)
   .use(usage)
   .use(apiKeys)

@@ -1197,3 +1197,17 @@ Spec: `docs/superpowers/specs/2026-09-27-phase-gates-design.md`.
   segmented control, and the operator's controls. The stat cards moved into the Activity tab (the
   customer gets them as one line). On the Settings tab the header's Save is hidden — the studio bar
   has it. The Test call console is a compact call row plus Transcript / Texts / Events tabs.
+
+
+## Appointments: which integrations connect today (2026-09-27) — not a promo port
+
+- **`lib/integrations.ts`** — `Integration` gains optional `soon: true`, set on every entry that
+  cannot be connected yet: the reservation systems (OpenTable, Resy, Tock, SevenRooms, Yelp Guest
+  Manager, Toast Tables, Eat App, Reserve with Google — partner-only APIs), Square Appointments,
+  Zoho Bookings, HubSpot Meetings, Zoom and Google Meet. The rest (Google Calendar, Outlook, Apple
+  Calendar, Cal.com, Calendly, Squarespace Scheduling) connect from the dashboard's Appointments
+  settings (`src/settings/sections/AppointmentsSection.tsx`, backend `transcribe-backend/src/calendar/`).
+  The same ids are the backend catalog's (`calendar/catalog.ts`); keep the two in step.
+- **`components/public/SchedulePanel.tsx`** — an integration tile with `soon` shows a "Coming soon"
+  tag, and the section's line under "Connect it to what you already use" says the untagged ones
+  connect in a few clicks after sign-up. Nothing on the public page connects anything.

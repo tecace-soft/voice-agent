@@ -22,6 +22,7 @@ import { reviewCall } from "../demo/callReview.js";
 import { OpenAIError, createLiveSession } from "../demo/openai.js";
 import type { CallLog, TranscriptEntry } from "../demo/types.js";
 import { composeSession } from "../session/compose.js";
+import { bookingTargetFor } from "../calendar/service.js";
 import { liveSessionConfig } from "../session/live.js";
 import { fromBusinessRow } from "../session/records.js";
 import { clientIp, rateLimited } from "./demoCommon.js";
@@ -83,7 +84,11 @@ export const testCalls = new Elysia({ prefix: "/business/test" })
         return status(429, { error: "Too many calls in a row. Wait a minute and try again." });
       }
 
-      const [row, settings] = await Promise.all([findProfile(target), findCallSettings(target)]);
+      const [row, settings, booking] = await Promise.all([
+        findProfile(target),
+        findCallSettings(target),
+        bookingTargetFor(target),
+      ]);
       const record = row ? fromBusinessRow(row) : null;
       if (!record) {
         return status(409, { error: "Add your business information first — there's nothing to test yet." });
@@ -110,6 +115,7 @@ export const testCalls = new Elysia({ prefix: "/business/test" })
         timeZone: settings.draft.timezone ?? env.timezone,
         waterfallAllowed: settings.waterfallAllowed,
         neverPublished: settings.published === null,
+        booking,
       });
       try {
         const live = await createLiveSession(liveSessionConfig(session), body.sdp);

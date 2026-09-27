@@ -282,3 +282,15 @@ differs. Override it for the run:
 
 (`demo_customer.py`, `accounts_lifecycle.py`, `business_tabs.py` and `public_page.py` set their own
 `BACKEND_URL` and are not affected.)
+
+## appointments.py
+
+The Business page's Appointments section against the fake's `/business/calendar/*` routes (stateful
+for a run: one connection; Apple accepts the password `good-app-password` and refuses anything
+else). Checks that every product is listed and only the connectable ones can be clicked (the rest
+read "Coming soon", Google/Outlook "Needs setup" because the fake has no OAuth app), that the Apple
+dialog shows a refusal and then connects, that the connected card shows the calendar picker and
+openings, and that the booking rules save into the call-settings draft with the other sections
+kept. Screenshots in `.regression/appointments/`.
+
+    python scripts/regression/appointments.py

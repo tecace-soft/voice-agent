@@ -21,13 +21,13 @@ import { displayPhone, withDefaults, type CallSettings, type StoredCallSettings 
 import { SaveRow, SettingsShell, type SettingsSection } from "./SettingsShell";
 import { PublishControl, makeUpdater, type CallSettingsBinding } from "./sections/shared";
 import { TransferCallsSection } from "./sections/TransferCallsSection";
+import { AppointmentsSection } from "./sections/AppointmentsSection";
 import { TextLinkSection } from "./sections/TextLinkSection";
 import { TakeMessageSection } from "./sections/TakeMessageSection";
 import { ForwardingSection } from "./sections/ForwardingSection";
 import { BusinessTestConsole, BusinessTestSection, useTestCalls } from "./sections/TestSection";
 import {
   AgentProfileSection,
-  AppointmentsSection,
   BusinessInfoSection,
   CustomTrainingSection,
   FaqsSection,
@@ -329,7 +329,10 @@ export function BusinessSettings(props: Props) {
       badge: calls?.dirty ? "Draft" : undefined,
       render: callsSection((binding) => <TakeMessageSection binding={binding} />),
     },
-    { id: "appointments", badge: "Soon", render: () => <AppointmentsSection /> },
+    {
+      id: "appointments",
+      render: callsSection((binding) => <AppointmentsSection binding={binding} userId={userId} />),
+    },
     {
       id: "text-link",
       badge: calls?.dirty ? "Draft" : undefined,

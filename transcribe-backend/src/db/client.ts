@@ -601,6 +601,43 @@ export async function initDb(): Promise<void> {
   // business's draft once, at onboarding — the same one-way hand-off as the profile.
   await sql`ALTER TABLE demo_customers ADD COLUMN IF NOT EXISTS call_settings JSONB`;
 
+  // The calendar or booking tool a business books callers into (src/calendar). One per business:
+  // the assistant needs one answer to "is Tuesday at 2 free?". `secret` is the sealed credentials —
+  // a refresh token, an app-specific password or an API key — never stored in the clear, and never
+  // sent back to the browser. The booking RULES live in the call settings, draft and published.
+  await sql`
+    CREATE TABLE IF NOT EXISTS calendar_connections (
+      user_id     UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      provider    TEXT NOT NULL,
+      account     TEXT NOT NULL DEFAULT '',
+      secret      TEXT NOT NULL,
+      target_id   TEXT,
+      target_name TEXT,
+      status      TEXT NOT NULL DEFAULT 'ok' CHECK (status IN ('ok','error')),
+      last_error  TEXT,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  // Every booking the assistant made, so the business can see them in one place whatever calendar
+  // they landed in. `test` marks the ones made from an in-app test call.
+  await sql`
+    CREATE TABLE IF NOT EXISTS appointment_bookings (
+      id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider     TEXT NOT NULL,
+      external_id  TEXT,
+      start_at     TIMESTAMPTZ NOT NULL,
+      end_at       TIMESTAMPTZ NOT NULL,
+      caller_name  TEXT NOT NULL DEFAULT '',
+      caller_phone TEXT NOT NULL DEFAULT '',
+      reason       TEXT NOT NULL DEFAULT '',
+      test         BOOLEAN NOT NULL DEFAULT false,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_appointment_bookings_user ON appointment_bookings (user_id, created_at DESC)`;
+
   // In-app test calls for real businesses. The demo's own test calls stay in demo_calls, which is
   // keyed by a demo record; these belong to an account. Kept as rows rather than a counter because
   // the monthly allowance is a SUM over this month, and the transcript and review are what the
@@ -732,6 +769,8 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM demo_notes LIMIT 1`;
     await sql`SELECT waterfall_allowed FROM business_call_settings LIMIT 1`;
     await sql`SELECT call_settings FROM demo_customers LIMIT 1`;
+    await sql`SELECT 1 FROM calendar_connections LIMIT 1`;
+    await sql`SELECT 1 FROM appointment_bookings LIMIT 1`;
     await sql`SELECT 1 FROM app_test_calls LIMIT 1`;
     await sql`SELECT test_seconds_cap FROM users LIMIT 1`;
     await sql`SELECT 1 FROM call_events LIMIT 1`;

@@ -407,20 +407,6 @@ function SessionPreviewPanel({
   );
 }
 
-export function AppointmentsSection() {
-  return (
-    <div>
-      <SectionIntro>
-        Booking straight into your calendar is on the way. Until then, the assistant takes the caller's
-        preferred time as part of a message, or puts them through to someone who can book it.
-      </SectionIntro>
-      <div className="bg-muted/40 rounded-xl border border-dashed p-6">
-        <p className="ta-label-1">Coming soon</p>
-        <p className="ta-caption-1 text-muted-foreground mt-1">Calendar connections and booking rules will live here.</p>
-      </div>
-    </div>
-  );
-}
 
 export function TestSection({ children }: { children?: ReactNode }) {
   return (

@@ -134,6 +134,24 @@ const seedAdminEmail = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
 const seedAdminPassword = process.env.SEED_ADMIN_PASSWORD ?? "";
 const seedAdminName = process.env.SEED_ADMIN_NAME?.trim() || seedAdminEmail.split("@")[0] || "Admin";
 
+// Calendar connections (src/calendar). Every provider is optional: one that is not configured is
+// shown as "needs setup" in the Appointments screen and every other one keeps working.
+//
+// Google and Microsoft sign in with OAuth, so each needs an app registered with them whose redirect
+// URI is `<PUBLIC_BACKEND_URL>/calendar/oauth/<google|microsoft>/callback`. Apple (iCloud), other
+// CalDAV servers, Cal.com, Calendly and Acuity use the customer's own credentials and need nothing
+// here.
+//
+// CALENDAR_SECRET encrypts the stored credentials (AES-256-GCM). Falls back to AUTH_SECRET; in
+// development with neither it is derived from DATABASE_URL, so a restart can still read what was
+// saved. Changing it makes every stored connection unreadable — they then show as needing a
+// reconnect, nothing worse.
+function resolveCalendarSecret(): string {
+  const configured = process.env.CALENDAR_SECRET?.trim() || process.env.AUTH_SECRET?.trim();
+  if (configured) return configured;
+  return `dev-calendar:${databaseUrl}`;
+}
+
 export const env = {
   nodeEnv,
   port: Number(process.env.PORT ?? 8001),
@@ -166,6 +184,15 @@ export const env = {
   seedAdminEmail,
   seedAdminPassword,
   seedAdminName,
+  calendarSecret: resolveCalendarSecret(),
+  // This backend's own public origin, for OAuth redirect URIs. Unset = taken from the request.
+  publicBackendUrl: (process.env.PUBLIC_BACKEND_URL ?? "").trim().replace(/\/$/, ""),
+  googleClientId: process.env.GOOGLE_CLIENT_ID?.trim() ?? "",
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET?.trim() ?? "",
+  microsoftClientId: process.env.MICROSOFT_CLIENT_ID?.trim() ?? "",
+  microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET?.trim() ?? "",
+  // "common" lets both work/school and personal (outlook.com) accounts sign in.
+  microsoftTenant: process.env.MICROSOFT_TENANT?.trim() || "common",
 } as const;
 
 export type Env = typeof env;

@@ -6,6 +6,7 @@ import type { BusinessProfile as DemoBusinessProfile, CallSound, Customer, Custo
 import type { SessionPreview } from "../api/types";
 import type { SectionId } from "../routing";
 import { withDefaults, type CallSettings } from "./callSettings";
+import { AppointmentsSection } from "./sections/AppointmentsSection";
 import { SettingsShell, SectionIntro, type Phase, type SettingsSection } from "./SettingsShell";
 import { makeUpdater, type CallSettingsBinding } from "./sections/shared";
 import { TransferCallsSection } from "./sections/TransferCallsSection";
@@ -14,7 +15,6 @@ import { TakeMessageSection } from "./sections/TakeMessageSection";
 import { ForwardingSection } from "./sections/ForwardingSection";
 import {
   AgentProfileSection,
-  AppointmentsSection,
   BusinessInfoSection,
   CustomTrainingSection,
   FaqsSection,
@@ -145,7 +145,7 @@ export function DemoSettings(props: Props) {
       render: () => <FaqsSection profile={draft.profile} onChange={setProfile} footer={pageSaveNote} />,
     },
     { id: "take-message", render: () => <TakeMessageSection binding={binding} /> },
-    { id: "appointments", badge: "Soon", render: () => <AppointmentsSection /> },
+    { id: "appointments", render: () => <AppointmentsSection binding={binding} /> },
     { id: "text-link", render: () => <TextLinkSection binding={binding} /> },
     { id: "transfers", render: () => <TransferCallsSection binding={binding} /> },
     {

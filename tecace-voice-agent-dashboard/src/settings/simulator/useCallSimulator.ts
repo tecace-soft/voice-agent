@@ -19,13 +19,30 @@ import {
 // The simulated phone line around an in-app test call: holds what the tools did and the one
 // decision that needs the person testing (how the other phone answered a transfer).
 
-export function useCallSimulator(settings: CallSettings, businessName: string, businessPhone: string | null) {
+/**
+ * Runs check_availability / book_appointment against the business's real calendar. Absent on a
+ * demo, which has no calendar and is never given those tools.
+ */
+export type BookingToolRunner = (name: string, args: Record<string, unknown>) => Promise<Record<string, unknown>>;
+
+/** A booking a test call made, shown on the simulated line. */
+export type SimBooking = { when: string; callerName: string; reason: string };
+
+export function useCallSimulator(
+  settings: CallSettings,
+  businessName: string,
+  businessPhone: string | null,
+  bookingTool?: BookingToolRunner,
+) {
   const [pending, setPending] = useState<PendingTransfer | null>(null);
   const [texts, setTexts] = useState<SimText[]>([]);
   const [messages, setMessages] = useState<SimMessage[]>([]);
   const [events, setEvents] = useState<SimEvent[]>([]);
   const [textState, setTextState] = useState<TextState>(initialTextState);
   const [transferLog, setTransferLog] = useState<string[]>([]);
+  const [bookings, setBookings] = useState<SimBooking[]>([]);
+  const bookingRef = useRef(bookingTool);
+  bookingRef.current = bookingTool;
 
   // Refs for what the tool handler reads: it is called from inside the call hook, long after the
   // render that created it, and must see the current settings and state.
@@ -52,6 +69,7 @@ export function useCallSimulator(settings: CallSettings, businessName: string, b
     setEvents([]);
     setTextState(initialTextState());
     setTransferLog([]);
+    setBookings([]);
   }, []);
 
   const onToolCall = useCallback(
@@ -86,6 +104,33 @@ export function useCallSimulator(settings: CallSettings, businessName: string, b
         setMessages((m) => [...m, taken.message]);
         log(taken.event);
         return taken.result;
+      }
+      if (call.name === "check_availability" || call.name === "book_appointment") {
+        const run = bookingRef.current;
+        log(event(call.name === "check_availability" ? "availability_checked" : "booking_requested", { args: call.args }));
+        if (!run) return { output: JSON.stringify({ error: "No calendar on this call." }), resume: true };
+        try {
+          const result = await run(call.name, call.args);
+          if (call.name === "book_appointment") {
+            log(event(result.booked ? "booking_made" : "booking_refused", result));
+            if (result.booked) {
+              setBookings((b) => [
+                ...b,
+                {
+                  when: String(result.when ?? ""),
+                  callerName: String(call.args.caller_name ?? ""),
+                  reason: String(call.args.reason ?? ""),
+                },
+              ]);
+            }
+          }
+          return { output: JSON.stringify(result), resume: true };
+        } catch {
+          return {
+            output: JSON.stringify({ ok: false, error: "The calendar couldn't be reached. Take a message with the time they want." }),
+            resume: true,
+          };
+        }
       }
       if (call.name === "end_call") {
         log(event("end_call"));
@@ -142,6 +187,7 @@ export function useCallSimulator(settings: CallSettings, businessName: string, b
     messages,
     events,
     transferLog,
+    bookings,
     reset,
   };
 }

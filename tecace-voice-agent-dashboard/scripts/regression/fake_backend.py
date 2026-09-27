@@ -205,9 +205,27 @@ EMPTY_CALL_SETTINGS = {
     "messages": {"scenarios": []},
     "links": {"scenarios": []},
     "sms": {"doubleOptIn": True},
+    "appointments": {"enabled": False, "title": "Appointment", "durationMinutes": 30, "bufferMinutes": 0,
+                     "minNoticeMinutes": 120, "horizonDays": 30, "hours": [], "instructions": ""},
 }
 CALL_SETTINGS = {"draft": json.loads(json.dumps(EMPTY_CALL_SETTINGS)), "published": None, "publishedAt": None,
                  "dirty": False, "waterfallAllowed": False, "agentNumber": "+14255550100"}
+
+# ---- calendar (routes/calendar.ts): what can be connected, and one connection per run. Apple
+# connects with any Apple ID and the password "good-app-password"; anything else is refused the way
+# iCloud refuses it. Google is "needs_setup" (no OAuth app), the restaurant systems "soon".
+CALENDAR_PROVIDERS = (
+    [{"id": i, "kind": "calendar", "method": m, "status": st} for i, m, st in [
+        ("google-calendar", "oauth", "needs_setup"), ("outlook", "oauth", "needs_setup"),
+        ("apple-calendar", "caldav", "ready"), ("caldav", "caldav", "ready")]]
+    + [{"id": i, "kind": "booking", "method": "apikey", "status": "ready"} for i in ("cal-com", "calendly", "squarespace")]
+    + [{"id": i, "kind": "booking", "method": None, "status": "soon"} for i in (
+        "square", "zoho", "hubspot", "opentable", "resy", "tock", "sevenrooms", "yelp-guest-manager",
+        "toast-tables", "eat-app", "reserve-with-google")]
+)
+CALENDAR_TARGETS = [{"id": "https://caldav.icloud.com/1/calendars/home/", "name": "Home", "primary": True},
+                    {"id": "https://caldav.icloud.com/1/calendars/work/", "name": "Work"}]
+CALENDAR = {"connection": None, "bookings": []}
 
 CALLS = [
     {"id": "c-1", "userId": "u-sam", "dialled": "+14255550100", "caller": "+15551234567",
@@ -1460,6 +1478,41 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
         CALL_SETTINGS["publishedAt"] = iso(NOW)
         CALL_SETTINGS["dirty"] = False
         return 200, CALL_SETTINGS
+    if path == "/business/calendar" and method == "GET":
+        return 200, {"providers": CALENDAR_PROVIDERS, "connection": CALENDAR["connection"],
+                     "bookings": CALENDAR["bookings"]}
+    if path == "/business/calendar" and method == "DELETE":
+        CALENDAR["connection"] = None
+        return 200, {"connection": None}
+    if path == "/business/calendar/connect" and method == "POST":
+        sent = json.loads(body or b"{}")
+        creds = sent.get("credentials") or {}
+        if sent.get("provider") != "apple-calendar" or creds.get("password") != "good-app-password":
+            return 400, {"error": "calendar_auth",
+                         "message": "iCloud didn't accept that sign-in. Check the account name and the password "
+                                    "(for iCloud, an app-specific password)."}
+        target = CALENDAR_TARGETS[0]
+        CALENDAR["connection"] = {"provider": "apple-calendar", "providerName": "Apple Calendar",
+                                  "account": creds.get("username", ""), "targetId": target["id"],
+                                  "targetName": target["name"], "status": "ok", "lastError": None,
+                                  "connectedAt": iso(NOW)}
+        return 200, {"connection": CALENDAR["connection"], "targets": CALENDAR_TARGETS}
+    if path == "/business/calendar/targets" and method == "GET":
+        return 200, {"targets": CALENDAR_TARGETS}
+    if path == "/business/calendar/target" and method == "PUT":
+        wanted = (json.loads(body or b"{}") or {}).get("targetId")
+        chosen = next((t for t in CALENDAR_TARGETS if t["id"] == wanted), None)
+        if not chosen or not CALENDAR["connection"]:
+            return 400, {"error": "unknown_target", "message": "That calendar isn't on this account."}
+        CALENDAR["connection"] = {**CALENDAR["connection"], "targetId": chosen["id"], "targetName": chosen["name"]}
+        return 200, {"connection": CALENDAR["connection"]}
+    if path == "/business/calendar/oauth/start" and method == "POST":
+        return 409, {"error": "needs_setup", "message": "This server isn't set up to connect that calendar yet."}
+    if path == "/business/calendar/availability" and method == "POST":
+        return 200, {"timeZone": "America/Los_Angeles", "openings": [
+            {"start": "2026-09-01T09:00:00-07:00", "spoken": "Tuesday, September 1 at 9:00 AM"},
+            {"start": "2026-09-01T14:30:00-07:00", "spoken": "Tuesday, September 1 at 2:30 PM"},
+            {"start": "2026-09-02T10:00:00-07:00", "spoken": "Wednesday, September 2 at 10:00 AM"}]}
     if path == "/business/session-preview" and method == "GET":
         which = (query.get("settings") or ["draft"])[0]
         return 200, {"settings": which, "live": "# How this call works\n(composed voice prompt)",

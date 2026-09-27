@@ -29,6 +29,12 @@ export type RulesInput = {
    * `reachable`.
    */
   reachable: boolean;
+  /**
+   * The business has booking switched on and a calendar connected: the receptionist books NEW
+   * appointments itself with check_availability / book_appointment. Existing appointments stay a
+   * person's job either way.
+   */
+  canBook?: boolean;
 };
 
 // The goodbye rule, stated once and used in both the rule book and the voice preamble. Python
@@ -44,6 +50,11 @@ const LINE_TRANSFER = "Of course, let me put you through. One moment."; // _PROM
 // Offers, which must NOT trigger a transfer: both hit _ONLY_OFFERING ("would you like", "I can").
 const LINE_OFFER_BOOKING =
   "I can't book that myself, but I can put you through to someone who can — would you like me to?";
+// With booking on, the offer that remains is for what the receptionist still cannot do: changing an
+// existing appointment. Still an offer ("would you like"), so the bridge still reads it as one.
+const LINE_OFFER_CHANGE =
+  "I can't change that myself, but I can put you through to someone who can — would you like me to?";
+const LINE_BOOKED = "You're all set for Tuesday, October sixth at two thirty.";
 const LINE_OFFER_DEFER = "That's one for the team — would you like me to put you through now?";
 const LINE_MESSAGE_TAKEN = "Got it — I'll pass that to the team and someone will get back to you."; // _PROMISED_A_MESSAGE
 const LINE_DEFERRAL = "That's one for the team — I can have someone get back to you,"; // _ONLY_OFFERING
@@ -227,8 +238,38 @@ function faq(s: ReturnType<typeof slots>): [string, string][] {
 }
 
 /** The shared rule book both models get. */
+/**
+ * Route A's booking paragraph when the receptionist can book. Replaces "help without promising":
+ * the promise rules still hold, but "booked" becomes something a tool can make true.
+ */
+function bookingRoute(reachable: boolean): string {
+  const fallback = reachable ? "offer to put them through, or take a message (Route C)" : "take a message (Route C)";
+  return `BOOKING A NEW APPOINTMENT IS YOURS TO DO, with two tools. Anything the Appointments section below asks for comes first.
+- When they want to book, ask when suits them if they have not said. Then call check_availability: with date (YYYY-MM-DD, taken from the dates under "Now") if they named a day, and part_of_day if they said morning, afternoon or evening. Leave both out for "whenever's soonest".
+- Offer two or three of the openings it returns, as its "spoken" text says them. NEVER offer, suggest or agree to a time check_availability did not return — that tool is the only way you can see the calendar. If they ask for a time it did not list, it is not open; offer the nearest ones it gave you.
+- When they pick one, get their name if you do not have it, read the day and time back ONCE, and on a yes call book_appointment with that opening's start exactly as check_availability returned it, their name, and in reason one short line of what it is for. You already have their number; do not ask for it.
+- Only after book_appointment returns booked: true, confirm it in one sentence — "${LINE_BOOKED}" — then hand the turn back.
+- booked: false means the time was just taken: say so and offer the other openings it returned. An error means the calendar cannot be reached: say you can't book it right now and take a message with the time they want (Route C).
+- NEVER say or imply that anything is booked, held or confirmed until book_appointment has returned booked: true. Not "I'll get you in", not "that works", not "you're all set" before then.
+- NEVER state or guess availability except from what check_availability returned.
+- Nothing works for them, they want something the Appointments section does not cover, or they would rather speak to someone: ${fallback}.
+- NEVER promise what a person will do, and no discount, exception or accommodation the facts do not already state.`;
+}
+
+/** The handoffs, reworded where they say the receptionist cannot book. */
+function bookingAwareHandoff(handoff: string): string {
+  return handoff
+    .replace(LINE_OFFER_BOOKING, LINE_OFFER_CHANGE)
+    .replace("would you like me to put you through to book it?", "would you like me to put you through to someone about it?")
+    .replace(
+      "I can't book it myself, but I'll pass this to the team and someone will get back to you to set it up.",
+      "I'll pass this to the team and someone will get back to you about it.",
+    );
+}
+
 export function callRules(input: RulesInput): string {
   const { businessName, agentName, reachable } = input;
+  const canBook = Boolean(input.canBook);
   const s = slots(reachable);
   const faqLines = faq(s)
     .map(([question, answer]) => `- ${question}\n  -> ${answer}`)
@@ -240,13 +281,19 @@ export function callRules(input: RulesInput): string {
 A professional receptionist at a front desk: composed, warm, unhurried, and completely reliable about what you do and do not know. You are the first person the caller meets, and you behave like someone who has worked here for years.
 - You are HELPFUL WITHIN WHAT YOU KNOW. Everything you say about this business comes from the facts in the "What you know" section of these instructions. You never speculate, never fill a gap with something plausible, and are not embarrassed to say you do not have something to hand — a receptionist who guesses is worse than one who checks.
 - You are NOT a salesperson. Answer what they ask, help them decide if they want help deciding, and never push, upsell, or talk anyone into visiting.
-- You are NOT the booking system, the calendar, or the billing desk. You cannot reserve, hold, change or cancel anything, and you never imply otherwise.
+${
+    canBook
+      ? "- You CAN book a NEW appointment into the business's calendar, with check_availability and book_appointment (Route A). You cannot change, cancel or look up an existing one, hold a time without booking it, or do anything for billing, and you never imply otherwise."
+      : "- You are NOT the booking system, the calendar, or the billing desk. You cannot reserve, hold, change or cancel anything, and you never imply otherwise."
+  }
 - You are honest that you are an AI, immediately and without apology, whenever anyone asks.
 - You do NOT know this caller's name, why they're calling, or whether they've dealt with us before. Never assume, and never use a name they haven't given you.
 
 # Triage
-Your job is to TRIAGE the call, not to sell and not to book:
-- A real request to book, schedule, or meet with someone -> ${s.triageBooking}.
+Your job is to TRIAGE the call, not to sell${canBook ? "" : " and not to book"}:
+- A real request to book, schedule, or meet with someone -> ${
+    canBook ? "book it yourself, with the booking tools (Route A)" : s.triageBooking
+  }.
 - A question you can answer from the facts -> answer it (Route B).
 - Anything else -> ${s.anythingElse}.
 
@@ -278,13 +325,20 @@ Callers ask short questions, and a business that does several things usually has
 ## Route A — anything to do with an appointment, or reaching a person
 Signals: booking or scheduling ("I'd like to set up a meeting", "can I book a consultation"), RESCHEDULING or moving an existing appointment ("I need to change my appointment"), CANCELLING one ("I need to cancel", "I can't make it tomorrow"), asking about an appointment they already have, asking for a person at all ("is someone available", "I need to talk to someone about a project")${s.routeASignals}.
 
-An existing appointment is ALWAYS a person's job. You cannot see the calendar, so you cannot confirm, move, or cancel anything yourself — attempting to would leave the caller believing something was done that was not.
+${
+    canBook
+      ? `An existing appointment is ALWAYS a person's job. You can see when the calendar is free, not who is booked in it, so you cannot find, confirm, move, or cancel an existing appointment yourself — attempting to would leave the caller believing something was done that was not.
+
+${bookingRoute(reachable)}
+${bookingAwareHandoff(s.handoff)}`
+      : `An existing appointment is ALWAYS a person's job. You cannot see the calendar, so you cannot confirm, move, or cancel anything yourself — attempting to would leave the caller believing something was done that was not.
 
 HELP THEM WITHOUT PROMISING ANYTHING. Someone asking to book is interested, and the facts usually answer most of what they want to know — what a service includes, what it costs, how long it takes, how far ahead people book. Give them that, from the facts, and then ${s.bookingNext}.
 - NEVER say or imply that anything is booked, held, reserved, confirmed, cancelled or changed. Not "I'll get you in", not "we'll hold that for you", not "you're all set".
 - NEVER state or guess availability — whether a time is free, how busy a day is, whether someone can fit them in. You cannot see any of that.
 - NEVER promise what a person will do: no "they'll call you within the hour", no "they can definitely do that", and no discount, exception or accommodation the facts do not already state.
-${s.handoff}
+${s.handoff}`
+  }
 
 ## Route B — a question you can answer
 Anything the facts in "What you know" cover — what the business does, hours, location, prices, services, or a question about you.

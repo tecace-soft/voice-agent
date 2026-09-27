@@ -570,3 +570,88 @@ export function revokeApiKey(id: string): Promise<{ key: ApiKey }> {
 export function deleteApiKey(id: string): Promise<{ status: string }> {
   return request<{ status: string }>("DELETE", `/api-keys/${encodeURIComponent(id)}`);
 }
+
+// ---- calendar: the Appointments section (transcribe-backend src/routes/calendar.ts) ----
+
+export type CalendarProviderStatus = "ready" | "needs_setup" | "soon";
+export type CalendarProvider = {
+  id: string;
+  kind: "calendar" | "booking";
+  method: "oauth" | "caldav" | "apikey" | null;
+  status: CalendarProviderStatus;
+};
+export type CalendarConnection = {
+  provider: string;
+  providerName: string;
+  account: string;
+  targetId: string | null;
+  targetName: string | null;
+  status: "ok" | "error";
+  lastError: string | null;
+  connectedAt: string;
+};
+export type CalendarTarget = { id: string; name: string; primary?: boolean; durationMinutes?: number };
+export type CalendarBooking = {
+  id: string;
+  provider: string;
+  start: string;
+  end: string;
+  callerName: string;
+  callerPhone: string;
+  reason: string;
+  test: boolean;
+  createdAt: string;
+};
+export type CalendarOverview = {
+  providers: CalendarProvider[];
+  connection: CalendarConnection | null;
+  bookings: CalendarBooking[];
+};
+export type CalendarOpening = { start: string; spoken: string };
+
+export function getCalendar(userId?: string): Promise<CalendarOverview> {
+  return get<CalendarOverview>(`/business/calendar${asUser(userId)}`);
+}
+
+/** Connect with typed credentials. A refusal is a BackendError with the provider's reason. */
+export function connectCalendar(
+  provider: string,
+  credentials: Record<string, string>,
+  userId?: string,
+): Promise<{ connection: CalendarConnection; targets: CalendarTarget[] }> {
+  return request("POST", `/business/calendar/connect${asUser(userId)}`, { body: { provider, credentials } });
+}
+
+/** The provider's sign-in page; the browser goes there and comes back to `returnTo`. */
+export function startCalendarOAuth(provider: string, returnTo: string, userId?: string): Promise<{ url: string }> {
+  return request("POST", `/business/calendar/oauth/start${asUser(userId)}`, { body: { provider, returnTo } });
+}
+
+export function getCalendarTargets(userId?: string): Promise<{ targets: CalendarTarget[] }> {
+  return get(`/business/calendar/targets${asUser(userId)}`);
+}
+
+export function setCalendarTarget(targetId: string, userId?: string): Promise<{ connection: CalendarConnection }> {
+  return request("PUT", `/business/calendar/target${asUser(userId)}`, { body: { targetId } });
+}
+
+export function disconnectCalendar(userId?: string): Promise<{ connection: null }> {
+  return request("DELETE", `/business/calendar${asUser(userId)}`);
+}
+
+export function checkCalendarOpenings(
+  ask: { date?: string; partOfDay?: string },
+  userId?: string,
+): Promise<{ timeZone: string; openings: CalendarOpening[]; nearest?: CalendarOpening[] }> {
+  return request("POST", `/business/calendar/availability${asUser(userId)}`, { body: ask });
+}
+
+/** An in-app test call's check_availability / book_appointment. Books for real, titled "[Test]". */
+export function runCalendarTool(
+  name: string,
+  args: Record<string, unknown>,
+  userId?: string,
+  callerNumber?: string,
+): Promise<Record<string, unknown>> {
+  return request("POST", `/business/calendar/tool${asUser(userId)}`, { body: { name, args, callerNumber } });
+}

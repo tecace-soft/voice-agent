@@ -29,6 +29,7 @@ import {
   setWaterfallAllowed,
 } from "../db/callSettings.js";
 import { composeSession } from "../session/compose.js";
+import { bookingTargetFor } from "../calendar/service.js";
 import { fromBusinessRow } from "../session/records.js";
 import { promptsOutdated } from "../session/prompts.js";
 import type { BusinessProfile as StructuredProfile } from "../demo/types.js";
@@ -745,7 +746,11 @@ export const business = new Elysia({ prefix: "/business" })
       const user = await authenticate(headers.authorization);
       if (!user) return status(401, UNAUTHORIZED);
       const target = profileTargetFor(user, query.userId);
-      const [row, settings] = await Promise.all([findProfile(target), findCallSettings(target)]);
+      const [row, settings, booking] = await Promise.all([
+        findProfile(target),
+        findCallSettings(target),
+        bookingTargetFor(target),
+      ]);
       const record = row ? fromBusinessRow(row) : null;
       if (!record) return status(409, { error: "no_profile", message: ADD_DETAILS_FIRST });
       const which = query.settings === "published" ? "published" : "draft";
@@ -758,6 +763,7 @@ export const business = new Elysia({ prefix: "/business" })
         timeZone: (callSettings ?? settings.draft).timezone ?? env.timezone,
         waterfallAllowed: settings.waterfallAllowed,
         neverPublished: settings.published === null,
+        booking,
       });
       return {
         settings: which,

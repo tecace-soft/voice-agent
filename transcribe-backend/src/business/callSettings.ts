@@ -69,6 +69,54 @@ export type LinkScenario = {
   url: string;
 };
 
+/**
+ * Booking new appointments into the business's connected calendar or booking tool.
+ *
+ * The connection itself (which calendar, the credentials) is not in here: it is a secret, and it is
+ * the same for the draft and the published copy — there is one calendar. What is here is how the
+ * assistant may book into it, which is draft-then-publish like everything else a caller hears.
+ * Switched on with nothing connected, it does nothing: the composer only offers booking when both
+ * are true.
+ */
+export type AppointmentSettings = {
+  enabled: boolean;
+  /** What the booking is called, to the caller and on the calendar: "Consultation". */
+  title: string;
+  /** Calendars only; a booking tool's event type decides its own length. */
+  durationMinutes: number;
+  /** Kept free before and after every existing event. Calendars only. */
+  bufferMinutes: number;
+  /** How soon the earliest bookable start may be. */
+  minNoticeMinutes: number;
+  /** How far ahead a caller may book. */
+  horizonDays: number;
+  /** When a booking may start. Empty means the business hours. Calendars only. */
+  hours: Window[];
+  /** Read by the model, word for word: who it is for, what to ask first. */
+  instructions: string;
+};
+
+export const APPOINTMENT_LIMITS = {
+  duration: [5, 480],
+  buffer: [0, 240],
+  notice: [0, 20_160],
+  horizon: [1, 180],
+} as const;
+export const DEFAULT_APPOINTMENT_TITLE = "Appointment";
+
+export function defaultAppointments(): AppointmentSettings {
+  return {
+    enabled: false,
+    title: DEFAULT_APPOINTMENT_TITLE,
+    durationMinutes: 30,
+    bufferMinutes: 0,
+    minNoticeMinutes: 120,
+    horizonDays: 30,
+    hours: [],
+    instructions: "",
+  };
+}
+
 export type CallSettings = {
   /** IANA zone the scenario hours are in. Absent means the service default. */
   timezone?: string;
@@ -76,6 +124,7 @@ export type CallSettings = {
   messages: { scenarios: MessageScenario[] };
   links: { scenarios: LinkScenario[] };
   sms: { doubleOptIn: boolean };
+  appointments: AppointmentSettings;
 };
 
 export function emptyCallSettings(): CallSettings {
@@ -85,6 +134,7 @@ export function emptyCallSettings(): CallSettings {
     links: { scenarios: [] },
     // On by default: turning it off is the business accepting the legal risk, and the screen says so.
     sms: { doubleOptIn: true },
+    appointments: defaultAppointments(),
   };
 }
 
@@ -281,6 +331,64 @@ function linkScenario(raw: unknown, index: number): LinkScenario {
   };
 }
 
+function minutes(raw: unknown, field: string, [min, max]: readonly [number, number], label: string): number {
+  const value = typeof raw === "string" && raw.trim() ? Number(raw) : raw;
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw new CallSettingsError(field, `${label} has to be a whole number.`);
+  }
+  if (value < min || value > max) {
+    throw new CallSettingsError(field, `${label} has to be between ${min} and ${max}.`);
+  }
+  return value;
+}
+
+function appointmentSettings(raw: unknown): AppointmentSettings {
+  const base = defaultAppointments();
+  const row = object(raw);
+  if (!Object.keys(row).length) return base;
+  const at = "appointments";
+  return {
+    enabled: bool(row.enabled, false),
+    title: text(row.title, `${at}.title`, MAX_NAME, "The name") || DEFAULT_APPOINTMENT_TITLE,
+    durationMinutes:
+      row.durationMinutes === undefined
+        ? base.durationMinutes
+        : minutes(row.durationMinutes, `${at}.durationMinutes`, APPOINTMENT_LIMITS.duration, "The length"),
+    bufferMinutes:
+      row.bufferMinutes === undefined
+        ? base.bufferMinutes
+        : minutes(row.bufferMinutes, `${at}.bufferMinutes`, APPOINTMENT_LIMITS.buffer, "The gap"),
+    minNoticeMinutes:
+      row.minNoticeMinutes === undefined
+        ? base.minNoticeMinutes
+        : minutes(row.minNoticeMinutes, `${at}.minNoticeMinutes`, APPOINTMENT_LIMITS.notice, "The notice"),
+    horizonDays:
+      row.horizonDays === undefined
+        ? base.horizonDays
+        : minutes(row.horizonDays, `${at}.horizonDays`, APPOINTMENT_LIMITS.horizon, "How far ahead"),
+    hours: windows(row.hours, `${at}.hours`),
+    instructions: text(row.instructions, `${at}.instructions`, MAX_DESCRIPTION, "The instructions"),
+  };
+}
+
+/** Stored appointment settings, read without refusing: out-of-range numbers fall back to defaults. */
+export function readAppointments(raw: unknown): AppointmentSettings {
+  const base = defaultAppointments();
+  const row = object(raw);
+  const num = (v: unknown, [min, max]: readonly [number, number], fallback: number) =>
+    typeof v === "number" && Number.isInteger(v) && v >= min && v <= max ? v : fallback;
+  return {
+    enabled: bool(row.enabled, false),
+    title: typeof row.title === "string" && row.title.trim() ? row.title : base.title,
+    durationMinutes: num(row.durationMinutes, APPOINTMENT_LIMITS.duration, base.durationMinutes),
+    bufferMinutes: num(row.bufferMinutes, APPOINTMENT_LIMITS.buffer, base.bufferMinutes),
+    minNoticeMinutes: num(row.minNoticeMinutes, APPOINTMENT_LIMITS.notice, base.minNoticeMinutes),
+    horizonDays: num(row.horizonDays, APPOINTMENT_LIMITS.horizon, base.horizonDays),
+    hours: list(row.hours) as Window[],
+    instructions: typeof row.instructions === "string" ? row.instructions : "",
+  };
+}
+
 function zone(raw: unknown): string | undefined {
   if (typeof raw !== "string" || !raw.trim()) return undefined;
   try {
@@ -353,6 +461,7 @@ export function validateCallSettings(raw: unknown, ctx: ValidationContext): Call
     messages: { scenarios: messageScenarios },
     links: { scenarios: uniqueIds(list(links.scenarios).map(linkScenario)) },
     sms: { doubleOptIn: bool(sms.doubleOptIn, true) },
+    appointments: appointmentSettings(root.appointments),
   };
 }
 
@@ -395,6 +504,7 @@ export function readCallSettings(raw: unknown): CallSettings {
     messages: { scenarios: list(object(root.messages).scenarios) as MessageScenario[] },
     links: { scenarios: list(object(root.links).scenarios) as LinkScenario[] },
     sms: { doubleOptIn: bool(object(root.sms).doubleOptIn, true) },
+    appointments: readAppointments(root.appointments),
   };
 }
 

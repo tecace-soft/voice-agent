@@ -20,6 +20,7 @@ import {
   thisCallBlock,
   transfersBlock,
 } from "./blocks.js";
+import { appointmentsBlock, BOOK_APPOINTMENT, CHECK_AVAILABILITY, type BookingTarget } from "./appointments.js";
 import {
   agentNameOf,
   buildSessionGreetingPrompt,
@@ -80,6 +81,11 @@ export type ComposeInput = {
   /** Per-call facts for the channels this module writes them for (app-test, sim). */
   callerNumber?: string;
   recordingDisclosed?: boolean;
+  /**
+   * The business's connected calendar, when it has one with a place to book into. Booking is only
+   * offered when this is set AND the settings switch it on. A demo passes nothing.
+   */
+  booking?: BookingTarget | null;
 };
 
 export type ComposedSession = {
@@ -99,6 +105,8 @@ export type ComposedSession = {
   messages: MessageScenario[];
   /** Whether this call can put anyone through. */
   reachable: boolean;
+  /** Whether this call can book appointments. */
+  canBook: boolean;
 };
 
 export const LEGACY_SCENARIO_ID = "team";
@@ -236,10 +244,14 @@ export function composeSession(input: ComposeInput): ComposedSession {
   const links = demo ? [] : activeLinks(settings);
   const messages = demo ? [] : activeMessages(settings);
   const reachable = transfers.length > 0;
+  const appointments =
+    !demo && input.booking && settings.appointments.enabled ? settings.appointments : null;
+  const canBook = appointments !== null;
 
   const tools: FunctionTool[] = [
     ...(reachable ? [transferTool(transfers)] : []),
     ...(links.length ? [sendLinkTool(links)] : []),
+    ...(canBook ? [CHECK_AVAILABILITY, BOOK_APPOINTMENT] : []),
     takeMessageTool(messages),
     END_CALL,
   ];
@@ -261,11 +273,12 @@ export function composeSession(input: ComposeInput): ComposedSession {
     (handGreeting && quotedGreeting(handGreeting)) ||
     resolveGreetingLine(record.greeting, businessName, record.agentName ?? "", language);
 
-  const rules = callRules({ businessName, agentName, reachable });
+  const rules = callRules({ businessName, agentName, reachable, canBook });
   const perCall = join(
     transfersBlock(transfers),
     linksBlock(links),
     messagesBlock(messages),
+    appointments && input.booking ? appointmentsBlock(appointments, input.booking) : "",
     demo ? publicDemoBlock() : "",
     clockBlock(now, timeZone, record.profile),
     // The phone agent writes "This call" itself: it knows the caller, and whether this leg is the
@@ -292,5 +305,6 @@ export function composeSession(input: ComposeInput): ComposedSession {
     links,
     messages,
     reachable,
+    canBook,
   };
 }

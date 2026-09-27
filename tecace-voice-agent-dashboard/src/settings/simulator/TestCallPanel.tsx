@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MessageSquareText, Mic, MicOff, Phone, PhoneForwarded, PhoneOff, RotateCcw, Smartphone } from "lucide-react";
+import { CalendarCheck, MessageSquareText, Mic, MicOff, Phone, PhoneForwarded, PhoneOff, RotateCcw, Smartphone } from "lucide-react";
 import { STATUS_TEXT, StatusDot } from "@/components/call/CallPanel";
 import { Transcript } from "@/components/call/Transcript";
 import { VoiceOrb } from "@/components/call/VoiceOrb";
@@ -10,7 +10,7 @@ import type { CallSound, CallState } from "@/lib/types";
 import { MODE_LABEL, type CallSettings } from "../callSettings";
 import { eventLine } from "./eventLabels";
 import { ringingNumber, whisper } from "./simulate";
-import { useCallSimulator } from "./useCallSimulator";
+import { useCallSimulator, type BookingToolRunner } from "./useCallSimulator";
 
 // A test call from the browser, with the phone line around it simulated — the settings studio's
 // console.
@@ -40,6 +40,8 @@ type Props = {
   disabled?: boolean;
   /** Called a moment after a call ends, so the page can re-read its call list. */
   onEnded?: () => void;
+  /** A business's real calendar, for check_availability / book_appointment. A demo has none. */
+  bookingTool?: BookingToolRunner;
 };
 
 type Tab = "transcript" | "texts" | "events";
@@ -55,8 +57,9 @@ export function TestCallPanel({
   callSound,
   disabled,
   onEnded,
+  bookingTool,
 }: Props) {
-  const sim = useCallSimulator(settings, businessName, businessPhone);
+  const sim = useCallSimulator(settings, businessName, businessPhone, bookingTool);
   const call = useLiveCall(customerId, callSound, {
     api,
     isTest: true,
@@ -176,6 +179,19 @@ export function TestCallPanel({
           </div>
         </div>
       ) : null}
+
+      {/* A test booking is real — it is in the calendar now — so it stays in view like a transfer. */}
+      {sim.bookings.map((b, i) => (
+        <div key={`booking-${i}`} className="border-primary/30 bg-primary/10 rounded-xl border p-3" role="status">
+          <p className="ta-label-1 flex items-center gap-2">
+            <CalendarCheck className="size-4" />
+            Booked · {b.when}
+          </p>
+          <p className="ta-caption-1 text-muted-foreground mt-1">
+            {[b.callerName, b.reason].filter(Boolean).join(" · ") || "No name given"} · in your calendar, marked [Test]
+          </p>
+        </div>
+      ))}
 
       <div className="flex gap-4 border-b" role="group" aria-label="What happened on the call">
         {(

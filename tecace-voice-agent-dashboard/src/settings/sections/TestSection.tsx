@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { getTestCalls, businessTestFetch } from "../../api/backend";
+import { getTestCalls, businessTestFetch, runCalendarTool } from "../../api/backend";
 import type { TestCallRecord, TestUsage } from "../../api/types";
 import { accountErrorMessage } from "../../auth";
 import { displayPhone, type CallSettings } from "../callSettings";
@@ -95,6 +95,7 @@ export function BusinessTestConsole({
         agentName={agentName}
         disabled={test.out}
         onEnded={test.reload}
+        bookingTool={(name, args) => runCalendarTool(name, args, userId)}
       />
     </div>
   );

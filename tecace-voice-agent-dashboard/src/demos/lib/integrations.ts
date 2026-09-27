@@ -32,6 +32,12 @@ export type Integration = {
    * "monogram" for an initial on the brand colour where no free glyph exists.
    */
   path: string;
+  /**
+   * Not connectable yet (TecAce deviation, see PORTING.md): no public API a small business can
+   * connect to on its own. The public page tags these "Coming soon"; the rest connect from the
+   * dashboard's Appointments settings.
+   */
+  soon?: true;
 };
 
 export const INTEGRATION_GROUPS: { id: IntegrationGroup; title: string; blurb: string }[] = [
@@ -60,6 +66,7 @@ export const INTEGRATION_GROUPS: { id: IntegrationGroup; title: string; blurb: s
 export const INTEGRATIONS: Integration[] = [
   {
     id: "opentable",
+    soon: true,
     name: "OpenTable",
     group: "tables",
     hex: "#DA3743",
@@ -67,6 +74,7 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     id: "resy",
+    soon: true,
     name: "Resy",
     group: "tables",
     hex: "#FF462D",
@@ -74,6 +82,7 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     id: "tock",
+    soon: true,
     name: "Tock",
     group: "tables",
     hex: "#0A0A0A",
@@ -81,6 +90,7 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     id: "sevenrooms",
+    soon: true,
     name: "SevenRooms",
     group: "tables",
     hex: "#1F2A44",
@@ -88,6 +98,7 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     id: "yelp-guest-manager",
+    soon: true,
     name: "Yelp Guest Manager",
     group: "tables",
     hex: "#FF1A1A",
@@ -95,6 +106,7 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     id: "toast-tables",
+    soon: true,
     name: "Toast Tables",
     group: "tables",
     hex: "#FF4C00",
@@ -102,6 +114,7 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     id: "eat-app",
+    soon: true,
     name: "Eat App",
     group: "tables",
     hex: "#2D6CDF",
@@ -109,6 +122,7 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     id: "reserve-with-google",
+    soon: true,
     name: "Reserve with Google",
     group: "tables",
     hex: "#4285F4",
@@ -151,6 +165,7 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     id: "square",
+    soon: true,
     name: "Square Appointments",
     group: "booking",
     hex: "#3E4348",
@@ -165,6 +180,7 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     id: "zoho",
+    soon: true,
     name: "Zoho Bookings",
     group: "booking",
     hex: "#E42527",
@@ -172,6 +188,7 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     id: "hubspot",
+    soon: true,
     name: "HubSpot Meetings",
     group: "booking",
     hex: "#FF7A59",
@@ -179,6 +196,7 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     id: "zoom",
+    soon: true,
     name: "Zoom",
     group: "video",
     hex: "#0B5CFF",
@@ -186,6 +204,7 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     id: "google-meet",
+    soon: true,
     name: "Google Meet",
     group: "video",
     hex: "#00897B",
