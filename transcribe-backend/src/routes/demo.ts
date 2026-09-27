@@ -55,6 +55,12 @@ import {
 import type { CustomerPatch } from "../db/demoWrite.js";
 import { lifecycleByDemo, withLifecycle } from "../db/customerLifecycle.js";
 import { findUserByBusinessId, toPublicUser } from "../db/users.js";
+import {
+  clearOnboardingRequest,
+  declineOnboarding,
+  MAX_ONBOARDING_NOTE,
+  requestOnboarding,
+} from "../db/onboarding.js";
 import { PromotionError, startOnboarding } from "../business/promote.js";
 import {
   addNote,
@@ -80,9 +86,10 @@ import {
 // field, so a tidier `topCustomers` or a renamed `realCallCount` is a broken screen, not a cleanup.
 //
 // Admin-only, through the same `authenticateAdmin` guard as the rest of this API, WITH TWO
-// EXCEPTIONS — `GET /customers/:id` and `PATCH /customers/:id`, which a demo-stage customer may use
-// on their own record so they can read and correct the receptionist we built for them. Both go
-// through `authenticateDemo` and check `ownsDemo`; everything else on this file is the operator's
+// EXCEPTIONS — `GET /customers/:id` and `POST /customers/:id/request-onboarding`, which a demo-stage
+// customer may use on their own record so they can see the receptionist we built for them and ask
+// for it (`PATCH` answers them read-only). Both go through `authenticateDemo` and check `ownsDemo`;
+// everything else on this file is the operator's
 // pipeline and stays admin-only, which is also the safe default for anything added later.
 //
 // What the admin guard rules out either way: it resolves a *user* token, so an API key — which
@@ -99,23 +106,15 @@ const DEMO_NOT_YOURS = "Only an admin can read other customers' demos.";
 const NO_SUCH_CUSTOMER = { error: "Customer not found." } as const;
 
 /**
- * What a demo-stage customer may change about their own record: the receptionist, and nothing else.
+ * Said to a demo-stage customer who tries to change their own record.
  *
- * Everything left out is the operator's side of the deal — the demo allowance and how much time to
- * add to it, whether the demo is still active, the sales stage and follow-up dates, the contact
- * details and the operator's private notes, and the research inputs that cost money to re-run. A
- * customer who could set `addDemoMinutes` would have an unmetered line; one who could set `stage`
- * would be editing our pipeline.
+ * The demo is read-only for the customer (phase-gates spec): it is ours until they ask to be set up
+ * and an admin approves, and from then on they edit their OWN business information, not this record.
+ * Before, they could correct the receptionist here — which made the demo theirs to break before
+ * anyone had agreed to anything, and left edits behind in a copy onboarding might not take.
  */
-const CUSTOMER_MAY_EDIT = [
-  "profile",
-  "prompts",
-  "regeneratePrompts",
-  "agentName",
-  "voice",
-  "language",
-  "callSound",
-] as const;
+const DEMO_READ_ONLY =
+  "Your receptionist can be changed once it is being set up. Ask us to set it up first.";
 
 /** The promo's `lib/types.ts` shape for a row of the customers table. */
 type CustomerWithStats = Customer & {
@@ -625,21 +624,8 @@ export const demo = new Elysia({ prefix: "/demo" })
       if ("denied" in caller) return status(caller.denied, caller.body);
       if (!ownsDemo(caller, params.id)) return status(404, NO_SUCH_CUSTOMER);
 
-      // A customer editing their own record may only send the receptionist's own fields. Refused by
-      // NAMING the field rather than by dropping it: a save that silently keeps half of what was
-      // sent is how a form comes to show something the server never stored.
-      if (caller.scope === "own") {
-        const forbidden = Object.keys(body).filter(
-          (key) =>
-            body[key as keyof typeof body] !== undefined &&
-            !(CUSTOMER_MAY_EDIT as readonly string[]).includes(key),
-        );
-        if (forbidden.length > 0) {
-          return status(403, {
-            error: `Only an admin can change ${forbidden.sort().join(", ")}.`,
-          });
-        }
-      }
+      // The demo is read-only for its customer; every change is the operator's.
+      if (caller.scope === "own") return status(403, { error: DEMO_READ_ONLY });
 
       if (body.voice && !LIVE_VOICES.includes(body.voice)) {
         return status(400, { error: "Unknown voice." });
@@ -733,31 +719,101 @@ export const demo = new Elysia({ prefix: "/demo" })
   )
 
   /**
-   * Demo → onboarding, from the customer's own demo page ("Start onboarding").
+   * The customer's "set this up for me", from their own demo page.
    *
-   * Not a promo route: the promo had no lifecycle. Shared with the customer whose demo it is, like
-   * the two routes above, and an admin may press it on their behalf. Either way it moves the account
-   * LINKED to this demo, never the caller's own when an admin calls it.
+   * Not a promo route. The customer's side of the hand-off to onboarding: it only asks. An admin
+   * answers with `/onboard` (approve) or `/decline-request`. Asking again keeps the first time they
+   * asked and takes the newest note. 409 once the account is past the demo.
+   */
+  .post(
+    "/customers/:id/request-onboarding",
+    async ({ body, headers, params, status }) => {
+      const caller = await authenticateDemo(headers.authorization, DEMO_NOT_YOURS);
+      if ("denied" in caller) return status(caller.denied, caller.body);
+      if (!ownsDemo(caller, params.id)) return status(404, NO_SUCH_CUSTOMER);
+
+      try {
+        const account =
+          caller.scope === "own" ? caller.user : await findUserByBusinessId(params.id);
+        if (!account) {
+          return status(409, { error: "Link an account to this customer first." });
+        }
+        if (!(await requestOnboarding(account.id, body?.note))) {
+          return status(409, { error: "This customer is already past the demo." });
+        }
+        const [customer, lifecycle] = await Promise.all([
+          getCustomer(params.id),
+          lifecycleByDemo(params.id),
+        ]);
+        if (!customer) return status(404, NO_SUCH_CUSTOMER);
+        return { customer: withLifecycle(customer, lifecycle) };
+      } catch (error) {
+        return status(500, jsonError(error));
+      }
+    },
+    {
+      params: t.Object({ id: t.String({ maxLength: 64 }) }),
+      body: t.Optional(
+        t.Object({ note: t.Optional(t.String({ maxLength: MAX_ONBOARDING_NOTE })) }),
+      ),
+    },
+  )
+
+  /** An admin's "not yet" to an open request, with a note the customer sees. */
+  .post(
+    "/customers/:id/decline-request",
+    async ({ body, headers, params, status }) => {
+      const caller = await authenticateAdmin(headers.authorization, DEMO_IS_ADMIN);
+      if ("denied" in caller) return status(caller.denied, caller.body);
+
+      try {
+        const account = await findUserByBusinessId(params.id);
+        if (!account || !(await declineOnboarding(account.id, body?.note))) {
+          return status(409, { error: "There is no open request to decline." });
+        }
+        const [customer, lifecycle] = await Promise.all([
+          getCustomer(params.id),
+          lifecycleByDemo(params.id),
+        ]);
+        if (!customer) return status(404, NO_SUCH_CUSTOMER);
+        return { customer: withLifecycle(customer, lifecycle) };
+      } catch (error) {
+        return status(500, jsonError(error));
+      }
+    },
+    {
+      params: t.Object({ id: t.String({ maxLength: 64 }) }),
+      body: t.Optional(
+        t.Object({ note: t.Optional(t.String({ maxLength: MAX_ONBOARDING_NOTE })) }),
+      ),
+    },
+  )
+
+  /**
+   * Demo → onboarding: an admin approving the customer's request ("Approve"), or starting it for
+   * them without one.
+   *
+   * Not a promo route: the promo had no lifecycle. Admin only (phase-gates spec) — the customer asks
+   * through `/request-onboarding`. It moves the account LINKED to this demo, never the caller's own.
    *
    * What moves: the demo is copied into the account's own business information (unless it already
-   * has some, which is kept), the account goes to `pre-production`, and the deal is marked won on the
-   * CRM board. After this the customer's dashboard is the Business section, not this demo.
+   * has some, which is kept), the account goes to `pre-production`, the request is cleared, and the
+   * deal is marked won on the CRM board. After this the customer's dashboard is the Business
+   * section, not this demo.
    *
    * 409 once the account is past the demo, 422 when the demo is too thin to copy.
    */
   .post(
     "/customers/:id/onboard",
     async ({ headers, params, status }) => {
-      const caller = await authenticateDemo(headers.authorization, DEMO_NOT_YOURS);
+      const caller = await authenticateAdmin(headers.authorization, DEMO_IS_ADMIN);
       if ("denied" in caller) return status(caller.denied, caller.body);
-      if (!ownsDemo(caller, params.id)) return status(404, NO_SUCH_CUSTOMER);
 
       try {
         const demo = await getCustomer(params.id);
         if (!demo) return status(404, NO_SUCH_CUSTOMER);
 
-        const account =
-          caller.scope === "own" ? caller.user : await findUserByBusinessId(params.id);
+        const account = await findUserByBusinessId(params.id);
         if (!account) {
           return status(409, {
             error: "Link an account to this customer first — onboarding moves that account.",
@@ -774,6 +830,7 @@ export const demo = new Elysia({ prefix: "/demo" })
           if (err instanceof PromotionError) return status(422, { error: err.message });
           throw err;
         }
+        await clearOnboardingRequest(account.id);
 
         // Best effort: the account has moved, which is what the customer asked for. A board that
         // still says "Interested" is cosmetic and the operator can drag it.

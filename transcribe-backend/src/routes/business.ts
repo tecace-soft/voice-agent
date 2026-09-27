@@ -21,6 +21,7 @@ import { normalizeProfile } from "../business/profileShape.js";
 import { deriveFromProfile } from "../business/derive.js";
 import { resolveSessionPrompts } from "../session/prompts.js";
 import { CallSettingsError, validateCallSettings } from "../business/callSettings.js";
+import { readinessFor } from "../db/readiness.js";
 import {
   findCallSettings,
   publishCallSettings,
@@ -91,6 +92,21 @@ function profileTargetFor(user: { id: string; role: string }, requested?: string
 }
 
 export const business = new Elysia({ prefix: "/business" })
+  // Is the line ready to be switched on? The checklist the customer sees while being set up and the
+  // admin's Go live panel both read this; Go live itself re-runs it (`business/readiness.ts`).
+  .get(
+    "/readiness",
+    async ({ headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      const target = profileTargetFor(user, query.userId);
+      const owner = target === user.id ? user : await findUserById(target);
+      if (!owner) return status(404, { error: "not_found", message: "No such account." });
+      return { status: owner.status, ...(await readinessFor(target)) };
+    },
+    { query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }) },
+  )
+
   // The agent's lookup: whose business is this dialled number?
   //
   // Guarded by its own key rather than a session. When AGENT_CONFIG_KEY is unset the route is shut
@@ -109,6 +125,14 @@ export const business = new Elysia({ prefix: "/business" })
         // before an admin has assigned it — and the agent's correct response is the neutral
         // prompt, not a retry. `assigned:false` says so without making the agent read a status code.
         return { assigned: false, to: toE164(query.to), reason: "no_number" };
+      }
+
+      // A demo or an account still being set up does not answer real callers yet; they test in the
+      // app, and an admin switches the line on with Go live. `unassigned` (accounts from before the
+      // stages) and `production` answer as before.
+      const owner = number.userId ? await findUserById(number.userId) : null;
+      if (owner && (owner.status === "demo" || owner.status === "pre-production")) {
+        return { assigned: false, to: number.phoneE164, reason: "not_live_stage" };
       }
 
       const profile = await findLiveProfileByPhone(number.phoneE164);
@@ -679,6 +703,13 @@ export const business = new Elysia({ prefix: "/business" })
     async ({ headers, query, status }) => {
       const user = await authenticate(headers.authorization);
       if (!user) return status(401, UNAUTHORIZED);
+      // A demo has nothing of its own to publish: its receptionist is ours until it is set up.
+      if (user.role !== "admin" && user.status === "demo") {
+        return status(403, {
+          error: "demo_read_only",
+          message: "Settings can be published once your receptionist is being set up.",
+        });
+      }
       const target = profileTargetFor(user, query.userId);
       const [current, number] = await Promise.all([findCallSettings(target), findNumberForUser(target)]);
       if (!current.dirty) {

@@ -1,0 +1,80 @@
+import { describe, expect, it } from "bun:test";
+import { emptyCallSettings } from "./callSettings.js";
+import { evaluateReadiness, type ReadinessInput } from "./readiness.js";
+
+// The checklist Go live is gated on, item by item. Run: bun test src/business/readiness.test.ts
+
+const READY: ReadinessInput = {
+  profile: { isLive: true, transferNumber: "+12065550123", profile: null },
+  agentNumber: "+12065550100",
+  settings: { published: emptyCallSettings(), waterfallAllowed: false },
+};
+
+const failing = (input: ReadinessInput) =>
+  evaluateReadiness(input)
+    .items.filter((item) => !item.ok)
+    .map((item) => item.id);
+
+describe("evaluateReadiness", () => {
+  it("is ready when every item is ticked", () => {
+    const result = evaluateReadiness(READY);
+    expect(result.ready).toBe(true);
+    expect(failing(READY)).toEqual([]);
+  });
+
+  it("needs business information", () => {
+    const input = { ...READY, profile: { ...READY.profile, isLive: false } };
+    expect(evaluateReadiness(input).ready).toBe(false);
+    expect(failing(input)).toEqual(["business_info"]);
+  });
+
+  it("needs published settings, and cannot check them against the number without them", () => {
+    const input = { ...READY, settings: { ...READY.settings, published: null } };
+    expect(evaluateReadiness(input).ready).toBe(false);
+    expect(failing(input)).toEqual(["settings_published", "published_matches_number"]);
+  });
+
+  it("needs a number", () => {
+    const input = { ...READY, agentNumber: null };
+    expect(failing(input)).toEqual(["number_assigned", "published_matches_number"]);
+  });
+
+  it("flags published settings that no longer fit the number, e.g. a transfer that rings itself", () => {
+    const settings = emptyCallSettings();
+    settings.transfer.scenarios = [
+      {
+        id: "s1",
+        enabled: true,
+        mode: "cold",
+        name: "Front desk",
+        description: "Any call",
+        // Published before this number was assigned: now it is the assistant's own line.
+        numbers: ["+12065550100"],
+        collectBefore: "",
+        holdMusic: "classical",
+        hours: [],
+      },
+    ];
+    const input = { ...READY, settings: { published: settings, waterfallAllowed: false } };
+    const result = evaluateReadiness(input);
+    expect(result.ready).toBe(false);
+    const item = result.items.find((entry) => entry.id === "published_matches_number")!;
+    expect(item.ok).toBe(false);
+    expect(item.detail).toBeTruthy();
+  });
+
+  it("only warns when there is no number to reach the business", () => {
+    const input = { ...READY, profile: { isLive: true, transferNumber: null, profile: null } };
+    const result = evaluateReadiness(input);
+    expect(result.ready).toBe(true);
+    expect(failing(input)).toEqual(["contact_number"]);
+  });
+
+  it("counts a phone on the business information or a transfer number as a way to reach them", () => {
+    const withPhone = {
+      ...READY,
+      profile: { isLive: true, transferNumber: null, profile: { phone: "+12065550199" } },
+    };
+    expect(failing(withPhone)).toEqual([]);
+  });
+});

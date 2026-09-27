@@ -795,3 +795,16 @@ It does not, and cannot, make the run survive the process.
   `tools` (`strict: false`, `parallel_tool_calls: false`). The promo sent `prompts.live` + call
   clock. `greeting` in the response is the composed greeting instruction. `demoPublic.ts` is
   unchanged (the public page simulates no tools).
+
+## Phase gates (2026-09-27) — not a promo port
+
+Spec: `docs/superpowers/specs/2026-09-27-phase-gates-design.md`.
+- `PATCH /demo/customers/:id` from a demo-scoped customer is always 403 `{ error }` ("…Ask us to set it
+  up first."). `CUSTOMER_MAY_EDIT` is gone; admin PATCH is unchanged.
+- `POST /demo/customers/:id/onboard` is **admin only** now (the "Approve"), and clears the request.
+- New `POST /demo/customers/:id/request-onboarding` `{ note? }` (demo customer on their own record, or
+  admin for the linked account) and `POST /demo/customers/:id/decline-request` `{ note? }` (admin).
+  Both answer `{ customer }` like the other writes.
+- Every customer body also carries `request` (`{ requestedAt, note } | null`), `declined`
+  (`{ declinedAt, note } | null`) and `liveAt` (`string | null`), merged by `db/customerLifecycle.ts`
+  from new `users` columns. Additive.

@@ -1,7 +1,8 @@
 import { afterAll, describe, expect, it, mock } from "bun:test";
 import { PGlite } from "@electric-sql/pglite";
 
-// The customer's permanent id and the customer's own "Start onboarding", against a real Postgres.
+// The customer's permanent id and the moves between stages (request, approve, decline, Go live),
+// against a real Postgres.
 //
 // Same harness as `lifecycle.pg.test.ts` (PGlite behind `db/client.js`, the real DDL lifted out of
 // `client.ts`, the real importer, real tokens), because what matters here is Postgres behaviour: the
@@ -200,18 +201,29 @@ await importDump(
   }),
 );
 
+// The phone agent's key, for `/business/config`. Spread over the real env: mock.module is
+// process-wide (see usage.test.ts for why a partial env breaks later files).
+const AGENT_KEY = "test-agent-key";
+const { env: realEnv } = await import("../config/env.js");
+await mock.module("../config/env.js", () => ({ env: { ...realEnv, agentConfigKey: AGENT_KEY } }));
+
 const { findProfile } = await import("../db/businessProfiles.js");
 const { setLifecycleById, findUserById } = await import("../db/users.js");
 const { lifecycle } = await import("./lifecycle.js");
 const { demo } = await import("./demo.js");
+const { business } = await import("./business.js");
 const { Elysia } = await import("elysia");
-const app = new Elysia().use(lifecycle).use(demo);
+const app = new Elysia().use(lifecycle).use(demo).use(business);
 
-const call = async (method: string, path: string, auth?: string) => {
+const call = async (method: string, path: string, auth?: string, body?: unknown) => {
+  const headers: Record<string, string> = {};
+  if (auth) headers.authorization = auth;
+  if (body !== undefined) headers["content-type"] = "application/json";
   const response = await app.handle(
     new Request(`http://localhost${path}`, {
       method,
-      headers: auth ? { authorization: auth } : {},
+      headers,
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     }),
   );
   const text = await response.text();
@@ -380,26 +392,83 @@ describe("customerCode and phase on the demo reads", () => {
 });
 
 // ----------------------------------------------------------------------------------------------
-describe("POST /demo/customers/:id/onboard", () => {
+describe("asking to be set up (request, decline)", () => {
   it("turns away an anonymous caller and an account outside the demo stage", async () => {
-    expect((await call("POST", `/demo/customers/${RICH}/onboard`)).status).toBe(401);
-    expect((await call("POST", `/demo/customers/${RICH}/onboard`, bearer(stray))).status).toBe(403);
+    expect((await call("POST", `/demo/customers/${RICH}/request-onboarding`)).status).toBe(401);
+    expect(
+      (await call("POST", `/demo/customers/${RICH}/request-onboarding`, bearer(stray))).status,
+    ).toBe(403);
   });
 
   it("answers somebody else's demo as not found", async () => {
     await setLifecycleById(dana.id, { businessId: RICH, status: "demo" });
-    const res = await call("POST", `/demo/customers/${THIN}/onboard`, bearer(dana));
+    const res = await call("POST", `/demo/customers/${THIN}/request-onboarding`, bearer(dana), {});
     expect(res.status).toBe(404);
   });
 
-  it("moves the customer who pressed it: copy, pre-production, won", async () => {
-    const res = await call("POST", `/demo/customers/${RICH}/onboard`, bearer(dana));
+  it("records the customer's request and note, and stays in the demo", async () => {
+    const res = await call("POST", `/demo/customers/${RICH}/request-onboarding`, bearer(dana), {
+      note: "  We'd like to start next week.  ",
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.customer.phase).toBe("demo");
+    expect(res.body.customer.request.note).toBe("We'd like to start next week.");
+    expect(res.body.customer.declined).toBeNull();
+
+    const list = await call("GET", "/demo/customers", ADMIN);
+    expect(list.body.customers.find((c: any) => c.id === RICH).request).not.toBeNull();
+  });
+
+  it("keeps the first time they asked when they ask again, with the newest note", async () => {
+    const first = (await call("GET", `/demo/customers/${RICH}`, ADMIN)).body.customer.request;
+    const again = await call("POST", `/demo/customers/${RICH}/request-onboarding`, bearer(dana), {
+      note: "Any update?",
+    });
+    expect(again.body.customer.request.requestedAt).toBe(first.requestedAt);
+    expect(again.body.customer.request.note).toBe("Any update?");
+  });
+
+  it("leaves approving and declining to an admin", async () => {
+    expect((await call("POST", `/demo/customers/${RICH}/onboard`, bearer(dana))).status).toBe(403);
+    expect(
+      (await call("POST", `/demo/customers/${RICH}/decline-request`, bearer(dana), {})).status,
+    ).toBe(403);
+  });
+
+  it("an admin declines with a note the customer sees, once", async () => {
+    const res = await call("POST", `/demo/customers/${RICH}/decline-request`, ADMIN, {
+      note: "We need your opening hours first.",
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.customer.request).toBeNull();
+    expect(res.body.customer.declined.note).toBe("We need your opening hours first.");
+
+    const mine = await call("GET", `/demo/customers/${RICH}`, bearer(dana));
+    expect(mine.body.customer.declined.note).toBe("We need your opening hours first.");
+
+    expect((await call("POST", `/demo/customers/${RICH}/decline-request`, ADMIN, {})).status).toBe(409);
+  });
+
+  it("asking again clears the decline", async () => {
+    const res = await call("POST", `/demo/customers/${RICH}/request-onboarding`, bearer(dana), {});
+    expect(res.status).toBe(200);
+    expect(res.body.customer.request.note).toBeNull();
+    expect(res.body.customer.declined).toBeNull();
+  });
+});
+
+// ----------------------------------------------------------------------------------------------
+describe("POST /demo/customers/:id/onboard (the admin's Approve)", () => {
+  it("moves the linked account: copy, pre-production, won, request answered", async () => {
+    const res = await call("POST", `/demo/customers/${RICH}/onboard`, ADMIN);
     expect(res.status).toBe(200);
     expect(res.body.copied).toBe(true);
+    expect(res.body.user.id).toBe(dana.id);
     expect(res.body.user.status).toBe("pre-production");
     expect(res.body.customer.phase).toBe("onboarding");
     expect(res.body.customer.stage).toBe("won");
     expect(res.body.customer.customerCode).toBe("HADE-0001");
+    expect(res.body.customer.request).toBeNull();
     expect((await findProfile(dana.id))?.businessName).toBe("Harbor Dental");
 
     const list = await call("GET", "/demo/customers", ADMIN);
@@ -408,13 +477,15 @@ describe("POST /demo/customers/:id/onboard", () => {
     expect(harbor.accountEmail).toBe("dana@harbor.test");
   });
 
-  it("does not run twice", async () => {
-    // Past the demo stage, the demo routes are closed to the customer.
-    expect((await call("POST", `/demo/customers/${RICH}/onboard`, bearer(dana))).status).toBe(403);
+  it("does not run twice, and the customer can no longer ask", async () => {
     expect((await call("POST", `/demo/customers/${RICH}/onboard`, ADMIN)).status).toBe(409);
+    // Past the demo stage, the demo routes are closed to the customer.
+    expect(
+      (await call("POST", `/demo/customers/${RICH}/request-onboarding`, bearer(dana), {})).status,
+    ).toBe(403);
   });
 
-  it("needs a linked account when an admin presses it", async () => {
+  it("needs a linked account", async () => {
     expect((await call("POST", `/demo/customers/${THIN}/onboard`, ADMIN)).status).toBe(409);
   });
 
@@ -437,9 +508,139 @@ describe("POST /demo/customers/:id/onboard", () => {
     ]);
     await setLifecycleById(rival.id, { status: "demo" });
 
-    const res = await call("POST", `/demo/customers/${KEEP}/onboard`, bearer(rival));
+    const res = await call("POST", `/demo/customers/${KEEP}/onboard`, ADMIN);
     expect(res.status).toBe(200);
     expect(res.body.copied).toBe(false);
     expect((await findProfile(rival.id))?.sourceText).toBe("Their own words.");
+  });
+});
+
+// ----------------------------------------------------------------------------------------------
+describe("readiness and Go live", () => {
+  const NUMBER = "+12065550100";
+  const agentConfig = async () => {
+    const response = await app.handle(
+      new Request(`http://localhost/business/config?to=${encodeURIComponent(NUMBER)}`, {
+        headers: { "x-agent-key": AGENT_KEY },
+      }),
+    );
+    return (await response.json()) as { assigned: boolean; reason?: string };
+  };
+  const unmetOf = (body: any) =>
+    body.items.filter((item: any) => item.required && !item.ok).map((item: any) => item.id).sort();
+
+  it("lists what is missing, to the customer and to an admin alike", async () => {
+    const own = await call("GET", "/business/readiness", bearer(dana));
+    expect(own.status).toBe(200);
+    expect(own.body.status).toBe("pre-production");
+    expect(own.body.ready).toBe(false);
+    expect(unmetOf(own.body)).toEqual(["number_assigned", "published_matches_number", "settings_published"]);
+    expect(own.body.items.find((item: any) => item.id === "business_info").ok).toBe(true);
+
+    const asAdmin = await call("GET", `/business/readiness?userId=${dana.id}`, ADMIN);
+    expect(unmetOf(asAdmin.body)).toEqual(unmetOf(own.body));
+  });
+
+  it("will not go live until the list is ticked, and says what is missing", async () => {
+    const res = await call("POST", `/auth/users/${dana.id}/go-live`, ADMIN);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("not_ready");
+    expect([...res.body.unmet].sort()).toEqual([
+      "number_assigned",
+      "published_matches_number",
+      "settings_published",
+    ]);
+    expect((await findUserById(dana.id))?.status).toBe("pre-production");
+  });
+
+  it("is an admin's door", async () => {
+    expect((await call("POST", `/auth/users/${dana.id}/go-live`, bearer(dana))).status).toBe(403);
+  });
+
+  it("keeps an onboarding customer's number off the phone line", async () => {
+    const { createAgentNumber, assignAgentNumber } = await import("../db/agentNumbers.js");
+    const number = await createAgentNumber({ phone: NUMBER, label: "Harbor" });
+    await assignAgentNumber(number.id, dana.id);
+    expect(await agentConfig()).toMatchObject({ assigned: false, reason: "not_live_stage" });
+  });
+
+  it("goes live once the number is assigned and the settings published", async () => {
+    const { publishCallSettings, saveCallSettingsDraft } = await import("../db/callSettings.js");
+    const { emptyCallSettings } = await import("../business/callSettings.js");
+    await saveCallSettingsDraft(dana.id, emptyCallSettings());
+    await publishCallSettings(dana.id, emptyCallSettings());
+
+    const ready = await call("GET", "/business/readiness", bearer(dana));
+    expect(ready.body.ready).toBe(true);
+
+    const res = await call("POST", `/auth/users/${dana.id}/go-live`, ADMIN);
+    expect(res.status).toBe(200);
+    expect(res.body.user.status).toBe("production");
+    const harbor = (await call("GET", `/demo/customers/${RICH}`, ADMIN)).body.customer;
+    expect(harbor.phase).toBe("production");
+    expect(typeof harbor.liveAt).toBe("string");
+
+    expect(await agentConfig()).toMatchObject({ assigned: true });
+  });
+
+  it("does not go live twice", async () => {
+    const res = await call("POST", `/auth/users/${dana.id}/go-live`, ADMIN);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("not_onboarding");
+  });
+
+  it("a demo account cannot publish call settings", async () => {
+    await setLifecycleById(cafe.id, { status: "demo" });
+    const res = await call("POST", "/business/call-settings/publish", bearer(cafe));
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("demo_read_only");
+  });
+});
+
+// ----------------------------------------------------------------------------------------------
+describe("accounts that were answering calls before the stages existed", () => {
+  it("are moved to production once, and never again after an admin moves them back", async () => {
+    const scratch = await PGlite.create();
+    await execAll(scratch, DDL);
+    const user = async (email: string, role = "user") =>
+      (
+        await scratch.query<{ id: string }>(
+          `INSERT INTO users (email, name, role, password_hash) VALUES ($1, $1, $2, 'x') RETURNING id`,
+          [email, role],
+        )
+      ).rows[0]!.id;
+    const live = await user("live@example.test");
+    const boss = await user("boss@example.test", "admin");
+    const bare = await user("bare@example.test");
+    for (const [id, phone] of [
+      [live, "+12065550001"],
+      [boss, "+12065550002"],
+    ] as const) {
+      await scratch.query(`INSERT INTO agent_numbers (phone_e164, user_id) VALUES ($1, $2)`, [phone, id]);
+      await scratch.query(
+        `INSERT INTO business_profiles (user_id, source_text, source_hash, business_name, facts)
+         VALUES ($1, 'x', 'x', 'Live Co', 'We open at nine.')`,
+        [id],
+      );
+    }
+    const statusOf = async () =>
+      Object.fromEntries(
+        (
+          await scratch.query<{ email: string; status: string }>("SELECT email, status FROM users")
+        ).rows.map((row) => [row.email, row.status]),
+      );
+
+    await execAll(scratch, DDL);
+    expect(await statusOf()).toEqual({
+      "live@example.test": "production",
+      "boss@example.test": "unassigned",
+      "bare@example.test": "unassigned",
+    });
+
+    await scratch.query(`UPDATE users SET status = 'unassigned' WHERE id = $1`, [live]);
+    await execAll(scratch, DDL);
+    expect((await statusOf())["live@example.test"]).toBe("unassigned");
+    expect(bare).toBeTruthy();
+    await scratch.close();
   });
 });

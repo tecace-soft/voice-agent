@@ -278,7 +278,8 @@ describe("a demo-stage customer sees their own demo, and only that", () => {
     }
   });
 
-  it("corrects their own knowledge and prompts", async () => {
+  it("cannot change their own receptionist: the demo is read-only until it is set up", async () => {
+    const before = await call("GET", `/demo/customers/${MINE}`, { token: admin.token });
     const res = await call("PATCH", `/demo/customers/${MINE}`, {
       token: prospect.token,
       body: {
@@ -287,12 +288,13 @@ describe("a demo-stage customer sees their own demo, and only that", () => {
         agentName: "Alex",
       },
     });
-    expect(res.status).toBe(200);
-    expect(res.body.customer.profile.address).toBe("2 Harbour Road");
-    expect(res.body.customer.prompts.greeting).toBe("My Cafe, this is Alex.");
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain("set it up");
+    const after = await call("GET", `/demo/customers/${MINE}`, { token: admin.token });
+    expect(after.body.customer.profile).toEqual(before.body.customer.profile);
   });
 
-  it("cannot edit the commercial side of their own record, and is told which field", async () => {
+  it("cannot edit the commercial side of their own record either", async () => {
     for (const [field, value] of [
       ["addDemoMinutes", 60],
       ["demoMinutes", 600],
@@ -307,7 +309,6 @@ describe("a demo-stage customer sees their own demo, and only that", () => {
         body: { [field]: value },
       });
       expect({ field, status: res.status }).toEqual({ field, status: 403 });
-      expect(res.body.error).toContain(field);
     }
   });
 

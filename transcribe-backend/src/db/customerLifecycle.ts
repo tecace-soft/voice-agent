@@ -18,6 +18,12 @@ export interface CustomerLifecycle {
   phase: CustomerPhase;
   /** The linked account's email, which is how the Business pages pick a customer. */
   accountEmail: string | null;
+  /** An open "set this up for me" from the customer, while still in the demo. */
+  request: { requestedAt: string; note: string | null } | null;
+  /** The admin's last "not yet", shown to the customer until they ask again. */
+  declined: { declinedAt: string; note: string | null } | null;
+  /** When the line was switched on (Go live). */
+  liveAt: string | null;
 }
 
 export function phaseOf(accountStatus: string | null | undefined): CustomerPhase {
@@ -31,12 +37,23 @@ interface Row {
   customerCode: string;
   status: string | null;
   email: string | null;
+  requestedAt: Date | string | null;
+  requestNote: string | null;
+  declinedAt: Date | string | null;
+  declineNote: string | null;
+  liveAt: Date | string | null;
 }
+
+const iso = (value: Date | string | null): string | null =>
+  value == null ? null : new Date(value).toISOString();
 
 /** Every demo customer's code and phase, or just the one asked for. One query either way. */
 export async function lifecycleByDemo(id?: string): Promise<Map<string, CustomerLifecycle>> {
   const rows = (await sql`
-    SELECT d.id, d.customer_code AS "customerCode", u.status, u.email
+    SELECT d.id, d.customer_code AS "customerCode", u.status, u.email,
+           u.onboarding_requested_at AS "requestedAt", u.onboarding_request_note AS "requestNote",
+           u.onboarding_declined_at AS "declinedAt", u.onboarding_decline_note AS "declineNote",
+           u.live_at AS "liveAt"
       FROM demo_customers d
       LEFT JOIN users u ON u.business_id = d.id
      WHERE ${id === undefined ? sql`true` : sql`d.id = ${id}`}
@@ -44,7 +61,18 @@ export async function lifecycleByDemo(id?: string): Promise<Map<string, Customer
   return new Map(
     rows.map((row) => [
       row.id,
-      { customerCode: row.customerCode, phase: phaseOf(row.status), accountEmail: row.email },
+      {
+        customerCode: row.customerCode,
+        phase: phaseOf(row.status),
+        accountEmail: row.email,
+        request: row.requestedAt
+          ? { requestedAt: iso(row.requestedAt)!, note: row.requestNote }
+          : null,
+        declined: row.declinedAt
+          ? { declinedAt: iso(row.declinedAt)!, note: row.declineNote }
+          : null,
+        liveAt: iso(row.liveAt),
+      },
     ]),
   );
 }

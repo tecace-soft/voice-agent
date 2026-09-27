@@ -512,8 +512,8 @@ describe("after the copy the two are strangers", () => {
 });
 
 describe("the stage itself", () => {
-  it("takes each of the four stages", async () => {
-    for (const status of ["unassigned", "demo", "pre-production", "production"] as const) {
+  it("takes each stage but production", async () => {
+    for (const status of ["unassigned", "demo", "pre-production"] as const) {
       const res = await call("POST", `/auth/users/${dana.id}/status`, {
         auth: ADMIN,
         body: { status },
@@ -521,6 +521,15 @@ describe("the stage itself", () => {
       expect(res.status).toBe(200);
       expect(res.body.user.status).toBe(status);
     }
+  });
+
+  it("sends production to Go live, which checks the line first", async () => {
+    const res = await call("POST", `/auth/users/${dana.id}/status`, {
+      auth: ADMIN,
+      body: { status: "production" },
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("use_go_live");
   });
 
   it("refuses a stage the database would not accept", async () => {

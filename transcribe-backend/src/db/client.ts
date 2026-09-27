@@ -664,6 +664,31 @@ export async function initDb(): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_inbound_calls_call_sid
       ON inbound_calls (call_sid) WHERE call_sid IS NOT NULL
   `;
+
+  // The moves between stages (docs/superpowers/specs/2026-09-27-phase-gates-design.md). A demo
+  // customer asks to be set up; an admin approves (→ pre-production) or declines with a note; later
+  // an admin switches the line on (→ production). The request is a sub-state of `demo`, kept as
+  // timestamps rather than a fifth status, so the status CHECK — and the deployed backend that
+  // relies on it — stay as they are.
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_requested_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_request_note TEXT`;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_declined_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_decline_note TEXT`;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS live_at TIMESTAMPTZ`;
+  // Accounts that were already answering calls before the stages existed: a number, and business
+  // details the agent can speak from. They are in production in all but name, so they are named
+  // so, once — `live_at` is what makes it once, so an admin who later moves one back is not undone
+  // by the next cold start.
+  await sql`
+    UPDATE users u SET status = 'production', live_at = now()
+     WHERE u.status = 'unassigned' AND u.role <> 'admin' AND u.live_at IS NULL
+       AND EXISTS (SELECT 1 FROM agent_numbers n WHERE n.user_id = u.id)
+       AND EXISTS (
+         SELECT 1 FROM business_profiles p
+          WHERE p.user_id = u.id AND p.business_name IS NOT NULL
+            AND p.facts IS NOT NULL AND btrim(p.facts) <> ''
+       )
+  `;
 }
 
 // Ensure the schema is ready before serving requests, at most once per process (cached promise).
@@ -712,6 +737,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM call_events LIMIT 1`;
     await sql`SELECT 1 FROM sms_consents LIMIT 1`;
     await sql`SELECT call_sid FROM inbound_calls LIMIT 1`;
+    await sql`SELECT onboarding_requested_at, onboarding_declined_at, live_at FROM users LIMIT 1`;
     const [guard] = await sql`SELECT 1 FROM pg_trigger WHERE tgname = 'demo_customers_code_guard'`;
     if (!guard) throw new Error("customer codes not converted");
     return;

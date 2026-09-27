@@ -10,6 +10,8 @@ import {
   toPublicUser,
 } from "../db/users.js";
 import { PromotionError, startOnboarding } from "../business/promote.js";
+import { readinessFor } from "../db/readiness.js";
+import { markLive } from "../db/onboarding.js";
 
 // Where an account is in its life, and the one-way door between the demo and the product.
 //
@@ -97,6 +99,13 @@ export const lifecycle = new Elysia({ prefix: "/auth/users" })
           message: "An admin can't be put in the demo-only view — they'd lose the Accounts page.",
         });
       }
+      // Production switches a phone line on, so it has its own door with its own checks.
+      if (body.status === "production" && target.status !== "production") {
+        return status(409, {
+          error: "use_go_live",
+          message: "Use Go live to move an account to production — it checks the line is ready first.",
+        });
+      }
 
       const user = await setLifecycleById(params.id, { status: body.status });
       if (!user) return status(404, { error: "not_found", message: "No such account." });
@@ -147,8 +156,8 @@ export const lifecycle = new Elysia({ prefix: "/auth/users" })
         });
       }
 
-      // The copy and the move to `pre-production`, shared with the customer's own "Start
-      // onboarding" (`POST /demo/customers/:id/onboard`).
+      // The copy and the move to `pre-production`, shared with the admin's "Approve" on a customer's
+      // request (`POST /demo/customers/:id/onboard`).
       try {
         const { user, profile } = await startOnboarding(target.id, demo);
         return { user: toPublicUser(user), profile };
@@ -158,6 +167,47 @@ export const lifecycle = new Elysia({ prefix: "/auth/users" })
         }
         throw err;
       }
+    },
+    { params: t.Object({ id: t.String() }) },
+  )
+
+  // Onboarding → production: switch the line on. The only way into production (`/status` refuses
+  // it), and only when every required readiness item is ticked — the same list the customer and the
+  // admin see (`business/readiness.ts`). A 409 names what is missing.
+  .post(
+    "/:id/go-live",
+    async ({ headers, params, status }) => {
+      const caller = await authenticateAdmin(headers.authorization, NEEDS_ADMIN);
+      if ("denied" in caller) return status(caller.denied, caller.body);
+
+      const target = await findUserById(params.id);
+      if (!target) return status(404, { error: "not_found", message: "No such account." });
+      if (target.status !== "pre-production") {
+        return status(409, {
+          error: "not_onboarding",
+          message: "Only an account that is being set up can go live.",
+        });
+      }
+
+      const readiness = await readinessFor(target.id);
+      if (!readiness.ready) {
+        const unmet = readiness.items.filter((item) => item.required && !item.ok);
+        return status(409, {
+          error: "not_ready",
+          message: `Not ready yet: ${unmet.map((item) => item.label.toLowerCase()).join("; ")}.`,
+          unmet: unmet.map((item) => item.id),
+          readiness,
+        });
+      }
+
+      if (!(await markLive(target.id))) {
+        return status(409, {
+          error: "not_onboarding",
+          message: "Only an account that is being set up can go live.",
+        });
+      }
+      const user = await findUserById(target.id);
+      return { user: user ? toPublicUser(user) : null, readiness };
     },
     { params: t.Object({ id: t.String() }) },
   );

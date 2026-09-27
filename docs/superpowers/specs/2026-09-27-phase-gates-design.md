@@ -7,7 +7,7 @@ the receptionist settings / call settings work (HISTORY 2026-09-26).
 **Sub-project A of two.** Sub-project B (production dashboard: receptionist call analytics, call list
 with transcripts, phase-specific navigation) gets its own spec after this one lands.
 
-> **Status: design approved in chat (2026-09-27), awaiting written-spec review.**
+> **Status: design approved in chat (2026-09-27). Backend implemented on `feature/phase-gates`; dashboard next.**
 
 ## Goal
 
@@ -66,9 +66,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS live_at TIMESTAMPTZ;            -- se
 Plus probes in `migrateIfNeeded`. No CHECK change, so the deployed backend keeps working against the
 new schema.
 
-Derived for API bodies (never stored): `request: null | { requestedAt, note }` and
-`declined: null | { declinedAt, note }` on the demo customer body next to `phase`, and on the user
-body the dashboard already reads (`/auth/me`).
+Derived for API bodies (never stored): `request: null | { requestedAt, note }`,
+`declined: null | { declinedAt, note }` and `liveAt` on every demo customer body next to `phase`
+(`db/customerLifecycle.ts`). The customer reads them from their own demo record; no `/auth/me` change.
 
 **One-time backfill** (idempotent, in `initDb`): an `unassigned` non-admin user who has an assigned
 agent number **and** a live business profile becomes `production` with `live_at = now()`. On today's
@@ -94,7 +94,7 @@ pre-production ──admin: go live (checklist passes)──▶ production (+ li
 | `POST /auth/users/:id/status` (existing) | admin | `production` is **refused** here (409 `use_go_live`); other values unchanged | — |
 
 Readiness checklist (`business/readiness.ts`, one pure function over profile + number + call
-settings, unit-tested):
+settings, unit-tested; `db/readiness.ts` reads one account):
 
 | id | Check | Required |
 |---|---|---|
@@ -109,9 +109,10 @@ case English, shown as-is by the dashboard.
 
 ### 3. Gates
 
-- **Demo read-only.** `CUSTOMER_MAY_EDIT` becomes empty: every `PATCH /demo/customers/:id` from a
-  demo-scoped customer is 403 `{error:"read_only", message:"Your receptionist can be changed once
-  it is being set up."}`. Admin edits are unchanged. `callSettings` PATCH from a customer: same 403.
+- **Demo read-only.** `CUSTOMER_MAY_EDIT` is removed: every `PATCH /demo/customers/:id` from a
+  demo-scoped customer is 403 `{error: "Your receptionist can be changed once it is being set up.
+  Ask us to set it up first."}` (the demo routes' `{error}` shape, which the ported screens read).
+  Admin edits are unchanged.
 - **Phone line.** `/business/config` answers `{assigned:false, reason:"not_live_stage"}` when the
   number's account is `demo` or `pre-production`. `unassigned` and `production` behave as today.
   (Onboarding customers test in the app, not on the line.)

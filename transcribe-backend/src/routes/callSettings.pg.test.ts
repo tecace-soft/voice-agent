@@ -296,7 +296,8 @@ describe("a demo's call settings", () => {
     const flag = await call("PUT", `/business/call-settings/waterfall?userId=${owner.id}`, ADMIN, { allowed: false });
     expect(flag.status).toBe(200);
 
-    const moved = await call("POST", `/demo/customers/${DEMO}/onboard`, BOB);
+    // The admin's Approve: onboarding is admin-only.
+    const moved = await call("POST", `/demo/customers/${DEMO}/onboard`, ADMIN);
     expect(moved.status).toBe(200);
 
     const settings = await call("GET", "/business/call-settings", BOB);
