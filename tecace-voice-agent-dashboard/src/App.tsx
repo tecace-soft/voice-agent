@@ -121,14 +121,18 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   const [navOpen, setNavOpen] = useState(() => window.innerWidth >= 900);
   // The settings studio asks for the whole screen (src/chrome.tsx): the sidebar folds to an icon rail
   // — the header's toggle unfolds it — and the top bar carries the page's own row.
-  const [studio, setStudio] = useState(false);
+  // Counted, not a flag: a page can ask while a studio inside it asks too (the customer page and its
+  // Settings tab), and the inner one closing must not undo the outer one's ask.
+  const [studioAsks, setStudioAsks] = useState(0);
+  const studio = studioAsks > 0;
+  const setStudio = useCallback((on: boolean) => setStudioAsks((n) => Math.max(0, n + (on ? 1 : -1))), []);
   const [railOpen, setRailOpen] = useState(false);
   const [slotMain, setSlotMain] = useState<HTMLDivElement | null>(null);
   const [slotEnd, setSlotEnd] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
     if (studio) setRailOpen(false);
   }, [studio]);
-  const chrome = useMemo(() => ({ setStudio, main: slotMain, end: slotEnd }), [slotMain, slotEnd]);
+  const chrome = useMemo(() => ({ setStudio, main: slotMain, end: slotEnd }), [setStudio, slotMain, slotEnd]);
   const navState = studio ? (railOpen ? "open" : "rail") : navOpen ? "open" : "closed";
   const toggleNav = () => (studio ? setRailOpen((o) => !o) : setNavOpen((o) => !o));
   const closeNav = () => (studio ? setRailOpen(false) : setNavOpen(false));

@@ -18,6 +18,11 @@ Format:
 
 ---
 
+## 2026-09-27 22:00 · bottomup32 · dashboard (customer page tabs, FAQ editor, studio type size)
+- `src/chrome.tsx` studio asks are now counted in `App.tsx` (was a boolean): the customer page's Activity/Sources/Share tabs no longer drop back to the full sidebar + "Demo / Detail" bar after Settings was opened. `setStudio(on)` signature unchanged.
+- New `src/settings/sections/FaqEditor.tsx` replaces `KnowledgeEditor sections={["faqs"]}` in the FAQs section (demo, business, public read-only): card per question, growing answer box, reorder, count of 20, search past 6. Inputs are labelled `Question N` / `Answer N` (was `Question` / `Answer`); `business_tabs.py` updated. KnowledgeEditor itself is untouched.
+- `.settings-studio` no longer shrinks `ta-body-2`/`ta-label-1`/`ta-headline-2`; its Input/Textarea read at 15px (Input 36px tall); studio nav 14px. Scoped to the studio — transcribe screens and `compare.py` unaffected.
+
 ## 2026-09-27 · bottomup32 · transcribe-backend, dashboard (demo → onboarding: sign-up, one approval, sign-in links)
 - Public demo page (`/c/<id>`) shows the settings studio read-only ("Editable after setup") and **Request setup** = sign-up (name, email, password, 6-digit email code) → account in `demo`, linked to that demo, request to admin. New entry **`/start`** (`start.html`, `src/start/`): self-service sign-up → new demo → research on screen. Admin approval is the gate on both paths.
 - API (dashboard-only): `/auth/signup/claim|start|research`, `/auth/verify[/resend]`, `/auth/forgot`, `/auth/tokens/inspect|accept`, `/auth/me/password`, `/auth/users/:id/invite`, `GET /demo/setup-requests`. `/demo/customers/:id/onboard` and `/auth/users/:id/promote` now share `business/onboard.ts approveOnboarding` (response adds `invite`, `emailed`); `/auth/users/:id/status` → pre-production answers 409 `use_onboard` for a demo-linked account without a profile. Public user adds `signupSource`, `emailVerified`; setup-state adds `mail`, `signup`; public demo read adds `setup`.

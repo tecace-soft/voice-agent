@@ -238,7 +238,7 @@ export function SettingsShell({
         >
           {groups.map((group) => (
             <div key={group.label}>
-              <p className="text-muted-foreground/80 px-2.5 pb-1 text-[10.5px] font-medium tracking-[0.06em] uppercase">
+              <p className="text-muted-foreground/80 px-2.5 pb-1 text-[11px] font-medium tracking-[0.06em] uppercase">
                 {group.label}
               </p>
               <ul className="flex flex-col">
@@ -252,7 +252,7 @@ export function SettingsShell({
                         type="button"
                         onClick={() => onSelect(id)}
                         aria-current={selected ? "page" : undefined}
-                        className={`flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-[13px] transition-colors ${
+                        className={`flex h-9 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-[14px] transition-colors ${
                           selected
                             ? "bg-muted text-foreground font-semibold"
                             : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
@@ -271,7 +271,7 @@ export function SettingsShell({
           {phase ? (
             <div className="mt-auto flex flex-col gap-1.5 border-t px-2.5 pt-3">
               <PhaseSteps phase={phase} />
-              <p className="text-muted-foreground/80 text-[11.5px] leading-snug">{PHASE_NOTE[phase]}</p>
+              <p className="text-muted-foreground/80 text-[12px] leading-snug">{PHASE_NOTE[phase]}</p>
             </div>
           ) : null}
         </nav>
@@ -298,7 +298,7 @@ export function SettingsShell({
             <section aria-labelledby="settings-section-title" className="@container">
               <h2
                 id="settings-section-title"
-                className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[20px] leading-7 font-semibold tracking-[-0.015em]"
+                className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[22px] leading-8 font-semibold tracking-[-0.015em]"
               >
                 {meta.label}
                 {sectionBadge && !current.guide ? sectionBadge : null}
@@ -379,7 +379,7 @@ const PHASES: { id: Phase; label: string }[] = [
 export function PhaseSteps({ phase }: { phase: Phase }) {
   const at = PHASES.findIndex((p) => p.id === phase);
   return (
-    <ol className="flex items-center gap-1.5 text-[12px]" aria-label="Where this receptionist is">
+    <ol className="flex items-center gap-1.5 text-[13px]" aria-label="Where this receptionist is">
       {PHASES.map((p, i) => (
         <li key={p.id} className="flex items-center gap-1.5">
           {i > 0 ? (

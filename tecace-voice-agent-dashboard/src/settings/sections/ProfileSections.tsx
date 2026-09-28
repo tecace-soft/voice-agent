@@ -12,6 +12,7 @@ import type { BusinessProfile as DemoBusinessProfile, CallSound, CustomerPrompts
 import type { BehaviourDefault, SessionPreview } from "../../api/types";
 import { displayPhone } from "../callSettings";
 import { SectionIntro } from "../SettingsShell";
+import { FaqEditor } from "./FaqEditor";
 import { FieldMessage, toFieldError } from "./shared";
 import { GREETING_EXAMPLES, INSTRUCTION_EXAMPLES, Tips } from "../examples";
 
@@ -78,7 +79,7 @@ export function FaqsSection({
       </SectionIntro>
       {profile ? (
         <>
-          <KnowledgeEditor profile={profile} onChange={onChange} sections={["faqs"]} />
+          <FaqEditor faqs={profile.faqs} onChange={(faqs) => onChange({ ...profile, faqs })} />
           {footer}
           <div className="mt-8">
             <Tips

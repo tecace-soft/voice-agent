@@ -13,6 +13,7 @@ Run (one at a time — these scripts share ports):  python scripts/regression/bu
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -156,7 +157,7 @@ def main() -> int:
                     check("Business information: the policies are named fields",
                           page.get_by_label("Cancellation", exact=True).count() == 1)
                     check("Business information: FAQs are their own section",
-                          page.get_by_label("Question", exact=True).count() == 0)
+                          page.get_by_label(re.compile(r"^Question \d+$")).count() == 0)
 
                     page.get_by_label("Phone", exact=True).first.fill("+1 207 555 0199")
                     page.get_by_role("button", name="Save", exact=True).first.click()
@@ -176,9 +177,9 @@ def main() -> int:
                     open_section("FAQs")
                     check("FAQs: the section is in the address bar", page.url.endswith("#/business/faqs"), page.url)
                     check("FAQs: the caller question is there",
-                          page.get_by_label("Question", exact=True).count() == 1)
+                          page.get_by_label("Question 1", exact=True).count() == 1)
                     # An edit left unsaved here must survive another section's save.
-                    page.get_by_label("Answer", exact=True).first.fill("Yes — call us to book your first visit.")
+                    page.get_by_label("Answer 1", exact=True).fill("Yes — call us to book your first visit.")
 
                     # ---- Agent profile: identity, then voice and language with the prompts
                     open_section("Agent profile")
@@ -204,7 +205,7 @@ def main() -> int:
                           "Saved. This is what the assistant now uses." in page.inner_text("main"))
                     open_section("FAQs")
                     check("FAQs: the unsaved answer survived saving another section",
-                          page.get_by_label("Answer", exact=True).first.input_value()
+                          page.get_by_label("Answer 1", exact=True).input_value()
                           == "Yes — call us to book your first visit.")
                     page.get_by_role("button", name="Save", exact=True).first.click()
                     page.wait_for_timeout(900)
