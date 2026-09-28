@@ -30,6 +30,18 @@ export type Release = {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.0.10",
+    date: "2026-09-28",
+    title: "Our Twilio numbers on the Agent numbers page",
+    items: [
+      {
+        kind: "new",
+        text: "Agent numbers lists every number on our Twilio account, shows whether its calls reach the agent and whether it's in the list, and can connect it to the agent or add it in one click.",
+        admin: true,
+      },
+    ],
+  },
+  {
     version: "0.0.9",
     date: "2026-09-27",
     title: "Appointments, the settings studio, and the road from demo to live",

@@ -207,6 +207,33 @@ export interface AgentNumber {
   updatedAt: string;
 }
 
+// A number on our Twilio account (GET /business/numbers/twilio). `status` is where its calls go
+// relative to the voice agent; `registered` is its row in the Agent numbers list, if it has one.
+export type TwilioAgentStatus = "connected" | "not_connected" | "elsewhere";
+
+export interface TwilioNumber {
+  sid: string;
+  phoneE164: string;
+  friendlyName: string;
+  voiceUrl: string | null;
+  status: TwilioAgentStatus;
+  registered: {
+    id: string;
+    label: string | null;
+    userId: string | null;
+    userName: string | null;
+    userEmail: string | null;
+  } | null;
+}
+
+export interface TwilioNumbersResponse {
+  /** False when Twilio isn't set up on the backend; `numbers` is then empty. */
+  configured: boolean;
+  /** The agent's incoming-call URL, or null when AGENT_PUBLIC_URL isn't set on the backend. */
+  agentUrl: string | null;
+  numbers: TwilioNumber[];
+}
+
 // What a customer told us about their business, and what the agent says because of it.
 //
 // `sourceText` is the only part anyone edits. Everything else is produced from it by the backend

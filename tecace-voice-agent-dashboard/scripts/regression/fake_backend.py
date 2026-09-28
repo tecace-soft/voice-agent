@@ -1515,6 +1515,10 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
         wanted = (query.get("userId") or [None])[0] if admin else None
         account = next((u for u in (ADMIN, USER, DEMO_CUSTOMER) if u["id"] == wanted), user)
         return 200, readiness(account)
+    # Twilio isn't configured in the harness: the Numbers page shows its "not connected" note and
+    # every existing capture is unchanged (compare.py hides the card anyway).
+    if path == "/business/numbers/twilio" and method == "GET":
+        return 200, {"configured": False, "agentUrl": None, "numbers": []}
     if path == "/business/numbers" and method == "GET":
         return 200, {"numbers": NUMBERS}
     if path == "/business/profile" and method == "GET":

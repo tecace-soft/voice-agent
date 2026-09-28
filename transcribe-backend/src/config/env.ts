@@ -175,6 +175,18 @@ if (!Number.isFinite(signupResearchDailyCap) || signupResearchDailyCap < 0) {
   throw new Error("SIGNUP_RESEARCH_DAILY_CAP must be a non-negative number.");
 }
 
+// Twilio: listing the numbers we own and pointing one at the voice agent (src/twilio/numbers.ts).
+// A restricted API key (phone numbers read + write) is preferred; the account's auth token is the
+// fallback. All optional — unset, the Agent numbers page says Twilio isn't connected, and numbers
+// can still be typed in by hand.
+const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID?.trim() ?? "";
+const twilioApiKeySid = process.env.TWILIO_API_KEY_SID?.trim() ?? "";
+const twilioApiKeySecret = process.env.TWILIO_API_KEY_SECRET?.trim() ?? "";
+const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN?.trim() ?? "";
+// The voice agent's public origin (openai-agent-app). "Connect" sets a number's voice URL to
+// <this>/incoming and its fallback to <this>/incoming-fallback.
+const agentPublicUrl = (process.env.AGENT_PUBLIC_URL ?? "").trim().replace(/\/+$/, "");
+
 export const env = {
   nodeEnv,
   port: Number(process.env.PORT ?? 8001),
@@ -227,6 +239,13 @@ export const env = {
   // Who hears about a new sign-up or setup request. Unset = nobody is emailed; the badge still shows.
   adminNotifyEmail: process.env.ADMIN_NOTIFY_EMAIL?.trim() ?? "",
   signupResearchDailyCap,
+  twilioAccountSid,
+  twilioApiKeySid,
+  twilioApiKeySecret,
+  twilioAuthToken,
+  // Only tests point this elsewhere.
+  twilioApiBase: (process.env.TWILIO_API_BASE || "https://api.twilio.com").replace(/\/+$/, ""),
+  agentPublicUrl,
 } as const;
 
 export type Env = typeof env;

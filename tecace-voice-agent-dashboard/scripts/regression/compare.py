@@ -105,6 +105,9 @@ HIDE = [
     '.sidebar-user .user-password',
     # versioning: "Version x.y.z · Changelog" under Last run opens the changelog. New by design.
     '.sidebar-version',
+    # Twilio numbers: the Agent numbers page lists the numbers on our Twilio account above the
+    # original cards. New by design; hidden so the rest of the page is still compared.
+    '.twilio-numbers',
 ]
 
 # Captures that are MEANT to differ: id -> (why, marker). The marker must appear in the new app's

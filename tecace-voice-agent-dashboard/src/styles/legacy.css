@@ -2221,6 +2221,11 @@ button.person-primary:hover {
   margin-left: 8px;
   vertical-align: middle;
 }
+.twilio-actions {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 
 /* ---- business information ---- */
 

@@ -10,6 +10,7 @@ import type { AgentNumber, AuthUser } from "../api/types";
 import { accountErrorMessage } from "../auth";
 import { IconAlert, IconPhone, IconTrash } from "../icons";
 import { formatDateTime, formatPhone } from "../lib";
+import { TwilioNumbersCard } from "./TwilioNumbersCard";
 
 // Which phone number the voice agent answers for which customer. Admin only.
 //
@@ -29,6 +30,8 @@ export function NumbersPage() {
   const [phone, setPhone] = useState("");
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
+  // Bumped on every reload so the Twilio card re-reads too: its "In our list" column is this list.
+  const [reloadKey, setReloadKey] = useState(0);
 
   const load = useCallback(() => {
     Promise.all([listAgentNumbers(), listAccounts()])
@@ -39,6 +42,7 @@ export function NumbersPage() {
         // this list is the convenience, that is the rule.
         setUsers(u.filter((x) => x.role !== "admin").sort((a, b) => a.name.localeCompare(b.name)));
         setError(null);
+        setReloadKey((k) => k + 1);
       })
       .catch((e) => setError(accountErrorMessage(e, "Couldn't load the agent's numbers.")));
   }, []);
@@ -89,6 +93,8 @@ export function NumbersPage() {
 
   return (
     <div className="view">
+      <TwilioNumbersCard reloadKey={reloadKey} onChanged={load} />
+
       <section className="card">
         <div className="card-head">
           <div>

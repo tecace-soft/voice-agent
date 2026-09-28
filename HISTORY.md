@@ -23,6 +23,17 @@ Format:
 
 ---
 
+## 2026-09-28 16:30 · Michael · transcribe-backend, dashboard (Twilio numbers on Agent numbers)
+- New admin routes (`src/routes/twilioNumbers.ts`, client `src/twilio/numbers.ts`, plain fetch, nothing stored): `GET /business/numbers/twilio` → `{configured, agentUrl, numbers:[{sid, phoneE164, friendlyName, voiceUrl, status: connected|not_connected|elsewhere, registered}]}` (Twilio unset = 200 `configured:false`); `POST /business/numbers/twilio/:sid/connect {overwrite?}` sets VoiceUrl `<AGENT_PUBLIC_URL>/incoming` + fallback `/incoming-fallback` (409 `points_elsewhere` without overwrite, 503 when Twilio/agent URL unset, 502 `twilio_auth`).
+- Dashboard: Agent numbers page gets an "On our Twilio account" card (`src/pages/TwilioNumbersCard.tsx`) with Connect to agent / Add to list. Regression: `fake_backend.py` answers `configured:false`; `compare.py` HIDE `.twilio-numbers` (IDENTICAL). Version 0.0.10.
+- ⚠ Deploy: new optional env on `transcribe-app-backend` (and staging `va-staging-backend`): `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY_SID` + `TWILIO_API_KEY_SECRET` (restricted key, phone numbers read+write; `TWILIO_AUTH_TOKEN` as fallback), `AGENT_PUBLIC_URL=https://31-97-214-59.sslip.io`. Staging and production share the Twilio account — connecting from either rewires the real number.
+
+## 2026-09-28 12:25 · Michael · deploy (production DB: staging data merged in)
+- Neon `transcribe-db`: `main` (production, `transcribe-app-backend`) was restored from branch `staging`, then the rows production wrote after the fork (voicemail runs, inbound calls, agent call sessions, demo call events, +530s call minutes, poller heartbeat) were copied back. Production now has staging's users, business profiles, demo customers/calls and its 8 new tables / 17 columns (sign-up, auth tokens, calendar, bookings, call settings, SMS consents, customer codes, user status).
+- Old production kept as Neon branch `main-backup-before-merge` (has its own compute). Delete it once production looks right.
+- Users edited on staging keep staging's version (e.g. hansoo@tecace.com's staging password is now the production password).
+- `transcribe-app-backend.vercel.app` had been pinned to a Sep 24 build (4d556b3, rollback state; master builds weren't taking the domain). Promoted today's `master` build (34bb276) — production backend code now matches the merged schema, and new `master` builds take the domain again.
+
 ## 2026-09-27 23:00 · bottomup32 · transcribe-backend, dashboard (customers: research optional, delete a selection)
 - `POST /demo/customers` takes `research` (boolean, default true = old behaviour). `false` saves at `status: "ready"` with no run/`researchedAt`; the dashboard badges it "Not researched" and the customer page offers **Run research**. New dialog buttons: **Add customer** (no research) / **Add and research**.
 - `DELETE /demo/customers/:id` now answers 409 `code: "has_account"` when a non-demo account is linked; a linked demo-stage account is unlinked and open sign-up requests for it are declined. Customers table: row checkboxes + Delete for the selection.

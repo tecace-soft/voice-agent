@@ -1,6 +1,8 @@
 import type {
   AccountStatus,
   AgentNumber,
+  TwilioNumber,
+  TwilioNumbersResponse,
   ApiKey,
   CallMinutes,
   CreatedApiKey,
@@ -395,6 +397,20 @@ export function assignAgentNumber(id: string, userId: string | null): Promise<{ 
 
 export function deleteAgentNumber(id: string): Promise<{ status: string }> {
   return request<{ status: string }>("DELETE", `/business/numbers/${id}`);
+}
+
+// ---- the numbers on our Twilio account (admin) ----
+
+/** `configured: false` when Twilio isn't set up on the backend. */
+export function listTwilioNumbers(): Promise<TwilioNumbersResponse> {
+  return get<TwilioNumbersResponse>("/business/numbers/twilio");
+}
+
+/** Points the number's voice URL at the agent. 409 when it rings elsewhere and `overwrite` isn't set. */
+export function connectTwilioNumber(sid: string, overwrite = false): Promise<{ number: TwilioNumber }> {
+  return request<{ number: TwilioNumber }>("POST", `/business/numbers/twilio/${encodeURIComponent(sid)}/connect`, {
+    body: overwrite ? { overwrite: true } : {},
+  });
 }
 
 // ---- a customer's business details ----
