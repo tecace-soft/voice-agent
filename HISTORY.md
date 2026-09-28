@@ -34,6 +34,7 @@ Format:
 - New [TODO.md](TODO.md): status of the Calls features on REAL phone calls and what is left. Appointments booking verified on a real call. Still open: send a text (SMS, not built), call transfer (test on a real call), take a message (test on a real call).
 - ⚠ Anyone testing on the phone: use the checklists there and tick them off / add findings in that file.
 - New [docs/customer-journey.html](docs/customer-journey.html) (open in a browser): customer / admin / backend swimlane from demo to live, the two gates, a live call, and which features work where. Shared copy: https://claude.ai/artifact/DM1JiVC95iN2HZoukLWxoS. Update both when the flow changes.
+- 2026-09-28: page v2 adds an overview for newcomers, a system map (which app talks to what), the full feature list by audience, and a glossary. Korean copy: [docs/customer-journey.ko.html](docs/customer-journey.ko.html), shared at https://claude.ai/artifact/3eiJvCTMR9XUYtaGDEjEaE.
 
 ## 2026-09-27 23:20 · bottomup32 · dashboard, workspace (versioning + changelog)
 - Product version starts at **0.0.1**; today is **0.0.9** (one release per working day since 2026-09-17, back-filled from git + this log). Source: `tecace-voice-agent-dashboard/src/changelog.ts`; `package.json` version must match (`tests/changelog.test.ts`).

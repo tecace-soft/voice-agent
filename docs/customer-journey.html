@@ -120,19 +120,215 @@ td:first-child{font-weight:600}
 footer{color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:18px}
 a{color:var(--brand)}
 a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+/* v2: overview, system map, feature list, glossary */
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.lang{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;font-size:13px;background:var(--surface)}
+.lang a,.lang span{padding:4px 12px;text-decoration:none;color:var(--muted)}
+.lang span{background:var(--brand);color:#fff;font-weight:600}
+.toc{display:flex;flex-wrap:wrap;gap:8px}
+.toc a{font-size:13px;text-decoration:none;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px 12px}
+.toc a:hover{border-color:var(--brand);color:var(--brand)}
+section[id]{scroll-margin-top:16px}
+.who{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.who .card{border-top:3px solid var(--line)}
+.who .card.c{border-top-color:var(--cust)} .who .card.a{border-top-color:var(--adm)} .who .card.n{border-top-color:var(--be)}
+.who p{color:var(--muted);font-size:14px}
+.promise{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:0;padding:0;list-style:none}
+.promise li{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.promise b{font:600 15px var(--display)}
+.promise span{color:var(--muted);font-size:13.5px}
+.feats{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px;align-items:start}
+.feats .card{gap:4px}
+.feats .card > p{color:var(--muted);font-size:13.5px;margin-bottom:6px}
+.sub{font:600 11.5px var(--sans);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-top:10px}
+.feat{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:9px 0;border-top:1px solid var(--line)}
+.feat b{font-weight:600;font-size:14.5px}
+.feat .d{grid-column:1;color:var(--muted);font-size:13.5px;line-height:1.5}
+.feat .pill{grid-column:2;grid-row:1;align-self:start}
+.terms{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0 28px;margin:0}
+.terms div{padding:12px 0;border-top:1px solid var(--line)}
+.terms dt{font-weight:600}
+.terms dd{margin:2px 0 0;color:var(--muted);font-size:14px}
+.pill.blue{color:var(--brand);background:color-mix(in srgb,var(--brand) 12%,transparent)}
+.ext rect{fill:var(--surface);stroke:var(--line);stroke-dasharray:4 3}
+.hub{fill:var(--be);fill-opacity:.07;stroke:var(--be);stroke-opacity:.5}
+.db rect{fill:var(--surface);stroke:var(--be);stroke-opacity:.5}
 </style>
 </head>
 <body>
 
 <div class="wrap">
 <header>
-  <div class="eyebrow">TecAce Voice Agent · as of 27 Sep 2026 · v0.0.9</div>
+  <div class="topbar">
+    <div class="eyebrow">TecAce Voice Agent · as of 28 Sep 2026 · v0.0.9</div>
+    <div class="lang" aria-label="Language"><span>English</span><a href="https://claude.ai/artifact/3eiJvCTMR9XUYtaGDEjEaE">한국어</a></div>
+  </div>
   <h1>Customer journey: demo to live phone line</h1>
-  <p class="lede">How a business goes from its first demo to an assistant that answers its real phone. Each step shows what the customer does, what our admin does, and what the system does behind it.</p>
+  <p class="lede">What the product is, how the pieces fit, everything it can do, and how a business goes from its first demo to an assistant that answers its real phone. Written so someone new to the project can follow it.</p>
+  <nav class="toc" aria-label="Contents">
+    <a href="#overview">In one minute</a>
+    <a href="#system">The system</a>
+    <a href="#features">Everything it does</a>
+    <a href="#journey">The journey</a>
+    <a href="#gates">The two gates</a>
+    <a href="#call">A live call</a>
+    <a href="#where">What works where</a>
+    <a href="#open">Still open</a>
+    <a href="#terms">Words we use</a>
+  </nav>
 </header>
 
+<!-- ============ 0a. OVERVIEW ============ -->
+<section id="overview">
+  <div class="text">
+    <h2>In one minute</h2>
+    <p>Voice Agent is an AI receptionist for small businesses. When a caller rings the business and nobody picks up (or on every call, if the business chooses), our assistant answers. It speaks with a natural voice, knows the business, and handles the call the way the owner set it up.</p>
+  </div>
+  <ul class="promise">
+    <li><b>Answers questions</b><span>Hours, prices, services, directions, FAQs, from the business profile.</span></li>
+    <li><b>Books appointments</b><span>Checks free times and writes the booking into the business's own calendar.</span></li>
+    <li><b>Puts callers through</b><span>Transfers to the right person when the caller needs a human.</span></li>
+    <li><b>Takes messages</b><span>Name, callback number and reason, saved to the dashboard and a Google Sheet.</span></li>
+    <li><b>Texts a link</b><span>Sends a booking page or menu by SMS. Works in demos; not on the phone yet.</span></li>
+  </ul>
+  <div class="who">
+    <div class="card c"><h3>The business (customer)</h3><p>Owns the phone line. Tries the demo, sets up the assistant in the dashboard, publishes, and forwards its line to us. Reads calls and messages afterwards.</p></div>
+    <div class="card a"><h3>TecAce admin</h3><p>Finds businesses, makes their demo, approves setup, assigns a phone number, and switches the line on (Go live). Watches usage.</p></div>
+    <div class="card n"><h3>Callers</h3><p>The business's own customers. They never see our product; they just call the business as usual and talk to the assistant.</p></div>
+  </div>
+</section>
+
+<!-- ============ 0b. SYSTEM ============ -->
+<section id="system">
+  <div class="text">
+    <h2>The system at a glance</h2>
+    <p>One backend holds everything. The phone agent, the dashboard, the public pages and the voicemail worker all talk to it. Each box is its own app in the repo, with its own README.</p>
+  </div>
+  <figure>
+    <p class="hint">Scroll sideways to see the whole map →</p>
+    <div class="scroll">
+<svg viewBox="0 0 1120 510" width="1120" role="img" aria-label="System map: callers reach a Twilio number and the phone agent, which uses OpenAI Realtime for voice. Business owners and admins use the dashboard, prospects use the public pages. All of them talk to transcribe-backend and its Postgres database. The backend uses OpenAI for research, calendars, and email. transcribe-app reads voicemail and writes Google Sheet rows.">
+  <defs>
+    <marker id="ah0" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+  </defs>
+  <text class="ps" x="20" y="24">PEOPLE</text>
+  <text class="ps" x="220" y="24">WAYS IN</text>
+  <text class="ps" x="470" y="24">OUR SERVICES</text>
+  <text class="ps" x="820" y="24">OUTSIDE SERVICES</text>
+
+  <!-- edges -->
+  <path class="arr" d="M160 75 H218" marker-end="url(#ah0)"/><text class="lbl" x="189" y="67" text-anchor="middle">calls</text>
+  <path class="arr" d="M410 75 H468" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="439" y="67" text-anchor="middle">audio</text>
+  <path class="arr" d="M700 75 H818" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="759" y="67" text-anchor="middle">live voice</text>
+  <path class="arr" d="M585 112 V198" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="593" y="150">settings, tools,</text><text class="lbl" x="593" y="164">call log</text>
+  <path class="arr" d="M160 215 H218" marker-end="url(#ah0)"/>
+  <path class="arr" d="M160 275 H218" marker-end="url(#ah0)"/>
+  <path class="arr" d="M160 355 H218" marker-end="url(#ah0)"/>
+  <path class="arr" d="M410 240 H468" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="439" y="232" text-anchor="middle">API</text>
+  <path class="arr" d="M410 350 H468" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="439" y="342" text-anchor="middle">public API</text>
+  <path class="arr" d="M730 205 H818" marker-end="url(#ah0)"/><text class="lbl" x="774" y="197" text-anchor="middle">research</text>
+  <path class="arr" d="M730 262 H818" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="774" y="254" text-anchor="middle">free times, book</text>
+  <path class="arr" d="M730 327 H818" marker-end="url(#ah0)"/><text class="lbl" x="774" y="319" text-anchor="middle">codes, links</text>
+  <path class="arr" d="M600 418 V382" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="608" y="404">runs, messages</text>
+  <path class="arr" d="M410 450 H468" marker-end="url(#ah0)"/><text class="lbl" x="439" y="442" text-anchor="middle">reads</text>
+  <path class="arr" d="M730 450 H818" marker-end="url(#ah0)"/><text class="lbl" x="774" y="442" text-anchor="middle">writes rows</text>
+
+  <!-- people -->
+  <g class="box n"><rect x="20" y="50" width="140" height="50" rx="8"/><text class="bt" x="32" y="72">Caller</text><text class="bs" x="32" y="88">phones the business</text></g>
+  <g class="box c"><rect x="20" y="190" width="140" height="50" rx="8"/><text class="bt" x="32" y="212">Business owner</text><text class="bs" x="32" y="228">our customer</text></g>
+  <g class="box a"><rect x="20" y="250" width="140" height="50" rx="8"/><text class="bt" x="32" y="272">Admin</text><text class="bs" x="32" y="288">TecAce team</text></g>
+  <g class="box n"><rect x="20" y="330" width="140" height="50" rx="8"/><text class="bt" x="32" y="352">Prospect</text><text class="bs" x="32" y="368">no account yet</text></g>
+
+  <!-- ways in -->
+  <g class="box a"><rect x="220" y="45" width="190" height="60" rx="8"/><text class="bt" x="232" y="68">Twilio number</text><text class="bs" x="232" y="85">one per business, owned by us</text></g>
+  <g class="box c"><rect x="220" y="200" width="190" height="80" rx="8"/><text class="bt" x="232" y="222">Dashboard</text><text class="bm" x="232" y="240">tecace-voice-agent-</text><text class="bm" x="232" y="254">dashboard</text><text class="bs" x="232" y="271">React · Vercel</text></g>
+  <g class="box c"><rect x="220" y="320" width="190" height="60" rx="8"/><text class="bt" x="232" y="343">Public pages</text><text class="bs" x="232" y="360">/c/&lt;id&gt; demo · /start sign-up</text></g>
+  <g class="box n"><rect x="220" y="420" width="190" height="60" rx="8"/><text class="bt" x="232" y="443">Voicemail mailbox</text><text class="bs" x="232" y="460">email with .wav files (IMAP)</text></g>
+
+  <!-- our services -->
+  <g class="box b"><rect x="470" y="40" width="230" height="72" rx="8"/><text class="bt" x="484" y="63">Phone agent</text><text class="bm" x="484" y="81">openai-agent-app</text><text class="bs" x="484" y="99">Python · answers every call</text></g>
+  <rect class="hub" x="470" y="200" width="260" height="182" rx="10"/>
+  <text class="bt" x="484" y="223">transcribe-backend</text>
+  <text class="bs" x="484" y="240">Bun + Elysia · Vercel · the one API</text>
+  <text class="bs" x="484" y="262">· accounts, sign-in, phases</text>
+  <text class="bs" x="484" y="278">· business profile, call settings</text>
+  <text class="bs" x="484" y="294">· demos, research, CRM</text>
+  <text class="bs" x="484" y="310">· calls, minutes, calendar tools</text>
+  <g class="db"><rect x="484" y="326" width="232" height="42" rx="6"/><text class="bt" x="496" y="345">Postgres (Neon)</text><text class="bs" x="496" y="360">only the backend touches it</text></g>
+  <g class="box b"><rect x="470" y="420" width="260" height="60" rx="8"/><text class="bt" x="484" y="443">Voicemail worker</text><text class="bs" x="484" y="460">transcribe-app · Whisper + Claude</text></g>
+
+  <!-- outside -->
+  <g class="ext"><rect x="820" y="45" width="280" height="60" rx="8"/><text class="bt" x="834" y="68">OpenAI Realtime</text><text class="bs" x="834" y="85">the voice model on every call</text></g>
+  <g class="ext"><rect x="820" y="180" width="280" height="50" rx="8"/><text class="bt" x="834" y="201">OpenAI</text><text class="bs" x="834" y="218">web research, in-app test calls</text></g>
+  <g class="ext"><rect x="820" y="237" width="280" height="50" rx="8"/><text class="bt" x="834" y="258">Business calendars</text><text class="bs" x="834" y="275">Apple, Google, Outlook, Cal.com, Calendly…</text></g>
+  <g class="ext"><rect x="820" y="302" width="280" height="50" rx="8"/><text class="bt" x="834" y="323">Email (SMTP)</text><text class="bs" x="834" y="340">sign-up codes, sign-in links</text></g>
+  <g class="ext"><rect x="820" y="425" width="280" height="50" rx="8"/><text class="bt" x="834" y="446">Google Sheets</text><text class="bs" x="834" y="463">voicemails and messages, per business</text></g>
+</svg>
+    </div>
+    <figcaption>The older apps in the repo (<code>voice-agent-app</code>, <code>backend-app</code>, <code>form-app</code>, <code>admin-dashboard-app</code>) run the original lead-intake flow. <code>transcribe-dashboard-app</code> is kept only as a baseline for regression checks.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 0c. FEATURES ============ -->
+<section id="features">
+  <div class="text">
+    <h2>Everything it does</h2>
+    <p>Grouped by who uses it. The pill says where it stands on the real phone line or in the product today.</p>
+  </div>
+  <div class="feats">
+    <div class="card">
+      <h3>On a call, for the caller</h3>
+      <p>What the assistant can do while it talks.</p>
+      <div class="feat"><b>Answers questions</b><span class="pill ok">Live</span><span class="d">Business info, FAQs, and whether the business is open right now.</span></div>
+      <div class="feat"><b>Books an appointment</b><span class="pill ok">Live</span><span class="d">Finds free times in the connected calendar and books under the published rules.</span></div>
+      <div class="feat"><b>Transfers to a person</b><span class="pill warn">Test</span><span class="d">Rings the business's number with a whisper. If nobody answers, the caller comes back to the assistant.</span></div>
+      <div class="feat"><b>Takes a message</b><span class="pill warn">Test</span><span class="d">Name, callback number read back, reason, preferred time.</span></div>
+      <div class="feat"><b>Texts a link</b><span class="pill bad">Not on phone</span><span class="d">Booking page, menu or form by SMS. Shown in demos only.</span></div>
+    </div>
+
+    <div class="card">
+      <h3>For the business, in the dashboard</h3>
+      <p>The settings studio: a menu of sections, the section, and a test console beside it.</p>
+      <div class="sub">Business</div>
+      <div class="feat"><b>Business information</b><span class="d">Name, hours, address, services. Filled in by research, edited by the owner.</span></div>
+      <div class="feat"><b>Agent profile</b><span class="d">The assistant's name, voice, language and call sound.</span></div>
+      <div class="feat"><b>FAQs</b><span class="d">Up to 20 questions and answers, in order.</span></div>
+      <div class="sub">Calls</div>
+      <div class="feat"><b>Take a message</b><span class="d">Message briefs: what to ask for each kind of call.</span></div>
+      <div class="feat"><b>Transfer calls</b><span class="d">Who to put through, when, and how: warm, waterfall, business hours.</span></div>
+      <div class="feat"><b>Text a link</b><span class="d">Links the assistant may text, and when.</span></div>
+      <div class="feat"><b>Appointments</b><span class="d">Connect a calendar; set length, buffer, notice, how far ahead, hours.</span></div>
+      <div class="sub">Tuning and go live</div>
+      <div class="feat"><b>Custom training</b><span class="d">House rules, the prompts themselves, and a preview of the full prompt.</span></div>
+      <div class="feat"><b>Test and improve</b><span class="pill blue">30 min/month</span><span class="d">Talk to the assistant in the browser using the draft settings.</span></div>
+      <div class="feat"><b>Launch instructions, Call forwarding</b><span class="d">What is left before going live; dial codes per carrier.</span></div>
+      <div class="sub">Other screens</div>
+      <div class="feat"><b>Answered calls</b><span class="d">Every call with its transcript, caller and message.</span></div>
+      <div class="feat"><b>Voicemail screens</b><span class="d">Overview, Analytics, Daily activity, All runs, for voicemail transcription.</span></div>
+      <div class="feat"><b>Feedback, Changelog</b><span class="d">Send us feedback; see what changed in each version.</span></div>
+    </div>
+
+    <div class="card">
+      <h3>For the TecAce admin</h3>
+      <p>Admin-only menus. A customer never sees these.</p>
+      <div class="feat"><b>Demo › Customers</b><span class="d">Add a business, run research, see setup requests, delete a selection.</span></div>
+      <div class="feat"><b>Demo › CRM</b><span class="d">Pipeline: new, contacted, interested, won, lost.</span></div>
+      <div class="feat"><b>Demo › Overview</b><span class="d">How the demos are doing: views and calls.</span></div>
+      <div class="feat"><b>A customer's page</b><span class="d">Settings studio with test console, Activity, Sources, Share (the /c/&lt;id&gt; link).</span></div>
+      <div class="feat"><b>Accounts</b><span class="d">Stage, Approve or Decline, Go live checklist, sign-in links, test-call cap.</span></div>
+      <div class="feat"><b>Agent numbers</b><span class="d">Register Twilio numbers and assign one to a business.</span></div>
+      <div class="feat"><b>API keys</b><span class="d">Keys for other systems that read usage. Shown once.</span></div>
+      <div class="feat"><b>Per person, Failed runs, All feedback</b><span class="d">Cross-account views for support.</span></div>
+      <div class="sub">Before sign-in: for prospects</div>
+      <div class="feat"><b>Public demo page /c/&lt;id&gt;</b><span class="pill ok">Live</span><span class="d">Call the assistant in the browser; see its actions marked Demo; request setup.</span></div>
+      <div class="feat"><b>Self sign-up /start</b><span class="pill sim">Needs SMTP</span><span class="d">Sign up, and a demo of the business is researched on screen.</span></div>
+    </div>
+  </div>
+</section>
+
 <!-- ============ 1. SWIMLANE ============ -->
-<section>
+<section id="journey">
   <div class="text">
     <h2>The journey at a glance</h2>
     <p>Four phases, three lanes. Orange arrows are the gates: someone has to act before the business moves on. Grey arrows are hand-offs and data.</p>
@@ -258,7 +454,7 @@ a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 </section>
 
 <!-- ============ 2. GATES ============ -->
-<section>
+<section id="gates">
   <div class="text">
     <h2>The two gates</h2>
     <p>A business only moves forward when an admin acts. Payment and buying Twilio numbers happen outside the app for now.</p>
@@ -330,7 +526,7 @@ a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 </section>
 
 <!-- ============ 3. LIVE CALL ============ -->
-<section>
+<section id="call">
   <div class="text">
     <h2>What happens on a live call</h2>
     <p>Once the business forwards its line, every call runs through the phone agent. The agent reads the published settings when the call is picked up, calls tools during the call, and files the call when it ends.</p>
@@ -404,7 +600,7 @@ a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 </section>
 
 <!-- ============ 4. FEATURE MATRIX ============ -->
-<section>
+<section id="where">
   <div class="text">
     <h2>Which features work where</h2>
     <p>The same settings drive three kinds of calls. Features reach the in-app test call and the public demo first. The real phone line catches up in phase 3.</p>
@@ -426,7 +622,7 @@ a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 </section>
 
 <!-- ============ 5. OPEN ============ -->
-<section>
+<section id="open">
   <div class="text">
     <h2>Still open</h2>
     <p>Details and test checklists are in <code>TODO.md</code> at the repo root.</p>
@@ -439,8 +635,27 @@ a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
   </ul>
 </section>
 
+<!-- ============ 6. TERMS ============ -->
+<section id="terms">
+  <div class="text"><h2>Words we use</h2></div>
+  <dl class="terms">
+    <div><dt>Demo customer</dt><dd>A business we built a demo for. It gets a permanent ID like <code>GLHF-0009</code>.</dd></div>
+    <div><dt>Phase</dt><dd>Demo → Onboarding → Live. Stored as <code>users.status</code>: <code>demo</code>, <code>pre-production</code>, <code>production</code>.</dd></div>
+    <div><dt>Draft and published</dt><dd>Settings edits are a draft. Test calls use the draft; the real phone uses only what was published.</dd></div>
+    <div><dt>Call settings</dt><dd>Messages, transfers, links and appointment rules: the Calls group of the settings studio.</dd></div>
+    <div><dt>Composed session</dt><dd>The prompt and tools built from the settings for one call. Used by in-app and demo calls today.</dd></div>
+    <div><dt>Rule book</dt><dd>The phone agent's own Python prompt. Real calls use it until phase 3 moves them to composed sessions.</dd></div>
+    <div><dt>Agent number</dt><dd>The Twilio number assigned to a business. Callers never dial it directly.</dd></div>
+    <div><dt>Call forwarding</dt><dd>The business points its own line at the agent number, for missed calls or every call.</dd></div>
+    <div><dt>Research</dt><dd>An OpenAI web search that fills a demo's profile, FAQs, hours and prompts.</dd></div>
+    <div><dt>Readiness checklist</dt><dd>What must be true before Go live: info, published settings, a number, and a match.</dd></div>
+    <div><dt>Staging</dt><dd>A separate copy for testing (<code>va-staging-backend</code> on a Neon branch). Production deploys only from <code>master</code>.</dd></div>
+    <div><dt>HISTORY.md, TODO.md</dt><dd>The team's change log and the list of open work, at the repo root.</dd></div>
+  </dl>
+</section>
+
 <footer>
-  Also in the same system: voicemail transcription (<code>transcribe-app</code>: mailbox .wav → Whisper → Claude → Google Sheet) and outbound lead callbacks (<code>openai-agent-app</code> poller). Sources: <code>HISTORY.md</code>, <code>TODO.md</code>, <code>docs/superpowers/specs/2026-09-27-phase-gates-design.md</code>, and the code on branch Main-Hans.
+  Also in the same system: outbound lead callbacks (<code>openai-agent-app</code> poller) from the original intake flow. Sources: <code>HISTORY.md</code>, <code>TODO.md</code>, <code>docs/superpowers/specs/2026-09-27-phase-gates-design.md</code>, and the code on branch Main-Hans.
 </footer>
 </div>
 </body>
