@@ -1264,3 +1264,7 @@ Spec: `docs/superpowers/specs/2026-09-27-phase-gates-design.md`.
 ## Customers: research optional, delete a selection (2026-09-27) — dashboard-only
 - `components/admin/NewCustomerDialog.tsx`: **Add customer** saves the record without research (`research: false`); **Add and research** is the promo's old behaviour. `screens/ProspectScreen.tsx`: a record never researched (`status: "ready"`, no `researchedAt`) is badged "Not researched" and shows a **Run research** notice; the More menu says "Run research". `CustomerTable.tsx` badges it the same way.
 - `components/admin/CustomerTable.tsx`: row checkboxes (plus select-all of what the filter shows) and a **Delete** for the selection, beside the row menu's single Delete. Deletes one at a time and toasts each refusal (a demo with an onboarding/live account answers 409).
+
+## A demo customer's Overview and Call activity (2026-09-28) — dashboard-only
+- A demo-stage account's rail is now "My receptionist" › **Overview** (`#/my/overview`, the landing), **Call activity** (`#/my/calls`) and **Settings** (the read-only studio, `demoProspect`). `screens/MyReceptionistScreen.tsx` renders the first two from the same `GET /demo/customers/:id` the customer page reads: stat cards, `CallsPerDayChart`, `gapRollup`, recent calls; our test calls (`isTest`) are left out.
+- `components/admin/ActivityTab.tsx` takes `readOnly`: no Test switch, no Analyze, no test-count line, no "What to fix" block (the Overview has it).

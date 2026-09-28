@@ -30,6 +30,10 @@ Format:
 - Root `CLAUDE.md`: local ports per app, the dashboard's three entry documents (`index`/`c`/`start.html`), `openai-agent-app`'s inbound receptionist role, root `README.md` flagged as stale, and `compare.py`'s dependency on an untouched `transcribe-dashboard-app`.
 - `transcribe-app/` is noted as maintained separately: changes to `transcribe-backend`'s ingest contract (`TRANSCRIBE_INGEST_KEY`, run reporting) need a `⚠` entry here.
 
+## 2026-09-28 · bottomup32 · dashboard (demo customer: Overview + Call activity)
+- New views `myOverview` (`#/my/overview`) and `myCalls` (`#/my/calls`) for demo-stage accounts; their rail is "My receptionist" › Overview / Call activity / Settings, landing on Overview (was: settings only). No backend change — `GET /demo/customers/:id` already answers the owner with calls, events and stats.
+- `ActivityTab` gains `readOnly`. Regression: `demo_customer.py` updated (rail, Overview, Call activity); all 9 pass, compare IDENTICAL. Changelog 0.0.10.
+
 ## 2026-09-27 23:40 · bottomup32 · workspace (Calls: real-phone test list)
 - New [TODO.md](TODO.md): status of the Calls features on REAL phone calls and what is left. Appointments booking verified on a real call. Still open: send a text (SMS, not built), call transfer (test on a real call), take a message (test on a real call).
 - ⚠ Anyone testing on the phone: use the checklists there and tick them off / add findings in that file.

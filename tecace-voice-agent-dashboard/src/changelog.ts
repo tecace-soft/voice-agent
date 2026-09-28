@@ -32,8 +32,10 @@ export const CHANGELOG: Release[] = [
   {
     version: "0.0.10",
     date: "2026-09-28",
-    title: "Phone numbers from Twilio, without the console",
+    title: "Your demo's overview and call activity; phone numbers from Twilio",
     items: [
+      { kind: "new", text: "My receptionist has an Overview: link opens, visitors, calls, minutes, calls per day, what the receptionist couldn't answer, and the latest calls." },
+      { kind: "new", text: "Call activity lists every call to your demo receptionist with its summary and full transcript." },
       { kind: "new", text: "Agent numbers: sync the Twilio account's numbers into the list, see whether each number's webhooks point at the receptionist, and repair them with Configure.", admin: true },
       { kind: "new", text: "Buy a number — toll-free or local, by area code — from the Agent numbers page or straight from an account's Go live checklist; its webhooks are set as it's bought.", admin: true },
       { kind: "new", text: "Release a number bought here back to Twilio by typing it back; numbers bought in the Twilio console are released there, and numbers registered by hand are still deleted from the list.", admin: true },

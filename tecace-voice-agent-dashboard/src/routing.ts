@@ -36,6 +36,8 @@ const PATHS: Record<ViewId, string> = {
   demoProspects: "demos/prospects",
   demoProspect: "demos/prospects/:id/:section?",
   demoPipeline: "demos/pipeline",
+  myOverview: "my/overview",
+  myCalls: "my/calls",
   changelog: "changelog",
 };
 

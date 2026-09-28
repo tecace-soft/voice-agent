@@ -50,12 +50,14 @@ function ReviewLine({ label, text }: { label: string; text?: string }) {
 function CallCard({
   call,
   busy,
+  readOnly,
   onOpen,
   onSetKind,
   onAnalyze,
 }: {
   call: CallLog;
   busy: boolean;
+  readOnly: boolean;
   onOpen: () => void;
   onSetKind: (isTest: boolean) => void;
   onAnalyze: () => void;
@@ -77,6 +79,7 @@ function CallCard({
             {SENTIMENT[review.sentiment].label}
           </StatusBadge>
         ) : null}
+        {readOnly ? null : (
         <label className="ta-caption-1 text-muted-foreground ml-auto flex items-center gap-2">
           <Switch
             checked={call.isTest}
@@ -86,6 +89,7 @@ function CallCard({
           />
           {call.isTest ? "Test" : "Customer"}
         </label>
+        )}
       </div>
 
       {review ? (
@@ -111,9 +115,11 @@ function CallCard({
           <p className="ta-caption-1 text-muted-foreground">
             {call.status === "started"
               ? "Still on the line."
-              : "Not reviewed — this call happened before reviews, or the model was unreachable."}
+              : readOnly
+                ? "No summary for this call."
+                : "Not reviewed — this call happened before reviews, or the model was unreachable."}
           </p>
-          {call.status === "started" ? null : (
+          {call.status === "started" || readOnly ? null : (
             <Button size="sm" variant="outline" disabled={busy} onClick={onAnalyze}>
               <Sparkles className="size-3.5" aria-hidden />
               Analyze
@@ -146,10 +152,13 @@ export function ActivityTab({
   calls,
   customerId,
   onChanged,
+  readOnly = false,
 }: {
   calls: CallLog[];
   customerId: string;
   onChanged?: () => void;
+  /** Dashboard-only: the demo's own customer — no test switch, no Analyze. */
+  readOnly?: boolean;
 }) {
   const [selected, setSelected] = useState<CallLog | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -188,7 +197,7 @@ export function ActivityTab({
 
   return (
     <>
-      {testCount ? (
+      {testCount && !readOnly ? (
         <p className="ta-caption-1 text-muted-foreground pb-3">
           {testCount === calls.length
             ? "Every call here is marked as your own test, so none of them reach the numbers."
@@ -197,7 +206,7 @@ export function ActivityTab({
         </p>
       ) : null}
 
-      {gaps.length ? (
+      {gaps.length && !readOnly ? (
         <section className="bg-muted/40 mb-6 rounded-xl p-4">
           <h3 className="ta-headline-2 flex items-center gap-2">
             <Wrench className="text-muted-foreground size-4" aria-hidden />
@@ -226,6 +235,7 @@ export function ActivityTab({
             key={call.id}
             call={call}
             busy={busyId === call.id}
+            readOnly={readOnly}
             onOpen={() => setSelected(call)}
             onSetKind={(isTest) =>
               void patch(

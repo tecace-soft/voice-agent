@@ -7,4 +7,6 @@ export const DEMO_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>([
   "demoProspects",
   "demoProspect",
   "demoPipeline",
+  "myOverview",
+  "myCalls",
 ]);

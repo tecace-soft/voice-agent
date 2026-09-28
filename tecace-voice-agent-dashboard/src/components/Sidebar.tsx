@@ -38,6 +38,8 @@ export type ViewId =
   | "demoProspects"
   | "demoProspect"
   | "demoPipeline"
+  | "myOverview"
+  | "myCalls"
   | "changelog";
 
 const NAV: {
@@ -106,8 +108,12 @@ const NAV: {
 const DEMO_ONLY_NAV: typeof NAV = [
   {
     key: "demos",
-    group: "Demo",
-    items: [{ id: "demoProspect", label: "My receptionist", icon: IconPresentation }],
+    group: "My receptionist",
+    items: [
+      { id: "myOverview", label: "Overview", icon: IconOverview },
+      { id: "myCalls", label: "Call activity", icon: IconActivity },
+      { id: "demoProspect", label: "Settings", icon: IconPresentation },
+    ],
   },
 ];
 

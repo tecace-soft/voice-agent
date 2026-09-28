@@ -63,6 +63,9 @@ const STANDALONE_VIEWS = new Set<ViewId>([
 // wait on (or fail with) the shared all-mailboxes stats call either.
 const perPersonViews = new Set<ViewId>(["overview", "activity", "analytics"]);
 
+// What a demo-stage account can open; anything else lands on its Overview.
+const DEMO_OWNER_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>(["myOverview", "myCalls", "demoProspect", "changelog"]);
+
 const VIEW_TITLES: Record<ViewId, string> = {
   overview: "Overview",
   analytics: "Analytics",
@@ -81,6 +84,8 @@ const VIEW_TITLES: Record<ViewId, string> = {
   demoProspects: "Customers",
   demoProspect: "Detail",
   demoPipeline: "CRM",
+  myOverview: "Overview",
+  myCalls: "Call activity",
   changelog: "Changelog",
 };
 
@@ -152,7 +157,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // (`auth/guard.ts`), which is what makes this a tidy front end rather than the protection.
   const demoOnly = user.status === "demo";
   // …except the changelog, which is every account's.
-  const view = demoOnly && routeView !== "changelog" ? "demoProspect" : routeView;
+  const view = demoOnly && !DEMO_OWNER_VIEWS.has(routeView) ? "myOverview" : routeView;
   const isDemoView = DEMO_VIEWS.has(view);
   const routeId = demoOnly ? (user.businessId ?? undefined) : routeRecordId;
   const mailbox: MailboxScope = isAdmin ? routeMailbox : undefined;
@@ -241,7 +246,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
 
   const openView = (id: ViewId) => {
     // For a demo-stage account there is one destination, and it needs the record id in the path.
-    if (demoOnly) navigate({ view: "demoProspect", id: user.businessId ?? undefined });
+    if (demoOnly && id === "demoProspect") navigate({ view: "demoProspect", id: user.businessId ?? undefined });
     else navigate({ view: id });
     if (window.innerWidth < 900) closeNav();
   };
@@ -282,12 +287,12 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           {studio && <div className="topbar-slot tw" ref={setSlotMain} />}
           {!studio && (
           <nav className="crumbs ta-label-1" aria-label="Breadcrumb">
-            <span className="muted">{isDemoView ? "Demo" : "Transcribe"}</span>
+            <span className="muted">{demoOnly ? "My receptionist" : isDemoView ? "Demo" : "Transcribe"}</span>
             <span className="muted" aria-hidden="true">
               /
             </span>
             <span className="crumb-current">
-              {demoOnly ? "My receptionist" : VIEW_TITLES[view]}
+              {demoOnly && view === "demoProspect" ? "Settings" : VIEW_TITLES[view]}
             </span>
           </nav>
           )}
