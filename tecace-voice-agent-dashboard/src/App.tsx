@@ -34,6 +34,9 @@ import { DashboardSkeleton } from "./ui";
 // An invite or reset link the page was opened with (#/welcome?token=… / #/reset?token=…), read once
 // at load and taken out of the address bar before the router sees it.
 const LINK_AT_LOAD = typeof window === "undefined" ? null : takeLinkFromHash();
+// Which view the address asked for when the page loaded, before the router normalised it. A
+// customer who asked for nothing in particular lands on their own page.
+const ASKED_AT_LOAD = typeof window === "undefined" ? "" : window.location.hash.replace(/^#\/?/, "").split(/[/?]/)[0] ?? "";
 
 // Views that don't read the transcription stats, so a stats failure shouldn't hide them.
 // Analytics reads its own endpoint, so it belongs with the views that don't wait on /transcribe/stats.
@@ -177,7 +180,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // A customer who has just been approved lands on their own business information, not on the
   // voicemail Overview they have no use for. Only when nothing else was asked for in the address.
   useEffect(() => {
-    if (!isAdmin && user.status === "pre-production" && !window.location.hash.replace(/^#\/?/, "")) {
+    if (!isAdmin && user.status === "pre-production" && ASKED_AT_LOAD === "") {
       navigate({ view: "business", section: "business-info" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
