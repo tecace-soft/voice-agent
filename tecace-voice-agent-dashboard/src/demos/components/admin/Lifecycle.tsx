@@ -375,8 +375,11 @@ export function LifecycleNotice({
     );
   }
 
+  // Past the demo. The dialog stays mounted: an approval just made shows its result (and the sign-in
+  // link) here, because the approval itself is what moved the phase on.
   return (
     <div className="bg-primary/10 ta-label-1 text-primary flex flex-wrap items-center justify-between gap-2 rounded-lg p-3">
+      {dialogs}
       <span>
         {phase === "onboarding"
           ? "In onboarding. The customer now edits their own business information; changes here stay in the demo. Go live is on the Accounts page."
