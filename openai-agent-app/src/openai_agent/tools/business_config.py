@@ -76,6 +76,10 @@ class BusinessConfig:
     # How this business wants the assistant to behave on their calls, typed in the dashboard. Their
     # preferences, in their words — never a replacement for the caller-facing rules.
     house_rules: str
+    # Set only when the business has booking switched on, a calendar connected, and both published:
+    # {providerName, kind, title, durationMinutes, horizonDays, instructions}. None = no booking; the
+    # receptionist hands appointments to a person or takes a message, exactly as before.
+    booking: dict | None = None
 
 
 async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | None:
@@ -152,6 +156,7 @@ async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | N
         greeting=str(biz.get("greeting") or ""),
         transfer_topics=str(biz.get("transferTopics") or ""),
         house_rules=str(biz.get("houseRules") or ""),
+        booking=biz.get("booking") if isinstance(biz.get("booking"), dict) else None,
     )
     _cache[dialled] = (time.monotonic(), business)
     return business

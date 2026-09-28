@@ -6,6 +6,11 @@ Rules: see "Team sync log" in `CLAUDE.md`.
 Format:
 
 ```
+## 2026-09-27 21:30 · bottomup32 · transcribe-backend, openai-agent-app (Appointments on real phone calls)
+- `GET /business/config` (agent) gains `business.booking`: `{providerName, kind, title, durationMinutes, horizonDays, instructions}` when the PUBLISHED call settings have booking on AND a readable calendar is connected; otherwise `null`. Additive.
+- openai-agent-app (both bridges): with `booking` set, the inbound call gets `check_availability` / `book_appointment` (answered by `POST /business/calendar/agent-tool` with `AGENT_CONFIG_KEY`, the dialled number and the caller's number), `transfer_to_human` reworded, and the rule book's "you cannot book" lines swapped + an Appointments section (`realtime/booking_inbound.py`). Without it the prompt is byte-identical. Check: `python scripts/checks/verify_booking.py`.
+- ⚠ Deploy: the phone agent needs `BUSINESS_CONFIG_URL` pointing at the backend whose calendar should be used (staging: `https://va-staging-backend.vercel.app`) and the same `AGENT_CONFIG_KEY` as that backend. Real calls only reach accounts in `production` / `unassigned` stage (phase gates).
+
 ## YYYY-MM-DD HH:MM · <name> · <area>
 - What changed that affects others (API shape, env var, schema, shared file, port, convention)
 - ⚠ Action needed by others, if any

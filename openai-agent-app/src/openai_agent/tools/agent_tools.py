@@ -195,13 +195,20 @@ INBOUND_TOOL_SCHEMAS: list[dict] = [
 class ToolExecutor:
     """Runs a tool call for one lead against the shared backend."""
 
-    def __init__(self, cfg: Config, *, intake_id: str) -> None:
+    def __init__(self, cfg: Config, *, intake_id: str, booking_line: str = "", caller: str = "") -> None:
         self._cfg = cfg
         self._intake_id = intake_id
+        # Inbound, for a business that books: the dialled number. check_availability and
+        # book_appointment then go to transcribe-backend's /business/calendar/agent-tool (the
+        # business's own calendar, under its published rules) instead of backend-app's lead booking.
+        self._booking_line = booking_line
+        self._caller = caller
 
     async def run(self, name: str, args: dict) -> str:
         """Execute the named tool and return a JSON string for the model to read back."""
         try:
+            if self._booking_line and name in ("check_availability", "book_appointment"):
+                return await self._calendar_tool(name, args)
             if name == "check_availability":
                 return await self._post("/agent/check-availability", {"dateTime": args.get("dateTime", "")})
             if name == "get_openings":
@@ -267,6 +274,24 @@ class ToolExecutor:
             )
         except Exception as exc:  # noqa: BLE001
             log.warning("could not save call log: %s", exc)
+
+    async def _calendar_tool(self, name: str, args: dict) -> str:
+        """An inbound booking tool, answered by transcribe-backend with the agent's config key."""
+        url = f"{self._cfg.business_config_url.rstrip('/')}/business/calendar/agent-tool"
+        body = {"to": self._booking_line, "name": name, "args": args, "callerNumber": self._caller}
+        async with httpx.AsyncClient(timeout=self._cfg.request_timeout) as client:
+            resp = await client.post(url, json=body, headers={"x-agent-key": self._cfg.agent_config_key})
+        log.info("calendar tool %s -> %s", name, resp.status_code)
+        if not resp.is_success:
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error": "The calendar couldn't be reached.",
+                    "instruction": "Tell the caller you can't book it right now, and take a message "
+                    "with the time they want.",
+                }
+            )
+        return resp.text
 
     async def _post(self, path: str, body: dict) -> str:
         headers = {"Content-Type": "application/json"}

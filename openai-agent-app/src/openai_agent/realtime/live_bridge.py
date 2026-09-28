@@ -61,6 +61,7 @@ from .instructions import build_instructions
 from .instructions_inbound import RETURN_GREETING, spoken_greeting
 from .instructions_inbound import build_instructions as build_instructions_inbound
 from .instructions_neutral import NEUTRAL_GREETING, build_instructions_neutral
+from .booking_inbound import apply_booking, tools_with_booking
 from .korean import HANGUL, korean_speech_guide
 from .live_session import LIVE_URL, VOICE_PRICE_PER_MINUTE, backend_cost, build_live_session_start
 
@@ -427,6 +428,14 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 house_rules=business.house_rules,
                 can_transfer=bool(business.transfer_number) and not returning,
             )
+            if business.booking:
+                # Booking on, a calendar connected, both published: the receptionist books new
+                # appointments itself. See booking_inbound.py.
+                instructions = apply_booking(
+                    instructions,
+                    business.booking,
+                    reachable=bool(business.transfer_number) and not returning,
+                )
         # The opening line the caller is about to hear. If it has been rendered already (the
         # /incoming webhook starts that while Twilio connects), it is played the instant the stream
         # opens and the model is told what was said instead of being asked to say it — which is the
@@ -446,6 +455,8 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         tools = INBOUND_TOOL_SCHEMAS
         if returning or (business is not None and not business.transfer_number):
             tools = [t for t in INBOUND_TOOL_SCHEMAS if t.get("name") != "transfer_to_human"]
+        if business is not None and business.booking:
+            tools = tools_with_booking(tools)
     else:
         log.info(
             "call started for lead_name=%r intake_id=%r [live]",
@@ -463,7 +474,12 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             is_callback=str(params.get("is_callback", "")).lower() in ("yes", "true", "1"),
         )
         tools = None
-    executor = ToolExecutor(cfg, intake_id=params.get("intake_id", ""))
+    executor = ToolExecutor(
+        cfg,
+        intake_id=params.get("intake_id", ""),
+        booking_line=business.to if is_inbound and business is not None and business.booking else "",
+        caller=caller if is_inbound else "",
+    )
 
     state: dict = {
         # ---- read by the helpers borrowed from bridge.py ----

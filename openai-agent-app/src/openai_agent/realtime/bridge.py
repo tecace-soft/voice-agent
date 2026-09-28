@@ -25,6 +25,7 @@ from ..telephony import transfer
 from ..telephony.outbound import is_machine
 from ..tools.business_config import fetch_business_config, post_call_minutes, post_inbound_call
 from ..tools.agent_tools import INBOUND_TOOL_SCHEMAS, ToolExecutor
+from .booking_inbound import apply_booking, tools_with_booking
 from . import amd
 from . import dtmf
 from .instructions import build_instructions
@@ -192,6 +193,13 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 house_rules=business.house_rules,
                 can_transfer=bool(business.transfer_number) and not returning,
             )
+            if business.booking:
+                # Booking on, a calendar connected, both published — see booking_inbound.py.
+                instructions = apply_booking(
+                    instructions,
+                    business.booking,
+                    reachable=bool(business.transfer_number) and not returning,
+                )
         # A business with nobody to transfer to doesn't get the tool at all. Telling the model not
         # to offer it is necessary but not sufficient — removing it means a model that tries anyway
         # simply cannot, rather than reaching a dead end mid-call.
@@ -213,6 +221,8 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         )
         if no_transfer:
             tools = [t for t in INBOUND_TOOL_SCHEMAS if t.get("name") != "transfer_to_human"]
+        if business is not None and business.booking:
+            tools = tools_with_booking(tools)
     else:
         log.info(
             "call started for lead_name=%r intake_id=%r",
@@ -235,7 +245,12 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             is_callback=str(params.get("is_callback", "")).lower() in ("yes", "true", "1"),
         )
         tools = None  # the outbound default set
-    executor = ToolExecutor(cfg, intake_id=params.get("intake_id", ""))
+    executor = ToolExecutor(
+        cfg,
+        intake_id=params.get("intake_id", ""),
+        booking_line=business.to if is_inbound and business is not None and business.booking else "",
+        caller=caller if is_inbound else "",
+    )
 
     # 3. Configure the Realtime session on the connection opened above.
     state = {

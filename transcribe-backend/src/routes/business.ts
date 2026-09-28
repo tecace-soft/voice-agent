@@ -144,6 +144,25 @@ export const business = new Elysia({ prefix: "/business" })
         return { assigned: false, to: number.phoneE164, reason: "no_business_details" };
       }
 
+      // Booking on real calls: only under PUBLISHED rules, and only with a calendar connected and
+      // readable. The agent adds check_availability / book_appointment (answered by
+      // /business/calendar/agent-tool) exactly when this is not null.
+      const [callSettings, calendar] = number.userId
+        ? await Promise.all([findCallSettings(number.userId), bookingTargetFor(number.userId)])
+        : [null, null];
+      const rules = callSettings?.published?.appointments;
+      const booking =
+        rules?.enabled && calendar
+          ? {
+              providerName: calendar.providerName,
+              kind: calendar.kind,
+              title: rules.title,
+              durationMinutes: rules.durationMinutes,
+              horizonDays: rules.horizonDays,
+              instructions: rules.instructions,
+            }
+          : null;
+
       return {
         assigned: true,
         to: number.phoneE164,
@@ -167,6 +186,7 @@ export const business = new Elysia({ prefix: "/business" })
           // null means this customer has nobody to put callers through to, and the agent must not
           // offer to — a transfer it cannot perform is worse than never mentioning one.
           transferNumber: profile.transferNumber,
+          booking,
         },
       };
     },

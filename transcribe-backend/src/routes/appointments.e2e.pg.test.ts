@@ -733,6 +733,26 @@ describe("8. the phone agent books under the PUBLISHED rules", () => {
     expect(phoneRow).toMatchObject({ test: false, caller_phone: "+12065550199", reason: "Follow-up" });
   });
 
+  it("tells the phone agent it can book, from the published rules, in /business/config", async () => {
+    const config = (key = AGENT_KEY) => call("GET", `/business/config?to=${encodeURIComponent(JANE_LINE)}`, null, undefined, { "x-agent-key": key });
+    const on = await config();
+    expect(on.status).toBe(200);
+    expect(on.body.assigned).toBe(true);
+    // Published: Consultation, 30 minutes — not the draft-only hour-long "Draft only".
+    expect(on.body.business.booking).toMatchObject({ kind: "calendar", title: "Consultation", durationMinutes: 30 });
+    expect(JSON.stringify(on.body)).not.toContain(DAV_PASS);
+
+    // Published off → no booking block, whatever the draft says.
+    expect((await saveDraft({ ...RULES, enabled: false })).status).toBe(200);
+    expect((await call("POST", "/business/call-settings/publish", jane.auth)).status).toBe(200);
+    expect((await config()).body.business.booking).toBeNull();
+    expect((await saveDraft(RULES)).status).toBe(200);
+    expect((await call("POST", "/business/call-settings/publish", jane.auth)).status).toBe(200);
+    expect((await config()).body.business.booking).not.toBeNull();
+    // Leave the draft as the earlier test did: the later sections read it.
+    expect((await saveDraft({ ...RULES, title: "Draft only", durationMinutes: 60, bufferMinutes: 0 })).status).toBe(200);
+  });
+
   it("answers 404 for a number nobody owns, and 400 for a tool it doesn't have", async () => {
     expect((await agent({ to: SPARE_LINE, name: "check_availability" })).status).toBe(404);
     expect((await agent({ to: "+12065550999", name: "check_availability" })).status).toBe(404);
