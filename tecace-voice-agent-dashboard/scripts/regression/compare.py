@@ -103,6 +103,8 @@ HIDE = [
     # sign-up stage: "Change password" beside Sign out (customers who signed themselves up have no
     # admin to reset it for them). New by design; hidden in both so the rest of the row is compared.
     '.sidebar-user .user-password',
+    # versioning: "Version x.y.z · Changelog" under Last run opens the changelog. New by design.
+    '.sidebar-version',
 ]
 
 # Captures that are MEANT to differ: id -> (why, marker). The marker must appear in the new app's

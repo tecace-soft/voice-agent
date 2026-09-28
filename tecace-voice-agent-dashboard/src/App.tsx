@@ -12,6 +12,7 @@ import { AccountsPage } from "./pages/AccountsPage";
 import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AllFeedbackPage } from "./pages/AllFeedbackPage";
+import { ChangelogPage } from "./pages/ChangelogPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { FailuresPage } from "./pages/FailuresPage";
 import { BusinessPage } from "./pages/BusinessPage";
@@ -55,6 +56,7 @@ const STANDALONE_VIEWS = new Set<ViewId>([
   "demoProspects",
   "demoProspect",
   "demoPipeline",
+  "changelog",
 ]);
 
 // Overview and Daily activity fetch per person when an admin is looking at everyone, so they don't
@@ -79,6 +81,7 @@ const VIEW_TITLES: Record<ViewId, string> = {
   demoProspects: "Customers",
   demoProspect: "Detail",
   demoPipeline: "CRM",
+  changelog: "Changelog",
 };
 
 // One fetch of GET /transcribe/stats, shared by every view, with a manual refresh that keeps the
@@ -148,7 +151,8 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // screen or a permission error. The backend refuses the rest for that account regardless
   // (`auth/guard.ts`), which is what makes this a tidy front end rather than the protection.
   const demoOnly = user.status === "demo";
-  const view = demoOnly ? "demoProspect" : routeView;
+  // …except the changelog, which is every account's.
+  const view = demoOnly && routeView !== "changelog" ? "demoProspect" : routeView;
   const isDemoView = DEMO_VIEWS.has(view);
   const routeId = demoOnly ? (user.businessId ?? undefined) : routeRecordId;
   const mailbox: MailboxScope = isAdmin ? routeMailbox : undefined;
@@ -376,6 +380,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
               <p className="muted ta-body-2">Only an admin can manage API keys.</p>
             ))}
           {view === "feedback" && <FeedbackPage />}
+          {view === "changelog" && <ChangelogPage isAdmin={isAdmin} />}
           {view === "allFeedback" &&
             (isAdmin ? (
               <AllFeedbackPage onCountChange={setOpenFeedback} />

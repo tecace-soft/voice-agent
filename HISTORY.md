@@ -6,6 +6,11 @@ Rules: see "Team sync log" in `CLAUDE.md`.
 Format:
 
 ```
+## 2026-09-27 23:20 · bottomup32 · dashboard, workspace (versioning + changelog)
+- Product version starts at **0.0.1**; today is **0.0.9** (one release per working day since 2026-09-17, back-filled from git + this log). Source: `tecace-voice-agent-dashboard/src/changelog.ts`; `package.json` version must match (`tests/changelog.test.ts`).
+- Dashboard: "Version x.y.z · Changelog" under Last run in the sidebar opens `#/changelog` (every account, demo-stage customers included; `admin: true` lines hidden from customers). New `ViewId` `changelog` in `routing.ts` / `App.tsx` / `Sidebar.tsx`; `.sidebar-version` added to `compare.py` HIDE.
+- ⚠ Everyone: CLAUDE.md now requires a changelog entry + version bump for user-visible changes (same-day changes share that day's entry). HISTORY.md stays the technical log.
+
 ## 2026-09-27 21:30 · bottomup32 · transcribe-backend, openai-agent-app (Appointments on real phone calls)
 - `GET /business/config` (agent) gains `business.booking`: `{providerName, kind, title, durationMinutes, horizonDays, instructions}` when the PUBLISHED call settings have booking on AND a readable calendar is connected; otherwise `null`. Additive.
 - openai-agent-app (both bridges): with `booking` set, the inbound call gets `check_availability` / `book_appointment` (answered by `POST /business/calendar/agent-tool` with `AGENT_CONFIG_KEY`, the dialled number and the caller's number), `transfer_to_human` reworded, and the rule book's "you cannot book" lines swapped + an Appointments section (`realtime/booking_inbound.py`). Without it the prompt is byte-identical. Check: `python scripts/checks/verify_booking.py`.

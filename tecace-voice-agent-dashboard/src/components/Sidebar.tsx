@@ -18,6 +18,7 @@ import {
 } from "../icons";
 import { VoiceOrb } from "../demos/components/call/VoiceOrb";
 import { formatDateTime } from "../lib";
+import { APP_VERSION } from "../changelog";
 
 export type ViewId =
   | "overview"
@@ -36,7 +37,8 @@ export type ViewId =
   | "demoOverview"
   | "demoProspects"
   | "demoProspect"
-  | "demoPipeline";
+  | "demoPipeline"
+  | "changelog";
 
 const NAV: {
   key: string;
@@ -229,6 +231,15 @@ export function Sidebar({
           <div className="ta-caption-1 muted">Last run</div>
           <div className="ta-label-2">{lastRunAt ? formatDateTime(lastRunAt) : "No runs yet"}</div>
         </div>
+        <button
+          type="button"
+          className="sidebar-version ta-caption-2"
+          aria-current={active === "changelog" ? "page" : undefined}
+          onClick={() => onSelect("changelog")}
+          title="What's new in each version"
+        >
+          Version {APP_VERSION} · Changelog
+        </button>
 
         <div className="sidebar-user">
           <span className="avatar" aria-hidden="true" title={user.name}>

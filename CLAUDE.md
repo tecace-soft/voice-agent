@@ -16,6 +16,10 @@ Roles:
 - **Demos owner** — works mainly in `tecace-voice-agent-dashboard/src/demos/`. If a change needs something outside that folder (`transcribe-backend/src/demo/`, `src/routing.ts`, styles, `api/`), log it with `⚠` for the integrator.
 - **Integrator** — merges and integrates the whole repo. When merging, reconcile HISTORY.md (keep all entries, re-sort newest-first) and log the merge itself if it changed behaviour.
 
+## Versioning and changelog — required for user-visible changes
+
+The product version lives in `tecace-voice-agent-dashboard/src/changelog.ts` (shown in the sidebar as "Version x.y.z · Changelog", page `#/changelog`). One release per working day that ships something users notice: add an entry on top (`0.0.x` until the first customer launch, today's date, a one-line title, `new`/`improved`/`fixed` items written for the dashboard user; operator-only lines get `admin: true`) and set `version` in that app's `package.json` (+ `package-lock.json` root) to match — `tests/changelog.test.ts` fails otherwise. Several changes on the same day go into that day's entry. HISTORY.md stays the team's technical log; the changelog is what users read.
+
 ## Workspace shape
 
 Monorepo-style workspace: each top-level directory is a **self-contained app** (own deps, `.env`, README) sharing one git history. There is no root build/test tooling — `cd` into an app and follow its README. `.env` files are git-ignored and per-machine (see each app's `.env.example`).
