@@ -64,22 +64,36 @@ export function transfersBlock(scenarios: TransferScenario[]): string {
     "- Transfer ONLY when the caller asks for one of these, or what they describe clearly matches a \"Use when\". Never transfer to be helpful when you can answer from the facts.",
     "- Pick the single best match and pass its scenario_id to transfer_call. If a description says NOT to use it in a situation, respect that.",
     "- If they ask for someone or something NOT listed here, say you can't put them through to that right now and offer to take a message. Never invent a name, a team or a number.",
-    "- Warm transfers: first ask for what is listed after \"get:\", one thing at a time, then say \"Of course, let me put you through. One moment.\" and call transfer_call with a one-sentence English `reason` and their name.",
+    "- Warm transfers: once they have said yes to being put through, ask for what is listed after \"get:\", one thing at a time and skipping anything they have already told you, then say \"Of course, let me put you through. One moment.\" and call transfer_call with a one-sentence English `reason` and their name.",
     "- If the transfer result says nobody picked up, apologise once, say they're not available right now, and take a message.",
     BUSINESS_WORDS,
   ].join("\n");
 }
 
+/**
+ * Where a link goes, as a site name ("maps.google.com"), so the receptionist can say what it is
+ * offering. Never the whole URL: a path or a query string read aloud is noise, and a tracking token
+ * is nobody's business.
+ */
+function linkSite(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "the web";
+  }
+}
+
 /** Links the assistant may offer to text. */
 export function linksBlock(links: LinkScenario[]): string {
   if (!links.length) return "";
-  const rows = links.map((l) => `- scenario_id "${l.id}": when the caller asks about ${l.triggers.join(", ")}.`);
+  const rows = links.map((l) => `- scenario_id "${l.id}": a link on ${linkSite(l.url)}. Offer it when the caller asks about ${l.triggers.join(", ")}.`);
   return [
     "# Texting a link",
     "You can text the caller a link for these topics:",
     ...rows,
     "",
-    "- If you can answer out loud, answer first, THEN offer the link: \"It's at 123 Main Street. Would you like me to text you a link with directions?\"",
+    "- If you can answer out loud from the facts, answer first, THEN offer the link in the same turn: \"…Would you like me to text you a link with directions?\"",
+    "- Never read a link or web address out character by character; the text is what carries it.",
     "- Only call send_link after the caller says yes. Never send one they did not agree to.",
     "- It goes to the number they are calling from. If that number is withheld or not a US number, ask for a US mobile number, read it back digit by digit, and pass it as `phone` once they confirm.",
     "- Then say what the result says, and nothing more: \"sent\" → \"I've texted that to you.\"; \"consent_requested\" → \"I've sent you a text — reply YES and the link comes right through.\"; \"opted_out\" or a failure → say you can't text that number, and give the information out loud instead.",
@@ -91,8 +105,9 @@ export function messagesBlock(scenarios: MessageScenario[]): string {
   if (!scenarios.length) return "";
   return [
     "# Taking messages for this business",
-    "When a message fits one of these situations, follow its brief for what to ask, then call take_message with the situation's name as `scenario`:",
+    "When a message fits one of these situations, follow its brief for what to ask, then call take_message with the situation's name as `scenario` and their answers in `message`:",
     ...scenarios.map((s) => `- ${s.name}: ${s.brief}`),
+    "A brief is the one exception to asking only for their name and what it is about: ask what it lists, ONE question at a time, skip anything they have already told you, and take no for an answer — a caller who does not know or would rather not say still gets their message taken.",
     "When none of them fits, take the caller's name and what it is about, as usual.",
     BUSINESS_WORDS,
   ].join("\n");

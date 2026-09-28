@@ -88,7 +88,7 @@ describe("an in-app test call", () => {
     }
     expect(session.live).toContain("# This call");
     expect(session.live).toContain("206 555 0199");
-    expect(session.backend).toContain("# Business profile (JSON)");
+    expect(session.backend).toContain("# What you know: the full business profile (JSON)");
   });
 
   it("opens with the business's own greeting, placeholders filled", () => {
@@ -268,5 +268,142 @@ describe("open or closed", () => {
     expect(openState(at("2026-09-29T21:30:00Z"), tz, hours([{ day: "Tuesday", open: "09:00", close: "" }]))).toBe("unknown");
     expect(openState(at("2026-09-29T21:30:00Z"), tz, hours([{ day: "Monday", open: "09:00", close: "17:00" }]))).toBe("unknown");
     expect(openState(at("2026-09-29T21:30:00Z"), tz, hours([{ day: "Tuesday", open: "", close: "", closed: true }]))).toBe("closed");
+  });
+});
+
+// Every combination of what a business can switch on — transfers, texted links, message briefs,
+// booking — on each channel. These check the SHAPE of what a call is told, never its wording, so the
+// wording can keep improving without editing this; what fails here is the kind of drift no single
+// example catches: a line pointing at a section the call does not have, a tool the prompt describes
+// but the call lacks (or the reverse), "you can book" next to "you cannot book", business-written
+// text without its fence, or a prompt that grows past what a voice model follows well.
+describe("every feature combination", () => {
+  const booking = { providerName: "Google Calendar", kind: "calendar" as const };
+  const all = validateCallSettings(
+    {
+      transfer: { scenarios: [{ id: "billing", mode: "warm", name: "Billing", numbers: ["2535550111"], description: "Questions about a bill." }] },
+      links: { scenarios: [{ id: "map", triggers: ["directions"], url: "https://maps.example.com/acme?utm=x" }] },
+      messages: { scenarios: [{ name: "New patient", brief: "Ask for their insurance provider." }] },
+      appointments: { enabled: true, title: "Exam", instructions: "Ask if it is their first visit." },
+    },
+    { waterfallAllowed: false },
+  );
+  const OPTIONAL_TOOLS = ["transfer_call", "send_link", "check_availability", "book_appointment"];
+
+  // Headings a line refers to by name: `under "This call"`, `the "Never answer these" list`,
+  // `from 'Texting a link'`, `the Transfers section`. A reference resolves when a heading starts with it.
+  function references(text: string): string[] {
+    const quoted = [...text.matchAll(/(?:under|from|per|the|in) ["'“]([A-Z][^"'”\n]{2,40})["'”]/g)].map((m) => m[1]!);
+    const named = [...text.matchAll(/\bthe ([A-Z][a-z]+(?: [a-z]+)*) section\b/g)].map((m) => m[1]!);
+    return [...new Set([...quoted, ...named])];
+  }
+  const headings = (text: string) => [...text.matchAll(/^#+ (.+)$/gm)].map((m) => m[1]!.trim());
+
+  for (const channel of ["app-test", "public-demo", "sim"] as const) {
+    for (let mask = 0; mask < 16; mask++) {
+      const on = { transfers: !!(mask & 1), links: !!(mask & 2), messages: !!(mask & 4), booking: !!(mask & 8) };
+      const settings = {
+        ...all,
+        transfer: { ...all.transfer, scenarios: on.transfers ? all.transfer.scenarios : [] },
+        links: { scenarios: on.links ? all.links.scenarios : [] },
+        messages: { scenarios: on.messages ? all.messages.scenarios : [] },
+      };
+      const label = `${channel} ${Object.entries(on).filter(([, v]) => v).map(([k]) => k).join("+") || "nothing on"}`;
+      const session = composeSession({
+        record, callSettings: settings, channel, now, timeZone: tz, waterfallAllowed: false, neverPublished: false,
+        callerNumber: "+12065550199", booking: on.booking ? booking : null,
+      });
+      const toolText = JSON.stringify(session.tools);
+
+      it(`${label}: every section a line points at is there`, () => {
+        for (const [name, text] of [["live", session.live], ["backend", session.backend]] as const) {
+          const have = headings(text);
+          for (const ref of references(text + "\n" + toolText)) {
+            if (!have.some((h) => h.startsWith(ref))) throw new Error(`${name} points at "${ref}", which this call does not have`);
+          }
+        }
+      });
+
+      it(`${label}: the prompt describes exactly the tools the call has`, () => {
+        const names = session.tools.map((t) => t.name);
+        expect(names).toContain("take_message");
+        expect(names).toContain("end_call");
+        for (const tool of OPTIONAL_TOOLS) {
+          expect(`${tool} in prompt: ${session.live.includes(tool)}`).toBe(`${tool} in prompt: ${names.includes(tool)}`);
+        }
+        expect(names.includes("transfer_call")).toBe(on.transfers);
+        expect(names.includes("send_link")).toBe(on.links);
+        expect(names.includes("book_appointment")).toBe(on.booking);
+      });
+
+      it(`${label}: booking is either on or off, never both`, () => {
+        for (const text of [session.live, session.backend]) {
+          if (on.booking) {
+            expect(text).not.toContain("You are NOT the booking system");
+            expect(text).not.toContain("I can't book");
+            expect(text).toContain("# Appointments");
+          } else {
+            expect(text).not.toContain("BOOKING A NEW APPOINTMENT IS YOURS");
+            expect(text).not.toContain("# Appointments");
+          }
+        }
+      });
+
+      it(`${label}: what the business typed is fenced as theirs, and a link is never spelled out`, () => {
+        if (on.transfers) expect(session.live).toMatch(/# Transfers[\s\S]*were written by the business/);
+        if (on.messages) expect(session.live).toMatch(/# Taking messages for this business[\s\S]*were written by the business/);
+        if (on.booking) expect(session.live).toContain("written by them");
+        expect(session.live).not.toContain("https://maps.example.com");
+        expect(session.live).not.toContain("utm=");
+      });
+
+      it(`${label}: keeps the bridge's phrases and leaves nothing unfilled`, () => {
+        if (on.transfers && !on.booking) {
+          for (const phrase of BRIDGE_COUPLED_PHRASES) expect(session.live).toContain(phrase);
+        }
+        expect(session.live).not.toMatch(/undefined|\bnull\b|\{(business|agent|[a-z_]+)\}/);
+      });
+
+      it(`${label}: stays within the voice budget`, () => {
+        expect(session.live.length).toBeLessThan(40_000);
+      });
+    }
+  }
+});
+
+// A business that uses everything at the sizes the settings screens allow in practice. The budget is
+// a ceiling on growth, not a target: past it, per-business text belongs in the delegate's profile.
+describe("a busy business", () => {
+  const long = (words: string, n: number) => Array.from({ length: n }, () => words).join(" ").slice(0, 290).trim();
+  const busyProfile: BusinessProfile = {
+    ...profile,
+    faqs: Array.from({ length: 20 }, (_, i) => ({ q: `Question number ${i + 1} about the clinic?`, a: long(`Answer ${i + 1} is a full sentence.`, 12) })),
+  };
+  const busy = validateCallSettings(
+    {
+      transfer: {
+        scenarios: Array.from({ length: 8 }, (_, i) => ({
+          id: `t${i}`, mode: i % 2 ? "warm" : "cold", name: `Team ${i + 1}`, numbers: [`25355502${String(10 + i)}`],
+          description: long(`Callers who need team ${i + 1} for their particular kind of question.`, 5),
+        })),
+      },
+      links: { scenarios: Array.from({ length: 6 }, (_, i) => ({ id: `l${i}`, triggers: ["topic one", "topic two", "topic three"], url: `https://site${i}.example.com/page` })) },
+      messages: { scenarios: Array.from({ length: 6 }, (_, i) => ({ name: `Situation ${i + 1}`, brief: long(`Ask for detail ${i + 1} and whether it is urgent.`, 8) })) },
+      appointments: { enabled: true, title: "Consultation", instructions: long("Ask whether it is their first visit.", 12) },
+    },
+    { waterfallAllowed: false },
+  );
+  const session = composeSession({
+    record: { ...record, profile: busyProfile }, callSettings: busy, channel: "app-test", now, timeZone: tz,
+    waterfallAllowed: false, neverPublished: false, callerNumber: "+12065550199",
+    booking: { providerName: "Cal.com", kind: "booking" },
+  });
+
+  it(`hands every FAQ to the voice, answer and all (live=${session.live.length} chars)`, () => {
+    for (const faq of busyProfile.faqs!) expect(session.live).toContain(faq.a);
+  });
+
+  it("stays under 48,000 characters", () => {
+    expect(session.live.length).toBeLessThan(48_000);
   });
 });

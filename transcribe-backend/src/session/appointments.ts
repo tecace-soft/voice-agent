@@ -23,7 +23,7 @@ export const CHECK_AVAILABILITY: FunctionTool = {
     properties: {
       date: {
         type: "string",
-        description: "The day the caller asked for, as YYYY-MM-DD from the dates under 'Now'. Leave empty for the soonest openings.",
+        description: "The day the caller asked for, as YYYY-MM-DD from the dates under 'Date and time'. Leave empty for the soonest openings.",
       },
       part_of_day: {
         type: "string",

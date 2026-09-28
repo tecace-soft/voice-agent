@@ -119,9 +119,10 @@ function slots(reachable: boolean) {
         "Reached only when they have TURNED DOWN being put through, when they ask for a callback instead, or when nothing in the Transfers section fits. Offer the person first — see Route B.",
       transferRules: `- NEVER transfer for anything except Route A or a scenario the Transfers section lists. Questions, complaints and sales calls do NOT get transferred unless that section names them. If nothing there fits, take a message (Route C).
 - If the caller ASKS for a human, that counts as Route A — transfer them, do not talk them out of it.
-- If we are CLOSED right now (the call details under "This call" say so), say so before transferring: "We're closed at the moment, but let me see if anyone's still around." Then transfer anyway — if nobody picks up, the call comes back to you and you can take a message.`,
+- If we are CLOSED right now (the "Date and time" section says so), say so before transferring: "We're closed at the moment, but let me see if anyone's still around." Then transfer anyway — if nobody picks up, the call comes back to you and you can take a message.`,
       faqContact: "If they want a person, offer to take a message or put them through.",
-      faqSpecific: "say yes and offer to put them through to set up a consultation. If you are not sure, do NOT guess — say it sounds like one for the team, and offer to put them through or take a message.",
+      faqSpecific: "say yes and offer to put them through to set up a consultation.",
+      faqUnsure: "If you are not sure, do NOT guess — say it sounds like one for the team, and offer to put them through or take a message.",
       faqAi: "and you can put them through to a person whenever they want.",
       faqSupport: "If they are clearly urgent, or ask for a person, put them through instead.",
       faqByName: "Offer to put them through to the team, or take a message for that person by name.",
@@ -150,7 +151,8 @@ function slots(reachable: boolean) {
       "This is the main route on this call. There is nobody to put anyone through to, so anything you cannot finish yourself ends here — do not offer a person first, and do not apologise twice for it.",
     transferRules: `- If the caller ASKS for a person, do not argue and do not pretend: say you can't put calls through but you can take a message and have someone get back to them, then take it (Route C). Do not explain why.`,
     faqContact: "If they want a person, offer to take a message for the team.",
-    faqSpecific: "say yes and offer to take a message so the team can set up a consultation. If you are not sure, do NOT guess — say it sounds like one for the team, and offer to take a message.",
+    faqSpecific: "say yes and offer to take a message so the team can set up a consultation.",
+    faqUnsure: "If you are not sure, do NOT guess — say it sounds like one for the team, and offer to take a message.",
     faqAi: "and you can take a message for the team whenever they want.",
     faqSupport: "If they are clearly urgent, say so in the message so the team knows.",
     faqByName: "Offer to take a message for that person by name.",
@@ -176,7 +178,7 @@ function faq(s: ReturnType<typeof slots>): [string, string][] {
     ],
     [
       "Do you do <some specific thing>? / Can you help with <a project>?",
-      `If it plainly falls under the services in the facts, ${s.faqSpecific}`,
+      `If it plainly falls under the services in the facts, ${s.faqSpecific} ${s.faqUnsure}`,
     ],
     [
       "Where are you located?",
@@ -184,7 +186,7 @@ function faq(s: ReturnType<typeof slots>): [string, string][] {
     ],
     [
       "What are your hours? / Are you open?",
-      'Give the hours from the facts. The call details under "This call" also say whether we are open right now, when that is known, so you can answer that directly.',
+      'Give the hours from the facts. The "Date and time" section also says whether we are open right now, when that is known, so you can answer that directly.',
     ],
     [
       "How do I get in touch / what is your website / can I email someone?",
@@ -245,7 +247,7 @@ function faq(s: ReturnType<typeof slots>): [string, string][] {
 function bookingRoute(reachable: boolean): string {
   const fallback = reachable ? "offer to put them through, or take a message (Route C)" : "take a message (Route C)";
   return `BOOKING A NEW APPOINTMENT IS YOURS TO DO, with two tools. Anything the Appointments section below asks for comes first.
-- When they want to book, ask when suits them if they have not said. Then call check_availability: with date (YYYY-MM-DD, taken from the dates under "Now") if they named a day, and part_of_day if they said morning, afternoon or evening. Leave both out for "whenever's soonest".
+- When they want to book, ask when suits them if they have not said. Then call check_availability: with date (YYYY-MM-DD, taken from the dates under "Date and time") if they named a day, and part_of_day if they said morning, afternoon or evening. Leave both out for "whenever's soonest".
 - Offer two or three of the openings it returns, as its "spoken" text says them. NEVER offer, suggest or agree to a time check_availability did not return — that tool is the only way you can see the calendar. If they ask for a time it did not list, it is not open; offer the nearest ones it gave you.
 - When they pick one, get their name if you do not have it, read the day and time back ONCE, and on a yes call book_appointment with that opening's start exactly as check_availability returned it, their name, and in reason one short line of what it is for. You already have their number; do not ask for it.
 - Only after book_appointment returns booked: true, confirm it in one sentence — "${LINE_BOOKED}" — then hand the turn back.
@@ -256,9 +258,18 @@ function bookingRoute(reachable: boolean): string {
 - NEVER promise what a person will do, and no discount, exception or accommodation the facts do not already state.`;
 }
 
+// With booking on, the handoff's opening bullet ("answer from the facts and say what happens next",
+// ending in an offer of a person) would follow straight on from "book it yourself" and read as the
+// next step of a booking. It is replaced by a line saying when the handoff applies at all.
+const HANDOFF_OPENING = /^- What you CAN do is answer from the facts and say what happens next:.*$/m;
+
 /** The handoffs, reworded where they say the receptionist cannot book. */
-function bookingAwareHandoff(handoff: string): string {
+function bookingAwareHandoff(handoff: string, reachable: boolean): string {
+  const opening = reachable
+    ? "PUTTING SOMEONE THROUGH is for an existing appointment, and for anything the booking tools cannot do:"
+    : "TAKING A MESSAGE is for an existing appointment, and for anything the booking tools cannot do:";
   return handoff
+    .replace(HANDOFF_OPENING, opening)
     .replace(LINE_OFFER_BOOKING, LINE_OFFER_CHANGE)
     .replace("would you like me to put you through to book it?", "would you like me to put you through to someone about it?")
     .replace(
@@ -270,7 +281,9 @@ function bookingAwareHandoff(handoff: string): string {
 export function callRules(input: RulesInput): string {
   const { businessName, agentName, reachable } = input;
   const canBook = Boolean(input.canBook);
-  const s = slots(reachable);
+  const base = slots(reachable);
+  // A service the caller asks about is one they can book on the spot when booking is on.
+  const s = canBook ? { ...base, faqSpecific: "say yes and offer to book it (Route A)." } : base;
   const faqLines = faq(s)
     .map(([question, answer]) => `- ${question}\n  -> ${answer}`)
     .join("\n");
@@ -330,7 +343,8 @@ ${
       ? `An existing appointment is ALWAYS a person's job. You can see when the calendar is free, not who is booked in it, so you cannot find, confirm, move, or cancel an existing appointment yourself — attempting to would leave the caller believing something was done that was not.
 
 ${bookingRoute(reachable)}
-${bookingAwareHandoff(s.handoff)}`
+
+${bookingAwareHandoff(s.handoff, reachable)}`
       : `An existing appointment is ALWAYS a person's job. You cannot see the calendar, so you cannot confirm, move, or cancel anything yourself — attempting to would leave the caller believing something was done that was not.
 
 HELP THEM WITHOUT PROMISING ANYTHING. Someone asking to book is interested, and the facts usually answer most of what they want to know — what a service includes, what it costs, how long it takes, how far ahead people book. Give them that, from the facts, and then ${s.bookingNext}.

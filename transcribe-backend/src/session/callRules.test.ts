@@ -119,6 +119,28 @@ describe("the unreachable rule book", () => {
   });
 });
 
+describe("the rule book when the receptionist can book", () => {
+  const booking = callRules({ ...base, reachable: true, canBook: true });
+  const bookingAlone = callRules({ ...base, reachable: false, canBook: true });
+
+  it("offers to book a service the caller asks about, not to put them through for it", () => {
+    expect(booking).toContain("say yes and offer to book it (Route A).");
+    expect(booking).not.toContain("offer to put them through to set up a consultation");
+    expect(booking).toContain("If you are not sure, do NOT guess");
+  });
+
+  it("says when a person is still needed, instead of offering one as the next step of a booking", () => {
+    expect(booking).toContain("PUTTING SOMEONE THROUGH is for an existing appointment");
+    expect(booking).not.toContain("What you CAN do is answer from the facts and say what happens next");
+    expect(bookingAlone).toContain("TAKING A MESSAGE is for an existing appointment");
+    expect(bookingAlone).not.toContain("put you through");
+  });
+
+  it("takes dates from the Date and time section", () => {
+    expect(booking).toContain('taken from the dates under "Date and time"');
+  });
+});
+
 describe("the voice preamble", () => {
   const preamble = voicePreamble(tools);
 

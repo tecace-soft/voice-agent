@@ -219,6 +219,14 @@ describe("what the agent knows", () => {
     expect(line.endsWith("…")).toBe(true);
   });
 
+  it("says a question's whole answer, at the longest the FAQ editor stores", () => {
+    const answer = `${"We take most major plans, ".repeat(11)}and we check yours before the visit.`.slice(0, 300);
+    const faq: BusinessProfile = { ...empty, faqs: [{ q: "Which insurance plans do you take for cleanings and exams?", a: answer }] };
+    const [line = ""] = renderFacts(faq).split("\n");
+    expect(line).toContain(answer.trim());
+    expect(line.endsWith("…")).toBe(false);
+  });
+
   it("flattens anything a browser could put in a text box", () => {
     const messy: BusinessProfile = {
       ...empty,

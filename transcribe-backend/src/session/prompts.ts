@@ -2,6 +2,7 @@ import { knownHours } from "../demo/hours.js";
 import { languageOf } from "../demo/languages.js";
 import { backendProfile, city, safetyLines, withArticle } from "../demo/prompt.js";
 import type { BusinessProfile, CustomerPrompts } from "../demo/types.js";
+import { MAX_FIELD_CHARS } from "../business/profileShape.js";
 
 // The two prompts a business can see and edit: who the receptionist is and what it knows.
 //
@@ -32,7 +33,10 @@ export const DEFAULT_AGENT_NAME = "Tess";
 /** Services and FAQs the voice model is handed directly; the backend has the whole profile. */
 const VOICE_SERVICES = 12;
 const VOICE_FAQS = 20;
-const VOICE_FAQ_ANSWER_MAX = 240;
+// An answer is stored at up to MAX_FIELD_CHARS (300). The FAQs are the answers a business wrote to
+// be said as written, so every stored one is handed to the voice; a lower cap here dropped the whole
+// question from the voice model without anyone seeing it.
+const VOICE_FAQ_ANSWER_MAX = MAX_FIELD_CHARS;
 
 export function agentNameOf(name: string | null | undefined): string {
   return name?.trim() || DEFAULT_AGENT_NAME;
@@ -130,7 +134,8 @@ export function buildSessionBackendPrompt(profile: BusinessProfile, agentName: s
     "- Use only the profile below. If it does not cover the question, say so plainly. Never invent prices, hours, or availability.",
     ...safetyLines(profile.category).map((line) => `- ${line}`),
     "",
-    "# Business profile (JSON)",
+    // Named so the rule book's "What you know" section resolves on the delegate model too.
+    "# What you know: the full business profile (JSON)",
     JSON.stringify(backendProfile(profile), null, 2),
   ].join("\n");
 }

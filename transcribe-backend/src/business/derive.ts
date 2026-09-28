@@ -126,11 +126,18 @@ function clean(text: string | undefined): string {
 }
 
 /** A sentence, capped and tidied, or nothing if there was nothing to say. */
-function fact(text: string): string | null {
+function fact(text: string, max: number = MAX_FACT_CHARS): string | null {
   const line = clean(text);
   if (!line) return null;
-  return line.length > MAX_FACT_CHARS ? `${line.slice(0, MAX_FACT_CHARS - 1).trimEnd()}…` : line;
+  return line.length > max ? `${line.slice(0, max - 1).trimEnd()}…` : line;
 }
+
+/**
+ * A question and its answer, as one line. Held to what the FAQ editor can store (a 160-character
+ * question, a 300-character answer) rather than MAX_FACT_CHARS: at 200 an answer the business wrote
+ * to be said as written was cut mid-sentence, and the agent read out the half it had.
+ */
+const MAX_FAQ_CHARS = 470;
 
 const POLICY_LABEL: [keyof BusinessProfile["policies"], string][] = [
   ["reservations", "Reservations"],
@@ -182,7 +189,7 @@ export function renderFacts(profile: BusinessProfile): string {
   for (const faq of profile.faqs ?? []) {
     const q = clean(faq.q);
     const a = clean(faq.a);
-    if (q && a) lines.push(fact(`${q} ${a}`));
+    if (q && a) lines.push(fact(`${q} ${a}`, MAX_FAQ_CHARS));
   }
 
   // The caps, applied from the front so the first-asked things survive a long profile.

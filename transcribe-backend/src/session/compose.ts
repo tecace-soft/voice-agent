@@ -147,7 +147,11 @@ function takeMessageTool(messages: MessageScenario[]): FunctionTool {
       description:
         "Digits only. Default to the number the call came from, given under 'This call' — do NOT ask a caller for the number they are calling you on. Only when it is withheld, or they give a different one, ask and read it back.",
     },
-    message: { type: "string", description: "What the call is regarding, in one or two sentences." },
+    message: {
+      type: "string",
+      description:
+        "What the call is regarding, in one or two sentences, in the caller's words — plus their answers to what the situation's brief asked for, if one fits.",
+    },
     requested_time: {
       type: "string",
       description: "When they want an appointment, in THEIR words. Leave empty if they did not say. Never convert it to a date.",
@@ -164,7 +168,7 @@ function takeMessageTool(messages: MessageScenario[]): FunctionTool {
     type: "function",
     name: "take_message",
     description:
-      "Record a message for the team: when the caller wants a callback, turned down being put through, or there is nobody to put them through to.",
+      "Record a message for the team: when the caller wants a callback, turned down being put through, there is nobody to put them through to, or the team has to follow something up.",
     parameters: { type: "object", properties, required: ["message"] },
   };
 }
