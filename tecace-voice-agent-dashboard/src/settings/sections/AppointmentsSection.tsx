@@ -131,8 +131,9 @@ function BusinessAppointments({ binding, userId }: { binding: CallSettingsBindin
           <div className="bg-muted/50 flex items-start gap-3 rounded-lg p-3">
             <CalendarCheck className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden />
             <p className="ta-caption-1 text-muted-foreground">
-              Nothing is connected in the demo. Once onboarding starts, connect your calendar here in a few
-              clicks — the booking rules below carry over.
+              A demo has no calendar. Once onboarding starts, the calendar is connected from the business's
+              own page — Business information › Appointments, signed in as that account (an admin: pick the
+              account first). The booking rules below carry over.
             </p>
           </div>
         ) : loadError ? (
