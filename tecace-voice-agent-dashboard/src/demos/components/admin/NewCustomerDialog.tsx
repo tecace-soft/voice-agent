@@ -37,7 +37,9 @@ export function NewCustomerDialog({ onCreated }: { onCreated: () => void }) {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
-  async function submit(event: React.FormEvent) {
+  // Dashboard-only (PORTING.md): research is a choice. "Add customer" saves the record and leaves the
+  // billed run to the customer page's Run research; "Add and research" is the promo's old behaviour.
+  async function submit(event: React.FormEvent, research = false) {
     event.preventDefault();
     setBusy(true);
     setError(null);
@@ -45,10 +47,12 @@ export function NewCustomerDialog({ onCreated }: { onCreated: () => void }) {
       const response = await demoFetch("/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, research }),
       });
       await readJson<{ customer: unknown }>(response);
-      toast.success("Customer added. Research is running.");
+      toast.success(
+        research ? "Customer added. Research is running." : "Customer added. Run research from its page when you're ready.",
+      );
       setOpen(false);
       setForm({
         businessName: "",
@@ -82,8 +86,8 @@ export function NewCustomerDialog({ onCreated }: { onCreated: () => void }) {
         <DialogHeader>
           <DialogTitle className="ta-headline-1">New customer</DialogTitle>
           <DialogDescription className="ta-caption-1">
-            The business name is what gets researched. A website or a Google Maps link
-            just helps pick the right one.
+            Add the business now and research it later from its page, or research it straight away
+            (1–2 minutes, a billed run). A website or a Google Maps link helps pick the right one.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
@@ -193,6 +197,14 @@ export function NewCustomerDialog({ onCreated }: { onCreated: () => void }) {
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
               Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy || !form.businessName.trim()}
+              onClick={(event) => void submit(event, true)}
+            >
+              Add and research
             </Button>
             <Button type="submit" disabled={busy || !form.businessName.trim()}>
               {busy ? "Adding" : "Add customer"}

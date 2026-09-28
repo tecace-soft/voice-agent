@@ -835,3 +835,7 @@ All dashboard-only; the promo had no accounts.
 - `routes/auth.ts`: `GET /setup-state` adds `mail`, `signup`; new `POST /me/password`, `POST /forgot`, `POST /tokens/inspect`, `POST /tokens/accept`, `POST /users/:id/invite`. Public user adds `signupSource`, `emailVerified`.
 - Lifecycle on demo records adds `account` {name, email, verified, source} and, for requests without an account, `request.requestId/name/email/phone/openCount`. Public read (`GET /demo/public/customers/:id`) adds `setup` and the full booking rules in `capabilities.appointments`.
 - Schema: `users.email_verified_at`, `users.signup_source`; tables `signup_requests`, `auth_tokens`. `src/email/mailer.ts` (nodemailer, `SMTP_*`, `DASHBOARD_URL`, `ADMIN_NOTIFY_EMAIL`).
+
+## Customers: research optional, safer delete (2026-09-27) — not a promo port
+- `POST /demo/customers` takes `research` (boolean, default true). `false` saves the record at `status: "ready"` with no run and no `researchedAt`; the run is `POST /demo/customers/:id/research` as before.
+- `DELETE /demo/customers/:id` answers 409 `{error, code: "has_account"}` when an account past the demo (pre-production / production / unassigned) is linked. A linked `demo` account is unlinked (and its request cleared) in the same transaction, and open `signup_requests` for the demo are declined.

@@ -18,6 +18,12 @@ Format:
 
 ---
 
+## 2026-09-27 23:00 · bottomup32 · transcribe-backend, dashboard (customers: research optional, delete a selection)
+- `POST /demo/customers` takes `research` (boolean, default true = old behaviour). `false` saves at `status: "ready"` with no run/`researchedAt`; the dashboard badges it "Not researched" and the customer page offers **Run research**. New dialog buttons: **Add customer** (no research) / **Add and research**.
+- `DELETE /demo/customers/:id` now answers 409 `code: "has_account"` when a non-demo account is linked; a linked demo-stage account is unlinked and open sign-up requests for it are declined. Customers table: row checkboxes + Delete for the selection.
+- Regression: `fake_backend.py` honours `research: false`; `demos_e2e.py` uses "Add and research". Backend 873/873, vitest 310/310, demos_e2e/tw_probe/demo_customer pass, compare IDENTICAL.
+- Local dev (Hans): `transcribe-backend/.env.local` now points at Neon branch `staging` (same DB as `va-staging-backend`). Local code self-migrates that DB (additive DDL only).
+
 ## 2026-09-27 22:00 · bottomup32 · dashboard (customer page tabs, FAQ editor, studio type size)
 - `src/chrome.tsx` studio asks are now counted in `App.tsx` (was a boolean): the customer page's Activity/Sources/Share tabs no longer drop back to the full sidebar + "Demo / Detail" bar after Settings was opened. `setStudio(on)` signature unchanged.
 - New `src/settings/sections/FaqEditor.tsx` replaces `KnowledgeEditor sections={["faqs"]}` in the FAQs section (demo, business, public read-only): card per question, growing answer box, reorder, count of 20, search past 6. Inputs are labelled `Question N` / `Answer N` (was `Question` / `Answer`); `business_tabs.py` updated. KnowledgeEditor itself is untouched.

@@ -289,6 +289,8 @@ export interface NewCustomerInput {
   contactEmail?: string;
   agentName?: string;
   language?: string;
+  /** Dashboard-only: false adds the record without a research run — it starts `ready`, never researched. */
+  research?: boolean;
 }
 
 /**
@@ -334,7 +336,7 @@ export async function createCustomer(input: NewCustomerInput): Promise<Customer>
       ${input.websiteUrl?.trim() || null}, ${input.mapsUrl?.trim() || null},
       ${input.researchNotes?.trim() || null}, ${jsonb(profile)}, ${""}, ${jsonb([])},
       ${jsonb(prompts)}, ${jsonb(DEFAULT_CALL_SOUND)}, ${DEFAULT_VOICE}, ${agentName},
-      ${language}, ${"researching" satisfies CustomerStatus}, ${now}, ${now}
+      ${language}, ${(input.research === false ? "ready" : "researching") satisfies CustomerStatus}, ${now}, ${now}
     )
     RETURNING
       id, active, business_name AS "businessName", label, contact_name AS "contactName",
@@ -487,8 +489,22 @@ export async function failResearch(id: string, message: string): Promise<Custome
  * `ON DELETE CASCADE`, so this one statement is the whole cascade.
  */
 export async function deleteCustomer(id: string): Promise<boolean> {
-  const rows = await sql`DELETE FROM demo_customers WHERE id = ${id} RETURNING id`;
-  return rows.length > 0;
+  return (await sql.begin(async (tx) => {
+    const rows = await tx`DELETE FROM demo_customers WHERE id = ${id} RETURNING id`;
+    if (!rows.length) return false;
+    // Dashboard-only: what points at a demo without a foreign key. A demo-stage account linked to it
+    // (a sign-up, never approved) keeps its login but no longer points at nothing; the route refuses
+    // the delete for any account past the demo. Setup requests still waiting on it are closed.
+    await tx`
+      UPDATE users SET business_id = NULL, onboarding_requested_at = NULL, onboarding_request_note = NULL
+      WHERE business_id = ${id} AND status = 'demo'
+    `;
+    await tx`
+      UPDATE signup_requests SET status = 'declined', decline_note = 'The demo was deleted.', decided_at = now()
+      WHERE customer_id = ${id} AND status IN ('pending', 'open', 'verified')
+    `;
+    return true;
+  })) as boolean;
 }
 
 /**

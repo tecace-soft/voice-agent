@@ -816,7 +816,8 @@ def new_customer(body: dict, name: str) -> dict:
         "callSound": {"phoneLine": True, "ambience": "quiet"},
         "agentName": agent,
         "language": "en",
-        "status": "researching",
+        # `research: false` (the dialog's plain "Add customer") skips the run: ready, never researched.
+        "status": "ready" if body.get("research") is False else "researching",
         "createdAt": now,
         "updatedAt": now,
     }

@@ -54,6 +54,7 @@ import { customerLink, emailBody, emailSubject } from "@/lib/share";
 import { CUSTOMER_PHASES, type CustomerPhase, type CustomerWithStats } from "@/lib/types";
 import { PHASE_KIND, PHASE_LABELS, phaseOf } from "@/lib/phase";
 import { demoHref } from "@/routes";
+import { readJson } from "@/lib/http";
 
 type Props = {
   customers: CustomerWithStats[];
@@ -158,7 +159,10 @@ export function CustomerTable({ customers, onChanged }: Props) {
   const [sort, setSort] = useState<SortKey>("heat");
   const [dueOnly, setDueOnly] = useState(false);
   const dueCount = useMemo(() => dueFollowUps(customers).length, [customers]);
-  const [pendingDelete, setPendingDelete] = useState<CustomerWithStats | null>(null);
+  // Dashboard-only (PORTING.md): delete works on a selection, one row from its menu or many ticked.
+  const [pendingDelete, setPendingDelete] = useState<CustomerWithStats[] | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const rows = useMemo(() => {
@@ -203,11 +207,47 @@ export function CustomerTable({ customers, onChanged }: Props) {
     }
   }
 
-  async function remove(customer: CustomerWithStats) {
-    await demoFetch(`/customers/${customer.id}`, { method: "DELETE" });
-    toast.success("Customer removed.");
+  // One at a time, so one refused (a demo someone is onboarding on answers 409) doesn't stop the rest.
+  async function remove(targets: CustomerWithStats[]) {
+    setDeleting(true);
+    const failed: string[] = [];
+    let removed = 0;
+    for (const customer of targets) {
+      try {
+        await readJson(await demoFetch(`/customers/${customer.id}`, { method: "DELETE" }));
+        removed += 1;
+      } catch (caught) {
+        failed.push(caught instanceof Error ? caught.message : `${customer.profile.name} could not be deleted.`);
+      }
+    }
+    setDeleting(false);
     setPendingDelete(null);
+    setSelected(new Set());
+    if (removed) toast.success(removed === 1 ? "Customer removed." : `${removed} customers removed.`);
+    for (const message of failed) toast.error(message);
     onChanged();
+  }
+
+  const visibleIds = rows.map((customer) => customer.id);
+  const selectedRows = customers.filter((customer) => selected.has(customer.id));
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  function toggleOne(id: string, on: boolean) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+  function toggleAllVisible(on: boolean) {
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const id of visibleIds) {
+        if (on) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
   }
 
   function copyLink(customer: CustomerWithStats) {
@@ -282,6 +322,18 @@ export function CustomerTable({ customers, onChanged }: Props) {
             Reset
           </Button>
         ) : null}
+        {selectedRows.length ? (
+          <span className="ml-auto flex items-center gap-2">
+            <span className="ta-label-1 text-muted-foreground">{selectedRows.length} selected</span>
+            <Button variant="ghost" onClick={() => setSelected(new Set())}>
+              Clear
+            </Button>
+            <Button variant="destructive" onClick={() => setPendingDelete(selectedRows)}>
+              <Trash2 className="size-4" />
+              Delete
+            </Button>
+          </span>
+        ) : null}
       </div>
 
       {rows.length === 0 ? (
@@ -297,6 +349,15 @@ export function CustomerTable({ customers, onChanged }: Props) {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-8">
+                <input
+                  type="checkbox"
+                  className="accent-primary size-4 align-middle"
+                  aria-label="Select all shown customers"
+                  checked={allVisibleSelected}
+                  onChange={(event) => toggleAllVisible(event.target.checked)}
+                />
+              </TableHead>
               <TableHead className="ta-caption-1 text-muted-foreground">ID</TableHead>
               <SortHead label="Business" column="name" sort={sort} onSort={setSort} />
               <TableHead className="ta-caption-1 text-muted-foreground">Phase</TableHead>
@@ -344,7 +405,20 @@ export function CustomerTable({ customers, onChanged }: Props) {
           </TableHeader>
           <TableBody>
             {rows.map((customer) => (
-              <TableRow key={customer.id} className="hover:bg-accent h-11">
+              <TableRow
+                key={customer.id}
+                className="hover:bg-accent h-11"
+                data-state={selected.has(customer.id) ? "selected" : undefined}
+              >
+                <TableCell className="w-8">
+                  <input
+                    type="checkbox"
+                    className="accent-primary size-4 align-middle"
+                    aria-label={`Select ${customer.profile.name || customer.businessName}`}
+                    checked={selected.has(customer.id)}
+                    onChange={(event) => toggleOne(customer.id, event.target.checked)}
+                  />
+                </TableCell>
                 <TableCell className="ta-caption-1 text-muted-foreground font-mono whitespace-nowrap">
                   {customer.customerCode ?? "—"}
                 </TableCell>
@@ -395,11 +469,15 @@ export function CustomerTable({ customers, onChanged }: Props) {
                     kind={
                       isResearchStalled(customer)
                         ? "negative"
-                        : statusKind(customer.status)
+                        : customer.status === "ready" && !customer.researchedAt
+                          ? "neutral"
+                          : statusKind(customer.status)
                     }
                   >
                     {customer.status === "ready"
-                      ? "Ready"
+                      ? customer.researchedAt
+                        ? "Ready"
+                        : "Not researched"
                       : customer.status === "error"
                         ? "Error"
                         : isResearchStalled(customer)
@@ -469,7 +547,7 @@ export function CustomerTable({ customers, onChanged }: Props) {
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         className="text-destructive"
-                        onClick={() => setPendingDelete(customer)}
+                        onClick={() => setPendingDelete([customer])}
                       >
                         <Trash2 className="size-4" />
                         Delete
@@ -489,12 +567,27 @@ export function CustomerTable({ customers, onChanged }: Props) {
       >
         <DialogContent className="max-w-md rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="ta-headline-1">Delete customer</DialogTitle>
+            <DialogTitle className="ta-headline-1">
+              {pendingDelete && pendingDelete.length > 1 ? `Delete ${pendingDelete.length} customers` : "Delete customer"}
+            </DialogTitle>
             <DialogDescription className="ta-body-2">
-              This removes {pendingDelete?.profile.name} and{" "}
-              {pendingDelete?.stats.calls ?? 0} call logs. The demo link stops working.
-              This can&apos;t be undone.
+              This removes{" "}
+              {pendingDelete && pendingDelete.length > 1
+                ? `${pendingDelete.length} customers`
+                : pendingDelete?.[0]?.profile.name || pendingDelete?.[0]?.businessName}{" "}
+              and {(pendingDelete ?? []).reduce((sum, customer) => sum + (customer.stats.calls ?? 0), 0)} call
+              logs. The demo link stops working. This can&apos;t be undone.
             </DialogDescription>
+            {pendingDelete && pendingDelete.length > 1 ? (
+              <ul className="ta-caption-1 text-muted-foreground max-h-40 list-disc overflow-y-auto pl-5">
+                {pendingDelete.map((customer) => (
+                  <li key={customer.id}>{customer.profile.name || customer.businessName}</li>
+                ))}
+              </ul>
+            ) : null}
+            <p className="ta-caption-1 text-muted-foreground">
+              A customer in onboarding or live keeps its record — unlink the account in Accounts first.
+            </p>
           </DialogHeader>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setPendingDelete(null)}>
@@ -502,9 +595,10 @@ export function CustomerTable({ customers, onChanged }: Props) {
             </Button>
             <Button
               variant="destructive"
-              onClick={() => pendingDelete && remove(pendingDelete)}
+              disabled={deleting}
+              onClick={() => pendingDelete && void remove(pendingDelete)}
             >
-              Delete
+              {deleting ? "Deleting" : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

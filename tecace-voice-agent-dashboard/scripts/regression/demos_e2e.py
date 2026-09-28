@@ -622,7 +622,7 @@ def run() -> int:
                     with page.expect_response(
                             lambda r: r.request.method == "POST"
                             and urlparse(r.url).path == "/demo/customers") as created:
-                        add.click()
+                        dialog.get_by_role("button", name="Add and research").click()
                     page.get_by_text("Customer added. Research is running.").wait_for()
                     dialog.wait_for(state="detached")
                     check("prospects: adding a customer toasts and closes the dialog",
@@ -633,6 +633,7 @@ def run() -> int:
                     made = created.value.json().get("customer", {})
                     check("prospects: ... and the new prospect comes back researching",
                           made.get("status") == "researching"
+                          and (created.value.request.post_data_json or {}).get("research") is True
                           and made.get("businessName") == "Birch Florist", str(made.get("status")))
 
                     page.get_by_role("switch", name="Toggle the demo for Harbor Dental").click()

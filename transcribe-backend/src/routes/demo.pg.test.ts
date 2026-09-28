@@ -600,6 +600,18 @@ describe("POST /demo/customers", () => {
     await pendingResearch();
   });
 
+  it("adds one without a research run when research is false (dashboard-only)", async () => {
+    const res = await asAdmin("POST", "/demo/customers", { businessName: "Quiet Co", research: false });
+    const created = (await json(res)).customer;
+    expect(res.status).toBe(201);
+    expect(created.status).toBe("ready");
+    expect(created.researchedAt).toBeUndefined();
+    await pendingResearch();
+    const again = (await json(await asAdmin("GET", `/demo/customers/${created.id}`))).customer;
+    expect(again.status).toBe("ready"); // nothing ran behind the 201
+    expect((await asAdmin("DELETE", `/demo/customers/${created.id}`)).status).toBe(200);
+  });
+
   it("refuses a blank business name with the promo's 400", async () => {
     const res = await asAdmin("POST", "/demo/customers", { businessName: "   " });
     expect(res.status).toBe(400);
@@ -865,5 +877,19 @@ describe("DELETE /demo/customers/:id", () => {
     const res = await asAdmin("DELETE", `/demo/customers/${A}`);
     expect(res.status).toBe(404);
     expect(await json(res)).toEqual({ error: "Customer not found." });
+  });
+
+  it("refuses a demo whose account is past the demo, and unlinks a demo-stage one (dashboard-only)", async () => {
+    const owner = (await createUser({ email: "owner@cedar.test", name: "Owner", passwordHash: "x".repeat(60), role: "user" }))!;
+    await run(`UPDATE users SET business_id = $1, status = 'pre-production' WHERE id = $2`, [B, owner.id]);
+    const refused = await asAdmin("DELETE", `/demo/customers/${B}`);
+    expect(refused.status).toBe(409);
+    expect((await json(refused)).code).toBe("has_account");
+    expect((await asAdmin("GET", `/demo/customers/${B}`)).status).toBe(200);
+
+    await run(`UPDATE users SET status = 'demo', onboarding_requested_at = now() WHERE id = $1`, [owner.id]);
+    expect((await asAdmin("DELETE", `/demo/customers/${B}`)).status).toBe(200);
+    const [row] = await run(`SELECT business_id, onboarding_requested_at FROM users WHERE id = $1`, [owner.id]);
+    expect(row).toEqual({ business_id: null, onboarding_requested_at: null });
   });
 });

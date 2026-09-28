@@ -293,8 +293,18 @@ export function ProspectScreen({
     </div>
   );
 
+  // Added without a research run (dashboard-only): ready to edit by hand, never researched.
+  const unresearched = draft.status === "ready" && !draft.researchedAt;
   const statusText =
-    draft.status === "ready" ? "Ready" : draft.status === "error" ? "Error" : stalled ? "Stalled" : "Researching";
+    draft.status === "ready"
+      ? unresearched
+        ? "Not researched"
+        : "Ready"
+      : draft.status === "error"
+        ? "Error"
+        : stalled
+          ? "Stalled"
+          : "Researching";
   const title = draft.profile.name || draft.businessName || "Unnamed business";
 
   // The page's row, in the app's top bar (src/chrome.tsx): where you are, what state the demo is in,
@@ -317,7 +327,9 @@ export function ProspectScreen({
         </h1>
       </nav>
       <span className="flex shrink-0 items-center gap-1.5">
-        <StatusBadge kind={stalled ? "negative" : statusKind(draft.status)}>{statusText}</StatusBadge>
+        <StatusBadge kind={stalled ? "negative" : unresearched ? "neutral" : statusKind(draft.status)}>
+          {statusText}
+        </StatusBadge>
         {/* After the research status, which stays the header's first badge as in the promo. */}
         {operator && (
           <span className="hidden items-center gap-1.5 lg:flex">
@@ -359,7 +371,7 @@ export function ProspectScreen({
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem onClick={() => void research(false)} disabled={researching}>
                 <RefreshCw className="size-4" />
-                {researching ? "Researching" : "Re-research"}
+                {researching ? "Researching" : unresearched ? "Run research" : "Re-research"}
               </DropdownMenuItem>
               <DropdownMenuItem
                 render={<a href={customerLink(id)} target="_blank" rel="noreferrer" />}
@@ -382,6 +394,18 @@ export function ProspectScreen({
 
   const problems = (
     <>
+      {unresearched ? (
+        <div className="bg-muted/60 ta-label-1 flex flex-wrap items-center gap-3 rounded-lg p-3">
+          <span className="min-w-0 flex-1">
+            Not researched yet. Fill in Settings by hand, or research the business to fill it in for you — it
+            replaces what's in Business information and takes a minute or two.
+          </span>
+          <Button size="sm" onClick={() => void research(false)} disabled={researching}>
+            <RefreshCw className={`size-4 ${researching ? "animate-spin" : ""}`} />
+            {researching ? "Researching" : "Run research"}
+          </Button>
+        </div>
+      ) : null}
       {draft.status === "error" && draft.error ? (
         <div className="bg-destructive/10 ta-label-1 text-destructive rounded-lg p-3">{draft.error}</div>
       ) : null}

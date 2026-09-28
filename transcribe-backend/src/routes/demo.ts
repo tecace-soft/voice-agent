@@ -479,12 +479,16 @@ export const demo = new Elysia({ prefix: "/demo" })
       // What it does NOT give us is `after`'s one guarantee, and `startBackgroundResearch` says so
       // in full: on a host that can freeze the function the moment the response is flushed, the run
       // dies mid-flight and the record is left at `status: "researching"` for good.
-      startBackgroundResearch(customer.id, {
-        businessName,
-        websiteUrl,
-        mapsUrl,
-        notes: customer.researchNotes,
-      });
+      // Dashboard-only: `research: false` adds the record and leaves the (billed) run to the
+      // customer page's "Run research" button — POST /customers/:id/research.
+      if (body.research !== false) {
+        startBackgroundResearch(customer.id, {
+          businessName,
+          websiteUrl,
+          mapsUrl,
+          notes: customer.researchNotes,
+        });
+      }
       return status(201, { customer: withLifecycle(customer, await lifecycleByDemo(customer.id)) });
     },
     {
@@ -498,6 +502,7 @@ export const demo = new Elysia({ prefix: "/demo" })
         contactEmail: t.Optional(t.String()),
         agentName: t.Optional(t.String()),
         language: t.Optional(t.String()),
+        research: t.Optional(t.Boolean()),
       }),
     },
   )
@@ -916,6 +921,15 @@ export const demo = new Elysia({ prefix: "/demo" })
 
       let removed = false;
       try {
+        // Dashboard-only: a demo that became someone's receptionist is theirs now — deleting it would
+        // leave an onboarding or live account with nothing behind it. Unlink the account first.
+        const account = await findUserByBusinessId(params.id);
+        if (account && account.status !== "demo") {
+          return status(409, {
+            error: `${account.email} is using this receptionist (${account.status}). Unlink the account in Accounts before deleting it.`,
+            code: "has_account",
+          });
+        }
         removed = await deleteCustomer(params.id);
       } catch (error) {
         return status(500, jsonError(error));
