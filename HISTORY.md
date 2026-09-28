@@ -6,16 +6,6 @@ Rules: see "Team sync log" in `CLAUDE.md`.
 Format:
 
 ```
-## 2026-09-27 23:20 · bottomup32 · dashboard, workspace (versioning + changelog)
-- Product version starts at **0.0.1**; today is **0.0.9** (one release per working day since 2026-09-17, back-filled from git + this log). Source: `tecace-voice-agent-dashboard/src/changelog.ts`; `package.json` version must match (`tests/changelog.test.ts`).
-- Dashboard: "Version x.y.z · Changelog" under Last run in the sidebar opens `#/changelog` (every account, demo-stage customers included; `admin: true` lines hidden from customers). New `ViewId` `changelog` in `routing.ts` / `App.tsx` / `Sidebar.tsx`; `.sidebar-version` added to `compare.py` HIDE.
-- ⚠ Everyone: CLAUDE.md now requires a changelog entry + version bump for user-visible changes (same-day changes share that day's entry). HISTORY.md stays the technical log.
-
-## 2026-09-27 21:30 · bottomup32 · transcribe-backend, openai-agent-app (Appointments on real phone calls)
-- `GET /business/config` (agent) gains `business.booking`: `{providerName, kind, title, durationMinutes, horizonDays, instructions}` when the PUBLISHED call settings have booking on AND a readable calendar is connected; otherwise `null`. Additive.
-- openai-agent-app (both bridges): with `booking` set, the inbound call gets `check_availability` / `book_appointment` (answered by `POST /business/calendar/agent-tool` with `AGENT_CONFIG_KEY`, the dialled number and the caller's number), `transfer_to_human` reworded, and the rule book's "you cannot book" lines swapped + an Appointments section (`realtime/booking_inbound.py`). Without it the prompt is byte-identical. Check: `python scripts/checks/verify_booking.py`.
-- ⚠ Deploy: the phone agent needs `BUSINESS_CONFIG_URL` pointing at the backend whose calendar should be used (staging: `https://va-staging-backend.vercel.app`) and the same `AGENT_CONFIG_KEY` as that backend. Real calls only reach accounts in `production` / `unassigned` stage (phase gates).
-
 ## YYYY-MM-DD HH:MM · <name> · <area>
 - What changed that affects others (API shape, env var, schema, shared file, port, convention)
 - ⚠ Action needed by others, if any
@@ -40,6 +30,16 @@ Format:
 - Root `CLAUDE.md`: local ports per app, the dashboard's three entry documents (`index`/`c`/`start.html`), `openai-agent-app`'s inbound receptionist role, root `README.md` flagged as stale, and `compare.py`'s dependency on an untouched `transcribe-dashboard-app`.
 - `transcribe-app/` is noted as maintained separately: changes to `transcribe-backend`'s ingest contract (`TRANSCRIBE_INGEST_KEY`, run reporting) need a `⚠` entry here.
 
+## 2026-09-27 23:40 · bottomup32 · workspace (Calls: real-phone test list)
+- New [TODO.md](TODO.md): status of the Calls features on REAL phone calls and what is left. Appointments booking verified on a real call. Still open: send a text (SMS, not built), call transfer (test on a real call), take a message (test on a real call).
+- ⚠ Anyone testing on the phone: use the checklists there and tick them off / add findings in that file.
+- New [docs/customer-journey.html](docs/customer-journey.html) (open in a browser): customer / admin / backend swimlane from demo to live, the two gates, a live call, and which features work where. Shared copy: https://claude.ai/artifact/DM1JiVC95iN2HZoukLWxoS. Update both when the flow changes.
+
+## 2026-09-27 23:20 · bottomup32 · dashboard, workspace (versioning + changelog)
+- Product version starts at **0.0.1**; today is **0.0.9** (one release per working day since 2026-09-17, back-filled from git + this log). Source: `tecace-voice-agent-dashboard/src/changelog.ts`; `package.json` version must match (`tests/changelog.test.ts`).
+- Dashboard: "Version x.y.z · Changelog" under Last run in the sidebar opens `#/changelog` (every account, demo-stage customers included; `admin: true` lines hidden from customers). New `ViewId` `changelog` in `routing.ts` / `App.tsx` / `Sidebar.tsx`; `.sidebar-version` added to `compare.py` HIDE.
+- ⚠ Everyone: CLAUDE.md now requires a changelog entry + version bump for user-visible changes (same-day changes share that day's entry). HISTORY.md stays the technical log.
+
 ## 2026-09-27 23:00 · bottomup32 · transcribe-backend, dashboard (customers: research optional, delete a selection)
 - `POST /demo/customers` takes `research` (boolean, default true = old behaviour). `false` saves at `status: "ready"` with no run/`researchedAt`; the dashboard badges it "Not researched" and the customer page offers **Run research**. New dialog buttons: **Add customer** (no research) / **Add and research**.
 - `DELETE /demo/customers/:id` now answers 409 `code: "has_account"` when a non-demo account is linked; a linked demo-stage account is unlinked and open sign-up requests for it are declined. Customers table: row checkboxes + Delete for the selection.
@@ -56,6 +56,11 @@ Format:
 - `src/chrome.tsx` studio asks are now counted in `App.tsx` (was a boolean): the customer page's Activity/Sources/Share tabs no longer drop back to the full sidebar + "Demo / Detail" bar after Settings was opened. `setStudio(on)` signature unchanged.
 - New `src/settings/sections/FaqEditor.tsx` replaces `KnowledgeEditor sections={["faqs"]}` in the FAQs section (demo, business, public read-only): card per question, growing answer box, reorder, count of 20, search past 6. Inputs are labelled `Question N` / `Answer N` (was `Question` / `Answer`); `business_tabs.py` updated. KnowledgeEditor itself is untouched.
 - `.settings-studio` no longer shrinks `ta-body-2`/`ta-label-1`/`ta-headline-2`; its Input/Textarea read at 15px (Input 36px tall); studio nav 14px. Scoped to the studio — transcribe screens and `compare.py` unaffected.
+
+## 2026-09-27 21:30 · bottomup32 · transcribe-backend, openai-agent-app (Appointments on real phone calls)
+- `GET /business/config` (agent) gains `business.booking`: `{providerName, kind, title, durationMinutes, horizonDays, instructions}` when the PUBLISHED call settings have booking on AND a readable calendar is connected; otherwise `null`. Additive.
+- openai-agent-app (both bridges): with `booking` set, the inbound call gets `check_availability` / `book_appointment` (answered by `POST /business/calendar/agent-tool` with `AGENT_CONFIG_KEY`, the dialled number and the caller's number), `transfer_to_human` reworded, and the rule book's "you cannot book" lines swapped + an Appointments section (`realtime/booking_inbound.py`). Without it the prompt is byte-identical. Check: `python scripts/checks/verify_booking.py`.
+- ⚠ Deploy: the phone agent needs `BUSINESS_CONFIG_URL` pointing at the backend whose calendar should be used (staging: `https://va-staging-backend.vercel.app`) and the same `AGENT_CONFIG_KEY` as that backend. Real calls only reach accounts in `production` / `unassigned` stage (phase gates).
 
 ## 2026-09-27 · bottomup32 · transcribe-backend, dashboard (demo → onboarding: sign-up, one approval, sign-in links)
 - Public demo page (`/c/<id>`) shows the settings studio read-only ("Editable after setup") and **Request setup** = sign-up (name, email, password, 6-digit email code) → account in `demo`, linked to that demo, request to admin. New entry **`/start`** (`start.html`, `src/start/`): self-service sign-up → new demo → research on screen. Admin approval is the gate on both paths.

@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Published copy: https://claude.ai/artifact/DM1JiVC95iN2HZoukLWxoS -->
+<title>Voice Agent Customer Journey</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F6F8FB; --surface:#FFFFFF; --ink:#131A2A; --muted:#5A6478; --line:#D8DEE9;
+  --brand:#116DFF; --cust:#116DFF; --adm:#0E8A7E; --be:#4B5563; --gate:#E8590C;
+  --ok:#15803D; --warn:#B45309; --bad:#DC2626;
+  --display:"Poppins","Pretendard",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --sans:"Pretendard",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0E1219; --surface:#151B26; --ink:#E6EAF2; --muted:#9AA5B9; --line:#283246;
+    --brand:#4C8DFF; --cust:#4C8DFF; --adm:#2EB8A8; --be:#A3AEC2; --gate:#FF8A3D;
+    --ok:#4ADE80; --warn:#FBBF24; --bad:#F87171;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0E1219; --surface:#151B26; --ink:#E6EAF2; --muted:#9AA5B9; --line:#283246;
+  --brand:#4C8DFF; --cust:#4C8DFF; --adm:#2EB8A8; --be:#A3AEC2; --gate:#FF8A3D;
+  --ok:#4ADE80; --warn:#FBBF24; --bad:#F87171;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 var(--sans);padding-inline:16px;padding-block:32px 64px}
+.wrap{max-width:1380px;margin:0 auto;display:flex;flex-direction:column;gap:56px}
+.text{max-width:760px}
+header{display:flex;flex-direction:column;gap:10px}
+.eyebrow{font:500 12px var(--mono);letter-spacing:.04em;color:var(--muted);text-transform:uppercase}
+h1{font:600 clamp(28px,4vw,40px)/1.15 var(--display);margin:0;text-wrap:balance}
+h2{font:600 22px/1.25 var(--display);margin:0 0 6px;text-wrap:balance}
+h3{font:600 15px/1.3 var(--display);margin:0}
+p{margin:0}
+.lede{font-size:17px;color:var(--muted);max-width:720px}
+section{display:flex;flex-direction:column;gap:18px}
+code,.mono{font-family:var(--mono);font-size:.86em}
+code{background:color-mix(in srgb,var(--line) 55%,transparent);padding:1px 5px;border-radius:4px}
+figure{margin:0;display:flex;flex-direction:column;gap:12px}
+.scroll{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.scroll svg{display:block;height:auto}
+figcaption{color:var(--muted);font-size:14px;max-width:760px}
+.hint{display:none;font-size:12px;color:var(--muted)}
+@media (max-width:900px){.hint{display:block}}
+.legend{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.sw{width:14px;height:14px;border-radius:4px;display:inline-block;border:1.5px solid}
+.ln-g{width:26px;height:0;border-top:2px solid var(--gate);display:inline-block}
+.ln-a{width:26px;height:0;border-top:1.5px solid var(--muted);display:inline-block}
+
+/* SVG parts, styled from the page tokens so both themes work */
+.lane-c{fill:var(--cust);fill-opacity:.06}
+.lane-a{fill:var(--adm);fill-opacity:.07}
+.lane-b{fill:var(--be);fill-opacity:.07}
+.lname{font:600 15px var(--display)}
+.lname.c{fill:var(--cust)} .lname.a{fill:var(--adm)} .lname.b{fill:var(--be)}
+.lsub{font:400 11px var(--sans);fill:var(--muted)}
+.ph rect{fill:var(--surface);stroke:var(--line)}
+.pt{font:600 14px var(--display);fill:var(--ink)}
+.ps{font:400 10.5px var(--mono);fill:var(--muted)}
+.sep{stroke:var(--line);stroke-dasharray:4 4}
+.box rect{fill:var(--surface);stroke-width:1.2}
+.box.c rect{stroke:var(--cust);stroke-opacity:.55}
+.box.a rect{stroke:var(--adm);stroke-opacity:.6}
+.box.b rect{stroke:var(--be);stroke-opacity:.55}
+.box.n rect{stroke:var(--line)}
+.box.okb rect{stroke:var(--ok);stroke-width:1.6}
+.box.dash rect{stroke-dasharray:5 4}
+.bt{font:600 12.5px var(--sans);fill:var(--ink)}
+.bs{font:400 11px var(--sans);fill:var(--muted)}
+.bm{font:500 11px var(--mono);fill:var(--ink)}
+.arr{fill:none;stroke:var(--muted);stroke-width:1.4}
+.arr.d{stroke-dasharray:5 4}
+.gate{fill:none;stroke:var(--gate);stroke-width:2}
+.ah{fill:var(--muted)} .ahg{fill:var(--gate)}
+.dot{fill:var(--muted)}
+.lbl{font:500 10.5px var(--sans);fill:var(--muted);paint-order:stroke;stroke:var(--surface);stroke-width:5px;stroke-linejoin:round}
+.lbl.g{fill:var(--gate);font-weight:600}
+.s-ok{fill:var(--ok)} .s-warn{fill:var(--warn)} .s-bad{fill:var(--bad)}
+.st-ok{font:600 11px var(--sans);fill:var(--ok)}
+.st-warn{font:600 11px var(--sans);fill:var(--warn)}
+.st-bad{font:600 11px var(--sans);fill:var(--bad)}
+.panel{fill:var(--be);fill-opacity:.06;stroke:var(--be);stroke-opacity:.35}
+.ptitle{font:600 13px var(--display);fill:var(--be)}
+
+/* tables */
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:680px;font-size:14px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font:600 12px var(--sans);letter-spacing:.03em;color:var(--muted);text-transform:uppercase;background:color-mix(in srgb,var(--line) 30%,transparent)}
+td:first-child{font-weight:600}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.pill.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 12%,transparent)}
+.pill.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.pill.bad{color:var(--bad);background:color-mix(in srgb,var(--bad) 12%,transparent)}
+.pill.sim{color:var(--muted);background:color-mix(in srgb,var(--muted) 12%,transparent)}
+.note{display:block;color:var(--muted);font-size:12.5px;font-weight:400;margin-top:4px}
+
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:10px}
+.card ul,.card ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.card li::marker{color:var(--muted)}
+.req{color:var(--muted);font-size:12.5px}
+.open{display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none}
+.open li{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 18px;display:grid;grid-template-columns:auto 1fr;gap:4px 14px;align-items:start}
+.open li .pill{grid-row:span 2}
+.open b{font-weight:600}
+.open span.d{color:var(--muted);font-size:14px}
+footer{color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:18px}
+a{color:var(--brand)}
+a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">TecAce Voice Agent · as of 27 Sep 2026 · v0.0.9</div>
+  <h1>Customer journey: demo to live phone line</h1>
+  <p class="lede">How a business goes from its first demo to an assistant that answers its real phone. Each step shows what the customer does, what our admin does, and what the system does behind it.</p>
+</header>
+
+<!-- ============ 1. SWIMLANE ============ -->
+<section>
+  <div class="text">
+    <h2>The journey at a glance</h2>
+    <p>Four phases, three lanes. Orange arrows are the gates: someone has to act before the business moves on. Grey arrows are hand-offs and data.</p>
+  </div>
+  <figure>
+    <div class="legend">
+      <span><i class="sw" style="border-color:var(--cust)"></i>Customer (business owner)</span>
+      <span><i class="sw" style="border-color:var(--adm)"></i>Admin (TecAce team)</span>
+      <span><i class="sw" style="border-color:var(--be)"></i>Backend and agents</span>
+      <span><i class="ln-g"></i>Gate: someone must act</span>
+      <span><i class="ln-a"></i>Hand-off or data</span>
+    </div>
+    <p class="hint">Scroll sideways to see all four phases →</p>
+    <div class="scroll">
+<svg viewBox="0 0 1350 826" width="1350" role="img" aria-label="Swimlane of the customer journey across four phases, Find, Demo, Onboarding and Live, with lanes for the customer, the admin and the backend, and arrows for each hand-off and gate.">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+    <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahg"/></marker>
+  </defs>
+
+  <!-- phase headers -->
+  <g class="ph"><rect x="146" y="8" width="288" height="48" rx="8"/><text class="pt" x="160" y="29">1 · Find</text><text class="ps" x="160" y="46">no account yet</text></g>
+  <g class="ph"><rect x="446" y="8" width="288" height="48" rx="8"/><text class="pt" x="460" y="29">2 · Demo</text><text class="ps" x="460" y="46">status: demo</text></g>
+  <g class="ph"><rect x="746" y="8" width="288" height="48" rx="8"/><text class="pt" x="760" y="29">3 · Onboarding</text><text class="ps" x="760" y="46">status: pre-production</text></g>
+  <g class="ph"><rect x="1046" y="8" width="288" height="48" rx="8"/><text class="pt" x="1060" y="29">4 · Live</text><text class="ps" x="1060" y="46">status: production</text></g>
+
+  <!-- lanes -->
+  <rect class="lane-c" x="8" y="64" width="1334" height="330" rx="10"/>
+  <rect class="lane-a" x="8" y="404" width="1334" height="190" rx="10"/>
+  <rect class="lane-b" x="8" y="604" width="1334" height="210" rx="10"/>
+  <text class="lname c" x="20" y="90">Customer</text>
+  <text class="lsub" x="20" y="108">business owner</text>
+  <text class="lname a" x="20" y="430">Admin</text>
+  <text class="lsub" x="20" y="448">TecAce team</text>
+  <text class="lname b" x="20" y="630">Backend</text>
+  <text class="lsub" x="20" y="648">transcribe-backend</text>
+  <text class="lsub" x="20" y="662">+ phone agent</text>
+
+  <line class="sep" x1="440" y1="64" x2="440" y2="814"/>
+  <line class="sep" x1="740" y1="64" x2="740" y2="814"/>
+  <line class="sep" x1="1040" y1="64" x2="1040" y2="814"/>
+
+  <!-- arrows first, boxes on top -->
+  <!-- find -->
+  <path class="arr" d="M384 101 H448" marker-end="url(#ah)"/>
+  <text class="lbl" x="416" y="93" text-anchor="middle">opens</text>
+  <path class="arr" d="M384 165 H398 V649 H388" marker-end="url(#ah)"/>
+  <path class="arr" d="M384 441 H398"/>
+  <circle class="dot" cx="398" cy="441" r="3"/>
+  <text class="lbl" transform="translate(398 548) rotate(-90)" text-anchor="middle" dy="3.5">research</text>
+  <path class="arr" d="M152 553 H144 V101 H150" marker-end="url(#ah)"/>
+  <text class="lbl" transform="translate(144 300) rotate(-90)" text-anchor="middle" dy="3.5">sends /c/&lt;id&gt;</text>
+  <!-- demo -->
+  <path class="arr" d="M452 128 H446 V649 H450" marker-end="url(#ah)"/>
+  <text class="lbl" transform="translate(446 556) rotate(-90)" text-anchor="middle" dy="3.5">live demo call</text>
+  <path class="gate" d="M684 237 H698 V441 H688" marker-end="url(#ahg)"/>
+  <text class="lbl g" transform="translate(698 340) rotate(-90)" text-anchor="middle" dy="3.5">request setup</text>
+  <path class="gate" d="M684 497 H726 V649 H748" marker-end="url(#ahg)"/>
+  <text class="lbl g" transform="translate(726 574) rotate(-90)" text-anchor="middle" dy="3.5">approve</text>
+  <!-- onboarding -->
+  <path class="arr" d="M752 630 H746 V101 H750" marker-end="url(#ah)"/>
+  <text class="lbl" transform="translate(746 300) rotate(-90)" text-anchor="middle" dy="3.5">sign-in email</text>
+  <path class="gate" d="M984 553 H998 V760 H988" marker-end="url(#ahg)"/>
+  <text class="lbl g" transform="translate(998 655) rotate(-90)" text-anchor="middle" dy="3.5">go live</text>
+  <path class="arr" d="M984 357 H1014 V778 H988" marker-end="url(#ah)"/>
+  <text class="lbl" transform="translate(1014 470) rotate(-90)" text-anchor="middle" dy="3.5">publish</text>
+  <!-- live -->
+  <path class="arr" d="M1284 109 H1298 V649 H1288" marker-end="url(#ah)"/>
+  <text class="lbl" transform="translate(1298 400) rotate(-90)" text-anchor="middle" dy="3.5">forwarded calls</text>
+  <path class="arr" d="M1052 713 H1046 V181 H1050" marker-end="url(#ah)"/>
+  <text class="lbl" transform="translate(1046 400) rotate(-90)" text-anchor="middle" dy="3.5">calls, messages</text>
+
+  <!-- CUSTOMER -->
+  <g class="box c"><rect x="152" y="78" width="232" height="46" rx="6"/><text class="bt" x="162" y="97">Gets a demo link</text><text class="bs" x="162" y="113">by email or call from our team</text></g>
+  <g class="box c"><rect x="152" y="134" width="232" height="62" rx="6"/><text class="bt" x="162" y="153">…or signs up at /start</text><text class="bs" x="162" y="169">self-service; its demo is researched</text><text class="bs" x="162" y="184">on screen (needs SMTP)</text></g>
+
+  <g class="box c"><rect x="452" y="78" width="232" height="62" rx="6"/><text class="bt" x="462" y="97">Tries a call in the browser</text><text class="bs" x="462" y="113">/c/&lt;id&gt; · “Try saying” cards</text><text class="bs" x="462" y="128">transfers, texts, bookings: Demo</text></g>
+  <g class="box c"><rect x="452" y="150" width="232" height="46" rx="6"/><text class="bt" x="462" y="169">Sees its settings, read-only</text><text class="bs" x="462" y="185">“Editable after setup”</text></g>
+  <g class="box c"><rect x="452" y="206" width="232" height="62" rx="6"/><text class="bt" x="462" y="225">Requests setup</text><text class="bs" x="462" y="241">signs up: name, email, password,</text><text class="bs" x="462" y="256">6-digit email code, optional note</text></g>
+
+  <g class="box c"><rect x="752" y="78" width="232" height="46" rx="6"/><text class="bt" x="762" y="97">Signs in</text><text class="bs" x="762" y="113">link in the approval email</text></g>
+  <g class="box c"><rect x="752" y="134" width="232" height="62" rx="6"/><text class="bt" x="762" y="153">Fills in the settings</text><text class="bs" x="762" y="169">info, agent, FAQs, messages,</text><text class="bs" x="762" y="184">links, transfers, training</text></g>
+  <g class="box c"><rect x="752" y="206" width="232" height="62" rx="6"/><text class="bt" x="762" y="225">Connects a calendar</text><text class="bs" x="762" y="241">Apple, CalDAV, Cal.com, Calendly,</text><text class="bs" x="762" y="256">Acuity, Google, Outlook</text></g>
+  <g class="box c"><rect x="752" y="278" width="232" height="46" rx="6"/><text class="bt" x="762" y="297">Makes test calls in the app</text><text class="bs" x="762" y="313">uses the draft · 30 min a month</text></g>
+  <g class="box c"><rect x="752" y="334" width="232" height="46" rx="6"/><text class="bt" x="762" y="353">Publishes</text><text class="bs" x="762" y="369">the phone uses only this copy</text></g>
+
+  <g class="box c"><rect x="1052" y="78" width="232" height="62" rx="6"/><text class="bt" x="1062" y="97">Forwards the business line</text><text class="bs" x="1062" y="113">missed calls or every call</text><text class="bs" x="1062" y="128">dial codes in Call forwarding</text></g>
+  <g class="box c"><rect x="1052" y="150" width="232" height="62" rx="6"/><text class="bt" x="1062" y="169">Reads calls and messages</text><text class="bs" x="1062" y="185">call list, transcripts, bookings</text><text class="bs" x="1062" y="200">messages also go to a Google Sheet</text></g>
+  <g class="box c"><rect x="1052" y="222" width="232" height="46" rx="6"/><text class="bt" x="1062" y="241">Keeps tuning</text><text class="bs" x="1062" y="257">edit → test call → publish</text></g>
+
+  <!-- ADMIN -->
+  <g class="box a"><rect x="152" y="418" width="232" height="46" rx="6"/><text class="bt" x="162" y="437">Adds a customer</text><text class="bs" x="162" y="453">name, website · research optional</text></g>
+  <g class="box a"><rect x="152" y="474" width="232" height="46" rx="6"/><text class="bt" x="162" y="493">Works the CRM</text><text class="bs" x="162" y="509">new → contacted → interested</text></g>
+  <g class="box a"><rect x="152" y="530" width="232" height="46" rx="6"/><text class="bt" x="162" y="549">Shares the demo link</text><text class="bs" x="162" y="565">/c/&lt;id&gt; page, no sign-in needed</text></g>
+
+  <g class="box a"><rect x="452" y="418" width="232" height="46" rx="6"/><text class="bt" x="462" y="437">Sees the setup request</text><text class="bs" x="462" y="453">Customers › Setup requested</text></g>
+  <g class="box a"><rect x="452" y="474" width="232" height="46" rx="6"/><text class="bt" x="462" y="493">Approves or declines</text><text class="bs" x="462" y="509">a decline note goes to the customer</text></g>
+
+  <g class="box a"><rect x="752" y="418" width="232" height="46" rx="6"/><text class="bt" x="762" y="437">Assigns a phone number</text><text class="bs" x="762" y="453">Numbers page (Twilio number)</text></g>
+  <g class="box a"><rect x="752" y="474" width="232" height="46" rx="6"/><text class="bt" x="762" y="493">Checks the Go live list</text><text class="bs" x="762" y="509">Accounts › Stage</text></g>
+  <g class="box a"><rect x="752" y="530" width="232" height="46" rx="6"/><text class="bt" x="762" y="549">Goes live</text><text class="bs" x="762" y="565">refused until required items pass</text></g>
+
+  <g class="box a"><rect x="1052" y="418" width="232" height="46" rx="6"/><text class="bt" x="1062" y="437">Watches usage</text><text class="bs" x="1062" y="453">call minutes per account</text></g>
+  <g class="box a"><rect x="1052" y="474" width="232" height="46" rx="6"/><text class="bt" x="1062" y="493">Answers feedback</text><text class="bs" x="1062" y="509">feedback inbox in the dashboard</text></g>
+
+  <!-- BACKEND -->
+  <g class="box b"><rect x="152" y="618" width="232" height="62" rx="6"/><text class="bt" x="162" y="637">Researches the business</text><text class="bs" x="162" y="653">OpenAI web search → profile,</text><text class="bs" x="162" y="668">FAQs, hours, voice prompts</text></g>
+  <g class="box b"><rect x="152" y="690" width="232" height="46" rx="6"/><text class="bt" x="162" y="709">Saves the demo customer</text><text class="bs" x="162" y="725">ID like GLHF-0009, never changes</text></g>
+
+  <g class="box b"><rect x="452" y="618" width="232" height="62" rx="6"/><text class="bt" x="462" y="637">Runs the public demo call</text><text class="bs" x="462" y="653">composed prompt + tools</text><text class="bs" x="462" y="668">books on a demo calendar only</text></g>
+  <g class="box b"><rect x="452" y="690" width="232" height="46" rx="6"/><text class="bt" x="462" y="709">Creates a demo account</text><text class="bs" x="462" y="725">status demo · request to admin</text></g>
+
+  <g class="box b"><rect x="752" y="618" width="232" height="62" rx="6"/><text class="bt" x="762" y="637">Approve: demo → business</text><text class="bs" x="762" y="653">copies profile, seeds call settings,</text><text class="bs" x="762" y="668">CRM won, emails a sign-in link</text></g>
+  <g class="box b"><rect x="752" y="690" width="232" height="46" rx="6"/><text class="bt" x="762" y="709">Keeps the phone line off</text><text class="bs" x="762" y="725">/business/config: not_live_stage</text></g>
+  <g class="box b"><rect x="752" y="746" width="232" height="46" rx="6"/><text class="bt" x="762" y="765">Runs the readiness check</text><text class="bs" x="762" y="781">info · published · number · match</text></g>
+
+  <g class="box b"><rect x="1052" y="618" width="232" height="62" rx="6"/><text class="bt" x="1062" y="637">Answers every call</text><text class="bs" x="1062" y="653">phone agent + OpenAI Realtime,</text><text class="bs" x="1062" y="668">reads the published settings</text></g>
+  <g class="box b"><rect x="1052" y="690" width="232" height="46" rx="6"/><text class="bt" x="1062" y="709">Files the call</text><text class="bs" x="1062" y="725">/calls · minutes · Google Sheet</text></g>
+</svg>
+    </div>
+    <figcaption>A business enters through a link from us or through self-service sign-up at <code>/start</code>. Both land in Demo. The admin approves the setup request, the customer sets everything up and publishes, the admin assigns a number and clicks Go live, and then the business forwards its own phone line to us.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 2. GATES ============ -->
+<section>
+  <div class="text">
+    <h2>The two gates</h2>
+    <p>A business only moves forward when an admin acts. Payment and buying Twilio numbers happen outside the app for now.</p>
+  </div>
+  <figure>
+    <div class="scroll">
+<svg viewBox="0 0 900 184" width="900" role="img" aria-label="Status changes: Demo to Setup requested when the customer requests setup, back to Demo if the admin declines, to Onboarding when the admin approves, and to Live when the admin clicks Go live and the checklist passes.">
+  <defs>
+    <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+    <marker id="ahg2" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahg"/></marker>
+  </defs>
+  <path class="arr" d="M180 98 H248" marker-end="url(#ah2)"/>
+  <text class="lbl" x="214" y="48" text-anchor="middle">customer</text>
+  <text class="lbl" x="214" y="62" text-anchor="middle">Request setup</text>
+  <path class="gate" d="M410 98 H478" marker-end="url(#ahg2)"/>
+  <text class="lbl g" x="444" y="48" text-anchor="middle">admin</text>
+  <text class="lbl g" x="444" y="62" text-anchor="middle">Approve</text>
+  <path class="gate" d="M640 98 H708" marker-end="url(#ahg2)"/>
+  <text class="lbl g" x="674" y="48" text-anchor="middle">admin</text>
+  <text class="lbl g" x="674" y="62" text-anchor="middle">Go live (checklist)</text>
+  <path class="arr d" d="M330 124 C330 170 100 170 100 126" marker-end="url(#ah2)"/>
+  <text class="lbl" x="215" y="150" text-anchor="middle">admin: Decline, with a note</text>
+
+  <g class="box c"><rect x="20" y="72" width="160" height="52" rx="8"/><text class="bt" x="34" y="94">Demo</text><text class="bm" x="34" y="112">demo</text></g>
+  <g class="box c"><rect x="250" y="72" width="160" height="52" rx="8"/><text class="bt" x="264" y="94">Setup requested</text><text class="bm" x="264" y="112">demo + request</text></g>
+  <g class="box c"><rect x="480" y="72" width="160" height="52" rx="8"/><text class="bt" x="494" y="94">Onboarding</text><text class="bm" x="494" y="112">pre-production</text></g>
+  <g class="box okb"><rect x="710" y="72" width="160" height="52" rx="8"/><text class="bt" x="724" y="94">Live</text><text class="bm" x="724" y="112">production</text></g>
+</svg>
+    </div>
+    <figcaption>Status is <code>users.status</code>. Approve copies the demo into the business profile and seeds the call-settings draft. Go live is refused with <code>409 not_ready</code> until the required checks pass.</figcaption>
+  </figure>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th></th><th>Demo</th><th>Onboarding</th><th>Live</th></tr></thead>
+      <tbody>
+        <tr><td>Customer edits settings</td><td><span class="pill bad">No, read-only</span></td><td><span class="pill ok">Yes</span></td><td><span class="pill ok">Yes</span></td></tr>
+        <tr><td>Test calls</td><td><span class="pill sim">Public demo page only</span></td><td><span class="pill ok">In the app</span><span class="note">Uses the draft, 30 min a month</span></td><td><span class="pill ok">In the app</span></td></tr>
+        <tr><td>Publish call settings</td><td><span class="pill bad">No (403)</span></td><td><span class="pill ok">Yes</span></td><td><span class="pill ok">Yes</span></td></tr>
+        <tr><td>Real phone line answers</td><td><span class="pill bad">No</span></td><td><span class="pill bad">No</span><span class="note"><code>not_live_stage</code></span></td><td><span class="pill ok">Yes</span></td></tr>
+        <tr><td>Moves on when</td><td>Admin approves the setup request</td><td>Admin clicks Go live and the checklist passes</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Go live checklist</h3>
+      <ul>
+        <li>Business information is complete (name + facts)</li>
+        <li>Call settings are published</li>
+        <li>A phone number is assigned</li>
+        <li>Published settings match that number</li>
+        <li>Business contact or transfer number <span class="req">(warning only, not required)</span></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>What the admin does, in order</h3>
+      <ol>
+        <li>Add the business (research optional) and work the CRM stage</li>
+        <li>Send the <code>/c/&lt;id&gt;</code> demo link</li>
+        <li>Approve or decline the setup request</li>
+        <li>Assign a Twilio number on the Numbers page</li>
+        <li>Check the list and click Go live</li>
+        <li>Watch minutes and answer feedback</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3. LIVE CALL ============ -->
+<section>
+  <div class="text">
+    <h2>What happens on a live call</h2>
+    <p>Once the business forwards its line, every call runs through the phone agent. The agent reads the published settings when the call is picked up, calls tools during the call, and files the call when it ends.</p>
+  </div>
+  <figure>
+    <div class="scroll">
+<svg viewBox="0 0 1120 552" width="1120" role="img" aria-label="A real call: the caller dials the business line, which forwards to our Twilio number and the phone agent. The agent talks through OpenAI Realtime, reads settings from transcribe-backend, calls tools, and at hang-up files the call to the dashboard and Google Sheet.">
+  <defs>
+    <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+  </defs>
+
+  <!-- backend panel -->
+  <rect class="panel" x="810" y="40" width="290" height="300" rx="10"/>
+  <text class="ptitle" x="824" y="63">transcribe-backend</text>
+
+  <!-- edges -->
+  <path class="arr" d="M140 228 H173" marker-end="url(#ah3)"/>
+  <text class="lbl" x="157" y="219" text-anchor="middle">dials</text>
+  <path class="arr" d="M315 228 H348" marker-end="url(#ah3)"/>
+  <path class="arr" d="M490 228 H523" marker-start="url(#ah3)" marker-end="url(#ah3)"/>
+  <text class="lbl" x="507" y="219" text-anchor="middle">audio</text>
+  <path class="arr" d="M625 182 V98" marker-start="url(#ah3)" marker-end="url(#ah3)"/>
+  <text class="lbl" x="633" y="144">live voice, both ways</text>
+  <path class="arr" d="M725 196 H760 V105 H820" marker-end="url(#ah3)"/>
+  <path class="arr" d="M725 216 H775 V171 H820" marker-end="url(#ah3)"/>
+  <path class="arr" d="M725 237 H820" marker-end="url(#ah3)"/>
+  <path class="arr" d="M725 258 H760 V303 H820" marker-end="url(#ah3)"/>
+  <!-- tools bus -->
+  <path class="arr" d="M625 274 V340"/>
+  <path class="arr" d="M111 340 H699"/>
+  <circle class="dot" cx="625" cy="340" r="3"/>
+  <text class="lbl" x="405" y="333" text-anchor="middle">tools the model can call</text>
+  <path class="arr" d="M111 340 V378" marker-end="url(#ah3)"/>
+  <path class="arr" d="M307 340 V378" marker-end="url(#ah3)"/>
+  <path class="arr" d="M503 340 V378" marker-end="url(#ah3)"/>
+  <path class="arr d" d="M699 340 V378" marker-end="url(#ah3)"/>
+  <path class="arr" d="M307 442 V478" marker-end="url(#ah3)"/>
+  <text class="lbl" x="316" y="464">Twilio redirect</text>
+  <!-- to dashboard / sheet -->
+  <path class="arr" d="M879 340 V398" marker-end="url(#ah3)"/>
+  <text class="lbl" x="887" y="373">reads</text>
+  <path class="arr" d="M1031 340 V398" marker-end="url(#ah3)"/>
+  <text class="lbl" x="1039" y="373">transcribe-app</text>
+
+  <!-- chain -->
+  <g class="box n"><rect x="20" y="200" width="120" height="56" rx="8"/><text class="bt" x="32" y="223">Caller</text><text class="bs" x="32" y="240">rings the business</text></g>
+  <g class="box c"><rect x="175" y="200" width="140" height="56" rx="8"/><text class="bt" x="187" y="223">Business phone</text><text class="bs" x="187" y="240">forwards to us</text></g>
+  <g class="box a"><rect x="350" y="200" width="140" height="56" rx="8"/><text class="bt" x="362" y="223">Twilio number</text><text class="bs" x="362" y="240">assigned by admin</text></g>
+  <g class="box b"><rect x="525" y="182" width="200" height="92" rx="8"/><text class="bt" x="539" y="206">Phone agent</text><text class="bm" x="539" y="224">openai-agent-app</text><text class="bs" x="539" y="242">call bridge + tools</text><text class="bs" x="539" y="258">scripts/run_server.py</text></g>
+  <g class="box n"><rect x="525" y="40" width="200" height="56" rx="8"/><text class="bt" x="539" y="63">OpenAI Realtime</text><text class="bs" x="539" y="80">listens and speaks</text></g>
+
+  <!-- backend rows -->
+  <g class="box b"><rect x="822" y="76" width="266" height="58" rx="6"/><text class="bm" x="834" y="98">GET /business/config</text><text class="bs" x="834" y="118">at pickup: published settings, booking</text></g>
+  <g class="box b"><rect x="822" y="142" width="266" height="58" rx="6"/><text class="bm" x="834" y="164">POST …/calendar/agent-tool</text><text class="bs" x="834" y="184">mid-call: free times, book</text></g>
+  <g class="box b"><rect x="822" y="208" width="266" height="58" rx="6"/><text class="bm" x="834" y="230">POST /calls</text><text class="bs" x="834" y="250">at hang-up: transcript, message</text></g>
+  <g class="box b"><rect x="822" y="274" width="266" height="54" rx="6"/><text class="bm" x="834" y="296">call minutes</text><text class="bs" x="834" y="314">at hang-up: talk time per account</text></g>
+
+  <g class="box c"><rect x="810" y="400" width="138" height="56" rx="8"/><text class="bt" x="822" y="423">Dashboard</text><text class="bs" x="822" y="440">calls, messages</text></g>
+  <g class="box c"><rect x="962" y="400" width="138" height="56" rx="8"/><text class="bt" x="974" y="423">Google Sheet</text><text class="bs" x="974" y="440">one row per message</text></g>
+
+  <!-- tools -->
+  <g class="box okb"><rect x="20" y="380" width="182" height="62" rx="8"/><text class="bt" x="32" y="399">Book appointment</text><circle class="s-ok" cx="36" cy="411" r="4"/><text class="st-ok" x="45" y="415">Works on the phone</text><text class="bs" x="32" y="432">books via agent-tool</text></g>
+  <g class="box n"><rect x="216" y="380" width="182" height="62" rx="8"/><text class="bt" x="228" y="399">Transfer to staff</text><circle class="s-warn" cx="232" cy="411" r="4"/><text class="st-warn" x="241" y="415">Built, test on a call</text><text class="bs" x="228" y="432">one number only for now</text></g>
+  <g class="box n"><rect x="412" y="380" width="182" height="62" rx="8"/><text class="bt" x="424" y="399">Take a message</text><circle class="s-warn" cx="428" cy="411" r="4"/><text class="st-warn" x="437" y="415">Built, test on a call</text><text class="bs" x="424" y="432">saved at hang-up (/calls)</text></g>
+  <g class="box n dash"><rect x="608" y="380" width="182" height="62" rx="8"/><text class="bt" x="620" y="399">Text a link</text><circle class="s-bad" cx="624" cy="411" r="4"/><text class="st-bad" x="633" y="415">Not built on the phone</text><text class="bs" x="620" y="432">no SMS sender yet</text></g>
+  <g class="box n"><rect x="216" y="480" width="182" height="56" rx="8"/><text class="bt" x="228" y="503">Staff phone</text><text class="bs" x="228" y="520">whisper, then connect; no answer</text><text class="bs" x="228" y="533">sends the caller back to the agent</text></g>
+</svg>
+    </div>
+    <figcaption>Real calls only reach accounts that are Live. The phone agent uses only the published settings, so a customer's unpublished draft never reaches callers. Booking was verified on a real call on 27 Sep 2026.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 4. FEATURE MATRIX ============ -->
+<section>
+  <div class="text">
+    <h2>Which features work where</h2>
+    <p>The same settings drive three kinds of calls. Features reach the in-app test call and the public demo first. The real phone line catches up in phase 3.</p>
+  </div>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Feature</th><th>In-app test call</th><th>Public demo page</th><th>Real phone call</th></tr></thead>
+      <tbody>
+        <tr><td>Business info and FAQs</td><td><span class="pill ok">Works</span></td><td><span class="pill ok">Works</span></td><td><span class="pill ok">Works</span><span class="note">from <code>/business/config</code> facts</span></td></tr>
+        <tr><td>Appointments</td><td><span class="pill ok">Books for real</span><span class="note">titled “[Test]”</span></td><td><span class="pill sim">Demo calendar only</span></td><td><span class="pill ok">Works, verified</span><span class="note">published rules only</span></td></tr>
+        <tr><td>Transfer calls</td><td><span class="pill sim">Simulated</span><span class="note">warm, waterfall, hours</span></td><td><span class="pill sim">Shown as Demo</span></td><td><span class="pill warn">Built, not tested</span><span class="note">one transfer number</span></td></tr>
+        <tr><td>Take a message</td><td><span class="pill ok">Works</span><span class="note">with message briefs</span></td><td><span class="pill sim">Shown as Demo</span></td><td><span class="pill warn">Built, not tested</span><span class="note">no message briefs yet</span></td></tr>
+        <tr><td>Text a link (SMS)</td><td><span class="pill sim">Shown in the console</span></td><td><span class="pill sim">Shown as Demo</span></td><td><span class="pill bad">Not built</span></td></tr>
+        <tr><td>Call forwarding</td><td colspan="3">Setup guide for the customer: dial codes per carrier, missed calls or every call, how to test.</td></tr>
+        <tr><td>Custom training, Test and improve</td><td colspan="3">Dashboard tools for tuning the prompts. They change the draft, which reaches the phone on publish.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 5. OPEN ============ -->
+<section>
+  <div class="text">
+    <h2>Still open</h2>
+    <p>Details and test checklists are in <code>TODO.md</code> at the repo root.</p>
+  </div>
+  <ul class="open">
+    <li><span class="pill bad">Build</span><b>Text a link on the phone</b><span class="d">Needs an SMS sender, US A2P 10DLC registration (takes days), consent on the call, and STOP/HELP handling.</span></li>
+    <li><span class="pill warn">Test</span><b>Call transfer on a real call</b><span class="d">Answered, not answered (back to the agent), offer vs. promise, no transfer number.</span></li>
+    <li><span class="pill warn">Test</span><b>Take a message on a real call</b><span class="d">Dashboard and Google Sheet rows, callback number, message after a failed transfer. There is no push alert to the business yet.</span></li>
+    <li><span class="pill sim">Phase 3</span><b>Composed settings on the phone</b><span class="d">Real calls still use the Python rule book. Warm and waterfall transfers, business-hours rules and message briefs reach only in-app and demo calls.</span></li>
+  </ul>
+</section>
+
+<footer>
+  Also in the same system: voicemail transcription (<code>transcribe-app</code>: mailbox .wav → Whisper → Claude → Google Sheet) and outbound lead callbacks (<code>openai-agent-app</code> poller). Sources: <code>HISTORY.md</code>, <code>TODO.md</code>, <code>docs/superpowers/specs/2026-09-27-phase-gates-design.md</code>, and the code on branch Main-Hans.
+</footer>
+</div>
+</body>
+</html>
