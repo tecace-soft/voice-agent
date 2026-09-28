@@ -27,7 +27,16 @@ export type PublicCapabilities = {
   }[];
   links: { id: string; triggers: string[]; text: string; url: string }[];
   messages: { id: string; name: string; brief: string }[];
-  appointments: { title: string; durationMinutes: number; hours: Window[] } | null;
+  /** The booking rules as set, so the page can show them; null when booking is off. */
+  appointments: {
+    title: string;
+    durationMinutes: number;
+    bufferMinutes: number;
+    minNoticeMinutes: number;
+    horizonDays: number;
+    hours: Window[];
+    instructions: string;
+  } | null;
   sms: { doubleOptIn: boolean };
   timezone: string | null;
 };
@@ -57,7 +66,11 @@ export function publicCapabilities(raw: unknown): PublicCapabilities {
       ? {
           title: settings.appointments.title,
           durationMinutes: settings.appointments.durationMinutes,
+          bufferMinutes: settings.appointments.bufferMinutes,
+          minNoticeMinutes: settings.appointments.minNoticeMinutes,
+          horizonDays: settings.appointments.horizonDays,
           hours: settings.appointments.hours,
+          instructions: settings.appointments.instructions,
         }
       : null,
     sms: { doubleOptIn: settings.sms.doubleOptIn },

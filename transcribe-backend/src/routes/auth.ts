@@ -3,6 +3,8 @@ import { authenticate, authenticateAdmin, UNAUTHORIZED } from "../auth/guard.js"
 import { generatePassword, hashPassword, verifyPassword } from "../auth/password.js";
 import { createToken } from "../auth/session.js";
 import { clearFailures, recordFailure, retryAfter } from "../auth/throttle.js";
+import { consumeLink, inspectLink, issueLink } from "../auth/linkTokens.js";
+import { dashboardLink, inviteMail, mailConfigured, resetMail, sendMail } from "../email/mailer.js";
 import {
   bumpTokenVersionById,
   countAdmins,
@@ -21,7 +23,8 @@ import {
 
 // Sign-in and account management for the transcribe dashboard.
 //
-// There is no open sign-up. Accounts come from exactly three places:
+// Accounts an admin makes come from three places (customers can also sign themselves up — see
+// `routes/signup.ts`, which only ever makes customer accounts in the demo stage):
 //   1. `POST /auth/setup`  — the first account only, and only while the users table is empty. That
 //      account is an admin, since somebody has to be able to add everyone else.
 //   2. `POST /auth/users`  — an ADMIN adding a user (the dashboard's Accounts page).
@@ -51,7 +54,14 @@ export const auth = new Elysia({ prefix: "/auth" })
   // Does this deployment still need its first account? The dashboard asks before showing a form, so
   // it knows whether to offer "create the first account" or "sign in". Public by necessity — it says
   // nothing beyond whether anyone has signed up yet.
-  .get("/setup-state", async () => ({ needsSetup: (await countUsers()) === 0 }))
+  //
+  // `mail` says whether this deployment can send email, which decides whether the sign-in page offers
+  // "Forgot password" and whether self-service sign-up (`/start`) is open.
+  .get("/setup-state", async () => ({
+    needsSetup: (await countUsers()) === 0,
+    mail: mailConfigured(),
+    signup: mailConfigured(),
+  }))
 
   // Create the first account and sign it straight in. Closed for good once any account exists — the
   // insert itself carries the "no users yet" condition, so two simultaneous requests can't both win.
@@ -130,6 +140,74 @@ export const auth = new Elysia({ prefix: "/auth" })
   // To invalidate tokens a user still holds — a lost laptop — use "Sign out everywhere" below.
   .post("/logout", () => ({ status: "signed_out" }))
 
+  // Change your own password. Needs the current one, so a borrowed signed-in laptop can't lock the
+  // owner out; signs every other session out, and hands back a fresh token for this one.
+  .post(
+    "/me/password",
+    async ({ body, headers, status }) => {
+      const me = await authenticate(headers.authorization);
+      if (!me) return status(401, UNAUTHORIZED);
+      const record = await findUserById(me.id);
+      if (!record || !verifyPassword(body.current, record.passwordHash)) {
+        return status(403, { error: "wrong_password", message: "Your current password isn't right." });
+      }
+      const user = (await setPasswordById(me.id, hashPassword(body.password)))!;
+      const { token, expiresAt } = createToken(user.id, user.tokenVersion);
+      return { token, expiresAt, user: toPublicUser(user) };
+    },
+    { body: t.Object({ current: t.String({ minLength: 1, maxLength: 512 }), password: passwordField }) },
+  )
+
+  // "Forgot password": a reset link by email. Always the same 202, whether the address has an account
+  // or not, and nothing at all is sent when this deployment has no email (the sign-in page hides the
+  // link then). Throttled per address + client like sign-in.
+  .post(
+    "/forgot",
+    async ({ body, headers, status }) => {
+      const email = body.email.trim().toLowerCase();
+      const key = `forgot|${email}|${headers["x-forwarded-for"]?.split(",")[0]?.trim() || "local"}`;
+      if (retryAfter(key) > 0) return status(202, { sent: true });
+      recordFailure(key);
+      const user = await findUserByEmail(email);
+      if (user && mailConfigured()) {
+        const { token } = await issueLink(user.id, "reset");
+        const link = dashboardLink(`/#/reset?token=${token}`);
+        if (link) await sendMail(resetMail(user.email, link));
+      }
+      return status(202, { sent: true });
+    },
+    { body: t.Object({ email: emailField }) },
+  )
+
+  // Whose invite or reset link this is, so the page can greet them before they choose a password.
+  // 404 for a link that is unknown, used, replaced by a newer one, or expired — one answer for all.
+  .post(
+    "/tokens/inspect",
+    async ({ body, status }) => {
+      const link = await inspectLink(body.token);
+      const user = link ? await findUserById(link.userId) : null;
+      if (!link || !user) return status(404, { error: "link_invalid", message: "This link has expired or was already used." });
+      return { purpose: link.purpose, name: user.name, email: user.email };
+    },
+    { body: t.Object({ token: t.String({ minLength: 1, maxLength: 200 }) }) },
+  )
+
+  // Use an invite or reset link: set the password, sign every old session out, and sign in. The link
+  // is used up in the same statement that checks it, so it works exactly once.
+  .post(
+    "/tokens/accept",
+    async ({ body, status }) => {
+      const link = await consumeLink(body.token);
+      if (!link) return status(404, { error: "link_invalid", message: "This link has expired or was already used." });
+      const user = await setPasswordById(link.userId, hashPassword(body.password));
+      if (!user) return status(404, { error: "link_invalid", message: "This link has expired or was already used." });
+      await recordLogin(user.id);
+      const { token, expiresAt } = createToken(user.id, user.tokenVersion);
+      return { token, expiresAt, user: toPublicUser({ ...user, lastLoginAt: new Date().toISOString() }) };
+    },
+    { body: t.Object({ token: t.String({ minLength: 1, maxLength: 200 }), password: passwordField }) },
+  )
+
   // ---- account management (admins only) ----
 
   .get("/users", async ({ headers, status }) => {
@@ -189,6 +267,23 @@ export const auth = new Elysia({ prefix: "/auth" })
       params: t.Object({ id: t.String() }),
       body: t.Object({ password: optionalPasswordField }),
     },
+  )
+
+  // A sign-in link for an account: the customer opens it and chooses their own password (7 days,
+  // once). The admin copies it; with email configured it is also sent. Issuing one retires the last.
+  .post(
+    "/users/:id/invite",
+    async ({ headers, params, status }) => {
+      const caller = await authenticateAdmin(headers.authorization, "Only an admin can manage accounts.");
+      if ("denied" in caller) return status(caller.denied, caller.body);
+      const user = await findUserById(params.id);
+      if (!user) return status(404, { error: "not_found", message: "No such account." });
+      const issued = await issueLink(user.id, "invite", caller.user.id);
+      const link = dashboardLink(`/#/welcome?token=${issued.token}`);
+      const emailed = link ? await sendMail(inviteMail(user.email, user.name, link)) : false;
+      return { token: issued.token, link, expiresAt: issued.expiresAt, emailed };
+    },
+    { params: t.Object({ id: t.String() }) },
   )
 
   // Invalidate every token an account holds, leaving its password alone.

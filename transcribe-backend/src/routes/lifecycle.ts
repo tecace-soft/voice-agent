@@ -9,7 +9,7 @@ import {
   setLifecycleById,
   toPublicUser,
 } from "../db/users.js";
-import { PromotionError, startOnboarding } from "../business/promote.js";
+import { OnboardError, approveOnboarding } from "../business/onboard.js";
 import { readinessFor } from "../db/readiness.js";
 import { markLive } from "../db/onboarding.js";
 
@@ -99,6 +99,20 @@ export const lifecycle = new Elysia({ prefix: "/auth/users" })
           message: "An admin can't be put in the demo-only view — they'd lose the Accounts page.",
         });
       }
+      // Pre-production is where the customer edits their OWN copy of the demo. Moving a demo-linked
+      // account there without making that copy left them an empty Business section; the copy happens
+      // on Approve (`business/onboard.ts`), which is the one way in.
+      if (
+        body.status === "pre-production" &&
+        target.status !== "pre-production" &&
+        target.businessId &&
+        !(await findProfile(target.id))
+      ) {
+        return status(409, {
+          error: "use_onboard",
+          message: "Use Approve on the customer's demo to start onboarding — it copies the demo into their account.",
+        });
+      }
       // Production switches a phone line on, so it has its own door with its own checks.
       if (body.status === "production" && target.status !== "production") {
         return status(409, {
@@ -156,15 +170,18 @@ export const lifecycle = new Elysia({ prefix: "/auth/users" })
         });
       }
 
-      // The copy and the move to `pre-production`, shared with the admin's "Approve" on a customer's
-      // request (`POST /demo/customers/:id/onboard`).
+      // The same approval as "Approve" on the customer's demo (`business/onboard.ts`): the copy, the
+      // move to `pre-production`, the request answered, the deal won, and the customer told.
       try {
-        const { user, profile } = await startOnboarding(target.id, demo);
-        return { user: toPublicUser(user), profile };
+        const approved = await approveOnboarding({ demoId: target.businessId, adminId: caller.user.id });
+        return {
+          user: toPublicUser(approved.user),
+          profile: approved.profile,
+          invite: approved.invite,
+          emailed: approved.emailed,
+        };
       } catch (err) {
-        if (err instanceof PromotionError) {
-          return status(422, { error: "thin_demo", message: err.message });
-        }
+        if (err instanceof OnboardError) return status(err.status, { error: err.code, message: err.message });
         throw err;
       }
     },

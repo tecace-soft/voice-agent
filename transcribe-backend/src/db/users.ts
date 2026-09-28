@@ -48,7 +48,18 @@ export interface UserRecord {
   tokenVersion: number;
   createdAt: string;
   lastLoginAt: string | null;
+  /** Where the account came from (see `SignupSource`). */
+  signupSource: SignupSource;
+  /** When a sign-up code proved the email. Null for accounts an admin made. */
+  emailVerifiedAt: string | null;
 }
+
+/**
+ * Where an account came from: an admin (the Accounts page, the CLI, first setup, or approving a
+ * request made without email), a prospect claiming their demo from its public page, or a
+ * self-service sign-up at `/start`.
+ */
+export type SignupSource = "admin" | "claim" | "start";
 
 export interface PublicUser {
   id: string;
@@ -58,6 +69,8 @@ export interface PublicUser {
   businessId: string | null;
   status: AccountStatus;
   lastLoginAt: string | null;
+  signupSource: SignupSource;
+  emailVerified: boolean;
 }
 
 export const toPublicUser = (u: UserRecord): PublicUser => ({
@@ -68,6 +81,8 @@ export const toPublicUser = (u: UserRecord): PublicUser => ({
   businessId: u.businessId,
   status: u.status,
   lastLoginAt: u.lastLoginAt,
+  signupSource: u.signupSource ?? "admin",
+  emailVerified: Boolean(u.emailVerifiedAt),
 });
 
 // Emails are stored lower-cased so sign-in is case-insensitive without needing the citext extension.
@@ -83,7 +98,9 @@ const COLUMNS = sql`
   password_hash  AS "passwordHash",
   token_version  AS "tokenVersion",
   created_at     AS "createdAt",
-  last_login_at  AS "lastLoginAt"
+  last_login_at  AS "lastLoginAt",
+  signup_source  AS "signupSource",
+  email_verified_at AS "emailVerifiedAt"
 `;
 
 export async function findUserByEmail(email: string): Promise<UserRecord | null> {
@@ -281,4 +298,39 @@ export async function setLifecycleById(
 export async function findUserByBusinessId(businessId: string): Promise<UserRecord | null> {
   const [row] = await sql`SELECT ${COLUMNS} FROM users WHERE business_id = ${businessId}`;
   return (row as UserRecord | undefined) ?? null;
+}
+
+// ---- accounts made by sign-up, or by approving a request ----
+
+/**
+ * Create an account that starts in the demo stage, linked to its demo record. Used when a sign-up
+ * code is right (`claim` / `start`, verified) and when an admin approves a request made without email
+ * (`claim`, not verified, the password the person chose).
+ *
+ * `email_taken` when the address already has an account; `business_taken` when the demo was linked to
+ * somebody else in the meantime (the unique index decides a race, not a read before the write).
+ */
+export async function createDemoAccount(input: {
+  email: string;
+  name: string;
+  passwordHash: string;
+  source: SignupSource;
+  verified: boolean;
+  businessId: string;
+}): Promise<UserRecord | "email_taken" | "business_taken"> {
+  try {
+    const [row] = await sql`
+      INSERT INTO users (email, name, role, password_hash, status, business_id, signup_source, email_verified_at)
+      VALUES (
+        ${normalizeEmail(input.email)}, ${input.name.trim()}, 'user', ${input.passwordHash}, 'demo',
+        ${input.businessId}, ${input.source}, ${input.verified ? sql`now()` : null}
+      )
+      ON CONFLICT (email) DO NOTHING
+      RETURNING ${COLUMNS}
+    `;
+    return (row as UserRecord | undefined) ?? "email_taken";
+  } catch (err) {
+    if ((err as { code?: string })?.code === "23505") return "business_taken";
+    throw err;
+  }
 }

@@ -130,6 +130,7 @@ describe("the public demo view", () => {
         "profile",
         "prompts",
         "researchedAt",
+        "setup",
         "sources",
         "voice",
       ].sort(),

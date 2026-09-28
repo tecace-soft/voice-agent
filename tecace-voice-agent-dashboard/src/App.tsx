@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { countOpenFeedback, countUnseenFailures, getTranscribeStats } from "./api/backend";
+import { countOpenFeedback, countSetupRequests, countUnseenFailures, getTranscribeStats } from "./api/backend";
 import type { AuthUser, MailboxScope, TranscribeStats } from "./api/types";
 import { useAuth } from "./auth";
 import { ChromeContext } from "./chrome";
@@ -19,6 +19,8 @@ import { CallsPage } from "./pages/CallsPage";
 import { NumbersPage } from "./pages/NumbersPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
 import { LoginPage } from "./pages/LoginPage";
+import { WelcomePage, takeLinkFromHash } from "./pages/WelcomePage";
+import { ChangePasswordDialog } from "./components/ChangePasswordDialog";
 import { OverviewPage } from "./pages/OverviewPage";
 import { PeoplePage } from "./pages/PeoplePage";
 import { PersonBoardsPage } from "./pages/PersonBoardsPage";
@@ -28,6 +30,10 @@ import { useAccountNames } from "./people";
 import { useRoute, type SectionId } from "./routing";
 import { ThemeToggle } from "./theme";
 import { DashboardSkeleton } from "./ui";
+
+// An invite or reset link the page was opened with (#/welcome?token=… / #/reset?token=…), read once
+// at load and taken out of the address bar before the router sees it.
+const LINK_AT_LOAD = typeof window === "undefined" ? null : takeLinkFromHash();
 
 // Views that don't read the transcription stats, so a stats failure shouldn't hide them.
 // Analytics reads its own endpoint, so it belongs with the views that don't wait on /transcribe/stats.
@@ -153,6 +159,29 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // a count of failed runs can only ever grow, so it could never clear and stopped meaning
   // "something needs attention" the first time anything went wrong.
   const [unseenFailures, setUnseenFailures] = useState(0);
+  // Setup requests waiting for an answer (Demo › Customers badge). Admins only.
+  const [setupRequests, setSetupRequests] = useState(0);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  useEffect(() => {
+    if (!isAdmin) return;
+    let active = true;
+    countSetupRequests()
+      .then((n) => active && setSetupRequests(n))
+      .catch(() => {
+        /* a badge is a nicety */
+      });
+    return () => {
+      active = false;
+    };
+  }, [isAdmin, routeView]);
+  // A customer who has just been approved lands on their own business information, not on the
+  // voicemail Overview they have no use for. Only when nothing else was asked for in the address.
+  useEffect(() => {
+    if (!isAdmin && user.status === "pre-production" && !window.location.hash.replace(/^#\/?/, "")) {
+      navigate({ view: "business", section: "business-info" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (!isAdmin) return; // the endpoint is admin-only; asking as a user is a guaranteed 403
     let active = true;
@@ -220,7 +249,10 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
         showScope={!isDemoView}
         user={user}
         onSignOut={onSignOut}
+        setupRequests={setupRequests}
+        onChangePassword={() => setPasswordOpen(true)}
       />
+      {passwordOpen ? <ChangePasswordDialog onClose={() => setPasswordOpen(false)} /> : null}
       <div className="nav-scrim" onClick={closeNav} aria-hidden="true" />
 
       <div className="shell">
@@ -376,12 +408,24 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
 export function App() {
   const { status, user, needsSetup, signOut } = useAuth();
   const [screen, setScreen] = useState<"signin" | "setup">("signin");
+  const [link, setLink] = useState(LINK_AT_LOAD);
 
   if (status === "loading") {
     return (
       <div className="boot">
         <span className="muted ta-body-2">Signing you in…</span>
       </div>
+    );
+  }
+  // An invite or reset link wins over whoever is signed in here: using it signs in as its account.
+  if (link) {
+    return (
+      <>
+        <div className="login-topbar">
+          <ThemeToggle />
+        </div>
+        <WelcomePage token={link.token} onDone={() => setLink(null)} />
+      </>
     );
   }
   if (status === "signed-out" || !user) {

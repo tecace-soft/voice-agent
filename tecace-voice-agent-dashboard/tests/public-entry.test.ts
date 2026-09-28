@@ -64,6 +64,35 @@ describe("what the prospect's page is built from", () => {
     expect(reached).toEqual([]);
   });
 
+  it("shows the settings read-only without the pieces that talk to the dashboard's API", () => {
+    // The settings studio on the demo page is built from `demoSections.tsx`; the operator's saving
+    // (DemoSettings), the business's calendar connection (AppointmentsSection) and the test console
+    // (TestSection) all reach `api/backend.ts` and must stay out.
+    const files = [...publicGraph].map(relative);
+    expect(files).toContain("src/settings/PublicSettings.tsx");
+    expect(files).toContain("src/signup/SignupForm.tsx");
+    for (const f of [
+      "src/settings/DemoSettings.tsx",
+      "src/settings/sections/AppointmentsSection.tsx",
+      "src/settings/sections/TestSection.tsx",
+    ]) {
+      expect(files).not.toContain(f);
+    }
+  });
+
+  it("keeps self-service sign-up (/start) out of the dashboard too", () => {
+    const startGraph = [...moduleGraph(join(src, "start", "main.tsx"))].map(relative);
+    const forbidden = ["src/api/backend.ts", "src/auth.tsx", "src/App.tsx", "src/demos/api.ts"];
+    expect(startGraph.filter((f) => forbidden.includes(f))).toEqual([]);
+    expect(startGraph).toContain("src/signup/SignupForm.tsx");
+    expect(readFileSync(join(appRoot, "start.html"), "utf8")).toContain("/src/start/main.tsx");
+    expect(readFileSync(join(appRoot, "vite.config.ts"), "utf8")).toContain("./start.html");
+    const vercel = JSON.parse(readFileSync(join(appRoot, "vercel.json"), "utf8")) as {
+      rewrites: { source: string; destination: string }[];
+    };
+    expect(vercel.rewrites).toContainEqual({ source: "/start", destination: "/start.html" });
+  });
+
   it("does reach the demo page itself, so the check above is not passing on an empty graph", () => {
     const files = [...publicGraph].map(relative);
     expect(files).toContain("src/demos/screens/PublicDemoScreen.tsx");

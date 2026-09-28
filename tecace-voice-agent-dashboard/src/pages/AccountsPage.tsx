@@ -3,6 +3,7 @@ import {
   createAccount,
   getReadiness,
   goLiveAccount,
+  inviteAccount,
   listAccounts,
   promoteAccount,
   removeAccount,
@@ -91,6 +92,41 @@ function PasswordNotice({
             Done
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+// A sign-in link: the customer opens it and chooses their own password (7 days, once). Emailed too
+// when this deployment can send email; the admin can always copy it.
+function LinkNotice({ email, link, emailed, onDismiss }: { email: string; link: string; emailed: boolean; onDismiss: () => void }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+  return (
+    <div className="notice" role="status">
+      <div className="notice-body">
+        <div className="ta-label-1 notice-title">Sign-in link for {email}</div>
+        <code className="secret">{link}</code>
+        <div className="ta-caption-1 muted">
+          {emailed ? "We emailed it to them too. " : ""}It works once, for 7 days; a new link replaces this one.
+        </div>
+      </div>
+      <div className="notice-actions">
+        <button type="button" className="btn btn-quiet" onClick={copy}>
+          <IconCopy size={14} />
+          {copied ? "Copied" : "Copy"}
+        </button>
+        <button type="button" className="btn btn-quiet" onClick={onDismiss}>
+          Done
+        </button>
       </div>
     </div>
   );
@@ -283,6 +319,7 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
   const [managing, setManaging] = useState<string | null>(null);
   const [demos, setDemos] = useState<DemoOption[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [signInLink, setSignInLink] = useState<{ email: string; link: string; emailed: boolean } | null>(null);
   // Set once an action has invalidated our own session; further calls would only 401.
   const [sessionEnded, setSessionEnded] = useState(false);
 
@@ -450,6 +487,23 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
     }
   }
 
+  async function onInvite(user: AuthUser) {
+    setBusy(true);
+    setError(null);
+    try {
+      const made = await inviteAccount(user.id);
+      setSignInLink({
+        email: user.email,
+        link: made.link ?? `${window.location.origin}/#/welcome?token=${made.token}`,
+        emailed: made.emailed,
+      });
+    } catch (e) {
+      setError(accountErrorMessage(e, "Couldn't make a sign-in link."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onRevoke(user: AuthUser) {
     setBusy(true);
     setError(null);
@@ -490,6 +544,15 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
         <p className="muted ta-body-2" role="status">
           {note}
         </p>
+      )}
+
+      {signInLink && (
+        <LinkNotice
+          email={signInLink.email}
+          link={signInLink.link}
+          emailed={signInLink.emailed}
+          onDismiss={() => setSignInLink(null)}
+        />
       )}
 
       {secret && (
@@ -695,6 +758,16 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
                           >
                             <IconKey size={14} />
                             Reset password
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-quiet"
+                            onClick={() => void onInvite(user)}
+                            disabled={busy || sessionEnded}
+                            title="A one-time link for them to choose their own password"
+                          >
+                            <IconCopy size={14} />
+                            Sign-in link
                           </button>
                           <button
                             type="button"

@@ -97,6 +97,13 @@ type Props = {
   readOnly?: boolean;
   /** A line under the bar, across the whole shell. */
   notice?: ReactNode;
+  /**
+   * `screen` (the dashboard): the studio fills the screen under the app's top bar. `embedded` (the
+   * public demo page): a framed block in the page, at most 760px tall, scrolling inside.
+   */
+  height?: "screen" | "embedded";
+  /** Beside every section title: the public page's "Editable after setup". */
+  sectionBadge?: ReactNode;
 };
 
 const WIDTH_KEY = "settings-console-width";
@@ -131,7 +138,10 @@ export function SettingsShell({
   phase,
   readOnly = false,
   notice,
+  height = "screen",
+  sectionBadge,
 }: Props) {
+  const embedded = height === "embedded";
   const current = sections.find((s) => s.id === active) ?? sections[0];
   const [open, setOpen] = useState(() =>
     typeof window === "undefined" || typeof window.matchMedia !== "function"
@@ -142,7 +152,7 @@ export function SettingsShell({
   const main = useRef<HTMLDivElement | null>(null);
   // In the dashboard the studio has the whole screen: the sidebar folds to a rail and the bar's
   // controls join the app's top bar (src/chrome.tsx). Elsewhere (tests) it keeps a bar of its own.
-  useStudioChrome(true);
+  useStudioChrome(!embedded);
   const inTopbar = useHasTopbar();
 
   // A new section starts at its top, not wherever the last one was scrolled to.
@@ -201,8 +211,14 @@ export function SettingsShell({
   );
 
   return (
-    <div className="settings-studio flex flex-col lg:h-[calc(100dvh-var(--topbar-h,56px)-var(--studio-above,0px))] lg:min-h-[560px]">
-      {inTopbar ? (
+    <div
+      className={
+        embedded
+          ? "settings-studio bg-background flex flex-col overflow-hidden rounded-2xl border lg:h-[min(760px,80dvh)]"
+          : "settings-studio flex flex-col lg:h-[calc(100dvh-var(--topbar-h,56px)-var(--studio-above,0px))] lg:min-h-[560px]"
+      }
+    >
+      {!toolbar && !aside ? null : inTopbar ? (
         <TopbarEnd>
           <span className="bg-border hidden h-5 w-px lg:block" aria-hidden />
           {controls}
@@ -280,8 +296,12 @@ export function SettingsShell({
               </Select>
             </div>
             <section aria-labelledby="settings-section-title" className="@container">
-              <h2 id="settings-section-title" className="mb-1 text-[20px] leading-7 font-semibold tracking-[-0.015em]">
+              <h2
+                id="settings-section-title"
+                className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[20px] leading-7 font-semibold tracking-[-0.015em]"
+              >
                 {meta.label}
+                {sectionBadge && !current.guide ? sectionBadge : null}
               </h2>
               {/* A disabled fieldset turns off every input and button inside it at once; the
                   `settings-readonly` rules keep the values readable and hide the actions. */}

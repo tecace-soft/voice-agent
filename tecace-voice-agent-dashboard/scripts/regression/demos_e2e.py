@@ -512,7 +512,10 @@ def run() -> int:
                     ctx, page = open_page(browser, "tok-admin", base + "#/overview", reqs, page_errors)
                     check("admin: Demo group with three items",
                           page.locator('.sidebar-group[data-group="demos"] .nav-item').count() == 3)
-                    check("admin: no demo request on a transcribe view", reqs == [], str(reqs))
+                    # The one exception is the sidebar's count of setup requests waiting for an admin
+                    # (GET /demo/setup-requests): a number, not demo data, so the badge shows on every view.
+                    BADGE = "GET /demo/setup-requests"
+                    check("admin: no demo request on a transcribe view", [r for r in reqs if r != BADGE] == [], str(reqs))
 
                     open_customers(page)
                     harbor_link = page.get_by_role("link", name="Harbor Dental", exact=True)
@@ -524,9 +527,9 @@ def run() -> int:
                     check("admin: the prospects load with no second sign-in",
                           harbor_link.is_visible()
                           and rows.filter(has_text="Researching").count() == 1
-                          and page.get_by_label("Password").count() == 0)
+                          and page.get_by_label("Password", exact=True).count() == 0)
                     check("admin: ... and the only request was for them",
-                          reqs != [] and set(reqs) == {"GET /demo/customers"}, str(reqs))
+                          reqs != [] and set(reqs) - {BADGE} == {"GET /demo/customers"}, str(reqs))
                     check("breadcrumb says Demo", page.locator(".crumbs").inner_text().startswith("Demo"))
                     check("no mailbox picker or Refresh on Demos views",
                           page.locator(".mailbox-picker").count() == 0

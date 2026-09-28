@@ -40,6 +40,9 @@ export interface AuthUser {
   businessId: string | null;
   status: AccountStatus;
   lastLoginAt: string | null;
+  /** Where the account came from: an admin, a claim from a demo page, or sign-up at /start. */
+  signupSource?: "admin" | "claim" | "start";
+  emailVerified?: boolean;
 }
 
 // One mailbox the transcribe-app has reported for — GET /transcribe/mailboxes (admins only).

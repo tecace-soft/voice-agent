@@ -254,6 +254,8 @@ describe("POST /auth/login", () => {
       businessId: null,
       status: "unassigned",
       lastLoginAt: expect.any(String),
+      signupSource: "admin",
+      emailVerified: false,
     });
     expect(body.user.passwordHash).toBeUndefined();
     expect(new Date(body.expiresAt).getTime()).toBeGreaterThan(Date.now());
@@ -288,9 +290,9 @@ describe("POST /auth/login", () => {
 describe("first-run setup", () => {
   it("reports that setup is needed only while there are no accounts", async () => {
     await resetUsers(false);
-    expect(await json<{ needsSetup: boolean }>(await call("/auth/setup-state"))).toEqual({ needsSetup: true });
+    expect(await json<{ needsSetup: boolean }>(await call("/auth/setup-state"))).toMatchObject({ needsSetup: true });
     await resetUsers();
-    expect(await json<{ needsSetup: boolean }>(await call("/auth/setup-state"))).toEqual({ needsSetup: false });
+    expect(await json<{ needsSetup: boolean; mail: boolean; signup: boolean }>(await call("/auth/setup-state"))).toEqual({ needsSetup: false, mail: false, signup: false });
   });
 
   it("creates the first account and signs it in", async () => {

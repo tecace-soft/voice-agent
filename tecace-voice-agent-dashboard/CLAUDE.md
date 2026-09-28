@@ -140,7 +140,12 @@ Run all three after any styling change:
   rail, their own record and no other, none of the operator's controls on it (live switch, add time,
   re-research, Activity/Sources/Share, the test call), and no way out by typing a URL.
 
-Run the seven Python scripts one at a time — they share ports.
+- `python scripts/regression/signup.py` — sign-up and getting in: `/start` closed without email and
+  open with it (details, code, the build screen, landing signed in), the sign-in page's Forgot
+  password / sign-up links only when the backend has email, and an invite link that takes its token
+  out of the address bar and signs in. `public_page.py` covers the demo page's Request setup.
+
+Run the Python scripts one at a time — they share ports.
 
 ## Hard rules (from the skill)
 - Brand blue **#116DFF** only — never `#3366FF` or `#2AA25F`.

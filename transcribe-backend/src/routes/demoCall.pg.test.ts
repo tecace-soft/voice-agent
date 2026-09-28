@@ -1318,7 +1318,16 @@ describe("the public demo plays out the operator's settings", () => {
       expect.objectContaining({ id: "desk", name: "Front desk", mode: "warm", description: "Order pickups", rings: 1 }),
     ]);
     expect(customer.capabilities.links[0]).toEqual(expect.objectContaining({ id: "map", url: "https://maps.example.com/harbor" }));
-    expect(customer.capabilities.appointments).toEqual({ title: "Catering pickup", durationMinutes: 15, hours: [] });
+    expect(customer.capabilities.appointments).toEqual({
+      title: "Catering pickup",
+      durationMinutes: 15,
+      bufferMinutes: 0,
+      minNoticeMinutes: 60,
+      horizonDays: 14,
+      hours: [],
+      instructions: "",
+    });
+    expect(customer.setup).toBe("available");
     expect(JSON.stringify(customer)).not.toContain("4255550134");
   });
 

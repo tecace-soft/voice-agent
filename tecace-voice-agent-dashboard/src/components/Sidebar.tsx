@@ -129,6 +129,8 @@ export function Sidebar({
   showScope = true,
   user,
   onSignOut,
+  setupRequests = 0,
+  onChangePassword,
 }: {
   active: ViewId;
   onSelect: (id: ViewId) => void;
@@ -142,6 +144,9 @@ export function Sidebar({
   showScope?: boolean;
   user: AuthUser;
   onSignOut: () => void;
+  /** Setup requests waiting for an admin (Demo › Customers badge). */
+  setupRequests?: number;
+  onChangePassword?: () => void;
 }) {
   return (
     <nav className="sidebar" aria-label="Dashboard sections">
@@ -193,6 +198,9 @@ export function Sidebar({
                 {item.id === "failed" && failedCount > 0 && (
                   <span className="nav-count">{failedCount}</span>
                 )}
+                {item.id === "demoProspects" && setupRequests > 0 && (
+                  <span className="nav-count nav-count-info" title="Setup requests waiting">{setupRequests}</span>
+                )}
                 {item.id === "allFeedback" && openFeedback > 0 && (
                   <span className="nav-count nav-count-info">{openFeedback}</span>
                 )}
@@ -237,6 +245,17 @@ export function Sidebar({
               {user.email}
             </span>
           </span>
+          {onChangePassword ? (
+            <button
+              type="button"
+              className="icon-btn user-password"
+              onClick={onChangePassword}
+              aria-label="Change password"
+              title="Change password"
+            >
+              <IconKey size={16} />
+            </button>
+          ) : null}
           <button
             type="button"
             className="icon-btn"

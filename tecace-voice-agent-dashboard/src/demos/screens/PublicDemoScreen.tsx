@@ -1,15 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-import { BusinessKnowledge } from "@/components/public/BusinessKnowledge";
-import { PromptView } from "@/components/public/PromptView";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { ArrowUp, Lock } from "lucide-react";
 import { ContactButtons } from "@/components/public/ContactButtons";
 import { Logo } from "@/components/public/Logo";
 import { LanguageNote } from "@/components/public/LanguageNote";
-import { SchedulePanel } from "@/components/public/SchedulePanel";
 import { StickyCall } from "@/components/public/StickyCall";
 import { SourcesPanel } from "@/components/research/SourcesPanel";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent } from "@/components/ui/card";
 import { VersionBadge } from "@/components/VersionBadge";
 import { useInView } from "@/hooks/useInView";
 import { publicFetch } from "@/publicApi";
@@ -20,7 +16,11 @@ import { suggestedQuestions } from "@/lib/proof";
 import { businessNouns } from "@/lib/use-cases";
 import { Button } from "@/components/ui/button";
 import { DemoCall, useDemoCall } from "../../public/DemoCall";
-import { compactHours, type PublicCapabilities } from "../../public/capabilities";
+import { type PublicCapabilities, type SetupState } from "../../public/capabilities";
+import { RequestSetupButton, RequestSetupDialog } from "../../public/RequestSetup";
+
+// The settings studio is the biggest thing on the page and sits below the call, so it loads after it.
+const PublicSettings = lazy(() => import("../../settings/PublicSettings").then((m) => ({ default: m.PublicSettings })));
 import type {
   BusinessProfile,
   CallSound,
@@ -47,6 +47,10 @@ type PublicDemoScreenProps = {
   demoUrl: string;
   /** Dashboard-only: what the operator set up for calls, played out on the page's call. */
   capabilities: PublicCapabilities;
+  /** Dashboard-only: the raw voice id, for the settings view's agent section. */
+  voice: string;
+  /** Dashboard-only: whether Request setup is open, asked for, or past. */
+  setup: SetupState;
 };
 
 export function PublicDemoScreen({
@@ -56,7 +60,6 @@ export function PublicDemoScreen({
   agentName,
   language,
   callSound,
-  voiceLabel,
   profile,
   prompts,
   dossier,
@@ -65,6 +68,8 @@ export function PublicDemoScreen({
   demo,
   demoUrl,
   capabilities,
+  voice,
+  setup,
 }: PublicDemoScreenProps) {
   // Dashboard-only (PORTING.md): the call is played out with the demo's call settings — transfers,
   // texts, messages and demo-calendar bookings appear on the page as the receptionist does them.
@@ -118,29 +123,11 @@ export function PublicDemoScreen({
     };
   }, [call.state, customerId]);
 
-  const askForChange = useCallback(() => {
-    toast("Editing is off while this is a demo.", {
-      description: `Tell us what to change and ${agentName} answers that way on the next call.`,
-      action: {
-        label: "Talk to us",
-        onClick: () => window.open(CONTACT_URL, "_blank", "noreferrer"),
-      },
-    });
-  }, [agentName]);
-
-  // The knowledge panel's message is about editing, which is not what someone
-  // clicking a calendar tile is asking for.
-  const askAboutSchedule = useCallback(() => {
-    toast(capabilities.appointments ? "Book on the call instead." : "The demo does not take bookings.", {
-      description: capabilities.appointments
-        ? `Ask ${agentName} for a ${capabilities.appointments.title.toLowerCase()} on the call: it offers times from the demo calendar. On your real line it writes into the calendar you already use.`
-        : `On your real line, ${agentName} writes the booking into the calendar you already use.`,
-      action: {
-        label: "Talk to us",
-        onClick: () => window.open(CONTACT_URL, "_blank", "noreferrer"),
-      },
-    });
-  }, [agentName, capabilities.appointments]);
+  const [requestOpen, setRequestOpen] = useState(false);
+  const openRequest = () => setRequestOpen(true);
+  const toCall = () => {
+    callRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
 
   const exhausted = allowance.exhausted;
   const questions = suggestedQuestions({ faqs: profile.faqs });
@@ -182,9 +169,16 @@ export function PublicDemoScreen({
               {Math.max(0, Math.floor(remaining / 60))} of {Math.round(allowance.allowedSec / 60)} demo minutes left
             </span>
           )}
-          <Button size="sm" className="h-8 px-3" nativeButton={false} render={<a href={CONTACT_URL} target="_blank" rel="noreferrer" />}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="hidden h-8 px-3 sm:inline-flex"
+            nativeButton={false}
+            render={<a href={CONTACT_URL} target="_blank" rel="noreferrer" />}
+          >
             Talk to us
           </Button>
+          <RequestSetupButton setup={setup} onOpen={openRequest} size="sm" className="h-8 px-3" />
         </div>
       </header>
 
@@ -199,6 +193,9 @@ export function PublicDemoScreen({
           remaining={remaining}
           callRef={callRef}
           lede={lede}
+          cta={(size) => (
+            <RequestSetupButton setup={setup} onOpen={openRequest} size={size} className={size === "lg" ? "h-12 px-6" : undefined} />
+          )}
         />
 
         {/*
@@ -211,117 +208,84 @@ export function PublicDemoScreen({
           <LanguageNote agentName={agentName} language={language} />
 
           {/*
-            Dashboard-only (PORTING.md): what the receptionist knows, at a glance, with the whole
-            profile, the mock-up schedule and the prompt one click further down. The promo showed
-            the full profile open, which made the page five screens long.
+            Dashboard-only (PORTING.md): how the receptionist is set up — the operator's settings
+            studio, read-only, with every section it was built from and a mark that each can be
+            changed after setup. It replaced the promo's Knowledge / Schedule / Prompt card.
           */}
-          <section aria-labelledby="knows-title" className="flex flex-col gap-5 border-t pt-8">
-            <h2 id="knows-title" className="ta-headline-1">What {agentName} knows</h2>
-            <div className="grid gap-6 md:grid-cols-3">
-              <div className="flex flex-col gap-1.5">
-                <p className="ta-caption-1 text-muted-foreground">Hours</p>
-                <p className="ta-body-2">{compactHours(profile.hours)}</p>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <p className="ta-caption-1 text-muted-foreground">Knows about</p>
-                <ul className="flex flex-wrap gap-1.5">
-                  {[...new Set([...profile.services.map((sv) => sv.name), ...profile.highlights])].slice(0, 8).map((item) => (
-                    <li key={item} className="ta-caption-1 rounded-full border px-2.5 py-1">
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <p className="ta-caption-1 text-muted-foreground">
-                  Questions callers ask{profile.faqs.length ? ` · ${profile.faqs.length}` : ""}
-                </p>
-                <ul className="ta-body-2 flex flex-col gap-1">
-                  {profile.faqs.slice(0, 4).map((faq) => (
-                    <li key={faq.q}>{faq.q}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-            <details className="group rounded-2xl border">
-              <summary className="ta-label-1 flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 font-semibold!">
-                Everything {agentName} knows, and how it was built
-                <span className="ta-caption-1 text-muted-foreground font-medium group-open:hidden">
-                  Profile, schedule and prompt from {sources.length} sources
-                </span>
-              </summary>
-              <div className="border-t">
-          <Card id="built" className="rounded-none border-0 shadow-none">
-            <CardHeader>
-              <CardTitle className="ta-headline-2">How it was built</CardTitle>
-              <p className="ta-caption-1 text-muted-foreground">
-                Nobody typed any of this in. We researched {name} from public sources,
-                turned what we found into a profile, and generated the instructions the
-                receptionist runs on. Everything here is yours to correct before launch.
+          <section aria-labelledby="setup-title" className="flex flex-col gap-5 border-t pt-8">
+            <div className="flex flex-col gap-2">
+              <h2 id="setup-title" className="ta-headline-1">
+                How {agentName} is set up
+              </h2>
+              <p className="ta-body-2-reading text-muted-foreground max-w-[68ch]">
+                Everything {agentName} runs on: what it knows about {name}, how it answers, who it puts callers through
+                to, what it texts and how it books. We built it from public sources — once it's set up for you, all of it
+                is yours to change and test before your line goes live.
               </p>
-            </CardHeader>
-            <CardContent>
-              <Tabs defaultValue="knowledge">
-                <TabsList variant="line" className="w-full justify-start">
-                  <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
-                  <TabsTrigger value="schedule">
-                    Schedule
-                    <span className="ta-caption-2 text-muted-foreground ml-1.5">
-                      (Mockup)
-                    </span>
-                  </TabsTrigger>
-                  <TabsTrigger value="prompt">Prompt</TabsTrigger>
-                </TabsList>
-
-                {/*
-                  Sources used to be a tab of its own, which gave the working-out
-                  the same weight as the answer. It reads better as the reference
-                  at the foot of the knowledge it produced.
-                */}
-                <TabsContent value="knowledge" className="space-y-8 pt-4">
-                  <BusinessKnowledge profile={profile} onEditAttempt={askForChange} />
-                  <div className="border-t pt-6">
-                    <SourcesPanel
-                      dossier={dossier}
-                      sources={sources}
-                      researchedAt={researchedAt}
-                      compact
-                    />
+            </div>
+            <Suspense fallback={<div className="bg-muted/40 h-[560px] animate-pulse rounded-2xl border" aria-busy="true" />}>
+              <PublicSettings
+                customerId={customerId}
+                businessName={name}
+                agentName={agentName}
+                voice={voice}
+                language={language}
+                callSound={callSound}
+                profile={profile}
+                prompts={prompts}
+                capabilities={capabilities}
+                notice={
+                  <div className="bg-primary/5 flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 md:px-5">
+                    <Lock className="text-primary size-4 shrink-0" aria-hidden />
+                    <p className="ta-caption-1 text-foreground min-w-0 flex-1">
+                      <span className="font-semibold">A read-only preview.</span> Once it's set up, you edit all of this
+                      yourself and try each change with a test call.
+                    </p>
+                    <RequestSetupButton setup={setup} onOpen={openRequest} size="sm" className="h-8 px-3" />
                   </div>
-                </TabsContent>
-
-                <TabsContent value="schedule" className="pt-4">
-                  <SchedulePanel
-                    profile={profile}
-                    agentName={agentName}
-                    onLocked={askAboutSchedule}
-                  />
-                </TabsContent>
-
-                <TabsContent value="prompt" className="pt-4">
-                  <PromptView
-                    prompts={prompts}
-                    voiceLabel={voiceLabel}
-                    agentName={agentName}
-                  />
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
-              </div>
-            </details>
+                }
+                test={
+                  <div className="flex flex-col items-start gap-4">
+                    <p className="ta-body-2 text-muted-foreground max-w-[62ch]">
+                      Call {agentName} from the top of this page: ask what callers ask, and try a transfer, a text or a
+                      booking. Once it's set up, you test here instead — change something, call again, and callers only
+                      get it when you publish.
+                    </p>
+                    <Button variant="outline" onClick={toCall}>
+                      <ArrowUp className="size-4" /> Go to the call
+                    </Button>
+                  </div>
+                }
+                launchExtra={
+                  <div className="bg-muted/40 flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3">
+                    <p className="ta-body-2 min-w-0 flex-1">Ready for your real calls? Request setup to start onboarding.</p>
+                    <RequestSetupButton setup={setup} onOpen={openRequest} />
+                  </div>
+                }
+              />
+            </Suspense>
+            {sources.length ? (
+              <details className="group rounded-2xl border">
+                <summary className="ta-label-1 flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 font-semibold!">
+                  Where this came from
+                  <span className="ta-caption-1 text-muted-foreground font-medium">{sources.length} public sources</span>
+                </summary>
+                <div className="border-t px-5 py-4">
+                  <SourcesPanel dossier={dossier} sources={sources} researchedAt={researchedAt} compact />
+                </div>
+              </details>
+            ) : null}
           </section>
 
           <Card className="rounded-xl border shadow-none">
-            <CardContent className="space-y-3 p-4 text-center md:p-6">
+            <CardContent className="flex flex-col items-center gap-3 p-4 text-center md:p-6">
               <p className="ta-headline-2">Want this answering your real calls?</p>
-              <p className="ta-body-2-reading text-muted-foreground">
-                Same receptionist, your number, your hours, your booking rules — and
-                the knowledge above becomes yours to edit. The reservations,
-                confirmation calls, voicemail and transfers are the same system,
-                turned on.
+              <p className="ta-body-2-reading text-muted-foreground max-w-[60ch]">
+                Same receptionist, your number, your hours, your booking rules. Request setup and, once we've approved it,
+                everything above is yours to edit and test. We switch your line on when you're ready.
               </p>
-              <div className="flex justify-center">
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <RequestSetupButton setup={setup} onOpen={openRequest} size="lg" className="h-11 px-6" />
                 <ContactButtons mailto={mailto} customerId={customerId} />
               </div>
             </CardContent>
@@ -339,6 +303,13 @@ export function PublicDemoScreen({
           </footer>
         </div>
       </main>
+      <RequestSetupDialog
+        open={requestOpen}
+        onOpenChange={setRequestOpen}
+        demoId={customerId}
+        businessName={name}
+        agentName={agentName}
+      />
     </>
   );
 }

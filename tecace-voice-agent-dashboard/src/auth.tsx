@@ -21,12 +21,18 @@ interface AuthValue {
   // True while the database has no accounts at all. Sign-in is still the first screen either way —
   // this only decides whether it offers a way through to creating the first account.
   needsSetup: boolean;
+  // This deployment can send email: the sign-in page offers Forgot password.
+  mail: boolean;
+  // Self-service sign-up at /start is open.
+  signupOpen: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   createFirstAccount: (name: string, email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   // Re-read the signed-in account, after something on the server moved it (a demo customer
   // starting onboarding leaves the demo-only view without signing in again).
   refresh: () => Promise<void>;
+  // Signed in some other way than the form (an invite or reset link): take that account.
+  adopt: (user: AuthUser) => void;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -38,6 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [mail, setMail] = useState(false);
+  const [signupOpen, setSignupOpen] = useState(false);
 
   useEffect(() => {
     // The API layer calls this when any request comes back 401 — an expired token, or one revoked
@@ -60,6 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .then((state) => {
           if (!active) return;
           setNeedsSetup(state.needsSetup);
+          setMail(Boolean(state.mail));
+          setSignupOpen(Boolean(state.signup));
           setStatus("signed-out");
         })
         .catch(() => {
@@ -110,9 +120,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await fetchMe());
   }, []);
 
+  const adopt = useCallback((next: AuthUser) => {
+    setUser(next);
+    setStatus("signed-in");
+  }, []);
+
   const value = useMemo<AuthValue>(
-    () => ({ status, user, needsSetup, signIn, createFirstAccount, signOut, refresh }),
-    [status, user, needsSetup, signIn, createFirstAccount, signOut, refresh],
+    () => ({ status, user, needsSetup, mail, signupOpen, signIn, createFirstAccount, signOut, refresh, adopt }),
+    [status, user, needsSetup, mail, signupOpen, signIn, createFirstAccount, signOut, refresh, adopt],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

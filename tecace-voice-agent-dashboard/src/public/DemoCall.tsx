@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Check, Info, Mic, MicOff, Phone, PhoneOff, RotateCcw } from "lucide-react";
 import { StatusDot } from "@/components/call/CallPanel";
 import { Transcript } from "@/components/call/Transcript";
@@ -71,9 +71,11 @@ type Props = {
   callRef: RefObject<HTMLDivElement | null>;
   /** The lede under the headline: languages, what it knows. */
   lede: string;
+  /** The way to get it for real — Request setup, or sign-in once asked. Talk to us when absent. */
+  cta?: (size: "default" | "lg") => ReactNode;
 };
 
-export function DemoCall({ state, name, agentName, capabilities, questions, allowance, remaining, callRef, lede }: Props) {
+export function DemoCall({ state, name, agentName, capabilities, questions, allowance, remaining, callRef, lede, cta }: Props) {
   const { call, sim } = state;
   const cards = useMemo(() => tryCards(capabilities, questions), [capabilities, questions]);
   const done = doneKinds(sim.events);
@@ -104,9 +106,13 @@ export function DemoCall({ state, name, agentName, capabilities, questions, allo
               </p>
               <p className="ta-caption-1 text-muted-foreground">We can open it back up, or talk about putting {agentName} on your real line.</p>
               <div>
-                <Button nativeButton={false} render={<a href={CONTACT_URL} target="_blank" rel="noreferrer" />}>
-                  Talk to us
-                </Button>
+                {cta ? (
+                  cta("default")
+                ) : (
+                  <Button nativeButton={false} render={<a href={CONTACT_URL} target="_blank" rel="noreferrer" />}>
+                    Talk to us
+                  </Button>
+                )}
               </div>
             </div>
           ) : (
@@ -242,9 +248,13 @@ export function DemoCall({ state, name, agentName, capabilities, questions, allo
               ))}
             </ul>
           </div>
-          <Button size="lg" className="h-12 px-6" nativeButton={false} render={<a href={CONTACT_URL} target="_blank" rel="noreferrer" />}>
-            Get this for {name}
-          </Button>
+          {cta ? (
+            cta("lg")
+          ) : (
+            <Button size="lg" className="h-12 px-6" nativeButton={false} render={<a href={CONTACT_URL} target="_blank" rel="noreferrer" />}>
+              Get this for {name}
+            </Button>
+          )}
         </div>
       ) : null}
     </section>

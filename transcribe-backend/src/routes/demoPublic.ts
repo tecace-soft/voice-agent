@@ -14,6 +14,7 @@ import { demoBookingTarget, publicCapabilities, runDemoAppointmentTool } from ".
 import { composeSession } from "../session/compose.js";
 import { liveSessionConfig } from "../session/live.js";
 import { fromDemoCustomer } from "../session/records.js";
+import { setupStateOf, type SetupState } from "../db/customerLifecycle.js";
 
 // The prospect's side of the demo: the page behind a `/c/<id>` link, and the call it places.
 //
@@ -82,7 +83,11 @@ function unavailable(customer: Customer | null): Unavailable | null {
  * Kept as an explicit object rather than a delete-list so that adding a field is a decision someone
  * makes here, in the open. `demo/publicView.test.ts` fails if one appears without being listed.
  */
-export function publicView(customer: Customer, demo: ReturnType<typeof demoAllowance>) {
+export function publicView(
+  customer: Customer,
+  demo: ReturnType<typeof demoAllowance>,
+  setup: SetupState = "available",
+) {
   return {
     customerId: customer.id,
     name: customer.profile.name,
@@ -111,6 +116,9 @@ export function publicView(customer: Customer, demo: ReturnType<typeof demoAllow
     // Dashboard-only (PORTING.md): what the operator set up for calls — transfers, links, message
     // scenarios, bookings — as a summary the page can show and play out. No staff phone numbers.
     capabilities: publicCapabilities(customer.callSettings),
+    // Dashboard-only: whether "Request setup" is open, already asked for, or past (the page then
+    // offers sign-in instead). Never who asked.
+    setup,
   };
 }
 
@@ -149,7 +157,14 @@ export const demoPublic = new Elysia({ prefix: "/demo/public" })
         console.error(`[demo] could not read demo usage for ${customer.id}:`, error);
       }
 
-      return { customer: publicView(customer, demo) };
+      let setup: SetupState = "available";
+      try {
+        setup = await setupStateOf(customer.id);
+      } catch (error) {
+        console.error(`[demo] could not read setup state for ${customer.id}:`, error);
+      }
+
+      return { customer: publicView(customer, demo, setup) };
     },
     { params: t.Object({ id: t.String({ maxLength: 64 }) }) },
   )

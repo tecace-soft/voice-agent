@@ -100,6 +100,9 @@ HIDE = [
     # lays out the same on each side and everything below it is still compared. Only the sidebar
     # one: the sign-in page's .brand-mark still holds the icon and is compared as before.
     '.sidebar-brand .brand-mark',
+    # sign-up stage: "Change password" beside Sign out (customers who signed themselves up have no
+    # admin to reset it for them). New by design; hidden in both so the rest of the row is compared.
+    '.sidebar-user .user-password',
 ]
 
 # Captures that are MEANT to differ: id -> (why, marker). The marker must appear in the new app's

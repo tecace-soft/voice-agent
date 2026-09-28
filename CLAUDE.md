@@ -51,5 +51,5 @@ Non-obvious constraints that span many files:
 - Prospect page `/c/<id>` is a **second entry document** (`c.html` → `src/public/`); nothing under `src/public/` may import dashboard auth (enforced by `tests/public-entry.test.ts`).
 - New views need a `PATHS` entry in `src/routing.ts`.
 - UI/style/chart work must follow the `tecace-dashboard-ui` skill (brand blue #116DFF, sentence case, tokens not hex). The same rules apply to `admin-dashboard-app` and `transcribe-dashboard-app` (plain CSS only, no Tailwind migration).
-- Regression after styling changes: `npm test`, then Python scripts in `scripts/regression/` (`compare.py` must print `IDENTICAL`, plus `tw_probe.py`, `demos_e2e.py`, `business_tabs.py`, `public_page.py`, `accounts_lifecycle.py`, `demo_customer.py`). Run them **one at a time** — they share ports; they run against `fake_backend.py`.
+- Regression after styling changes: `npm test`, then Python scripts in `scripts/regression/` (`compare.py` must print `IDENTICAL`, plus `tw_probe.py`, `demos_e2e.py`, `business_tabs.py`, `public_page.py`, `accounts_lifecycle.py`, `demo_customer.py`, `appointments.py`, `signup.py`). Run them **one at a time** — they share ports; they run against `fake_backend.py`.
 - Test call and research runs are real, billable OpenAI calls gated by `OPENAI_API_KEY` on `transcribe-backend`.

@@ -27,10 +27,22 @@ export type PublicCapabilities = {
   }[];
   links: { id: string; triggers: string[]; text: string; url: string }[];
   messages: { id: string; name: string; brief: string }[];
-  appointments: { title: string; durationMinutes: number; hours: Window[] } | null;
+  /** The booking rules as set; the four optional ones arrived later, so an older backend omits them. */
+  appointments: {
+    title: string;
+    durationMinutes: number;
+    hours: Window[];
+    bufferMinutes?: number;
+    minNoticeMinutes?: number;
+    horizonDays?: number;
+    instructions?: string;
+  } | null;
   sms: { doubleOptIn: boolean };
   timezone: string | null;
 };
+
+/** `setup` on the public demo: whether "Request setup" is open, already asked for, or past. */
+export type SetupState = "available" | "requested" | "onboarding";
 
 export function emptyCapabilities(): PublicCapabilities {
   return { transfers: [], links: [], messages: [], appointments: null, sms: { doubleOptIn: true }, timezone: null };
@@ -66,7 +78,21 @@ export function settingsFromCapabilities(caps: PublicCapabilities): CallSettings
     messages: { scenarios: caps.messages.map((m) => ({ id: m.id, enabled: true, name: m.name, brief: m.brief })) },
     sms: { doubleOptIn: caps.sms.doubleOptIn },
     appointments: caps.appointments
-      ? { ...defaultAppointments(), enabled: true, title: caps.appointments.title, durationMinutes: caps.appointments.durationMinutes, hours: caps.appointments.hours }
+      ? (() => {
+          const base = defaultAppointments();
+          const a = caps.appointments;
+          return {
+            ...base,
+            enabled: true,
+            title: a.title,
+            durationMinutes: a.durationMinutes,
+            hours: a.hours,
+            bufferMinutes: a.bufferMinutes ?? base.bufferMinutes,
+            minNoticeMinutes: a.minNoticeMinutes ?? base.minNoticeMinutes,
+            horizonDays: a.horizonDays ?? base.horizonDays,
+            instructions: a.instructions ?? base.instructions,
+          };
+        })()
       : defaultAppointments(),
   };
 }

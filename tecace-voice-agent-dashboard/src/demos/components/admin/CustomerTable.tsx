@@ -70,6 +70,7 @@ const STATUS_LABELS: Record<string, string> = {
 const PHASE_FILTER_LABELS: Record<string, string> = {
   all: "All phases",
   requested: "Setup requested",
+  signups: "New signups",
   ...PHASE_LABELS,
 };
 
@@ -150,6 +151,9 @@ export function CustomerTable({ customers, onChanged }: Props) {
     () => customers.filter((customer) => customer.request).length,
     [customers],
   );
+  // Businesses that signed themselves up at /start and are still in the demo.
+  const isSignup = (customer: CustomerWithStats) => customer.account?.source === "start" && phaseOf(customer) === "demo";
+  const signupCount = useMemo(() => customers.filter(isSignup).length, [customers]); // eslint-disable-line react-hooks/exhaustive-deps
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("heat");
   const [dueOnly, setDueOnly] = useState(false);
@@ -163,7 +167,11 @@ export function CustomerTable({ customers, onChanged }: Props) {
     const filtered = customers.filter((customer) => {
       if (dueOnly && !due.has(customer.id)) return false;
       if (status !== "all" && customer.status !== status) return false;
-      if (phase === "requested" ? !customer.request : phase !== "all" && phaseOf(customer) !== phase) {
+      if (phase === "requested") {
+        if (!customer.request) return false;
+      } else if (phase === "signups") {
+        if (!isSignup(customer)) return false;
+      } else if (phase !== "all" && phaseOf(customer) !== phase) {
         return false;
       }
       if (!term) return true;
@@ -245,6 +253,7 @@ export function CustomerTable({ customers, onChanged }: Props) {
           <SelectContent>
             <SelectItem value="all">All phases</SelectItem>
             <SelectItem value="requested">Setup requested ({requestedCount})</SelectItem>
+            <SelectItem value="signups">New signups ({signupCount})</SelectItem>
             {CUSTOMER_PHASES.map((value) => (
               <SelectItem key={value} value={value}>
                 {PHASE_LABELS[value]} ({phaseCounts[value]})
@@ -360,6 +369,7 @@ export function CustomerTable({ customers, onChanged }: Props) {
                     {customer.request ? (
                       <StatusBadge kind="caution">Setup requested</StatusBadge>
                     ) : null}
+                    {isSignup(customer) ? <StatusBadge kind="neutral">Signed up</StatusBadge> : null}
                   </span>
                 </TableCell>
                 <TableCell className="ta-label-1">

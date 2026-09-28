@@ -4,6 +4,7 @@ import { env } from "./config/env.js";
 import { ensureDbReady } from "./db/client.js";
 import { ensureSeedAdmin } from "./auth/seed.js";
 import { auth } from "./routes/auth.js";
+import { signup } from "./routes/signup.js";
 import { lifecycle } from "./routes/lifecycle.js";
 import { feedback } from "./routes/feedback.js";
 import { health } from "./routes/health.js";
@@ -49,6 +50,9 @@ export const app = new Elysia()
   .get("/", () => ({ name: "transcribe-backend", message: "Elysia is running" }))
   .use(health)
   .use(auth)
+  // Customers signing themselves up: claiming a demo from its public page, or starting at /start.
+  // Public by design; its own file says what stands in front of each route.
+  .use(signup)
   // Account management too, at the same prefix: where a customer is in their life, and the
   // one-time copy out of the demo. Its own file says why those are separate decisions.
   .use(lifecycle)

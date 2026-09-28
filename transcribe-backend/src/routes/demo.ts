@@ -56,12 +56,13 @@ import type { CustomerPatch } from "../db/demoWrite.js";
 import { lifecycleByDemo, withLifecycle } from "../db/customerLifecycle.js";
 import { findUserByBusinessId, toPublicUser } from "../db/users.js";
 import {
-  clearOnboardingRequest,
   declineOnboarding,
   MAX_ONBOARDING_NOTE,
   requestOnboarding,
 } from "../db/onboarding.js";
-import { PromotionError, startOnboarding } from "../business/promote.js";
+import { OnboardError, approveOnboarding } from "../business/onboard.js";
+import { decideRequest, listOpen } from "../db/signupRequests.js";
+import { openSetupRequests } from "../db/setupRequests.js";
 import {
   addNote,
   attachLiveSession,
@@ -768,7 +769,19 @@ export const demo = new Elysia({ prefix: "/demo" })
 
       try {
         const account = await findUserByBusinessId(params.id);
-        if (!account || !(await declineOnboarding(account.id, body?.note))) {
+        const declinedAccount = account ? await declineOnboarding(account.id, body?.note) : false;
+        // A request made from the public page without email has no account to carry it: it is its
+        // own row, and declining it answers that row (the one named, or every open one on the demo).
+        let declinedRequests = 0;
+        if (!declinedAccount) {
+          const open = await listOpen(params.id);
+          for (const request of open.filter((r) => !body?.requestId || r.id === body.requestId)) {
+            if (await decideRequest(request.id, { status: "declined", by: caller.user.id, note: body?.note })) {
+              declinedRequests += 1;
+            }
+          }
+        }
+        if (!declinedAccount && declinedRequests === 0) {
           return status(409, { error: "There is no open request to decline." });
         }
         const [customer, lifecycle] = await Promise.all([
@@ -784,7 +797,10 @@ export const demo = new Elysia({ prefix: "/demo" })
     {
       params: t.Object({ id: t.String({ maxLength: 64 }) }),
       body: t.Optional(
-        t.Object({ note: t.Optional(t.String({ maxLength: MAX_ONBOARDING_NOTE })) }),
+        t.Object({
+          note: t.Optional(t.String({ maxLength: MAX_ONBOARDING_NOTE })),
+          requestId: t.Optional(t.String({ maxLength: 64 })),
+        }),
       ),
     },
   )
@@ -805,50 +821,58 @@ export const demo = new Elysia({ prefix: "/demo" })
    */
   .post(
     "/customers/:id/onboard",
-    async ({ headers, params, status }) => {
+    async ({ body, headers, params, status }) => {
       const caller = await authenticateAdmin(headers.authorization, DEMO_IS_ADMIN);
       if ("denied" in caller) return status(caller.denied, caller.body);
 
       try {
-        const demo = await getCustomer(params.id);
-        if (!demo) return status(404, NO_SUCH_CUSTOMER);
-
-        const account = await findUserByBusinessId(params.id);
-        if (!account) {
-          return status(409, {
-            error: "Link an account to this customer first — onboarding moves that account.",
-          });
-        }
-        if (account.status === "pre-production" || account.status === "production") {
-          return status(409, { error: "This customer is already past the demo." });
-        }
-
-        let moved;
-        try {
-          moved = await startOnboarding(account.id, demo);
-        } catch (err) {
-          if (err instanceof PromotionError) return status(422, { error: err.message });
-          throw err;
-        }
-        await clearOnboardingRequest(account.id);
-
-        // Best effort: the account has moved, which is what the customer asked for. A board that
-        // still says "Interested" is cosmetic and the operator can drag it.
-        let customer: Customer = demo;
-        if (demo.stage !== "won") {
-          customer = (await patchCustomer(params.id, { stage: "won" }).catch(() => null)) ?? demo;
-        }
+        const approved = await approveOnboarding({
+          demoId: params.id,
+          adminId: caller.user.id,
+          requestId: body?.requestId,
+          email: body?.email,
+          name: body?.name,
+        });
         return {
-          customer: withLifecycle(customer, await lifecycleByDemo(params.id)),
-          user: toPublicUser(moved.user),
-          copied: moved.copied,
+          customer: withLifecycle(approved.customer, await lifecycleByDemo(params.id)),
+          user: toPublicUser(approved.user),
+          copied: approved.copied,
+          invite: approved.invite,
+          emailed: approved.emailed,
         };
       } catch (error) {
+        if (error instanceof OnboardError) return status(error.status, { error: error.message, code: error.code });
         return status(500, jsonError(error));
       }
     },
-    { params: t.Object({ id: t.String({ maxLength: 64 }) }) },
+    {
+      params: t.Object({ id: t.String({ maxLength: 64 }) }),
+      body: t.Optional(
+        t.Object({
+          // Which open request (made without email) to approve; the newest when left out.
+          requestId: t.Optional(t.String({ maxLength: 64 })),
+          // No account and no request: the customer's email, to make their account and an invite.
+          email: t.Optional(t.String({ maxLength: 320 })),
+          name: t.Optional(t.String({ maxLength: 120 })),
+        }),
+      ),
+    },
   )
+
+  /**
+   * Every setup request waiting for an answer, for the sidebar badge and the Customers filter: the
+   * signed-in customers' own requests (on their accounts) and the requests made from a public page on
+   * a deployment with no email (in `signup_requests`, no account yet). Dashboard-only.
+   */
+  .get("/setup-requests", async ({ headers, status }) => {
+    const caller = await authenticateAdmin(headers.authorization, DEMO_IS_ADMIN);
+    if ("denied" in caller) return status(caller.denied, caller.body);
+    try {
+      return { requests: await openSetupRequests() };
+    } catch (error) {
+      return status(500, jsonError(error));
+    }
+  })
 
   // What this demo's test call is told, for the settings screen's preview. Operator only, like the
   // test call itself. Dashboard-only (see PORTING.md): the promo has no such route.

@@ -1,27 +1,17 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { demoFetch } from "@/api";
 import { readJson } from "@/lib/http";
-import { quotedGreeting } from "@/lib/prompt";
-import type { BusinessProfile as DemoBusinessProfile, CallSound, Customer, CustomerPrompts } from "@/lib/types";
+import type { Customer } from "@/lib/types";
 import type { SessionPreview } from "../api/types";
 import type { SectionId } from "../routing";
 import { withDefaults, type CallSettings } from "./callSettings";
-import { AppointmentsSection } from "./sections/AppointmentsSection";
-import { SettingsShell, SectionIntro, type Phase, type SettingsSection } from "./SettingsShell";
+import { buildDemoSections } from "./demoSections";
+import { SettingsShell, type Phase } from "./SettingsShell";
 import { makeUpdater, type CallSettingsBinding } from "./sections/shared";
-import { TransferCallsSection } from "./sections/TransferCallsSection";
-import { TextLinkSection } from "./sections/TextLinkSection";
-import { TakeMessageSection } from "./sections/TakeMessageSection";
-import { ForwardingSection } from "./sections/ForwardingSection";
-import {
-  AgentProfileSection,
-  BusinessInfoSection,
-  CustomTrainingSection,
-  FaqsSection,
-  TestSection,
-} from "./sections/ProfileSections";
 
 // A demo's receptionist settings: the same shell and sections as a business, over a demo record.
+// The sections themselves are `demoSections.tsx`'s, shared with the public demo page; this file is
+// the operator's saving around them.
 //
 // The difference is who saves. Knowledge, the persona and the prompts are part of the record the
 // page's own Save button PATCHes, exactly as the Knowledge and Prompt tabs did. Transfers, links and
@@ -109,105 +99,18 @@ export function DemoSettings(props: Props) {
     readOnly: !operator,
   };
 
-  const setProfile = (profile: DemoBusinessProfile) => setDraft((current) => ({ ...current, profile }));
-  const pageSaveNote = operator ? (
-    <p className="ta-caption-1 text-muted-foreground mt-6">Press Save in the bar above to keep changes here.</p>
-  ) : null;
-
-  const sections: SettingsSection[] = [
-    {
-      id: "business-info",
-      render: () => (
-        <BusinessInfoSection profile={draft.profile} onChange={setProfile} agentName={draft.agentName} footer={pageSaveNote} />
-      ),
-    },
-    {
-      id: "agent-profile",
-      render: () => (
-        <AgentProfileSection
-          value={{ agentName: draft.agentName, voice: draft.voice, language: draft.language ?? "", greeting: null }}
-          onChange={(next) => {
-            const languageChanged = next.language !== (draft.language ?? "");
-            setDraft((current) => ({ ...current, agentName: next.agentName, voice: next.voice, language: next.language }));
-            // The greeting is written in the language, so the prompts have to be rebuilt for the change
-            // to reach the call — saved straight away, as the Prompt tab did.
-            if (languageChanged) void props.save({ language: next.language });
-          }}
-          businessName={businessName}
-          greetingLine={quotedGreeting(draft.prompts.greeting) ?? undefined}
-          // The demo's browser-side phone line and room sound — for the test call and the public page.
-          callSound={draft.callSound}
-          onCallSoundChange={(callSound: CallSound) => setDraft((current) => ({ ...current, callSound }))}
-          footer={pageSaveNote}
-        />
-      ),
-    },
-    {
-      id: "faqs",
-      render: () => <FaqsSection profile={draft.profile} onChange={setProfile} footer={pageSaveNote} />,
-    },
-    { id: "take-message", render: () => <TakeMessageSection binding={binding} /> },
-    { id: "appointments", render: () => <AppointmentsSection binding={binding} /> },
-    { id: "text-link", render: () => <TextLinkSection binding={binding} /> },
-    { id: "transfers", render: () => <TransferCallsSection binding={binding} /> },
-    {
-      id: "custom-training",
-      render: () => (
-        <CustomTrainingSection
-          standard={[]}
-          prompts={draft.prompts}
-          onPromptsChange={(prompts: CustomerPrompts) => setDraft((current) => ({ ...current, prompts }))}
-          onRebuild={props.onRebuild}
-          rebuilding={props.rebuilding}
-          promptsFooter={<span className="ta-caption-1 text-muted-foreground">Save at the top of the page keeps prompt edits.</span>}
-          loadPreview={
-            operator
-              ? async () =>
-                  readJson<SessionPreview>(await demoFetch(`/customers/${props.customerId}/session-preview`))
-              : undefined
-          }
-          // A demo has no phone line, so nothing published to compare with.
-          previewTabs={false}
-        />
-      ),
-    },
-    {
-      id: "test",
-      render: () =>
-        operator ? (
-          <TestSection>
-            <p className="ta-body-2 text-muted-foreground">
-              Use the Test call panel beside these settings. It dials this demo with its current transfers, links
-              and message scenarios, and lets you play the phone being rung and the caller's texts. Change
-              something, then call again: there's nothing to publish on a demo.
-            </p>
-          </TestSection>
-        ) : (
-          <div>
-            <SectionIntro>
-              Hear your receptionist for yourself: open your demo page from the panel beside these settings and
-              call it from your browser. After onboarding, you test here instead, with your own changes, before
-              callers get them.
-            </SectionIntro>
-          </div>
-        ),
-    },
-    { id: "launch", render: () => <Journey operator={operator} /> },
-    {
-      id: "forwarding",
-      guide: true,
-      render: () => (
-        <ForwardingSection
-          agentNumber={null}
-          notice={
-            operator
-              ? "A demo has no phone line. This is the guide the business follows once it goes live, with its number filled in."
-              : "Your receptionist gets its own number when you go live, and the codes below fill in with it."
-          }
-        />
-      ),
-    },
-  ];
+  const sections = buildDemoSections({
+    audience: operator ? "operator" : "owner",
+    draft,
+    binding,
+    setDraft,
+    save: props.save,
+    onRebuild: props.onRebuild,
+    rebuilding: props.rebuilding,
+    loadPreview: operator
+      ? async () => readJson<SessionPreview>(await demoFetch(`/customers/${props.customerId}/session-preview`))
+      : undefined,
+  });
 
   return (
     <SettingsShell
@@ -223,45 +126,5 @@ export function DemoSettings(props: Props) {
       readOnly={!operator}
       notice={props.notice}
     />
-  );
-}
-
-const STEPS: { title: string; body: string }[] = [
-  {
-    title: "Demo",
-    body: "Try the receptionist we built from your business, and see everything it can do.",
-  },
-  {
-    title: "Onboarding",
-    body: "Check what it knows, set up transfers, links and messages, and test calls in the app before callers get them.",
-  },
-  {
-    title: "Live",
-    body: "We give your receptionist a phone number. You forward your calls to it, and it answers the ones you miss.",
-  },
-];
-
-/** Demo › onboarding › live, spelled out, for a demo's launch section. */
-function Journey({ operator }: { operator: boolean }) {
-  return (
-    <div>
-      <SectionIntro>
-        {operator
-          ? "A demo has no phone line. When this business starts onboarding, everything set up here — including transfers, links and message scenarios — carries over, and this is where they switch their line on."
-          : "Your receptionist is in its demo. Here's the way to a live line; everything you see in these settings comes with you."}
-      </SectionIntro>
-      <ol className="grid gap-3 md:grid-cols-3">
-        {STEPS.map((step, i) => (
-          <li key={step.title} className={`rounded-xl border p-4 ${i === 0 ? "border-primary bg-primary/5" : ""}`}>
-            <p className="ta-caption-1 text-muted-foreground">Step {i + 1}</p>
-            <p className="ta-headline-2 mt-1">
-              {step.title}
-              {i === 0 ? <span className="ta-caption-2 text-primary ml-2">{operator ? "Now" : "You're here"}</span> : null}
-            </p>
-            <p className="ta-caption-1 text-muted-foreground mt-2">{step.body}</p>
-          </li>
-        ))}
-      </ol>
-    </div>
   );
 }

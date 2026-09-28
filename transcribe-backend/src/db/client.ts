@@ -726,6 +726,75 @@ export async function initDb(): Promise<void> {
             AND p.facts IS NOT NULL AND btrim(p.facts) <> ''
        )
   `;
+
+  // Sign-up (routes/signup.ts). Where an account came from — an admin (every account before this
+  // existed), a prospect claiming their demo from its public page, or a self-service sign-up — and
+  // when its email was proven by a code. Informational: an unverified sign-up never becomes a row
+  // here at all, so nothing gates on this.
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS signup_source TEXT NOT NULL DEFAULT 'admin'`;
+  await sql`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_signup_source_known`;
+  await sql`
+    ALTER TABLE users ADD CONSTRAINT users_signup_source_known
+      CHECK (signup_source IN ('admin', 'claim', 'start'))
+  `;
+
+  // A sign-up before it is an account: what the person typed, the password already hashed, and the
+  // code sent to prove the email. The `users` row is written only once the code is right (or, on a
+  // deployment with no email, when an admin approves the request), so a stranger typing someone
+  // else's address neither fills the Accounts list nor takes that address.
+  //
+  //   pending  — waiting for the code;
+  //   open     — no email here, so no code: waiting for an admin (a claim only);
+  //   verified — the code was right and the account exists (`user_id`);
+  //   approved / declined — an admin answered an `open` one.
+  await sql`
+    CREATE TABLE IF NOT EXISTS signup_requests (
+      id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      source              TEXT NOT NULL CHECK (source IN ('claim', 'start')),
+      customer_id         TEXT,
+      name                TEXT NOT NULL,
+      email               TEXT NOT NULL,
+      phone               TEXT,
+      note                TEXT,
+      business            JSONB,
+      password_hash       TEXT NOT NULL,
+      ip_hash             TEXT NOT NULL,
+      status              TEXT NOT NULL
+        CHECK (status IN ('pending', 'open', 'verified', 'approved', 'declined')),
+      code_hash           TEXT,
+      code_expires_at     TIMESTAMPTZ,
+      code_attempts       INTEGER NOT NULL DEFAULT 0,
+      code_sent_at        TIMESTAMPTZ,
+      code_sends          INTEGER NOT NULL DEFAULT 0,
+      user_id             UUID REFERENCES users(id) ON DELETE SET NULL,
+      research_started_at TIMESTAMPTZ,
+      decided_by          UUID REFERENCES users(id) ON DELETE SET NULL,
+      decided_at          TIMESTAMPTZ,
+      decline_note        TEXT,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_signup_requests_email ON signup_requests (email, status)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_signup_requests_ip ON signup_requests (ip_hash, created_at)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_signup_requests_customer ON signup_requests (customer_id, status)`;
+
+  // One-time sign-in links: an admin's invite (choose a password, 7 days) and a password reset
+  // (60 minutes). Only the SHA-256 of the token is kept; issuing a new one retires the old.
+  await sql`
+    CREATE TABLE IF NOT EXISTS auth_tokens (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      purpose     TEXT NOT NULL CHECK (purpose IN ('invite', 'reset')),
+      token_hash  TEXT NOT NULL,
+      created_by  UUID REFERENCES users(id) ON DELETE SET NULL,
+      expires_at  TIMESTAMPTZ NOT NULL,
+      used_at     TIMESTAMPTZ,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_tokens_hash ON auth_tokens (token_hash)`;
 }
 
 // Ensure the schema is ready before serving requests, at most once per process (cached promise).
@@ -777,6 +846,9 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM sms_consents LIMIT 1`;
     await sql`SELECT call_sid FROM inbound_calls LIMIT 1`;
     await sql`SELECT onboarding_requested_at, onboarding_declined_at, live_at FROM users LIMIT 1`;
+    await sql`SELECT email_verified_at, signup_source FROM users LIMIT 1`;
+    await sql`SELECT research_started_at FROM signup_requests LIMIT 1`;
+    await sql`SELECT 1 FROM auth_tokens LIMIT 1`;
     const [guard] = await sql`SELECT 1 FROM pg_trigger WHERE tgname = 'demo_customers_code_guard'`;
     if (!guard) throw new Error("customer codes not converted");
     return;

@@ -61,6 +61,15 @@ export function BusinessPage({
   // page is a way IN to somebody else's details, and it opens on the list rather than on an empty
   // profile that could never become live.
   const [customers, setCustomers] = useState<AuthUser[] | null>(null);
+  // Once, the first time a customer opens their own business after approval: where they are and
+  // what to do. Remembered per browser; nothing depends on it.
+  const [welcome, setWelcome] = useState(() => {
+    try {
+      return !localStorage.getItem("business-welcome-seen");
+    } catch {
+      return false;
+    }
+  });
   const [profile, setProfile] = useState<BusinessProfile | null>(null);
   // What the assistant does before this business adds anything — sent with the profile so the
   // page never has its own stale copy of the agent's behaviour.
@@ -435,7 +444,28 @@ export function BusinessPage({
     </>
   );
 
-  const notice =
+  const dismissWelcome = () => {
+    setWelcome(false);
+    try {
+      localStorage.setItem("business-welcome-seen", "1");
+    } catch {
+      /* a remembered dismissal is a nicety */
+    }
+  };
+  const welcomeLine =
+    onboarding && !viewing && welcome ? (
+      <div className="bg-primary/5 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b px-4 py-2.5" role="status">
+        <span className="ta-caption-1 min-w-0 flex-1">
+          <b className="font-semibold">Welcome — it's yours now.</b> Everything from your demo is here. Change anything,
+          then try it with a test call; callers only get what you publish, once your line is on.
+        </span>
+        <button type="button" className="ta-caption-1 text-primary hover:underline" onClick={dismissWelcome}>
+          Got it
+        </button>
+      </div>
+    ) : null;
+
+  const statusNotice =
     onboarding && readiness ? (
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-2.5" role="status" aria-label="Go live checklist">
         <span className="ta-caption-1">
@@ -493,7 +523,14 @@ export function BusinessPage({
         section={section}
         onSection={(next) => onSection?.(next)}
         phase={onboarding ? "onboarding" : undefined}
-        notice={notice}
+        notice={
+          welcomeLine || statusNotice ? (
+            <>
+              {welcomeLine}
+              {statusNotice}
+            </>
+          ) : null
+        }
         onSaved={(next) => {
           setProfile(next);
           setJustSaved(true);

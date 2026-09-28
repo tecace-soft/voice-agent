@@ -152,6 +152,29 @@ function resolveCalendarSecret(): string {
   return `dev-calendar:${databaseUrl}`;
 }
 
+// Email (src/email/mailer.ts): sign-up codes, password resets, sign-in links, "you can edit now",
+// and the admin's new-request notice. The same SMTP_* names backend-app uses (a Gmail App Password
+// works). Optional: with no SMTP_HOST/USERNAME/PASSWORD nothing is sent, sign-up by code is closed,
+// and sign-in links are copied by hand. SMTP_FROM defaults to the username.
+const smtpPort = Number(process.env.SMTP_PORT ?? 587);
+if (!Number.isInteger(smtpPort) || smtpPort <= 0) {
+  throw new Error("SMTP_PORT must be a positive integer.");
+}
+const smtp = {
+  host: process.env.SMTP_HOST?.trim() ?? "",
+  port: smtpPort,
+  user: process.env.SMTP_USERNAME?.trim() ?? "",
+  pass: process.env.SMTP_PASSWORD?.trim() ?? "",
+  from: (process.env.SMTP_FROM ?? process.env.SMTP_USERNAME ?? "").trim(),
+};
+
+// Research runs a self-service sign-up may start per day across the whole deployment. Each one is
+// two billable model calls; beyond this, sign-ups wait for an admin to research them.
+const signupResearchDailyCap = Number(process.env.SIGNUP_RESEARCH_DAILY_CAP ?? 30);
+if (!Number.isFinite(signupResearchDailyCap) || signupResearchDailyCap < 0) {
+  throw new Error("SIGNUP_RESEARCH_DAILY_CAP must be a non-negative number.");
+}
+
 export const env = {
   nodeEnv,
   port: Number(process.env.PORT ?? 8001),
@@ -196,6 +219,14 @@ export const env = {
   // The public demo call is composed like a test call, with the tools the demo page simulates. Set
   // PUBLIC_DEMO_COMPOSED=false to go back to the stored prompts with no tools.
   publicDemoComposed: (process.env.PUBLIC_DEMO_COMPOSED ?? "").trim().toLowerCase() !== "false",
+  smtp,
+  mailEnabled: Boolean(smtp.host && smtp.user && smtp.pass),
+  // The dashboard's public origin. Every link in an email is built from this and nothing else, so a
+  // forged Host header can't point a reset link somewhere else. Unset = emails carry no links.
+  dashboardUrl: (process.env.DASHBOARD_URL ?? "").trim().replace(/\/$/, ""),
+  // Who hears about a new sign-up or setup request. Unset = nobody is emailed; the badge still shows.
+  adminNotifyEmail: process.env.ADMIN_NOTIFY_EMAIL?.trim() ?? "",
+  signupResearchDailyCap,
 } as const;
 
 export type Env = typeof env;

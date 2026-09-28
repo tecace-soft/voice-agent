@@ -412,7 +412,15 @@ export function ProspectScreen({
           Math.round((stats.totalSec / 60) * 10) / 10
         } minutes`}
       />
-      <div className="flex flex-col gap-3 px-4 empty:hidden md:px-6">{problems}</div>
+      {/* The customer's version of the operator's problems: their receptionist is still being built
+          (a /start sign-up waiting on research, or one we finish by hand). No error text, no
+          "press Re-research" — that is ours to do. */}
+      {draft.status !== "ready" ? (
+        <p className="bg-warning/10 ta-caption-1 px-4 py-2.5 md:px-6" role="status">
+          <b className="font-semibold">We're still building your receptionist.</b> What's here fills in when it's
+          ready, usually within a day. You can request setup meanwhile.
+        </p>
+      ) : null}
     </div>
   );
 

@@ -8,6 +8,8 @@ import { defineConfig, loadEnv, type Connect, type Plugin } from "vite";
 // while working once deployed.
 const rewriteDemoLinks: Connect.NextHandleFunction = (req, _res, next) => {
   if (req.url && /^\/c\/[^?#]/.test(req.url)) req.url = "/c.html";
+  // /start is self-service sign-up, a third entry (start.html).
+  else if (req.url && /^\/start\/?(?:[?#]|$)/.test(req.url)) req.url = "/start.html";
   next();
 };
 const demoLinkRewrite: Plugin = {
@@ -55,6 +57,7 @@ export default defineConfig(({ mode }) => {
         input: {
           index: fileURLToPath(new URL("./index.html", import.meta.url)),
           c: fileURLToPath(new URL("./c.html", import.meta.url)),
+          start: fileURLToPath(new URL("./start.html", import.meta.url)),
         },
       },
     },

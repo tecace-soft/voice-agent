@@ -27,26 +27,14 @@ import type {
   TranscribeStats,
 } from "./types";
 import type { CallSettings, StoredCallSettings } from "../settings/callSettings";
+import { readStoredToken, storeToken } from "../session/token";
 
 // Single place that talks to the backend API. Base URL comes from BACKEND_URL (set in .env locally
 // and in the Vercel project for production), injected by vite.config.ts as __BACKEND_URL__ — see
 // the comment there for why it isn't a VITE_ name.
 const BASE_URL: string = __BACKEND_URL__;
 
-// The session token lives in localStorage so a reload (or a new tab) keeps you signed in. The
-// backend's token is stateless and expires on its own; `GET /auth/me` on boot confirms it is still
-// good. Note this is readable by any script on this origin — acceptable for an internal metrics
-// dashboard, and the reason the token is short-lived and revocable (`auth revoke`).
-const TOKEN_KEY = "transcribe.token";
-
-function readStoredToken(): string | null {
-  try {
-    return localStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null; // private mode / storage disabled — the session just won't survive a reload
-  }
-}
-
+// The session token's storage is `session/token.ts`, shared with the public sign-up pages.
 let token: string | null = readStoredToken();
 
 export function getToken(): string | null {
@@ -55,12 +43,7 @@ export function getToken(): string | null {
 
 export function setToken(next: string | null): void {
   token = next;
-  try {
-    if (next) localStorage.setItem(TOKEN_KEY, next);
-    else localStorage.removeItem(TOKEN_KEY);
-  } catch {
-    /* storage unavailable — the in-memory token still works for this tab */
-  }
+  storeToken(next);
 }
 
 // Called when the backend rejects our token mid-session (expired, or revoked from the CLI) so the
@@ -162,8 +145,43 @@ export async function logout(): Promise<void> {
 
 // Whether this deployment still has no accounts at all. Answered without a session, because the
 // dashboard has to ask it before it can know which form to show.
-export function getSetupState(): Promise<{ needsSetup: boolean }> {
-  return request<{ needsSetup: boolean }>("GET", "/auth/setup-state", { anonymous: true });
+// `mail`: this deployment can send email (Forgot password shows). `signup`: /start is open.
+export function getSetupState(): Promise<{ needsSetup: boolean; mail?: boolean; signup?: boolean }> {
+  return request<{ needsSetup: boolean; mail?: boolean; signup?: boolean }>("GET", "/auth/setup-state", { anonymous: true });
+}
+
+// A reset link by email. Always answers the same, whether the address has an account or not.
+export function forgotPassword(email: string): Promise<{ sent: boolean }> {
+  return request<{ sent: boolean }>("POST", "/auth/forgot", { body: { email }, anonymous: true });
+}
+
+// Whose invite or reset link this is, before they choose a password.
+export function inspectLink(token: string): Promise<{ purpose: "invite" | "reset"; name: string; email: string }> {
+  return request("POST", "/auth/tokens/inspect", { body: { token }, anonymous: true });
+}
+
+// Use an invite or reset link: set the password and sign in.
+export async function acceptLink(token: string, password: string): Promise<LoginResponse> {
+  const result = await request<LoginResponse>("POST", "/auth/tokens/accept", { body: { token, password }, anonymous: true });
+  setToken(result.token);
+  return result;
+}
+
+// Change your own password; other sessions are signed out, this one gets a fresh token.
+export async function changeMyPassword(current: string, password: string): Promise<LoginResponse> {
+  const result = await request<LoginResponse>("POST", "/auth/me/password", { body: { current, password } });
+  setToken(result.token);
+  return result;
+}
+
+// Admin: a one-time sign-in link for an account (choose a password). Emailed too when mail is set up.
+export function inviteAccount(id: string): Promise<{ token: string; link: string | null; expiresAt: string; emailed: boolean }> {
+  return request("POST", `/auth/users/${id}/invite`, {});
+}
+
+// Admin: setup requests waiting for an answer, for the sidebar badge.
+export async function countSetupRequests(): Promise<number> {
+  return (await get<{ requests: unknown[] }>("/demo/setup-requests")).requests.length;
 }
 
 // Create the very first account and sign straight in. The backend closes this route as soon as any

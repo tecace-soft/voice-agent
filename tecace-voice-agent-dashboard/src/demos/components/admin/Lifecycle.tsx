@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/admin/shared";
@@ -75,15 +76,110 @@ export function LifecycleBadges({ customer }: { customer: Customer }) {
       {phase === "demo" && customer.request ? (
         <StatusBadge kind="caution">Setup requested</StatusBadge>
       ) : null}
+      {phase === "demo" && customer.account?.source === "start" ? <StatusBadge kind="neutral">Signed up</StatusBadge> : null}
+    </>
+  );
+}
+
+/** What `POST /demo/customers/:id/onboard` answers (transcribe-backend business/onboard.ts). */
+type Approval = {
+  customer: Customer;
+  invite: { token: string; link: string | null; expiresAt: string } | null;
+  emailed: boolean;
+};
+
+async function approve(id: string, body: { requestId?: string; email?: string; name?: string }): Promise<Approval> {
+  const response = await demoFetch(`/customers/${id}/onboard`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (response.status === 422) {
+    throw new Error("This demo needs a bit more before it can be copied into business information.");
+  }
+  return readJson<Approval>(response);
+}
+
+/** Who is asking, or who the account is: name, email, and how far to trust the email. */
+function Requester({ customer }: { customer: Customer }) {
+  const request = customer.request;
+  const account = customer.account;
+  const name = request?.name ?? account?.name;
+  const email = request?.email ?? account?.email;
+  if (!email) return null;
+  const verified = request?.email ? false : Boolean(account?.verified);
+  const source = request?.email ? "claim" : account?.source;
+  const contact = customer.contactEmail?.trim().toLowerCase();
+  const mismatch = Boolean(contact) && contact !== email.toLowerCase();
+  return (
+    <div className="space-y-1">
+      <p className="ta-body-2 text-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="font-semibold">{name}</span>
+        <span className="text-muted-foreground">{email}</span>
+        {request?.phone ? <span className="text-muted-foreground">· {request.phone}</span> : null}
+        <StatusBadge kind={verified ? "positive" : "neutral"}>{verified ? "Email verified" : "Email not verified"}</StatusBadge>
+        {source === "start" ? <StatusBadge kind="neutral">Signed up at /start</StatusBadge> : null}
+        {source === "claim" ? <StatusBadge kind="neutral">From the demo page</StatusBadge> : null}
+        {request?.openCount && request.openCount > 1 ? (
+          <StatusBadge kind="caution">{request.openCount} requests</StatusBadge>
+        ) : null}
+      </p>
+      {mismatch ? (
+        <p className="ta-caption-1 text-warning">
+          Not the contact on this demo ({customer.contactEmail}). Check they're from the business before approving.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** After an approval: whether the customer was told, and their sign-in link when they need one. */
+function Approved({ result, onClose }: { result: Approval; onClose: () => void }) {
+  const link = result.invite ? (result.invite.link ?? `${window.location.origin}/#/welcome?token=${result.invite.token}`) : null;
+  const [copied, setCopied] = useState(false);
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle className="ta-headline-1">Approved</DialogTitle>
+        <DialogDescription className="ta-body-2">
+          {link
+            ? result.emailed
+              ? "They're in onboarding. We emailed them a link to choose a password; you can also send it yourself."
+              : "They're in onboarding. Send them this link to choose a password and sign in (it works once, for 7 days)."
+            : result.emailed
+              ? "They're in onboarding, and we emailed them that they can edit now."
+              : "They're in onboarding. They can sign in with the email and password they chose."}
+        </DialogDescription>
+      </DialogHeader>
+      {link ? (
+        <div className="flex gap-2">
+          <input readOnly value={link} className="border-input bg-muted/40 ta-caption-1 min-w-0 flex-1 rounded-lg border px-3 py-2 font-mono" onFocus={(e) => e.currentTarget.select()} />
+          <Button
+            variant="outline"
+            onClick={() => {
+              void navigator.clipboard?.writeText(link).then(
+                () => setCopied(true),
+                () => setCopied(false),
+              );
+            }}
+          >
+            {copied ? "Copied" : "Copy"}
+          </Button>
+        </div>
+      ) : null}
+      <DialogFooter>
+        <Button onClick={onClose}>Done</Button>
+      </DialogFooter>
     </>
   );
 }
 
 /**
- * The operator's side of the lifecycle. While the customer is in the demo: their open request,
- * with Approve (copy into business information, onboarding) and Decline (a note they see). Once
- * they have left the demo: this record is only the demo now, and the receptionist callers hear is
- * the customer's own business information.
+ * The operator's side of the lifecycle. While the customer is in the demo: their open request —
+ * who asked and how far to trust it — with Approve (copy into business information, onboarding) and
+ * Decline (a note they see); or, with nobody asking, Start onboarding for a customer set up by hand.
+ * Once they have left the demo: this record is only the demo now, and the receptionist callers hear
+ * is the customer's own business information.
  */
 export function LifecycleNotice({
   customer,
@@ -93,22 +189,42 @@ export function LifecycleNotice({
   onChanged?: (next: Customer) => void;
 }) {
   const [current, update] = useCustomer(customer, onChanged);
-  const [dialog, setDialog] = useState<"approve" | "decline" | null>(null);
+  const [dialog, setDialog] = useState<"approve" | "decline" | "start" | null>(null);
   const [note, setNote] = useState("");
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [approved, setApproved] = useState<Approval | null>(null);
   const phase = phaseOf(current);
 
-  async function answer(which: "approve" | "decline") {
+  const askedBy = current.request?.email ?? current.account?.email;
+  const contact = current.contactEmail?.trim().toLowerCase();
+  const needsCheck = Boolean(askedBy && contact && contact !== askedBy.toLowerCase());
+
+  async function answer(which: "approve" | "decline" | "start") {
     setBusy(true);
     setError(null);
     try {
-      const next =
-        which === "approve"
-          ? await post(`/customers/${current.id}/onboard`)
-          : await post(`/customers/${current.id}/decline-request`, { note: note.trim() || undefined });
-      update(next);
-      setDialog(null);
+      if (which === "decline") {
+        update(
+          await post(`/customers/${current.id}/decline-request`, {
+            note: note.trim() || undefined,
+            requestId: current.request?.requestId,
+          }),
+        );
+        setDialog(null);
+      } else {
+        const result = await approve(
+          current.id,
+          which === "start" && !current.account
+            ? { email: email.trim(), name: name.trim() || undefined }
+            : { requestId: current.request?.requestId },
+        );
+        setApproved(result);
+        update(result.customer);
+      }
       setNote("");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "That didn't work.");
@@ -117,14 +233,103 @@ export function LifecycleNotice({
     }
   }
 
+  const close = () => {
+    if (busy) return;
+    setDialog(null);
+    setApproved(null);
+    setChecked(false);
+    setError(null);
+  };
+
+  const dialogs = (
+    <Dialog open={dialog !== null} onOpenChange={(open) => !open && close()}>
+      <DialogContent className="max-w-md rounded-2xl">
+        {approved ? (
+          <Approved result={approved} onClose={close} />
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle className="ta-headline-1">
+                {dialog === "decline" ? "Decline for now" : dialog === "start" ? "Start onboarding" : "Approve setup"}
+              </DialogTitle>
+              <DialogDescription className="ta-body-2">
+                {dialog === "decline"
+                  ? "The request is closed and the customer sees your note. They can ask again."
+                  : "The demo is copied into the customer's own business information and they move to onboarding, where they can edit it and test calls. Their phone line stays off until you go live. This can't be undone."}
+              </DialogDescription>
+            </DialogHeader>
+            {dialog === "decline" ? (
+              <div className="space-y-2">
+                <Label htmlFor="decline-note" className="ta-label-1">
+                  Note to the customer (optional)
+                </Label>
+                <Textarea
+                  id="decline-note"
+                  value={note}
+                  maxLength={MAX_NOTE}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder="For example: we need your opening hours first."
+                />
+              </div>
+            ) : null}
+            {dialog === "start" && !current.account ? (
+              <div className="space-y-3">
+                <p className="ta-caption-1 text-muted-foreground">
+                  Nobody has signed up for this one. Enter the customer's email: we make their account and give you a link
+                  for them to choose a password.
+                </p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="start-email" className="ta-label-1">
+                    Customer's email
+                  </Label>
+                  <Input id="start-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={current.contactEmail ?? ""} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="start-name" className="ta-label-1">
+                    Their name (optional)
+                  </Label>
+                  <Input id="start-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={current.contactName ?? ""} />
+                </div>
+              </div>
+            ) : null}
+            {dialog !== "decline" && needsCheck ? (
+              <label className="ta-caption-1 flex items-start gap-2">
+                <input type="checkbox" className="mt-0.5" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
+                <span>
+                  {askedBy} isn't this demo's contact ({current.contactEmail}). I've checked they're from the business.
+                </span>
+              </label>
+            ) : null}
+            <ErrorLine error={error} />
+            <DialogFooter>
+              <Button variant="ghost" onClick={close} disabled={busy}>
+                Cancel
+              </Button>
+              <Button
+                variant={dialog === "decline" ? "outline" : "default"}
+                onClick={() => dialog && void answer(dialog)}
+                disabled={
+                  busy ||
+                  (dialog !== "decline" && needsCheck && !checked) ||
+                  (dialog === "start" && !current.account && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
+                }
+              >
+                {busy ? "Saving" : dialog === "decline" ? "Decline" : dialog === "start" ? "Start onboarding" : "Approve"}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+
   if (phase === "demo") {
     if (current.request) {
       return (
         <div className="bg-warning/10 flex flex-wrap items-center justify-between gap-3 rounded-lg p-3">
-          <div className="space-y-1">
-            <p className="ta-label-1 text-warning">
-              Setup requested on {shortDate(current.request.requestedAt)}
-            </p>
+          <div className="min-w-0 space-y-1">
+            <p className="ta-label-1 text-warning">Setup requested on {shortDate(current.request.requestedAt)}</p>
+            <Requester customer={current} />
             {current.request.note ? (
               <p className="ta-body-2 text-foreground whitespace-pre-line">{current.request.note}</p>
             ) : null}
@@ -138,60 +343,36 @@ export function LifecycleNotice({
               <ArrowRight className="size-4" />
             </Button>
           </div>
-
-          <Dialog open={dialog !== null} onOpenChange={(open) => !busy && !open && setDialog(null)}>
-            <DialogContent className="max-w-md rounded-2xl">
-              <DialogHeader>
-                <DialogTitle className="ta-headline-1">
-                  {dialog === "approve" ? "Approve setup" : "Decline for now"}
-                </DialogTitle>
-                <DialogDescription className="ta-body-2">
-                  {dialog === "approve"
-                    ? "The demo is copied into the customer's own business information and they move to onboarding, where they can edit it and test calls. Their phone line stays off until you go live. This can't be undone."
-                    : "The request is closed and the customer sees your note on their page. They can ask again."}
-                </DialogDescription>
-              </DialogHeader>
-              {dialog === "decline" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="decline-note" className="ta-label-1">
-                    Note to the customer (optional)
-                  </Label>
-                  <Textarea
-                    id="decline-note"
-                    value={note}
-                    maxLength={MAX_NOTE}
-                    onChange={(event) => setNote(event.target.value)}
-                    placeholder="For example: we need your opening hours first."
-                  />
-                </div>
-              ) : null}
-              <ErrorLine error={error} />
-              <DialogFooter>
-                <Button variant="ghost" onClick={() => setDialog(null)} disabled={busy}>
-                  Cancel
-                </Button>
-                <Button
-                  variant={dialog === "decline" ? "outline" : "default"}
-                  onClick={() => dialog && void answer(dialog)}
-                  disabled={busy}
-                >
-                  {busy ? "Saving" : dialog === "approve" ? "Approve" : "Decline"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          {dialogs}
         </div>
       );
     }
-    if (current.declined) {
-      return (
-        <div className="bg-secondary ta-label-1 text-muted-foreground rounded-lg p-3">
-          Declined on {shortDate(current.declined.declinedAt)}
-          {current.declined.note ? `: ${current.declined.note}` : "."}
+    return (
+      <div className="bg-secondary flex flex-wrap items-center justify-between gap-3 rounded-lg p-3">
+        <div className="min-w-0 space-y-1">
+          {current.account ? (
+            <>
+              <p className="ta-label-1 text-muted-foreground">
+                {current.account.source === "start" ? "Signed up; hasn't requested setup yet." : "Linked account; no request yet."}
+              </p>
+              <Requester customer={current} />
+            </>
+          ) : (
+            <p className="ta-label-1 text-muted-foreground">No account yet. They can request setup from the demo page.</p>
+          )}
+          {current.declined ? (
+            <p className="ta-caption-1 text-muted-foreground">
+              Declined on {shortDate(current.declined.declinedAt)}
+              {current.declined.note ? `: ${current.declined.note}` : "."}
+            </p>
+          ) : null}
         </div>
-      );
-    }
-    return null;
+        <Button variant="outline" onClick={() => setDialog("start")}>
+          Start onboarding
+        </Button>
+        {dialogs}
+      </div>
+    );
   }
 
   return (

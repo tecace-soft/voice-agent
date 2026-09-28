@@ -737,7 +737,7 @@ def demo_onboard_route(wanted: str, caller: dict):
     account["request"] = None
     account["declined"] = None
     customer = {**_bare(match), "stage": "won", **_lifecycle(wanted)}
-    return 200, {"customer": customer, "user": account, "copied": True}
+    return 200, {"customer": customer, "user": account, "copied": True, "invite": None, "emailed": False}
 
 
 def _bare(record: dict) -> dict:
@@ -1335,6 +1335,51 @@ def demo_public_route(method: str, path: str, raw_body: bytes):
     return 404, {"error": f"No fake for {method} /demo/public{path}"}
 
 
+# --- Signing up: routes/signup.ts ----------------------------------------------------------------
+#
+# Just enough for the two public pages that make accounts (the demo page's Request setup, /start):
+# a claim or a start answers "a code is on its way", the code is always SIGNUP_CODE, and the account
+# it signs in as is the demo customer (tok-demo), so the dashboard it lands on is a real one.
+# `SIGNUP_OPEN` is what `/auth/setup-state` says about /start; signup.py turns it on.
+SIGNUP_OPEN = False
+SIGNUP_CODE = "123456"
+SIGNUPS: list[dict] = []
+LINK_TOKEN = "live-invite-token"
+
+
+def signup_route(method: str, path: str, body: bytes, user: dict | None):
+    data = json.loads(body or b"{}") if body else {}
+    if path in ("/auth/signup/claim", "/auth/signup/start") and method == "POST":
+        if path == "/auth/signup/start" and not SIGNUP_OPEN:
+            return 503, {"error": "signup_closed", "message": "Sign-up isn't open here yet."}
+        SIGNUPS.append({"kind": path.rsplit("/", 1)[-1], **data})
+        return 202, {"next": "code"}
+    if path == "/auth/verify" and method == "POST":
+        if str(data.get("code", "")).strip() != SIGNUP_CODE:
+            return 400, {"error": "invalid_code", "message": "That code isn't right. Check the email, or send a new code."}
+        start = bool(SIGNUPS) and SIGNUPS[-1]["kind"] == "start"
+        return 200, {"token": "tok-demo", "expiresAt": iso(NOW + timedelta(days=7)), "user": DEMO_CUSTOMER,
+                     "customerId": DEMO_CUSTOMER["businessId"], "next": "research" if start else "waiting"}
+    if path == "/auth/verify/resend" and method == "POST":
+        return 202, {"sent": True}
+    if path == "/auth/forgot" and method == "POST":
+        return 202, {"sent": True}
+    # Sign-in links: LINK_TOKEN is a live invite for the demo customer; anything else has expired.
+    if path == "/auth/tokens/inspect" and method == "POST":
+        if data.get("token") != LINK_TOKEN:
+            return 404, {"error": "link_invalid", "message": "This link has expired or was already used."}
+        return 200, {"purpose": "invite", "name": DEMO_CUSTOMER["name"], "email": DEMO_CUSTOMER["email"]}
+    if path == "/auth/tokens/accept" and method == "POST":
+        if data.get("token") != LINK_TOKEN:
+            return 404, {"error": "link_invalid", "message": "This link has expired or was already used."}
+        return 200, {"token": "tok-demo", "expiresAt": iso(NOW + timedelta(days=7)), "user": DEMO_CUSTOMER}
+    if path == "/auth/signup/research" and method == "POST":
+        if user is not DEMO_CUSTOMER:
+            return 401, {"error": "unauthorized", "message": "Sign in to continue."}
+        return 200, {"status": "ready", "queued": False}
+    return None
+
+
 # --- Dispatch -------------------------------------------------------------------------------------
 
 # routes/demo.ts DEMO_READ_ONLY: the answer to a demo customer's every PATCH of their own record.
@@ -1344,7 +1389,11 @@ DEMO_READ_ONLY = "Your receptionist can be changed once it is being set up. Ask 
 def route(method: str, path: str, query: dict, user: dict | None, body: bytes = b""):
     """Returns (status, body). `user` is None when no/unknown bearer token was sent."""
     if path == "/auth/setup-state":
-        return 200, {"needsSetup": False}
+        return 200, {"needsSetup": False, "mail": SIGNUP_OPEN, "signup": SIGNUP_OPEN}
+    if path.startswith(("/auth/signup/", "/auth/verify", "/auth/forgot", "/auth/tokens/")):
+        answered = signup_route(method, path, body, user)
+        if answered:
+            return answered
     if path == "/auth/login" and method == "POST":
         return 401, {"message": "Wrong email or password."}
     # The Demo tabs, in the backend's own denial shapes (auth/guard.ts), which differ from the
@@ -1383,6 +1432,8 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
                                       user, body)
         if method == "POST" and rest.startswith("/customers/") and rest.endswith("/decline-request"):
             return demo_decline_route(unquote(rest[len("/customers/"):-len("/decline-request")]), body)
+        if rest == "/setup-requests" and method == "GET":
+            return 200, {"requests": []}
         if method == "POST" and rest.startswith("/customers/") and rest.endswith("/onboard"):
             return demo_onboard_route(unquote(rest[len("/customers/"):-len("/onboard")]), user)
         return demo_route(method, rest, query, body)

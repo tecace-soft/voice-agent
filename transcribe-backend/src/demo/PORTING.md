@@ -826,3 +826,12 @@ Spec: `docs/superpowers/specs/2026-09-27-phase-gates-design.md`.
   book_appointment on the demo calendar (`runDemoAppointmentTool`: the booking rules over the
   business hours, nothing busy, nothing saved). Answers only for a started, non-test call of that
   demo within the call ceiling; 40 requests a minute per address.
+
+## Sign-up, one approval, sign-in links (2026-09-27) — not a promo port
+All dashboard-only; the promo had no accounts.
+- `routes/signup.ts` (`/auth`): `POST /signup/claim` (Request setup on a demo's public page), `POST /signup/start` (self-service), `POST /verify` (6-digit code → account + session, same body as `/auth/login` plus `customerId`, `next`), `POST /verify/resend`, `POST /signup/research` (a /start sign-up's one research run, in the request; queued past `SIGNUP_RESEARCH_DAILY_CAP` or 3 per IP per day). No `users` row before the code is right (`signup_requests` holds the hashed password). With no email configured, a claim is saved as an `open` request and the account is made when an admin approves it; `/signup/start` answers 503.
+- `business/onboard.ts approveOnboarding`: the one approval. `POST /demo/customers/:id/onboard` (optional `requestId`, or `email`/`name` when nobody asked) and `POST /auth/users/:id/promote` both use it; it answers `invite` (a sign-in link when the account has no password of its own) and `emailed`. `POST /auth/users/:id/status` to pre-production now answers 409 `use_onboard` for a demo-linked account with no business profile yet. `POST /demo/customers/:id/decline-request` also declines open requests made without email (`requestId` optional).
+- `GET /demo/setup-requests` (admin): every open request, from accounts and from `signup_requests`.
+- `routes/auth.ts`: `GET /setup-state` adds `mail`, `signup`; new `POST /me/password`, `POST /forgot`, `POST /tokens/inspect`, `POST /tokens/accept`, `POST /users/:id/invite`. Public user adds `signupSource`, `emailVerified`.
+- Lifecycle on demo records adds `account` {name, email, verified, source} and, for requests without an account, `request.requestId/name/email/phone/openCount`. Public read (`GET /demo/public/customers/:id`) adds `setup` and the full booking rules in `capabilities.appointments`.
+- Schema: `users.email_verified_at`, `users.signup_source`; tables `signup_requests`, `auth_tokens`. `src/email/mailer.ts` (nodemailer, `SMTP_*`, `DASHBOARD_URL`, `ADMIN_NOTIFY_EMAIL`).

@@ -44,6 +44,19 @@ describe("settings for the simulator", () => {
     expect(s.timezone).toBe("America/Los_Angeles");
   });
 
+  it("shows the booking rules as the operator set them, and defaults where an older backend sent none", () => {
+    const full = settingsFromCapabilities({
+      ...caps,
+      appointments: { title: "Consult", durationMinutes: 45, hours: [], bufferMinutes: 10, minNoticeMinutes: 1440, horizonDays: 14, instructions: "Ask for the pet's name." },
+    });
+    expect(full.appointments).toEqual(
+      expect.objectContaining({ bufferMinutes: 10, minNoticeMinutes: 1440, horizonDays: 14, instructions: "Ask for the pet's name." }),
+    );
+    const older = settingsFromCapabilities(caps);
+    expect(older.appointments.minNoticeMinutes).toBe(120);
+    expect(older.appointments.instructions).toBe("");
+  });
+
   it("has nothing to play out when nothing was set up", () => {
     const s = settingsFromCapabilities(emptyCapabilities());
     expect(s.transfer.scenarios).toEqual([]);

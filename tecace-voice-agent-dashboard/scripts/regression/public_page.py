@@ -154,9 +154,55 @@ def main() -> int:
                     check("the nine-scenarios link and teaser are gone",
                           page.get_by_text(re.compile("see all .* scenarios", re.I)).count() == 0
                           and "with sample calls" not in body)
-                    check("what the receptionist knows is summed up, the rest folded away",
-                          page.get_by_role("heading", name=re.compile("^What .* knows$")).count() == 1
-                          and page.locator("details summary", has_text="how it was built").count() == 1)
+                    # ---- how it is set up: the operator's studio, read-only, every section marked editable
+                    settings_nav = page.get_by_role("navigation", name="Receptionist settings")
+                    settings_nav.wait_for(timeout=10000)
+                    check("the page shows how the receptionist is set up",
+                          page.get_by_role("heading", name=re.compile("^How .* is set up$")).count() == 1)
+                    nav_text = settings_nav.inner_text()
+                    check("...as the settings studio, with every section a customer edits later",
+                          all(label in nav_text for label in ("Business information", "FAQs", "Take a message",
+                                                               "Transfer calls", "Text a link", "Appointments",
+                                                               "Custom training")), nav_text[:300])
+                    check("...marked editable after setup",
+                          page.get_by_text("Editable after setup").count() >= 1)
+                    check("...read-only: nothing in it can be typed into",
+                          page.locator(".settings-readonly").count() == 1
+                          and page.locator(".settings-readonly :is(input, textarea):enabled").count() == 0)
+                    settings_nav.get_by_role("button", name="Transfer calls").click()
+                    page.wait_for_timeout(300)
+                    section = page.locator("#settings-section-title").inner_text()
+                    check("a section opens on click", section.startswith("Transfer calls"), section)
+                    check("...and the transfers never show a staff number",
+                          fake_backend.PUBLIC_STAFF_NUMBER not in page.content())
+                    settings_nav.get_by_role("button", name="Appointments").click()
+                    page.wait_for_timeout(300)
+                    check("the booking section says bookings go to a demo calendar",
+                          "demo calendar" in page.locator("main").inner_text())
+
+                    # ---- Request setup: signing up is the request
+                    page.get_by_role("banner").get_by_role("button", name="Request setup").click()
+                    dialog = page.get_by_role("dialog")
+                    dialog.wait_for(timeout=5000)
+                    check("Request setup opens the sign-up", "Create your account" in dialog.inner_text())
+                    dialog.get_by_label("Your name").fill("Pat Lee")
+                    dialog.get_by_label("Work email").fill("pat@harbordental.example")
+                    dialog.get_by_label("Password").fill("a-good-password-1")
+                    dialog.get_by_role("button", name="Request setup").click()
+                    dialog.get_by_label("Code").wait_for(timeout=5000)
+                    claimed = fake_backend.SIGNUPS[-1] if fake_backend.SIGNUPS else {}
+                    check("...which sends the claim for this demo",
+                          claimed.get("kind") == "claim" and claimed.get("demoId") == DEMO_ID, str(claimed))
+                    dialog.get_by_label("Code").fill("000000")
+                    dialog.get_by_role("button", name="Continue").click()
+                    page.wait_for_timeout(500)
+                    check("a wrong code is refused", "isn't right" in dialog.inner_text())
+                    dialog.get_by_label("Code").fill(fake_backend.SIGNUP_CODE)
+                    dialog.get_by_role("button", name="Continue").click()
+                    page.get_by_text("You're in").wait_for(timeout=5000)
+                    token = page.evaluate("() => localStorage.getItem('transcribe.token')")
+                    check("the right code signs them in for the dashboard", token == "tok-demo", str(token))
+                    page.evaluate("() => localStorage.removeItem('transcribe.token')")
 
                     # ---- an old link to the scenarios page lands on the demo
                     page.goto(f"{base}/c/{DEMO_ID}/scenarios", wait_until="networkidle")

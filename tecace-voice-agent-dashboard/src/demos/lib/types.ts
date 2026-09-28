@@ -137,8 +137,22 @@ export type Customer = {
   phase?: CustomerPhase;
   /** The linked account's email — how the Business pages pick this customer. */
   accountEmail?: string | null;
-  /** An open "set this up for me" from the customer, while still in the demo. */
-  request?: { requestedAt: string; note: string | null } | null;
+  /**
+   * An open "set this up for me", while still in the demo. From the linked account, or — on a
+   * deployment with no email — from a request made on the public page, which has no account yet and
+   * says who made it (`requestId`, `name`, `email`, `phone`; `openCount` when several are waiting).
+   */
+  request?: {
+    requestedAt: string;
+    note: string | null;
+    requestId?: string;
+    name?: string;
+    email?: string;
+    phone?: string | null;
+    openCount?: number;
+  } | null;
+  /** The linked account: who, whether their email was proven, and how it came to be. */
+  account?: { name: string; email: string; verified: boolean; source: "admin" | "claim" | "start" | string } | null;
   /** The admin's last "not yet", shown to the customer until they ask again. */
   declined?: { declinedAt: string; note: string | null } | null;
   /** When the line was switched on (Go live). */

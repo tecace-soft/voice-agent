@@ -10,7 +10,7 @@ import type { DemoAllowance } from "@/lib/analytics";
 import { isPromoId } from "@/routes";
 import { PublicDemoScreen } from "@/screens/PublicDemoScreen";
 import { PublicPricingScreen } from "@/screens/PublicPricingScreen";
-import { emptyCapabilities, type PublicCapabilities } from "./capabilities";
+import { emptyCapabilities, type PublicCapabilities, type SetupState } from "./capabilities";
 
 // The prospect's side of the app, and the only thing `c.html` loads.
 //
@@ -47,6 +47,8 @@ type PublicCustomer = {
   demo: DemoAllowance;
   /** Dashboard-only: the operator's call settings as the page may show them (demo/publicDemo.ts). */
   capabilities?: PublicCapabilities;
+  /** Dashboard-only: whether Request setup is open (absent from an older backend: open). */
+  setup?: SetupState;
 };
 
 type Page = "demo" | "scenarios" | "pricing";
@@ -213,6 +215,8 @@ function Rendered({ customer, page }: { customer: PublicCustomer; page: Page }) 
       demo={customer.demo}
       demoUrl={demoUrl}
       capabilities={customer.capabilities ?? emptyCapabilities()}
+      voice={customer.voice}
+      setup={customer.setup ?? "available"}
     />
   );
 }
