@@ -39,6 +39,10 @@ export const CHANGELOG: Release[] = [
         text: "Real calls to your number now follow what you set up here, the same as a test call: your prompts and Custom training, knowledge, FAQs, instructions, greeting and voice, plus the transfers and message situations you published. Texting a link is test-call only for now.",
       },
       {
+        kind: "improved",
+        text: "While you're onboarding, calls to your receptionist's number — or your line forwarded to it — are answered as your business with what you've published, so you can check it before go live.",
+      },
+      {
         kind: "fixed",
         text: "A customer's Activity, Settings, Sources and Share tabs are in the address now: a refresh, Back and Forward, or a shared link opens the same tab, and the address no longer names a settings section while another tab is open.",
         admin: true,

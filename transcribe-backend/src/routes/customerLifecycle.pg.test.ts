@@ -524,7 +524,7 @@ describe("readiness and Go live", () => {
         headers: { "x-agent-key": AGENT_KEY },
       }),
     );
-    return (await response.json()) as { assigned: boolean; reason?: string };
+    return (await response.json()) as any;
   };
   const unmetOf = (body: any) =>
     body.items.filter((item: any) => item.required && !item.ok).map((item: any) => item.id).sort();
@@ -557,11 +557,20 @@ describe("readiness and Go live", () => {
     expect((await call("POST", `/auth/users/${dana.id}/go-live`, bearer(dana))).status).toBe(403);
   });
 
-  it("keeps an onboarding customer's number off the phone line", async () => {
+  it("answers an onboarding customer's number as their business, so they can test it", async () => {
     const { createAgentNumber, assignAgentNumber } = await import("../db/agentNumbers.js");
     const number = await createAgentNumber({ phone: NUMBER, label: "Harbor" });
     await assignAgentNumber(number.id, dana.id);
+    expect((await findUserById(dana.id))?.status).toBe("pre-production");
+    const config = await agentConfig();
+    expect(config).toMatchObject({ assigned: true, business: { name: "Harbor Dental" } });
+    expect(config.session.live).toContain("Harbor Dental");
+  });
+
+  it("keeps a demo account's number off the phone line", async () => {
+    expect((await call("POST", `/auth/users/${dana.id}/status`, ADMIN, { status: "demo" })).status).toBe(200);
     expect(await agentConfig()).toMatchObject({ assigned: false, reason: "not_live_stage" });
+    await call("POST", `/auth/users/${dana.id}/status`, ADMIN, { status: "pre-production" });
   });
 
   it("goes live once the number is assigned and the settings published", async () => {

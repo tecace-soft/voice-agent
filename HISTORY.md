@@ -13,6 +13,12 @@ Format:
 
 ---
 
+## 2026-09-29 13:30 · Michael · transcribe-backend, openai-agent-app, dashboard (onboarding numbers answer real calls)
+- `GET /business/config`: a `pre-production` (Onboarding) account's number now answers as its business (was `assigned:false, reason:"not_live_stage"`), so businesses can call or forward to it to verify before Go live. Only `demo` still gets `not_live_stage`. Go live / readiness unchanged.
+- `openai-agent-app`: the "answering neutrally" log line now names the backend's `reason` (`no_number` / `not_live_stage` / `no_business_details`) and its fix.
+- Dashboard Launch instructions: onboarding copy says calls to the number are answered with what's published (was "Test calls only… line stays off until go live").
+- ⚠ Deploy transcribe-backend (production) for this to take effect; the forwarded calls to +1 425-598-7522 (Hans, pre-production) went neutral because of this gate.
+
 ## 2026-09-29 11:10 · Michael · transcribe-backend, openai-agent-app (real calls run on the composed session)
 - `GET /business/config?to=` gains `session` (null for a profile without a structured profile): `{live, backend, greetingLine, voice, language, tools, transfers:[{id,name,mode,numbers}], reachable, canBook, returnLeg:{live,backend,tools}}` from new `src/session/phone.ts` → `composeSession(channel:"phone")` on the PUBLISHED call settings. All existing flat fields are unchanged.
 - `composeSession` gains optional `canText` (false = no `send_link`, no links block) and `canTransfer` (false = nobody to reach; used for `returnLeg`, the leg after a transfer nobody answered).

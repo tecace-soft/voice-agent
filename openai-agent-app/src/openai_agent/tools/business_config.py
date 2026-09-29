@@ -135,10 +135,18 @@ async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | N
     if not data.get("assigned"):
         # A registered-but-unassigned number, or one we've never seen. Loud, because it means a
         # real caller just reached a line nobody owns and an admin needs to assign it.
+        # The backend says why, and each reason has a different fix — so the log says which.
+        reason = str(data.get("reason") or "")
+        fix = {
+            "no_number": "this backend has no such number — assign it under Agent numbers, on the "
+            "dashboard whose backend BUSINESS_CONFIG_URL points at",
+            "not_live_stage": "its account is still in Demo or Onboarding — real calls are answered "
+            "only once an admin has pressed Go live",
+            "no_business_details": "its business has no name or details saved yet",
+        }.get(reason, "unknown reason")
         log.warning(
-            "number %s is not assigned to anyone — answering neutrally. "
-            "Assign it under Agent numbers in the dashboard.",
-            data.get("to") or dialled,
+            "number %s is not answered as any business (%s) — answering neutrally: %s",
+            data.get("to") or dialled, reason or "?", fix,
         )
         return None
 

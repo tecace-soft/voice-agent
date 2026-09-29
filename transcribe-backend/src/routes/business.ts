@@ -131,11 +131,12 @@ export const business = new Elysia({ prefix: "/business" })
         return { assigned: false, to: toE164(query.to), reason: "no_number" };
       }
 
-      // A demo or an account still being set up does not answer real callers yet; they test in the
-      // app, and an admin switches the line on with Go live. `unassigned` (accounts from before the
-      // stages) and `production` answer as before.
+      // A demo does not answer real callers: it has no line of its own and tests in the app.
+      // Onboarding (`pre-production`) does: the business configures its own receptionist and calls
+      // its number — or forwards its line to it — to check what callers will get before Go live.
+      // `unassigned` (accounts from before the stages) and `production` answer as before.
       const owner = number.userId ? await findUserById(number.userId) : null;
-      if (owner && (owner.status === "demo" || owner.status === "pre-production")) {
+      if (owner && owner.status === "demo") {
         return { assigned: false, to: number.phoneE164, reason: "not_live_stage" };
       }
 
