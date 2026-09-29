@@ -176,10 +176,15 @@ NUMBERS = [
     {"id": "n-1", "phoneE164": "+14255550100", "label": "Main line", "userId": "u-sam",
      "userEmail": SAM, "userName": "Sam Customer", "createdAt": iso(NOW - timedelta(days=30)),
      "updatedAt": iso(NOW - timedelta(days=10)), **_twilio("PN1", "local", "ok")},
-    # In the pool, and pointed somewhere else at Twilio: the row Configure has to repair.
+    # In the pool, bought through the dashboard, and without the status callback at Twilio: the row
+    # Configure has to repair, and the one the dashboard may release.
     {"id": "n-2", "phoneE164": "+14255550199", "label": None, "userId": None, "userEmail": None,
      "userName": None, "createdAt": iso(NOW - timedelta(days=3)), "updatedAt": iso(NOW - timedelta(days=3)),
-     **_twilio("PN2", "local", "stale")},
+     **_twilio("PN2", "local", "stale"), "purchasedAt": iso(NOW - timedelta(days=3))},
+    # In the pool too, but bought in the Twilio console and synced in: never released from here.
+    {"id": "n-4", "phoneE164": "+14255550177", "label": None, "userId": None, "userEmail": None,
+     "userName": None, "createdAt": iso(NOW - timedelta(days=2)), "updatedAt": iso(NOW - timedelta(days=2)),
+     **_twilio("PN4", "local", "ok")},
     # Registered by hand before Twilio was wired up; not in the account, so nothing can be checked.
     {"id": "n-3", "phoneE164": "+18885550123", "label": "Old toll-free", "userId": None,
      "userEmail": None, "userName": None, "createdAt": iso(NOW - timedelta(days=90)),
@@ -194,7 +199,14 @@ AVAILABLE = {
     "tollfree": [{"phoneNumber": "+18335550142", "friendlyName": "(833) 555-0142", "locality": None,
                   "region": None, "postalCode": None, "capabilities": {"voice": True, "sms": True, "mms": False}}],
 }
-_NEXT_NUMBER = [4]
+_NEXT_NUMBER = [10]
+
+
+def _configured(row: dict) -> None:
+    """Write the wanted webhooks onto a row, as Configure and Assign do — keeping when and whether it was
+    bought here, which setting webhooks never changes."""
+    kept = {"purchasedAt": row["purchasedAt"], "releasedAt": row["releasedAt"]}
+    row.update(_twilio(row["twilioSid"], row["numberType"], "ok"), **kept)
 
 
 def _number_for(user_id: str | None) -> dict | None:
@@ -255,9 +267,15 @@ def numbers_route(method: str, path: str, query: dict, body: bytes):
             return 409, {"error": "already_has_number", "message": "That person already has a number. Un-assign it first."}
         _NEXT_NUMBER[0] += 1
         phone = payload.get("phoneNumber") or AVAILABLE[kind][0]["phoneNumber"]
-        row = {"id": f"n-{_NEXT_NUMBER[0]}", "phoneE164": phone, "label": payload.get("label") or None,
+        # Buying a released number back reuses its row, as agentNumbers.ts's upsert does.
+        previous = next((n for n in NUMBERS if n["phoneE164"] == phone and n["releasedAt"]), None)
+        if previous is not None:
+            NUMBERS.remove(previous)
+        row = {"id": previous["id"] if previous else f"n-{_NEXT_NUMBER[0]}", "phoneE164": phone,
+               "label": payload.get("label") or (previous or {}).get("label"),
                "userId": owner["id"] if owner else None, "userEmail": owner["email"] if owner else None,
-               "userName": owner["name"] if owner else None, "createdAt": iso(NOW), "updatedAt": iso(NOW),
+               "userName": owner["name"] if owner else None,
+               "createdAt": previous["createdAt"] if previous else iso(NOW), "updatedAt": iso(NOW),
                **_twilio(f"PN{_NEXT_NUMBER[0]}", kind, "ok"), "purchasedAt": iso(NOW)}
         NUMBERS.append(row)
         return 201, {"number": row}
@@ -266,6 +284,9 @@ def numbers_route(method: str, path: str, query: dict, body: bytes):
     if row is None:
         return 404, {"error": "not_found", "message": "No such number."}
     if method == "DELETE" and not action:
+        if row["twilioSid"] and not row["releasedAt"]:
+            return 409, {"error": "use_release",
+                         "message": "This number is in the Twilio account and still billed. Release it instead."}
         NUMBERS.remove(row)
         return 200, {"status": "deleted"}
     if action == "assign" and method == "POST":
@@ -283,7 +304,7 @@ def numbers_route(method: str, path: str, query: dict, body: bytes):
         row.update({"userId": owner["id"] if owner else None, "userEmail": owner["email"] if owner else None,
                     "userName": owner["name"] if owner else None, "updatedAt": iso(NOW)})
         if owner and row["twilioSid"]:
-            row.update(_twilio(row["twilioSid"], row["numberType"], "ok"))
+            _configured(row)
         return 200, {"number": row}
     if action == "configure" and method == "POST":
         if row["releasedAt"]:
@@ -291,7 +312,7 @@ def numbers_route(method: str, path: str, query: dict, body: bytes):
         if not row["twilioSid"]:
             return 409, {"error": "not_in_twilio",
                          "message": "This number isn't in the Twilio account. Sync, or register it there first."}
-        row.update(_twilio(row["twilioSid"], row["numberType"], "ok"))
+        _configured(row)
         return 200, {"number": row}
     if action == "release" and method == "POST":
         if row["releasedAt"]:
@@ -302,6 +323,9 @@ def numbers_route(method: str, path: str, query: dict, body: bytes):
             return 409, {"error": "number_assigned", "message": "That number is assigned. Un-assign it first."}
         if not row["twilioSid"]:
             return 409, {"error": "not_in_twilio", "message": "This number was registered by hand — delete it from the list instead."}
+        if not row["purchasedAt"]:
+            return 409, {"error": "bought_elsewhere",
+                         "message": "This number was bought in the Twilio console, not here. Release it there if it's really no longer needed."}
         row["releasedAt"] = iso(NOW)
         return 200, {"number": row}
     return 404, {"message": f"No fake for {method} {path}"}

@@ -282,6 +282,16 @@ export const numbers = new Elysia({ prefix: "/business/numbers" })
           message: "This number was registered by hand and isn't in the Twilio account — delete it from the list instead.",
         });
       }
+      // Only what the dashboard bought, the dashboard lets go of. A number that came in through Sync
+      // was bought in the Twilio console — perhaps for something this dashboard knows nothing about, a
+      // messaging service or another app — and a release cannot be undone: Twilio puts the number back
+      // on sale, and it is not ours to buy back. Those are released in the console, by whoever owns them.
+      if (!number.purchasedAt) {
+        return status(409, {
+          error: "bought_elsewhere",
+          message: "This number was bought in the Twilio console, not here. Release it there if it's really no longer needed.",
+        });
+      }
       try {
         return { number: await releaseNumber(client, number, caller.user.id) };
       } catch (error) {

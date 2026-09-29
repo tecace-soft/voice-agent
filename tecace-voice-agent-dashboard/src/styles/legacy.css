@@ -2238,9 +2238,40 @@ button.person-primary:hover {
   margin-left: 8px;
   vertical-align: middle;
 }
+/* A .card has no padding of its own: every child brings the card's 20px side inset, like .card-head
+   and .feedback-form do. These are the Numbers page's children that aren't one of those. */
+.number-messages {
+  display: grid;
+  gap: 8px;
+  padding: 8px 20px 0;
+}
+.number-messages p {
+  margin: 0;
+}
 .number-note {
-  margin: 0 0 12px;
   color: var(--success);
+}
+.number-body {
+  padding: 8px 20px 20px;
+}
+.number-foot {
+  padding-top: 12px;
+}
+.number-reasons {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+.number-released > summary {
+  cursor: pointer;
+  list-style: none;
+  padding-bottom: 16px;
+}
+.number-released > summary::-webkit-details-marker {
+  display: none;
+}
+.number-released-sub {
+  display: block;
 }
 /* Buying: kind, area code, label and the search button on one line; the results as a list under it. */
 .number-buy {
@@ -2276,7 +2307,7 @@ button.person-primary:hover {
 }
 .number-results {
   list-style: none;
-  margin: 16px 0 0;
+  margin: 0 20px 20px;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 12px;

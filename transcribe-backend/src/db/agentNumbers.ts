@@ -161,11 +161,13 @@ export async function findByPurchaseRequest(requestId: string): Promise<AgentNum
   return (row as AgentNumber | undefined) ?? null;
 }
 
-// Twilio's default friendly name is the number itself, formatted; that is not a label anyone chose.
+// Twilio's default friendly name is the number itself, formatted — "(425) 555-0142", without the
+// country code — and that is not a label anyone chose. Compared on the last ten digits.
+const lastTen = (value: string) => value.replace(/\D/g, "").slice(-10);
 function labelFrom(twilio: TwilioNumber): string | null {
   const name = twilio.friendlyName.trim();
   if (!name) return null;
-  return name.replace(/\D/g, "") === twilio.phoneNumber.replace(/\D/g, "") ? null : name;
+  return lastTen(name) === lastTen(twilio.phoneNumber) ? null : name;
 }
 
 /**
@@ -190,7 +192,14 @@ export async function recordTwilioNumber(
       ${webhookState}, NULL, now(), now()
     )
     ON CONFLICT (phone_e164) DO UPDATE SET
-      label               = COALESCE(agent_numbers.label, EXCLUDED.label),
+      -- A label an earlier sync took from Twilio's default name (the number with punctuation) is not
+      -- one anybody chose, so it gives way like a blank one does.
+      label               = CASE
+                              WHEN right(regexp_replace(COALESCE(agent_numbers.label, ''), '\\D', '', 'g'), 10)
+                                 = right(regexp_replace(agent_numbers.phone_e164, '\\D', '', 'g'), 10)
+                              THEN EXCLUDED.label
+                              ELSE COALESCE(agent_numbers.label, EXCLUDED.label)
+                            END,
       twilio_sid          = EXCLUDED.twilio_sid,
       number_type         = EXCLUDED.number_type,
       capabilities        = EXCLUDED.capabilities,

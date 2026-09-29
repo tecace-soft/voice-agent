@@ -36,7 +36,9 @@ export const CHANGELOG: Release[] = [
     items: [
       { kind: "new", text: "Agent numbers: sync the Twilio account's numbers into the list, see whether each number's webhooks point at the receptionist, and repair them with Configure.", admin: true },
       { kind: "new", text: "Buy a number — toll-free or local, by area code — from the Agent numbers page or straight from an account's Go live checklist; its webhooks are set as it's bought.", admin: true },
-      { kind: "new", text: "Release a number back to Twilio by typing it back; numbers registered by hand are still deleted from the list.", admin: true },
+      { kind: "new", text: "Release a number bought here back to Twilio by typing it back; numbers bought in the Twilio console are released there, and numbers registered by hand are still deleted from the list.", admin: true },
+      { kind: "new", text: "Released numbers stay listed, with Buy back while Twilio still has them for sale.", admin: true },
+      { kind: "new", text: "Each number says why its webhooks are out of date, and Configure repairs one or all of them.", admin: true },
       { kind: "improved", text: "The Go live checklist now also checks that Twilio sends the number's calls to the receptionist." },
     ],
   },

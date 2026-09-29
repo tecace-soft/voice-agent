@@ -138,6 +138,13 @@ def main() -> int:
                     check("a managed number can be released, not deleted",
                           pool.get_by_role("button", name="Release").count() == 1
                           and pool.get_by_role("button", name="Delete").count() == 0)
+                    console = rows.filter(has_text="(425) 555-0177")
+                    check("a number bought in the Twilio console can't be released from here",
+                          console.get_by_role("button", name="Release").is_disabled(), console.inner_text()[:200])
+                    check("an out-of-date number says what is wrong with it",
+                          "No call status reports" in pool.inner_text(), pool.inner_text()[:200])
+                    check("the table offers to configure every out-of-date number at once",
+                          page.get_by_role("button", name="Configure 1 out of date").count() == 1)
 
                     # ---- sync
                     page.get_by_role("button", name="Sync from Twilio").click()
@@ -147,6 +154,12 @@ def main() -> int:
                     after = page.inner_text("body")
                     check("...and says what it found, naming the number Twilio doesn't have",
                           "(888) 555-0123" in after and "not in Twilio" in after, after[:400])
+                    # A .card has no padding of its own; a message that isn't inset sits on the card's edge.
+                    note_box = page.get_by_role("status").first.bounding_box()
+                    title_box = page.get_by_text("Agent phone numbers", exact=True).bounding_box()
+                    check("...in a message lined up with the card's title, not on its edge",
+                          bool(note_box and title_box) and abs(note_box["x"] - title_box["x"]) < 2,
+                          f"note x={note_box and note_box['x']} title x={title_box and title_box['x']}")
 
                     # ---- configure repairs the drifted one
                     pool.get_by_role("button", name="Configure").click()
@@ -195,6 +208,21 @@ def main() -> int:
                     check("...and the number leaves the table",
                           page.locator("main.content tbody tr").filter(has_text="(425) 555-0199").count() == 0)
 
+                    # ---- a released number is kept in sight, and can be bought back
+                    released = page.get_by_role("list", name="Released numbers")
+                    page.get_by_text("Released numbers", exact=True).click()
+                    page.wait_for_timeout(200)
+                    gone = released.get_by_role("listitem").filter(has_text="(425) 555-0199")
+                    check("the released number is listed under Released numbers", gone.count() == 1,
+                          released.inner_text()[:200] if released.count() else "no list")
+                    gone.get_by_role("button", name="Buy back").click()
+                    page.wait_for_timeout(800)
+                    buybacks = [s for s in posts(sent, "/business/numbers/buy") if "+14255550199" in s[2]]
+                    check("Buy back POSTs /business/numbers/buy for that exact number", len(buybacks) == 1,
+                          str(posts(sent, "/business/numbers/buy"))[:300])
+                    check("...and the number is back in the table",
+                          page.locator("main.content tbody tr").filter(has_text="(425) 555-0199").count() == 1)
+
                     # ---- un-assign Sam, so the Go live panel has something to do
                     sam = page.locator("main.content tbody tr").filter(has_text="(425) 555-0100")
                     sam.get_by_role("combobox").select_option("")
@@ -224,8 +252,8 @@ def main() -> int:
 
                     # ---- from the pool
                     options = [o.inner_text() for o in assign.get_by_label("Number from the pool").locator("option").all()]
-                    check("the pool lists the unassigned numbers and not the released one",
-                          any("(425) 555-0100" in o for o in options) and not any("(425) 555-0199" in o for o in options),
+                    check("the pool lists the unassigned numbers, the bought-back one included",
+                          all(any(p in o for o in options) for p in ("(425) 555-0100", "(425) 555-0199", "(833) 555-0142")),
                           str(options))
                     check("...and offers to buy a new one instead",
                           assign.get_by_role("button", name="Buy a new number").count() == 1)

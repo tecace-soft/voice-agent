@@ -64,8 +64,34 @@ function WebhookBadge({ number }: { number: AgentNumber }) {
   }
 }
 
+/**
+ * Why a managed number isn't "Configured", in words: which of the three URLs Twilio has differs from
+ * what the backend wants. Empty when there is nothing to say (configured, hand-registered, or the
+ * backend didn't say what it wants).
+ */
+function webhookReasons(n: AgentNumber, wanted: NumberWebhooks | null): string[] {
+  if (!n.twilioSid || n.webhookState === "ok" || !wanted?.voiceUrl) return [];
+  if (n.webhookState === "error") return [n.webhookError ?? "Twilio refused the last change."];
+  const reasons: string[] = [];
+  if (n.voiceUrl !== wanted.voiceUrl) {
+    reasons.push(n.voiceUrl ? `Calls go to ${hostOf(n.voiceUrl)}, not the receptionist` : "No voice URL — calls reach nobody");
+  }
+  if (n.voiceFallbackUrl !== wanted.voiceFallbackUrl) reasons.push("No fallback if the receptionist is down");
+  if (n.statusCallbackUrl !== wanted.statusCallback) reasons.push("No call status reports");
+  return reasons;
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 export function NumbersPage() {
   const [numbers, setNumbers] = useState<AgentNumber[] | null>(null);
+  const [released, setReleased] = useState<AgentNumber[]>([]);
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [webhooks, setWebhooks] = useState<NumberWebhooks | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,9 +104,14 @@ export function NumbersPage() {
   const [confirm, setConfirm] = useState("");
 
   const load = useCallback(() => {
-    Promise.all([listAgentNumbers(), listAccounts(), getNumberWebhooks().catch(() => null)])
-      .then(([n, u, w]) => {
-        setNumbers(n);
+    Promise.all([
+      listAgentNumbers({ includeReleased: true }),
+      listAccounts(),
+      getNumberWebhooks().catch(() => null),
+    ])
+      .then(([all, u, w]) => {
+        setNumbers(all.filter((n) => !n.releasedAt));
+        setReleased(all.filter((n) => n.releasedAt));
         // Customers only. An admin is TecAce staff, not a business the agent answers for, so there
         // is nothing for it to say if a call came in on their line. The backend refuses it too —
         // this list is the convenience, that is the rule.
@@ -177,6 +208,37 @@ export function NumbersPage() {
     load();
   };
 
+  // Every managed number whose webhooks aren't what the backend wants, repaired one after another.
+  // One at a time, so a refusal names its number and the ones before it are already fixed.
+  const outOfDate = (numbers ?? []).filter((n) => n.twilioSid && (n.webhookState === "stale" || n.webhookState === "error"));
+  const onConfigureAll = () =>
+    act("Couldn't configure every number.", async () => {
+      for (const number of outOfDate) {
+        try {
+          await configureAgentNumber(number.id);
+        } catch (e) {
+          throw new Error(`${formatPhone(number.phoneE164)}: ${accountErrorMessage(e, "Twilio refused it.")}`);
+        }
+      }
+      return `Configured ${outOfDate.length} ${outOfDate.length === 1 ? "number" : "numbers"}: calls reach the receptionist.`;
+    });
+
+  // Buying a released number back: Twilio sells it again only if nobody else has taken it — after a
+  // release it may be held back for a while, and then it goes to whoever asks first.
+  const onBuyBack = (number: AgentNumber) =>
+    act("Couldn't buy that number back.", async () => {
+      await buyAgentNumber({ phoneNumber: number.phoneE164, requestId: `buy-back-${number.id}-${number.releasedAt}` });
+      return `${formatPhone(number.phoneE164)} is back, unassigned and configured.`;
+    });
+
+  const onForget = (number: AgentNumber) => {
+    if (!window.confirm(`Forget ${formatPhone(number.phoneE164)}? It's already released; this only removes it from the list.`)) return;
+    void act("Couldn't remove that number.", async () => {
+      await deleteAgentNumber(number.id);
+      return null;
+    });
+  };
+
   const unassigned = (numbers ?? []).filter((n) => !n.userId).length;
 
   return (
@@ -198,16 +260,20 @@ export function NumbersPage() {
           </button>
         </div>
 
-        {setupNotice && <p className="notice-slim ta-caption-1 muted">{setupNotice}</p>}
-        {error && (
-          <p className="error ta-label-1" role="alert">
-            {error}
-          </p>
-        )}
-        {note && (
-          <p className="ta-label-1 number-note" role="status">
-            {note}
-          </p>
+        {(setupNotice || error || note) && (
+          <div className="number-messages">
+            {setupNotice && <p className="notice-slim ta-caption-1">{setupNotice}</p>}
+            {error && (
+              <p className="error ta-label-1" role="alert">
+                {error}
+              </p>
+            )}
+            {note && (
+              <p className="ta-label-1 number-note" role="status">
+                {note}
+              </p>
+            )}
+          </div>
         )}
 
         <form className="feedback-form" onSubmit={onRegister}>
@@ -262,6 +328,17 @@ export function NumbersPage() {
               receptionist at all.
             </div>
           </div>
+          {outOfDate.length > 0 && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void onConfigureAll()}
+              disabled={busy || !twilioReady}
+              title="Write the receptionist's webhooks onto every number that is out of date"
+            >
+              Configure {outOfDate.length} out of date
+            </button>
+          )}
         </div>
 
         <div className="table-wrap">
@@ -296,6 +373,7 @@ export function NumbersPage() {
                     key={n.id}
                     number={n}
                     users={users}
+                    reasons={webhookReasons(n, webhooks)}
                     busy={busy}
                     twilioReady={twilioReady}
                     releasing={releasing === n.id}
@@ -317,14 +395,54 @@ export function NumbersPage() {
           </table>
         </div>
 
-        <p className="muted ta-caption-1 view-foot">
+        <p className="muted ta-caption-1 card-foot number-foot">
           <strong>Set someone to "Not assigned"</strong> to take a number off their account. Their
           account and everything on it is untouched — only who the agent answers as changes, and
           the number stays in this list ready to be given to someone else. <strong>Release</strong> gives a
-          number back to Twilio: it stops ringing and stops being billed. <strong>Delete</strong> only
-          forgets a number registered by hand.
+          number bought here back to Twilio: it stops ringing and stops being billed, and it can't be undone.
+          Numbers bought in the Twilio console are released there. <strong>Delete</strong> only forgets a
+          number registered by hand.
         </p>
       </section>
+
+      {released.length > 0 && (
+        <section className="card">
+          <details className="number-released">
+            <summary className="card-head">
+              <span>
+                <span className="card-title ta-headline-2">Released numbers</span>
+                <span className="card-sub ta-caption-1 number-released-sub">
+                  {released.length} given back to Twilio. Buy back works only while Twilio still has the number
+                  for sale — after a release it may be held for a while, and then it goes to whoever asks first.
+                </span>
+              </span>
+            </summary>
+            <ul className="number-results number-released-list" aria-label="Released numbers">
+              {released.map((n) => (
+                <li key={n.id}>
+                  <span>
+                    <span className="ta-label-1 number-cell">
+                      <IconPhone size={14} />
+                      {formatPhone(n.phoneE164)}
+                    </span>
+                    <span className="muted ta-caption-1 number-meta">
+                      {n.label ? `${n.label} · ` : ""}released {formatDateTime(n.releasedAt!)}
+                    </span>
+                  </span>
+                  <span className="row-actions">
+                    <button type="button" className="btn" onClick={() => void onBuyBack(n)} disabled={busy || !twilioReady}>
+                      Buy back
+                    </button>
+                    <button type="button" className="btn btn-quiet" onClick={() => onForget(n)} disabled={busy}>
+                      Forget
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        </section>
+      )}
     </div>
   );
 }
@@ -332,6 +450,7 @@ export function NumbersPage() {
 function NumberRow({
   number: n,
   users,
+  reasons,
   busy,
   twilioReady,
   releasing,
@@ -346,6 +465,8 @@ function NumberRow({
 }: {
   number: AgentNumber;
   users: AuthUser[];
+  /** Why its webhooks aren't configured, one line each; empty when there's nothing to say. */
+  reasons: string[];
   busy: boolean;
   twilioReady: boolean;
   releasing: boolean;
@@ -394,6 +515,13 @@ function NumberRow({
         </td>
         <td>
           <WebhookBadge number={n} />
+          {reasons.length > 0 && (
+            <ul className="number-reasons ta-caption-2 muted">
+              {reasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          )}
         </td>
         <td className="muted ta-caption-1">{formatDateTime(n.createdAt)}</td>
         <td className="num">
@@ -416,8 +544,14 @@ function NumberRow({
                 type="button"
                 className="btn btn-quiet"
                 onClick={onStartRelease}
-                disabled={busy || !twilioReady || Boolean(n.userId)}
-                title={n.userId ? "Un-assign it first" : `Give ${shown} back to Twilio`}
+                disabled={busy || !twilioReady || Boolean(n.userId) || !n.purchasedAt}
+                title={
+                  !n.purchasedAt
+                    ? "Bought in the Twilio console, not here — release it there if it's really no longer needed"
+                    : n.userId
+                      ? "Un-assign it first"
+                      : `Give ${shown} back to Twilio`
+                }
               >
                 Release
               </button>
@@ -539,15 +673,17 @@ function BuyCard({
           <div className="card-sub ta-caption-1">
             A new line from Twilio, with its webhooks set as it's bought, so it rings the receptionist from the first
             call. It arrives unassigned; give it to a customer from the list below or from their Go live checklist.
+            Toll-free is recommended: texting from it later takes one verification form, and callers never see
+            this number anyway — they dial the business's own, which forwards here.
           </div>
         </div>
       </div>
-      <form className="number-buy" onSubmit={onSearch}>
+      <form className="number-buy number-body" onSubmit={onSearch}>
         <fieldset className="number-kinds">
           <legend className="field-label ta-caption-1">Kind</legend>
           <label className="number-kind ta-label-1">
             <input type="radio" name="number-kind" checked={kind === "tollfree"} onChange={() => setKind("tollfree")} disabled={disabled} />
-            Toll-free <span className="muted ta-caption-1">recommended — one form to enable texting later</span>
+            Toll-free <span className="badge badge-admin badge-sm">Recommended</span>
           </label>
           <label className="number-kind ta-label-1">
             <input type="radio" name="number-kind" checked={kind === "local"} onChange={() => setKind("local")} disabled={disabled} />

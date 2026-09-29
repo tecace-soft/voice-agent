@@ -314,6 +314,21 @@ describe("POST /business/numbers/sync", () => {
     expect(numbers["+12065550100"].syncedAt).toBeTruthy();
   });
 
+  it("does not take Twilio's default name, the number written with punctuation, as a label", async () => {
+    owned("PN7", "+14255550142");
+    account.get("PN7")!.friendly_name = "(425) 555-0142";
+    await call("POST", "/business/numbers/sync", ADMIN);
+    expect((await numbersByPhone())["+14255550142"].label).toBeNull();
+
+    // A row an earlier sync labelled that way is cleaned, and a real name then fills it.
+    await db.exec("UPDATE agent_numbers SET label = '(425) 555-0142' WHERE phone_e164 = '+14255550142'");
+    account.get("PN7")!.friendly_name = "Harbor Dental line";
+    await call("POST", "/business/numbers/sync", ADMIN);
+    expect((await numbersByPhone())["+14255550142"].label).toBe("Harbor Dental line");
+    account.delete("PN7");
+    await db.exec("DELETE FROM agent_numbers WHERE phone_e164 = '+14255550142'");
+  });
+
   it("names a registered number Twilio no longer has instead of inventing state for it", async () => {
     await call("POST", "/business/numbers", ADMIN, { phone: "+12065559999" });
     const { body } = await call("POST", "/business/numbers/sync", ADMIN);
@@ -547,7 +562,19 @@ describe("POST /business/numbers/:id/release", () => {
     expect(body.error).toBe("confirm_mismatch");
   });
 
+  it("will not release a number bought outside the dashboard — that happens in the Twilio console", async () => {
+    // Synced in, never bought here: somebody bought it in the console, perhaps for something else.
+    const number = (await numbersByPhone())["+18335550100"];
+    expect(number.purchasedAt).toBeNull();
+    const { status, body } = await call("POST", `/business/numbers/${number.id}/release`, ADMIN, { confirm: "+18335550100" });
+    expect(status).toBe(409);
+    expect(body.error).toBe("bought_elsewhere");
+    expect(account.has("PN2")).toBe(true);
+  });
+
   it("releases at Twilio and hides the row until asked for released numbers", async () => {
+    // As if it had been bought through the dashboard.
+    await db.exec("UPDATE agent_numbers SET purchased_at = now() WHERE phone_e164 = '+18335550100'");
     const number = (await numbersByPhone())["+18335550100"];
     const { status, body } = await call("POST", `/business/numbers/${number.id}/release`, ADMIN, { confirm: "+18335550100" });
     expect(status).toBe(200);
@@ -606,6 +633,15 @@ describe("POST /business/numbers/:id/release", () => {
     expect(status).toBe(201);
     expect(body.number).toMatchObject({ id: released.id, releasedAt: null, webhookState: "ok", label: "Second life", userId: null });
     expect(body.number.twilioSid).not.toBe("PN2");
+  });
+
+  it("forgets a released number's row on Delete — it is history, nothing is billed", async () => {
+    const bought = await call("POST", "/business/numbers/buy", ADMIN, { phoneNumber: "+12065550444" });
+    await call("POST", `/business/numbers/${bought.body.number.id}/release`, ADMIN, { confirm: "+12065550444" });
+    const { status } = await call("DELETE", `/business/numbers/${bought.body.number.id}`, ADMIN);
+    expect(status).toBe(200);
+    const all = await call("GET", "/business/numbers?includeReleased=1", ADMIN);
+    expect(all.body.numbers.some((n: any) => n.phoneE164 === "+12065550444")).toBe(false);
   });
 
   it("will not Delete a number Twilio still bills — that is Release", async () => {
