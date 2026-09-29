@@ -13,6 +13,11 @@ Format:
 
 ---
 
+## 2026-09-29 08:15 · bottomup32 · workspace (customer journey page, 29 Sep edition)
+- [docs/customer-journey.html](docs/customer-journey.html) and [docs/customer-journey.ko.html](docs/customer-journey.ko.html) now describe 0.0.10 (Main-Hans @ 71754a5). New section "What changed since 28 Sep": the life of a Twilio number and its webhooks, a demo customer's screens before and after, prompts following saves, the transfer audit as a table, models, and notes for developers. The system map, swimlane, gates and live-call drawings carry violet New / Changed tags.
+- Published in place, same links: English https://claude.ai/artifact/DM1JiVC95iN2HZoukLWxoS, Korean https://claude.ai/artifact/3eiJvCTMR9XUYtaGDEjEaE.
+- ⚠ Hans: the page states the Twilio phase 2 and 3 plan from `docs/superpowers/specs/2026-09-28-twilio-numbers-forwarding-design.md`. If the plan moved, say so and the page gets corrected.
+
 ## 2026-09-28 22:50 · bottomup32 · dashboard (Activity as a table; regression harness)
 - `demos/components/admin/ActivityTab.tsx` renders calls as a table + "Call details" sheet, with calls-per-day, mood breakdown and "What to fix" above it (operator); the demo customer's Call activity gets the mood bar + table. It now lays out its own cards — `ProspectScreen` / `MyReceptionistScreen` no longer wrap it.
 - Regression selectors changed: the per-call button is **"Open call details"** (was "Read the full transcript"), the sheet heading **"Call details"** (was "Call transcript").

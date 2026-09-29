@@ -13,6 +13,7 @@
   --bg:#F6F8FB; --surface:#FFFFFF; --ink:#131A2A; --muted:#5A6478; --line:#D8DEE9;
   --brand:#116DFF; --cust:#116DFF; --adm:#0E8A7E; --be:#4B5563; --gate:#E8590C;
   --ok:#15803D; --warn:#B45309; --bad:#DC2626;
+  --new:#7C3AED; --on-new:#FFFFFF;
   --display:"Poppins","Pretendard","Noto Sans KR",system-ui,-apple-system,"Segoe UI",sans-serif;
   --sans:"Pretendard","Noto Sans KR",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
@@ -23,6 +24,7 @@
     --bg:#0E1219; --surface:#151B26; --ink:#E6EAF2; --muted:#9AA5B9; --line:#283246;
     --brand:#4C8DFF; --cust:#4C8DFF; --adm:#2EB8A8; --be:#A3AEC2; --gate:#FF8A3D;
     --ok:#4ADE80; --warn:#FBBF24; --bad:#F87171;
+    --new:#A78BFA; --on-new:#1A1033;
   }
 }
 :root[data-theme="dark"]{
@@ -30,6 +32,7 @@
   --bg:#0E1219; --surface:#151B26; --ink:#E6EAF2; --muted:#9AA5B9; --line:#283246;
   --brand:#4C8DFF; --cust:#4C8DFF; --adm:#2EB8A8; --be:#A3AEC2; --gate:#FF8A3D;
   --ok:#4ADE80; --warn:#FBBF24; --bad:#F87171;
+    --new:#A78BFA; --on-new:#1A1033;
 }
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font:15px/1.6 var(--sans);padding-inline:16px;padding-block:32px 64px}
@@ -114,7 +117,7 @@ td:first-child{font-weight:600}
 .req{color:var(--muted);font-size:12.5px}
 .open{display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none}
 .open li{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 18px;display:grid;grid-template-columns:auto 1fr;gap:4px 14px;align-items:start}
-.open li .pill{grid-row:span 2}
+.open li > .pill{grid-row:span 2}
 .open b{font-weight:600}
 .open span.d{color:var(--muted);font-size:14px}
 footer{color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:18px}
@@ -154,6 +157,29 @@ section[id]{scroll-margin-top:16px}
 .ext rect{fill:var(--surface);stroke:var(--line);stroke-dasharray:4 3}
 .hub{fill:var(--be);fill-opacity:.07;stroke:var(--be);stroke-opacity:.5}
 .db rect{fill:var(--surface);stroke:var(--be);stroke-opacity:.5}
+
+/* v3: what changed since the last edition */
+.toc a.hot{border-color:var(--new);color:var(--new);font-weight:600}
+.pill.new{color:var(--new);background:color-mix(in srgb,var(--new) 12%,transparent)}
+.tag rect{fill:var(--new)}
+.tag text{font:600 9.5px var(--sans);fill:var(--on-new)}
+.arr.nw{stroke:var(--new)}
+.ahn{fill:var(--new)}
+.lbl.nw{fill:var(--new);font-weight:600}
+.sw-tag{display:inline-block;font:600 10.5px/1.5 var(--sans);font-style:normal;color:var(--on-new);background:var(--new);border-radius:999px;padding:0 8px}
+.ln-n{width:26px;height:0;border-top:2px solid var(--new);display:inline-block}
+.changes{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;align-items:start}
+.changes .card{gap:4px;border-top:3px solid var(--line)}
+.changes .card.c{border-top-color:var(--cust)} .changes .card.a{border-top-color:var(--adm)} .changes .card.n{border-top-color:var(--be)}
+.changes .card > p{color:var(--muted);font-size:13.5px;margin-bottom:6px}
+.part{display:flex;flex-direction:column;gap:14px;border-top:1px solid var(--line);padding-top:22px;margin-top:10px}
+.part h3{font-size:17px}
+.part > p{max-width:760px}
+.phases{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0;padding:0;list-style:none}
+.phases li{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.phases b{font:600 15px var(--display)}
+.phases .d{color:var(--muted);font-size:13.5px}
+.changes .card .feat:first-of-type,.part .card .feat:first-of-type{border-top:0}
 </style>
 </head>
 <body>
@@ -161,13 +187,14 @@ section[id]{scroll-margin-top:16px}
 <div class="wrap">
 <header>
   <div class="topbar">
-    <div class="eyebrow">TecAce Voice Agent · 2026-09-28 기준 · v0.0.9</div>
+    <div class="eyebrow">TecAce Voice Agent · 2026-09-29 기준 · v0.0.10</div>
     <div class="lang" aria-label="언어"><a href="https://claude.ai/artifact/DM1JiVC95iN2HZoukLWxoS">English</a><span>한국어</span></div>
   </div>
   <h1>고객 여정: 데모에서 실제 전화 응대까지</h1>
   <p class="lede">이 제품이 무엇인지, 구성 요소가 어떻게 연결되는지, 어떤 기능이 있는지, 그리고 업체가 첫 데모부터 실제 전화를 받는 어시스턴트까지 어떻게 가는지 정리했습니다. 프로젝트를 처음 보는 사람도 따라올 수 있게 썼습니다.</p>
   <nav class="toc" aria-label="목차">
     <a href="#overview">1분 요약</a>
+    <a class="hot" href="#changes">9월 28일 이후 바뀐 것</a>
     <a href="#system">시스템 구조</a>
     <a href="#features">전체 기능</a>
     <a href="#journey">고객 여정</a>
@@ -193,9 +220,289 @@ section[id]{scroll-margin-top:16px}
     <li><b>링크 문자 보내기</b><span>예약 페이지나 메뉴를 문자로 보냅니다. 데모에서만 되고 실제 전화는 아직입니다.</span></li>
   </ul>
   <div class="who">
-    <div class="card c"><h3>업체 (고객)</h3><p>전화번호의 주인입니다. 데모를 써 보고, 대시보드에서 어시스턴트를 설정해 퍼블리시하고, 자기 번호를 우리 번호로 포워딩합니다. 이후 통화와 메시지를 확인합니다.</p></div>
-    <div class="card a"><h3>TecAce 어드민</h3><p>업체를 찾아 데모를 만들고, 셋업을 승인하고, 전화번호를 배정하고, 회선을 켭니다(Go live). 사용량을 지켜봅니다.</p></div>
+    <div class="card c"><h3>업체 (고객)</h3><p>전화번호의 주인입니다. 데모를 써 보고 데모가 어떻게 쓰이는지 확인하고, 대시보드에서 어시스턴트를 설정해 퍼블리시하고, 자기 번호를 우리 번호로 포워딩합니다. 이후 통화와 메시지를 확인합니다.</p></div>
+    <div class="card a"><h3>TecAce 어드민</h3><p>업체를 찾아 데모를 만들고, 셋업을 승인하고, 전화번호를 배정하거나 구매하고, 회선을 켭니다(Go live). 사용량을 지켜봅니다.</p></div>
     <div class="card n"><h3>발신자</h3><p>업체의 손님들입니다. 우리 제품을 볼 일은 없고, 평소처럼 업체에 전화해서 어시스턴트와 대화합니다.</p></div>
+  </div>
+</section>
+
+<!-- ============ 0a2. WHAT CHANGED ============ -->
+<section id="changes">
+  <div class="text">
+    <h2>9월 28일 이후 바뀐 것</h2>
+    <p>어제 페이지는 0.0.9 버전 기준이었습니다. Main-Hans 브랜치는 이제 0.0.10입니다. Hans의 Twilio 번호 작업과 bottomup32의 커밋 네 개가 들어갔습니다. 이 섹션은 달라진 부분을 그림으로 보여 줍니다. 아래 전체 구조도에서도 같은 변경에 보라색 표시를 달았습니다.</p>
+  </div>
+  <div class="legend">
+    <span><i class="sw-tag">신규</i>9월 28일에는 없던 것</span>
+    <span><i class="sw-tag">변경</i>있었지만 동작이 달라진 것</span>
+    <span><i class="ln-n"></i>그림에서 새로 생긴 경로</span>
+  </div>
+
+  <div class="changes">
+    <div class="card c">
+      <h3>업체(고객)에게</h3>
+      <p>고객이 대시보드에서 보는 것.</p>
+      <div class="feat"><b>My receptionist: Overview</b><span class="pill new">신규</span><span class="d">데모 단계 업체가 로그인하면 처음 보는 화면입니다. 링크 열람, 방문자, 통화 수, 통화 시간, 일별 통화, 어시스턴트가 답하지 못한 질문, 최근 통화.</span></div>
+      <div class="feat"><b>My receptionist: Call activity</b><span class="pill new">신규</span><span class="d">데모로 온 모든 통화를 표로 봅니다. 날짜, 길이, 발신자 기분, 용건. 옆 패널에 요약과 대화록이 있습니다.</span></div>
+      <div class="feat"><b>Launch instructions</b><span class="pill new">변경</span><span class="d">누가 보든 같은 한 페이지입니다. 현재 단계, 어시스턴트 번호와 Copy 버튼, 포워딩 방법 두 가지, 테스트 통화 방법, 다음 할 일을 보여 줍니다.</span></div>
+      <div class="feat"><b>Billing 페이지</b><span class="pill new">신규</span><span class="d">Launch instructions에서 연결됩니다. “Coming soon”만 표시하며, 결제는 아직 우리와 직접 진행합니다.</span></div>
+      <div class="feat"><b>저장하면 프롬프트도 따라감</b><span class="pill ok">수정</span><span class="d">다른 섹션을 저장해도 Custom training에는 예전 프롬프트가 남았고, 그걸 저장하면 변경이 되돌려졌습니다. 이제 직접 수정한 프롬프트는 그 사실을 알려 주고 Rebuild를 제공합니다.</span></div>
+    </div>
+
+    <div class="card a">
+      <h3>TecAce 어드민에게</h3>
+      <p>어드민 전용 화면.</p>
+      <div class="feat"><b>Twilio와 연결된 Agent numbers</b><span class="pill new">신규</span><span class="d">계정의 번호를 목록으로 동기화하고, toll-free나 지역 번호를 구매하고, Configure로 웹훅을 고치고, 여기서 산 번호를 반납(Release)합니다.</span></div>
+      <div class="feat"><b>Go live 체크리스트</b><span class="pill new">변경</span><span class="d">체크리스트 안에서 풀의 번호를 배정하거나 새로 구매합니다. 번호로 온 전화가 에이전트에 도달하는지 확인하는 항목이 추가됐습니다.</span></div>
+      <div class="feat"><b>반납한 번호</b><span class="pill new">신규</span><span class="d">목록에 남습니다. Twilio가 아직 팔고 있으면 Buy back으로 다시 사고, Forget으로 목록에서 지웁니다.</span></div>
+      <div class="feat"><b>데모의 Activity 탭</b><span class="pill new">변경</span><span class="d">일별 통화, 발신자 기분, 고칠 점이 위에 있고, 아래 통화 표는 고객 통화와 우리 테스트를 구분합니다.</span></div>
+    </div>
+
+    <div class="card n">
+      <h3>화면 뒤에서</h3>
+      <p>백엔드, 모델, 그리고 코드 변경 없는 발견 두 가지.</p>
+      <div class="feat"><b>백엔드가 Twilio와 직접 통신</b><span class="pill new">신규</span><span class="d"><code>transcribe-backend/src/twilio/</code>의 얇은 fetch 클라이언트이며 SDK는 쓰지 않습니다. 자격 증명이 없으면 Twilio 라우트만 <code>409 twilio_not_configured</code>로 답하고 나머지는 그대로 동작합니다.</span></div>
+      <div class="feat"><b>분석은 더 저렴한 모델로</b><span class="pill new">변경</span><span class="d">통화 후 리뷰와 리서치의 기본 모델이 <code>gpt-5.6-luna</code>가 됐습니다. 실제 통화의 도구 처리 모델은 <code>gpt-5.6-terra</code> 그대로입니다.</span></div>
+      <div class="feat"><b>실제 통화의 전화 연결</b><span class="pill warn">발견</span><span class="d">실제 전화는 고정된 연결 한 가지만 합니다. 설정의 시나리오는 아직 전화에 닿지 않습니다. 아래 표를 보세요.</span></div>
+      <div class="feat"><b>프롬프트 편집기와 실제 통화</b><span class="pill warn">발견</span><span class="d">전화 에이전트는 <code>/business/config</code>로 자체 프롬프트를 만듭니다. 저장된 프롬프트도 조합된 세션도 쓰지 않습니다.</span></div>
+    </div>
+  </div>
+
+  <div class="part">
+    <h3>Twilio 번호, phase 1</h3>
+    <p>지금까지는 어드민이 번호를 직접 입력하고 웹훅은 Twilio 콘솔에서 설정했습니다. 이제 백엔드가 Twilio 자격 증명을 갖고 두 가지를 모두 처리합니다. 보라색 경로가 새로 생긴 것입니다.</p>
+    <figure>
+      <div class="legend">
+        <span><i class="ln-n"></i>0.0.10에서 추가</span>
+        <span><i class="ln-a"></i>기존</span>
+      </div>
+      <p class="hint">옆으로 스크롤하면 전체가 보입니다 →</p>
+      <div class="scroll">
+<svg viewBox="0 0 1000 392" width="1000" role="img" aria-label="에이전트 번호의 일생. 번호는 Twilio에서 구매하거나, Twilio 계정에서 동기화하거나, 직접 입력해서 풀에 들어온다. 풀에서 업체에 배정하고 배정을 해제할 수 있다. Go live 체크리스트에서 구매하면 바로 계정에 배정된다. 여기서 산 번호는 반납할 수 있고, 반납한 번호는 목록에 남아 재구매하거나 지울 수 있다. 직접 입력한 번호는 삭제할 수 있다.">
+  <defs>
+    <marker id="ahA" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+    <marker id="ahN" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahn"/></marker>
+  </defs>
+
+  <!-- edges -->
+  <path class="arr nw" d="M120 60 V24 H880 V140" marker-end="url(#ahN)"/>
+  <text class="lbl nw" x="500" y="16" text-anchor="middle">Go live 체크리스트에서 구매: 구매와 배정을 한 번에</text>
+
+  <path class="arr nw" d="M220 88 H320"/>
+  <text class="lbl nw" x="270" y="80" text-anchor="middle">Buy (구매)</text>
+  <path class="arr nw" d="M220 180 H320"/>
+  <text class="lbl nw" x="270" y="172" text-anchor="middle">Sync from Twilio</text>
+  <path class="arr" d="M220 272 H320"/>
+  <text class="lbl" x="270" y="264" text-anchor="middle">직접 등록</text>
+  <path class="arr" d="M320 88 V272"/>
+  <path class="arr" d="M320 180 H398" marker-end="url(#ahA)"/>
+  <circle class="dot" cx="320" cy="180" r="3"/>
+
+  <path class="arr" d="M600 164 H778" marker-end="url(#ahA)"/>
+  <text class="lbl" x="689" y="156" text-anchor="middle">Assign (배정)</text>
+  <path class="arr" d="M780 196 H602" marker-end="url(#ahA)"/>
+  <text class="lbl" x="689" y="211" text-anchor="middle">Un-assign (배정 해제)</text>
+
+  <path class="arr nw" d="M430 218 V314" marker-end="url(#ahN)"/>
+  <text class="lbl nw" x="422" y="270" text-anchor="end">Release</text>
+  <path class="arr nw" d="M480 316 V220" marker-end="url(#ahN)"/>
+  <text class="lbl nw" x="488" y="270">Buy back</text>
+  <path class="arr" d="M580 218 V292 H880 V314" marker-end="url(#ahA)"/>
+  <text class="lbl" x="730" y="284" text-anchor="middle">Delete: 직접 입력한 번호만</text>
+  <path class="arr nw" d="M600 344 H778" marker-end="url(#ahN)"/>
+  <text class="lbl nw" x="689" y="336" text-anchor="middle">Forget (목록에서 제거)</text>
+
+  <!-- where a number comes from -->
+  <g class="ext"><rect x="20" y="60" width="200" height="56" rx="8"/><text class="bt" x="32" y="83">Twilio가 판매 중인 번호</text><text class="bs" x="32" y="100">toll-free 또는 지역번호별 local</text></g>
+  <g class="ext"><rect x="20" y="152" width="200" height="56" rx="8"/><text class="bt" x="32" y="175">우리 Twilio 계정의 번호</text><text class="bs" x="32" y="192">Twilio 콘솔에서 구매</text></g>
+  <g class="box n"><rect x="20" y="244" width="200" height="56" rx="8"/><text class="bt" x="32" y="267">직접 입력한 번호</text><text class="bs" x="32" y="284">Twilio 자격 증명 없이 동작</text></g>
+
+  <!-- states -->
+  <g class="box a"><rect x="400" y="142" width="200" height="76" rx="8"/><text class="bt" x="414" y="166">풀 (미배정)</text><text class="bs" x="414" y="183">목록에 있고 아직 업체 없음</text><text class="bs" x="414" y="199">번호마다 웹훅 상태 표시</text></g>
+  <g class="box okb"><rect x="780" y="142" width="200" height="76" rx="8"/><text class="bt" x="794" y="166">업체에 배정됨</text><text class="bs" x="794" y="183">업체당 번호 하나</text><text class="bs" x="794" y="199">Go live 전에 필요</text></g>
+  <g class="box n dash"><rect x="400" y="316" width="200" height="56" rx="8"/><text class="bt" x="414" y="339">반납됨 (Released)</text><text class="bs" x="414" y="356">Twilio에 반납, 목록에는 남음</text></g>
+  <g class="box n"><rect x="780" y="316" width="200" height="56" rx="8"/><text class="bt" x="794" y="339">목록에서 제거됨</text><text class="bs" x="794" y="356">대시보드에서 행 삭제</text></g>
+</svg>
+      </div>
+      <figcaption>Release(반납)는 대시보드에서 구매했고 배정되지 않은 번호에만 됩니다. Twilio 콘솔에서 산 번호는 콘솔에서 반납합니다(<code>409 bought_elsewhere</code>). 반납은 되돌릴 수 없고, 9월 28일 스테이징에서 번호 하나를 이렇게 잃었습니다. 번호를 배정하면 웹훅도 함께 기록됩니다.</figcaption>
+    </figure>
+
+    <figure>
+      <p class="hint">옆으로 스크롤하면 전체가 보입니다 →</p>
+      <div class="scroll">
+<svg viewBox="0 0 1000 290" width="1000" role="img" aria-label="에이전트 번호의 웹훅. 백엔드가 Twilio의 번호에 URL 세 개를 기록한다. 걸려 온 전화는 Voice URL로 VPS의 전화 에이전트에 가고, 실패하면 Fallback URL로 간다. 통화가 끝나면 Twilio가 Status callback으로 백엔드에 알리며, 이를 받는 라우트는 phase 2에서 만든다.">
+  <defs>
+    <marker id="ahB" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+    <marker id="ahM" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahn"/></marker>
+  </defs>
+  <path class="arr" d="M170 78 H258" marker-end="url(#ahB)"/>
+  <text class="lbl" x="214" y="70" text-anchor="middle">전화</text>
+  <path class="arr nw" d="M480 62 H698" marker-end="url(#ahM)"/>
+  <text class="lbl nw" x="589" y="54" text-anchor="middle">Voice URL: 걸려 오는 모든 전화</text>
+  <path class="arr nw" d="M480 94 H698" marker-end="url(#ahM)"/>
+  <text class="lbl nw" x="589" y="86" text-anchor="middle">Fallback URL: 첫 번째가 실패하면</text>
+  <path class="arr nw" d="M330 214 V118" marker-end="url(#ahM)"/>
+  <text class="lbl nw" x="322" y="162" text-anchor="end">URL 세 개를 기록</text>
+  <text class="lbl nw" x="322" y="176" text-anchor="end">Buy, Assign, Configure 때</text>
+  <path class="arr nw d" d="M410 116 V212" marker-end="url(#ahM)"/>
+  <text class="lbl nw" x="418" y="162">Status callback: 통화가 끝난 뒤</text>
+  <text class="lbl nw" x="418" y="176">받는 라우트는 phase 2에서</text>
+
+  <g class="box n"><rect x="20" y="50" width="150" height="56" rx="8"/><text class="bt" x="32" y="73">발신자</text><text class="bs" x="32" y="90">업체 번호를 거쳐서</text></g>
+  <g class="box a"><rect x="260" y="40" width="220" height="76" rx="8"/><text class="bt" x="274" y="64">Twilio의 에이전트 번호</text><text class="bs" x="274" y="81">웹훅 URL 세 개를 가짐</text><text class="bs" x="274" y="97">우리가 원하는 값과 비교</text></g>
+  <g class="box b"><rect x="700" y="40" width="280" height="76" rx="8"/><text class="bt" x="714" y="64">전화 에이전트 (VPS)</text><text class="bm" x="714" y="82">AGENT_PUBLIC_URL/incoming</text><text class="bm" x="714" y="98">AGENT_PUBLIC_URL/incoming-fallback</text></g>
+  <g class="box b"><rect x="260" y="214" width="220" height="60" rx="8"/><text class="bt" x="274" y="238">transcribe-backend</text><text class="bs" x="274" y="255">Twilio 자격 증명 보관</text></g>
+  <g class="box b dash"><rect x="700" y="214" width="280" height="60" rx="8"/><text class="bm" x="714" y="238">POST /twilio/voice-status</text><text class="bs" x="714" y="255">phase 2: 통화 상태, 포워딩 판정</text></g>
+  <path class="arr d" d="M480 244 H698" marker-end="url(#ahB)"/>
+  <text class="lbl" x="589" y="236" text-anchor="middle">만들 예정</text>
+</svg>
+      </div>
+      <figcaption>걸려 온 전화는 VPS의 전화 에이전트로 바로 갑니다. 백엔드는 Vercel에서 돌아서 콜드 스타트가 생기면 통화가 무음이 됩니다. 그래서 음성 경로에는 끼지 않고 통화가 끝난 뒤에만 알림을 받습니다. Status callback URL은 관리 중인 모든 번호에 이미 기록되어 있고, 이를 받는 라우트는 phase 2에서 만듭니다.</figcaption>
+    </figure>
+
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Webhooks 열</th><th>의미</th><th>할 일</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill ok">Configured</span></td><td>Twilio에 우리 URL 세 개가 정확히 들어 있습니다.</td><td>없음.</td></tr>
+          <tr><td><span class="pill warn">Out of date</span></td><td>URL이 다르거나 빠져 있습니다. 어떤 URL인지 화면에 나옵니다.</td><td>Configure. 번호 하나씩 또는 전체.</td></tr>
+          <tr><td><span class="pill bad">Error</span></td><td>Twilio에 그 번호가 더 이상 없습니다. Sync에서 발견됩니다.</td><td>Twilio 계정 확인.</td></tr>
+          <tr><td><span class="pill sim">Registered by hand</span></td><td>우리 Twilio 계정에 없는 번호라 확인할 것이 없습니다.</td><td>Twilio 콘솔에서 웹훅 확인.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <ol class="phases">
+      <li><span class="pill ok">Phase 1 · 완료</span><b>번호</b><span class="d">동기화, 검색과 구매, 웹훅, 반납, Go live에서 배정, 새 준비 상태 항목.</span></li>
+      <li><span class="pill warn">Phase 2 · 다음</span><b>포워딩이 실제로 되는가</b><span class="d">Twilio가 업체의 에이전트 번호에서 업체 번호로 전화를 겁니다. 전화가 되돌아오면 포워딩이 켜진 것입니다. 확인 전까지 라이브 계정은 “Live · waiting for forwarding”으로 표시됩니다. 포워딩은 Go live를 막지 않습니다.</span></li>
+      <li><span class="pill sim">Phase 3 · 이후</span><b>문자 메시지</b><span class="d">toll-free 번호부터 시작합니다. 고객마다 10DLC 브랜드와 캠페인을 등록하는 대신 번호당 인증 양식 하나로 끝납니다.</span></li>
+    </ol>
+  </div>
+
+  <div class="part">
+    <h3>데모 고객이 보는 화면</h3>
+    <p>데모 단계 업체에는 읽기 전용 설정 화면 하나만 있었습니다. 이제 Overview, Call activity, Settings가 있는 자체 메뉴가 생겼습니다. 우리가 한 테스트 통화는 고객 숫자에서 빠집니다.</p>
+    <figure>
+      <p class="hint">옆으로 스크롤하면 전체가 보입니다 →</p>
+      <div class="scroll">
+<svg viewBox="0 0 1100 320" width="1100" role="img" aria-label="이전과 지금. 9월 28일에는 데모 고객에게 읽기 전용 Settings 화면 하나만 있었다. 9월 29일에는 My receptionist 메뉴에 Overview, Call activity, Settings가 있고, Settings 안의 Launch instructions에서 준비 중인 Billing 페이지로 이어진다.">
+  <defs>
+    <marker id="ahC" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahn"/></marker>
+  </defs>
+  <rect class="panel" x="20" y="36" width="300" height="264" rx="10"/>
+  <text class="ptitle" x="34" y="60">이전 · 9월 28일</text>
+  <rect class="panel" x="350" y="36" width="730" height="264" rx="10"/>
+  <text class="ptitle" x="364" y="60">지금 · 9월 29일 · My receptionist</text>
+
+  <path class="arr nw" d="M600 234 H678" marker-end="url(#ahC)"/>
+  <text class="lbl nw" x="639" y="226" text-anchor="middle">섹션</text>
+  <path class="arr nw" d="M860 234 H938" marker-end="url(#ahC)"/>
+  <text class="lbl nw" x="899" y="226" text-anchor="middle">Go to billing</text>
+
+  <g class="box n dash"><rect x="40" y="76" width="260" height="52" rx="8"/><text class="bs" x="52" y="106">Overview 없음</text></g>
+  <g class="box n dash"><rect x="40" y="142" width="260" height="52" rx="8"/><text class="bs" x="52" y="172">Call activity 없음</text></g>
+  <g class="box c"><rect x="40" y="208" width="260" height="52" rx="8"/><text class="bt" x="52" y="230">Settings</text><text class="bs" x="52" y="246">읽기 전용, 셋업 요청 띠 포함</text></g>
+
+  <g class="box c"><rect x="370" y="76" width="230" height="52" rx="8"/><text class="bt" x="382" y="98">Overview</text><text class="bs" x="382" y="114">로그인 후 첫 화면</text></g>
+  <g class="tag"><rect x="558" y="68" width="34" height="16" rx="8"/><text x="575" y="79.5" text-anchor="middle">신규</text></g>
+  <text class="bs" x="616" y="98">링크 열람 · 방문자 · 통화 · 통화 시간 · 평균 통화</text>
+  <text class="bs" x="616" y="114">일별 통화(14일) · 답하지 못한 질문 · 최근 통화</text>
+
+  <g class="box c"><rect x="370" y="142" width="230" height="52" rx="8"/><text class="bt" x="382" y="164">Call activity</text><text class="bs" x="382" y="180">데모로 온 모든 통화를 표로</text></g>
+  <g class="tag"><rect x="558" y="134" width="34" height="16" rx="8"/><text x="575" y="145.5" text-anchor="middle">신규</text></g>
+  <text class="bs" x="616" y="164">날짜 · 길이 · 발신자 기분 · 용건</text>
+  <text class="bs" x="616" y="180">기분별 필터 · 요약과 대화록 패널</text>
+
+  <g class="box c"><rect x="370" y="208" width="230" height="52" rx="8"/><text class="bt" x="382" y="230">Settings</text><text class="bs" x="382" y="246">이전처럼 읽기 전용</text></g>
+  <g class="box c"><rect x="680" y="208" width="180" height="52" rx="8"/><text class="bt" x="692" y="230">Launch instructions</text><text class="bs" x="692" y="246">단계, 번호, 다음 할 일</text></g>
+  <g class="tag"><rect x="818" y="200" width="34" height="16" rx="8"/><text x="835" y="211.5" text-anchor="middle">변경</text></g>
+  <g class="box c dash"><rect x="940" y="208" width="120" height="52" rx="8"/><text class="bt" x="952" y="230">Billing</text><text class="bs" x="952" y="246">준비 중</text></g>
+  <g class="tag"><rect x="1018" y="200" width="34" height="16" rx="8"/><text x="1035" y="211.5" text-anchor="middle">신규</text></g>
+</svg>
+      </div>
+      <figcaption>백엔드 변경은 없었습니다. <code>GET /demo/customers/:id</code>가 이미 소유자에게 통화, 이벤트, 통계를 돌려주고 있었습니다. Billing은 모든 계정에 열려 있고 사이드바 항목은 없습니다. 아직 결제를 확인하는 곳이 없으므로, 데모에서 온보딩으로 넘어가는 조건은 여전히 어드민의 승인뿐입니다.</figcaption>
+    </figure>
+  </div>
+
+  <div class="part">
+    <h3>저장하면 프롬프트도 따라감</h3>
+    <p>업체 설정과 데모 설정이 함께 쓰는 부분의 수정입니다. 이전에는 한 섹션에서 저장한 내용이 다른 섹션 때문에 되돌려질 수 있었습니다.</p>
+    <figure>
+      <p class="hint">옆으로 스크롤하면 전체가 보입니다 →</p>
+      <div class="scroll">
+<svg viewBox="0 0 1118 266" width="1118" role="img" aria-label="이전: 고객이 섹션을 저장하면 서버가 프롬프트를 다시 만들지만 Custom training에는 예전 내용이 남아 있었고, 프롬프트를 저장하면 예전 내용이 다시 전송되어 변경이 되돌려지고 프롬프트가 고정됐다. 지금: 섹션을 저장할 때마다 대시보드가 프롬프트를 다시 받아 Custom training이 최신 상태이고, 정말 직접 수정한 프롬프트에는 안내 문구와 Rebuild가 표시된다.">
+  <defs>
+    <marker id="ahD" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+    <marker id="ahE" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahn"/></marker>
+  </defs>
+  <text class="ptitle" x="20" y="28">이전</text>
+  <path class="arr" d="M210 72 H240" marker-end="url(#ahD)"/>
+  <path class="arr" d="M432 72 H462" marker-end="url(#ahD)"/>
+  <path class="arr" d="M654 72 H684" marker-end="url(#ahD)"/>
+  <path class="arr" d="M876 72 H906" marker-end="url(#ahD)"/>
+  <g class="box c"><rect x="20" y="44" width="190" height="56" rx="8"/><text class="bt" x="32" y="66">섹션 저장</text><text class="bs" x="32" y="84">정보, FAQ, 에이전트 프로필</text></g>
+  <g class="box b"><rect x="242" y="44" width="190" height="56" rx="8"/><text class="bt" x="254" y="66">서버가 프롬프트 재생성</text><text class="bs" x="254" y="84">새 프로필 기준</text></g>
+  <g class="box n"><rect x="464" y="44" width="190" height="56" rx="8"/><text class="bt" x="476" y="66">Custom training</text><circle class="s-bad" cx="480" cy="80" r="4"/><text class="st-bad" x="489" y="84">여전히 예전 내용 표시</text></g>
+  <g class="box c"><rect x="686" y="44" width="190" height="56" rx="8"/><text class="bt" x="698" y="66">프롬프트 저장</text><text class="bs" x="698" y="84">예전 내용이 다시 전송됨</text></g>
+  <g class="box n"><rect x="908" y="44" width="190" height="56" rx="8"/><text class="bt" x="920" y="66">변경이 되돌려짐</text><circle class="s-bad" cx="924" cy="80" r="4"/><text class="st-bad" x="933" y="84">직접 수정으로 고정됨</text></g>
+
+  <text class="ptitle" x="20" y="160">지금</text>
+  <path class="arr" d="M210 204 H240" marker-end="url(#ahD)"/>
+  <path class="arr nw" d="M432 204 H462" marker-end="url(#ahE)"/>
+  <path class="arr nw" d="M654 204 H684" marker-end="url(#ahE)"/>
+  <path class="arr nw d" d="M876 204 H906" marker-end="url(#ahE)"/>
+  <g class="box c"><rect x="20" y="176" width="190" height="56" rx="8"/><text class="bt" x="32" y="198">섹션 저장</text><text class="bs" x="32" y="216">정보, FAQ, 에이전트 프로필</text></g>
+  <g class="box b"><rect x="242" y="176" width="190" height="56" rx="8"/><text class="bt" x="254" y="198">서버가 프롬프트 재생성</text><text class="bs" x="254" y="216">결과를 돌려줌</text></g>
+  <g class="box okb"><rect x="464" y="176" width="190" height="56" rx="8"/><text class="bt" x="476" y="198">대시보드가 다시 받음</text><circle class="s-ok" cx="480" cy="212" r="4"/><text class="st-ok" x="489" y="216">섹션을 저장할 때마다</text></g>
+  <g class="box c"><rect x="686" y="176" width="190" height="56" rx="8"/><text class="bt" x="698" y="198">Custom training 최신 상태</text><text class="bs" x="698" y="216">통화 미리보기도 갱신</text></g>
+  <g class="box n"><rect x="908" y="176" width="190" height="56" rx="8"/><text class="bt" x="920" y="198">정말 직접 수정했다면?</text><text class="bs" x="920" y="216">안내 문구와 Rebuild 표시</text></g>
+</svg>
+      </div>
+      <figcaption>직접 수정한 프롬프트는 고정됩니다. Rebuild하기 전까지 프로필, FAQ, 에이전트 프로필의 변경을 따라가지 않습니다. 이제 Business information, FAQs, Custom training에서 이 상태를 알려 줍니다. 프롬프트 편집기에 입력 중이던 내용은 유지됩니다.</figcaption>
+    </figure>
+  </div>
+
+  <div class="part">
+    <h3>전화 연결: 설정이 약속하는 것과 실제 전화가 하는 것</h3>
+    <p>9월 28일 점검 결과이며 코드 변경은 없습니다. Calls 설정의 전화 연결 시나리오는 앱 테스트 통화와 데모 통화에만 적용됩니다. 설정 화면과 시뮬레이터는 “press 1”을 안내하지만 실제 전화는 그렇게 동작하지 않습니다.</p>
+    <div class="tbl">
+      <table>
+        <thead><tr><th></th><th>설정, 테스트 통화, 데모 통화</th><th>현재 실제 전화</th></tr></thead>
+        <tbody>
+          <tr><td>누가 받는가</td><td>시나리오별로 여러 명, 순차 연결(waterfall) 순서</td><td>번호 하나, 예전 <code>transferNumber</code></td></tr>
+          <tr><td>연결 방식</td><td>콜드 또는 웜. 웜은 대기 음악, 귓속말, “press 1” 수락</td><td><code>&lt;Dial&gt;</code> 한 번과 음성 귓속말. 키 입력 없음, 대기 음악 없음</td></tr>
+          <tr><td>시간대</td><td>연결마다 설정</td><td>없음</td></tr>
+          <tr><td>아무도 안 받으면</td><td>순차 연결의 다음 번호</td><td>발신자가 어시스턴트로 돌아옴</td></tr>
+          <tr><td>직원에게 보이는 발신 번호</td><td>—</td><td>공용 번호 하나(<code>MAIN_LINE_NUMBER</code>). 업체의 에이전트 번호가 아님<span class="note">Twilio는 소유하거나 인증한 번호만 허용</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Phase 3 계획: 조합된 세션을 전화 에이전트에 제공하고, 컨퍼런스 기반 웜 트랜스퍼(대기 음악, 귓속말, “press 1”, 순차 연결)를 만들고, 운영 계정용 실제 연결 테스트를 추가합니다.</p>
+  </div>
+
+  <div class="part">
+    <h3>모델과 개발자 메모</h3>
+    <div class="grid2">
+      <div class="card">
+        <h3>어떤 모델이 무엇을 하는가</h3>
+        <div class="feat"><b>모든 통화의 음성</b><span class="pill sim">동일</span><span class="d">OpenAI Realtime.</span></div>
+        <div class="feat"><b>통화 중 도구 처리</b><span class="pill sim">동일</span><span class="d"><code>gpt-5.6-terra</code>, <code>OPENAI_BACKEND_MODEL</code>로 지정.</span></div>
+        <div class="feat"><b>통화 후 리뷰</b><span class="pill new">이전: terra</span><span class="d"><code>gpt-5.6-luna</code>, <code>CALL_REVIEW_MODEL</code>로 지정.</span></div>
+        <div class="feat"><b>업체 리서치</b><span class="pill new">이전: terra</span><span class="d"><code>gpt-5.6-luna</code>, <code>RESEARCH_OPENAI_MODEL</code>로 지정.</span></div>
+        <p class="req">환경 변수 값이 있으면 그 값이 우선합니다. 스테이징과 운영은 둘 다 설정하지 않아서 다음 배포 때 바뀝니다.</p>
+      </div>
+      <div class="card">
+        <h3>개발자용</h3>
+        <ul>
+          <li><code>transcribe-backend</code> 새 환경 변수: <code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code>, <code>AGENT_PUBLIC_URL</code>, <code>TWILIO_VALIDATE_SIGNATURE</code>, <code>FORWARDING_TEST_TIMEOUT_SECONDS</code>, <code>TWILIO_MESSAGING_SERVICE_SID</code>. Twilio 기능에는 <code>PUBLIC_BACKEND_URL</code>도 필요합니다.</li>
+          <li><code>agent_numbers</code>에 Twilio 컬럼이 추가됩니다. 스키마는 스스로 마이그레이션합니다.</li>
+          <li>새 뷰 <code>#/my/overview</code>, <code>#/my/calls</code>, <code>#/billing</code>. 새 공용 파일 <code>src/settings/sections/LaunchGuide.tsx</code>.</li>
+          <li>회귀 테스트 셀렉터: 통화별 버튼은 “Open call details”, 시트 제목은 “Call details”. 새 스크립트 <code>numbers_twilio.py</code>.</li>
+          <li>하네스 빌드가 이제 <code>BACKEND_URL</code>도 설정하므로, 로컬 <code>.env</code> 때문에 실제 백엔드로 연결되는 일이 없습니다.</li>
+          <li>배포: 스테이징부터 Twilio 환경 변수를 설정하고, Sync from Twilio를 한 번 누른 뒤, 직접 등록했던 운영 번호를 Configure합니다.</li>
+        </ul>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -206,11 +513,13 @@ section[id]{scroll-margin-top:16px}
     <p>모든 데이터는 백엔드 하나에 있습니다. 전화 에이전트, 대시보드, 공개 페이지, 음성사서함 워커가 모두 이 백엔드와 통신합니다. 각 상자는 레포 안의 독립된 앱이고 각자 README가 있습니다.</p>
   </div>
   <figure>
+    <div class="legend"><span><i class="sw-tag">신규</i><i class="sw-tag">변경</i>2026-09-28 이후</span></div>
     <p class="hint">옆으로 스크롤하면 전체가 보입니다 →</p>
     <div class="scroll">
-<svg viewBox="0 0 1120 510" width="1120" role="img" aria-label="시스템 구조: 발신자는 Twilio 번호와 전화 에이전트로 연결되고, 에이전트는 OpenAI Realtime으로 말한다. 업체와 어드민은 대시보드를, 잠재 고객은 공개 페이지를 쓴다. 모두 transcribe-backend와 Postgres에 연결된다. 백엔드는 리서치, 캘린더, 이메일에 외부 서비스를 쓰고, transcribe-app은 음성사서함을 읽어 Google Sheet에 쓴다.">
+<svg viewBox="0 0 1120 522" width="1120" role="img" aria-label="시스템 구조: 발신자는 Twilio 번호와 전화 에이전트로 연결되고, 에이전트는 OpenAI Realtime으로 말한다. 업체와 어드민은 대시보드를, 잠재 고객은 공개 페이지를 쓴다. 모두 transcribe-backend와 Postgres에 연결된다. 백엔드는 번호 관리에 Twilio API를, 리서치와 통화 리뷰에 OpenAI를, 그리고 업체 캘린더와 이메일을 쓴다. transcribe-app은 음성사서함을 읽어 Google Sheet에 쓴다.">
   <defs>
     <marker id="ah0" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+    <marker id="ah0n" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahn"/></marker>
   </defs>
   <text class="ps" x="20" y="24">사람</text>
   <text class="ps" x="220" y="24">접점</text>
@@ -221,18 +530,19 @@ section[id]{scroll-margin-top:16px}
   <path class="arr" d="M160 75 H218" marker-end="url(#ah0)"/><text class="lbl" x="189" y="67" text-anchor="middle">전화</text>
   <path class="arr" d="M410 75 H468" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="439" y="67" text-anchor="middle">음성</text>
   <path class="arr" d="M700 75 H818" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="759" y="67" text-anchor="middle">실시간 음성</text>
-  <path class="arr" d="M585 112 V198" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="593" y="150">설정, 도구,</text><text class="lbl" x="593" y="164">통화 기록</text>
+  <path class="arr" d="M585 112 V176" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="593" y="140">설정, 도구,</text><text class="lbl" x="593" y="154">통화 기록</text>
   <path class="arr" d="M160 215 H218" marker-end="url(#ah0)"/>
   <path class="arr" d="M160 275 H218" marker-end="url(#ah0)"/>
   <path class="arr" d="M160 355 H218" marker-end="url(#ah0)"/>
   <path class="arr" d="M410 240 H468" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="439" y="232" text-anchor="middle">API</text>
   <path class="arr" d="M410 350 H468" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="439" y="342" text-anchor="middle">공개 API</text>
-  <path class="arr" d="M730 205 H818" marker-end="url(#ah0)"/><text class="lbl" x="774" y="197" text-anchor="middle">리서치</text>
-  <path class="arr" d="M730 262 H818" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="774" y="254" text-anchor="middle">빈 시간, 예약</text>
-  <path class="arr" d="M730 327 H818" marker-end="url(#ah0)"/><text class="lbl" x="774" y="319" text-anchor="middle">코드, 링크</text>
-  <path class="arr" d="M600 418 V382" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="608" y="404">실행 기록, 메시지</text>
-  <path class="arr" d="M410 450 H468" marker-end="url(#ah0)"/><text class="lbl" x="439" y="442" text-anchor="middle">읽기</text>
-  <path class="arr" d="M730 450 H818" marker-end="url(#ah0)"/><text class="lbl" x="774" y="442" text-anchor="middle">행 기록</text>
+  <path class="arr nw" d="M730 202 H818" marker-end="url(#ah0n)"/><text class="lbl nw" x="774" y="194" text-anchor="middle">구매, 설정</text>
+  <path class="arr" d="M730 257 H818" marker-end="url(#ah0)"/><text class="lbl" x="774" y="249" text-anchor="middle">리서치</text>
+  <path class="arr" d="M730 312 H818" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="774" y="304" text-anchor="middle">빈 시간, 예약</text>
+  <path class="arr" d="M730 367 H818" marker-end="url(#ah0)"/><text class="lbl" x="774" y="359" text-anchor="middle">코드, 링크</text>
+  <path class="arr" d="M600 430 V396" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="608" y="417">실행 기록, 메시지</text>
+  <path class="arr" d="M410 462 H468" marker-end="url(#ah0)"/><text class="lbl" x="439" y="454" text-anchor="middle">읽기</text>
+  <path class="arr" d="M730 462 H818" marker-end="url(#ah0)"/><text class="lbl" x="774" y="454" text-anchor="middle">행 기록</text>
 
   <!-- people -->
   <g class="box n"><rect x="20" y="50" width="140" height="50" rx="8"/><text class="bt" x="32" y="72">발신자</text><text class="bs" x="32" y="88">업체에 전화</text></g>
@@ -244,29 +554,35 @@ section[id]{scroll-margin-top:16px}
   <g class="box a"><rect x="220" y="45" width="190" height="60" rx="8"/><text class="bt" x="232" y="68">Twilio 번호</text><text class="bs" x="232" y="85">업체당 하나, 우리 소유</text></g>
   <g class="box c"><rect x="220" y="200" width="190" height="80" rx="8"/><text class="bt" x="232" y="222">대시보드</text><text class="bm" x="232" y="240">tecace-voice-agent-</text><text class="bm" x="232" y="254">dashboard</text><text class="bs" x="232" y="271">React · Vercel</text></g>
   <g class="box c"><rect x="220" y="320" width="190" height="60" rx="8"/><text class="bt" x="232" y="343">공개 페이지</text><text class="bs" x="232" y="360">/c/&lt;id&gt; 데모 · /start 가입</text></g>
-  <g class="box n"><rect x="220" y="420" width="190" height="60" rx="8"/><text class="bt" x="232" y="443">음성사서함 메일함</text><text class="bs" x="232" y="460">.wav 첨부 메일 (IMAP)</text></g>
+  <g class="box n"><rect x="220" y="432" width="190" height="60" rx="8"/><text class="bt" x="232" y="455">음성사서함 메일함</text><text class="bs" x="232" y="472">.wav 첨부 메일 (IMAP)</text></g>
 
   <!-- our services -->
   <g class="box b"><rect x="470" y="40" width="230" height="72" rx="8"/><text class="bt" x="484" y="63">전화 에이전트</text><text class="bm" x="484" y="81">openai-agent-app</text><text class="bs" x="484" y="99">Python · 모든 전화 응대</text></g>
-  <rect class="hub" x="470" y="200" width="260" height="182" rx="10"/>
-  <text class="bt" x="484" y="223">transcribe-backend</text>
-  <text class="bs" x="484" y="240">Bun + Elysia · Vercel · 유일한 API</text>
-  <text class="bs" x="484" y="262">· 계정, 로그인, 단계</text>
-  <text class="bs" x="484" y="278">· 업체 프로필, 통화 설정</text>
-  <text class="bs" x="484" y="294">· 데모, 리서치, CRM</text>
-  <text class="bs" x="484" y="310">· 통화, 통화 시간, 캘린더 도구</text>
-  <g class="db"><rect x="484" y="326" width="232" height="42" rx="6"/><text class="bt" x="496" y="345">Postgres (Neon)</text><text class="bs" x="496" y="360">백엔드만 접근</text></g>
-  <g class="box b"><rect x="470" y="420" width="260" height="60" rx="8"/><text class="bt" x="484" y="443">음성사서함 워커</text><text class="bs" x="484" y="460">transcribe-app · Whisper + Claude</text></g>
+  <rect class="hub" x="470" y="178" width="260" height="216" rx="10"/>
+  <text class="bt" x="484" y="201">transcribe-backend</text>
+  <text class="bs" x="484" y="218">Bun + Elysia · Vercel · 유일한 API</text>
+  <text class="bs" x="484" y="240">· 계정, 로그인, 단계</text>
+  <text class="bs" x="484" y="256">· 업체 프로필, 통화 설정</text>
+  <text class="bs" x="484" y="272">· 데모, 리서치, CRM</text>
+  <text class="bs" x="484" y="288">· 통화, 통화 리뷰, 통화 시간</text>
+  <text class="bs" x="484" y="304">· 캘린더 도구</text>
+  <text class="bs" x="484" y="320">· 에이전트 번호, Twilio 웹훅</text>
+  <g class="tag"><rect x="682" y="309" width="34" height="16" rx="8"/><text x="699" y="320.5" text-anchor="middle">신규</text></g>
+  <g class="db"><rect x="484" y="338" width="232" height="42" rx="6"/><text class="bt" x="496" y="357">Postgres (Neon)</text><text class="bs" x="496" y="372">백엔드만 접근</text></g>
+  <g class="box b"><rect x="470" y="432" width="260" height="60" rx="8"/><text class="bt" x="484" y="455">음성사서함 워커</text><text class="bs" x="484" y="472">transcribe-app · Whisper + Claude</text></g>
 
   <!-- outside -->
   <g class="ext"><rect x="820" y="45" width="280" height="60" rx="8"/><text class="bt" x="834" y="68">OpenAI Realtime</text><text class="bs" x="834" y="85">모든 통화의 음성 모델</text></g>
-  <g class="ext"><rect x="820" y="180" width="280" height="50" rx="8"/><text class="bt" x="834" y="201">OpenAI</text><text class="bs" x="834" y="218">웹 리서치, 앱 테스트 통화</text></g>
-  <g class="ext"><rect x="820" y="237" width="280" height="50" rx="8"/><text class="bt" x="834" y="258">업체 캘린더</text><text class="bs" x="834" y="275">Apple, Google, Outlook, Cal.com, Calendly…</text></g>
-  <g class="ext"><rect x="820" y="302" width="280" height="50" rx="8"/><text class="bt" x="834" y="323">이메일 (SMTP)</text><text class="bs" x="834" y="340">가입 코드, 로그인 링크</text></g>
-  <g class="ext"><rect x="820" y="425" width="280" height="50" rx="8"/><text class="bt" x="834" y="446">Google Sheets</text><text class="bs" x="834" y="463">업체별 음성사서함과 메시지</text></g>
+  <g class="ext"><rect x="820" y="178" width="280" height="48" rx="8"/><text class="bt" x="834" y="198">Twilio API</text><text class="bs" x="834" y="214">번호: 동기화, 구매, 웹훅, 반납</text></g>
+  <g class="tag"><rect x="1058" y="170" width="34" height="16" rx="8"/><text x="1075" y="181.5" text-anchor="middle">신규</text></g>
+  <g class="ext"><rect x="820" y="233" width="280" height="48" rx="8"/><text class="bt" x="834" y="253">OpenAI</text><text class="bs" x="834" y="269">리서치와 통화 리뷰, 앱 테스트 통화</text></g>
+  <g class="tag"><rect x="1058" y="225" width="34" height="16" rx="8"/><text x="1075" y="236.5" text-anchor="middle">변경</text></g>
+  <g class="ext"><rect x="820" y="288" width="280" height="48" rx="8"/><text class="bt" x="834" y="308">업체 캘린더</text><text class="bs" x="834" y="324">Apple, Google, Outlook, Cal.com, Calendly…</text></g>
+  <g class="ext"><rect x="820" y="343" width="280" height="48" rx="8"/><text class="bt" x="834" y="363">이메일 (SMTP)</text><text class="bs" x="834" y="379">가입 코드, 로그인 링크</text></g>
+  <g class="ext"><rect x="820" y="437" width="280" height="50" rx="8"/><text class="bt" x="834" y="458">Google Sheets</text><text class="bs" x="834" y="475">업체별 음성사서함과 메시지</text></g>
 </svg>
     </div>
-    <figcaption>레포의 예전 앱들(<code>voice-agent-app</code>, <code>backend-app</code>, <code>form-app</code>, <code>admin-dashboard-app</code>)은 초기 리드 접수 흐름입니다. <code>transcribe-dashboard-app</code>은 회귀 비교용 기준으로만 남겨 둡니다.</figcaption>
+    <figcaption>9월 28일 이후 달라진 점: 백엔드가 Twilio API로 우리 번호를 관리하고, 리뷰와 리서치는 <code>gpt-5.6-luna</code>로 돌아갑니다. 레포의 예전 앱들(<code>voice-agent-app</code>, <code>backend-app</code>, <code>form-app</code>, <code>admin-dashboard-app</code>)은 초기 리드 접수 흐름입니다. <code>transcribe-dashboard-app</code>은 회귀 비교용 기준으로만 남겨 둡니다.</figcaption>
   </figure>
 </section>
 
@@ -274,7 +590,7 @@ section[id]{scroll-margin-top:16px}
 <section id="features">
   <div class="text">
     <h2>전체 기능</h2>
-    <p>누가 쓰는지로 묶었습니다. 오른쪽 표시는 실제 전화나 제품에서 지금 어떤 상태인지입니다.</p>
+    <p>누가 쓰는지로 묶었습니다. 오른쪽 표시는 실제 전화나 제품에서 지금 어떤 상태인지입니다. 보라색 표시는 9월 28일 이후 새로 생겼거나 바뀐 것입니다.</p>
   </div>
   <div class="feats">
     <div class="card">
@@ -300,13 +616,16 @@ section[id]{scroll-margin-top:16px}
       <div class="feat"><b>Text a link (링크 문자)</b><span class="d">어시스턴트가 보낼 수 있는 링크와 보낼 때.</span></div>
       <div class="feat"><b>Appointments (예약)</b><span class="d">캘린더 연결; 길이, 간격, 최소 사전 시간, 예약 가능 기간, 시간대.</span></div>
       <div class="sub">튜닝과 라이브</div>
-      <div class="feat"><b>Custom training (맞춤 학습)</b><span class="d">업체 규칙, 프롬프트 직접 수정, 전체 프롬프트 미리보기.</span></div>
+      <div class="feat"><b>Custom training (맞춤 학습)</b><span class="pill new">변경</span><span class="d">업체 규칙, 프롬프트 직접 수정, 전체 프롬프트 미리보기. 프롬프트를 직접 수정한 상태면 알려 주고 Rebuild를 제공.</span></div>
       <div class="feat"><b>Test and improve (테스트)</b><span class="pill blue">월 30분</span><span class="d">브라우저에서 초안 설정으로 어시스턴트와 통화.</span></div>
-      <div class="feat"><b>Launch instructions, Call forwarding</b><span class="d">라이브 전 남은 일; 통신사별 포워딩 코드.</span></div>
+      <div class="feat"><b>Launch instructions</b><span class="pill new">변경</span><span class="d">현재 단계, 어시스턴트 번호, 테스트 방법, 다음 할 일.</span></div>
+      <div class="feat"><b>Call forwarding</b><span class="d">통신사별 포워딩 코드. 부재중만 또는 모든 전화.</span></div>
       <div class="sub">다른 화면</div>
+      <div class="feat"><b>My receptionist</b><span class="pill new">신규</span><span class="d">데모 단계 업체용: Overview, Call activity, 읽기 전용 Settings.</span></div>
       <div class="feat"><b>Answered calls (응대한 통화)</b><span class="d">모든 통화의 대화록, 발신자, 메시지.</span></div>
       <div class="feat"><b>음성사서함 화면</b><span class="d">Overview, Analytics, Daily activity, All runs. 음성사서함 받아쓰기용.</span></div>
       <div class="feat"><b>Feedback, Changelog</b><span class="d">피드백 보내기; 버전별 변경 사항 보기.</span></div>
+      <div class="feat"><b>Billing</b><span class="pill new">신규</span><span class="d">“Coming soon”만 표시하는 자리. 앱 안의 결제는 나중에 들어옵니다.</span></div>
     </div>
 
     <div class="card">
@@ -315,9 +634,9 @@ section[id]{scroll-margin-top:16px}
       <div class="feat"><b>Demo › Customers</b><span class="d">업체 추가, 리서치 실행, 셋업 요청 확인, 선택 삭제.</span></div>
       <div class="feat"><b>Demo › CRM</b><span class="d">파이프라인: new, contacted, interested, won, lost.</span></div>
       <div class="feat"><b>Demo › Overview</b><span class="d">데모 현황: 조회수와 통화.</span></div>
-      <div class="feat"><b>고객 상세 페이지</b><span class="d">테스트 콘솔이 있는 설정 스튜디오, Activity, Sources, Share(/c/&lt;id&gt; 링크).</span></div>
-      <div class="feat"><b>Accounts (계정)</b><span class="d">단계, 승인·거절, Go live 체크리스트, 로그인 링크, 테스트 통화 한도.</span></div>
-      <div class="feat"><b>Agent numbers (번호)</b><span class="d">Twilio 번호를 등록하고 업체에 배정.</span></div>
+      <div class="feat"><b>고객 상세 페이지</b><span class="pill new">변경</span><span class="d">테스트 콘솔이 있는 설정 스튜디오, Activity(일별 통화, 발신자 기분, 고칠 점), Sources, Share(/c/&lt;id&gt; 링크).</span></div>
+      <div class="feat"><b>Accounts (계정)</b><span class="pill new">변경</span><span class="d">단계, 승인·거절, 번호 배정·구매가 되는 Go live 체크리스트, 로그인 링크, 테스트 통화 한도.</span></div>
+      <div class="feat"><b>Agent numbers (번호)</b><span class="pill new">신규</span><span class="d">Twilio에서 동기화, 구매, 웹훅 설정, 반납, 업체에 배정.</span></div>
       <div class="feat"><b>API keys (API 키)</b><span class="d">사용량을 읽는 외부 시스템용 키. 한 번만 표시.</span></div>
       <div class="feat"><b>Per person, Failed runs, All feedback</b><span class="d">지원용 전체 계정 화면.</span></div>
       <div class="sub">로그인 전: 잠재 고객용</div>
@@ -340,10 +659,11 @@ section[id]{scroll-margin-top:16px}
       <span><i class="sw" style="border-color:var(--be)"></i>백엔드와 에이전트</span>
       <span><i class="ln-g"></i>게이트: 누군가 행동해야 함</span>
       <span><i class="ln-a"></i>전달 또는 데이터</span>
+      <span><i class="sw-tag">신규</i><i class="sw-tag">변경</i>2026-09-28 이후</span>
     </div>
     <p class="hint">옆으로 스크롤하면 4단계가 모두 보입니다 →</p>
     <div class="scroll">
-<svg viewBox="0 0 1350 826" width="1350" role="img" aria-label="고객 여정 스윔레인: 발굴, 데모, 온보딩, 라이브 4단계와 고객, 어드민, 백엔드 3개 레인, 각 전달과 게이트를 화살표로 표시.">
+<svg viewBox="0 0 1350 882" width="1350" role="img" aria-label="고객 여정 스윔레인: 발굴, 데모, 온보딩, 라이브 4단계와 고객, 어드민, 백엔드 3개 레인, 각 전달과 게이트를 화살표로 표시.">
   <defs>
     <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
     <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahg"/></marker>
@@ -358,7 +678,7 @@ section[id]{scroll-margin-top:16px}
   <!-- lanes -->
   <rect class="lane-c" x="8" y="64" width="1334" height="330" rx="10"/>
   <rect class="lane-a" x="8" y="404" width="1334" height="190" rx="10"/>
-  <rect class="lane-b" x="8" y="604" width="1334" height="210" rx="10"/>
+  <rect class="lane-b" x="8" y="604" width="1334" height="266" rx="10"/>
   <text class="lname c" x="20" y="90">고객</text>
   <text class="lsub" x="20" y="108">업체 사장님</text>
   <text class="lname a" x="20" y="430">어드민</text>
@@ -367,9 +687,9 @@ section[id]{scroll-margin-top:16px}
   <text class="lsub" x="20" y="648">transcribe-backend</text>
   <text class="lsub" x="20" y="662">+ 전화 에이전트</text>
 
-  <line class="sep" x1="440" y1="64" x2="440" y2="814"/>
-  <line class="sep" x1="740" y1="64" x2="740" y2="814"/>
-  <line class="sep" x1="1040" y1="64" x2="1040" y2="814"/>
+  <line class="sep" x1="440" y1="64" x2="440" y2="870"/>
+  <line class="sep" x1="740" y1="64" x2="740" y2="870"/>
+  <line class="sep" x1="1040" y1="64" x2="1040" y2="870"/>
 
   <!-- arrows first, boxes on top -->
   <!-- find -->
@@ -408,6 +728,8 @@ section[id]{scroll-margin-top:16px}
   <g class="box c"><rect x="452" y="78" width="232" height="62" rx="6"/><text class="bt" x="462" y="97">브라우저로 통화해 봄</text><text class="bs" x="462" y="113">/c/&lt;id&gt; · “이렇게 말해보세요” 카드</text><text class="bs" x="462" y="128">연결·문자·예약은 Demo로 표시</text></g>
   <g class="box c"><rect x="452" y="150" width="232" height="46" rx="6"/><text class="bt" x="462" y="169">설정을 읽기 전용으로 봄</text><text class="bs" x="462" y="185">“셋업 후 수정 가능”</text></g>
   <g class="box c"><rect x="452" y="206" width="232" height="62" rx="6"/><text class="bt" x="462" y="225">셋업 요청</text><text class="bs" x="462" y="241">가입: 이름, 이메일, 비밀번호,</text><text class="bs" x="462" y="256">6자리 이메일 코드, 메모(선택)</text></g>
+  <g class="box c"><rect x="452" y="278" width="232" height="62" rx="6"/><text class="bt" x="462" y="297">My receptionist 열기</text><text class="bs" x="462" y="313">Overview와 Call activity</text><text class="bs" x="462" y="328">Launch instructions → Billing</text></g>
+  <g class="tag"><rect x="642" y="270" width="34" height="16" rx="8"/><text x="659" y="281.5" text-anchor="middle">신규</text></g>
 
   <g class="box c"><rect x="752" y="78" width="232" height="46" rx="6"/><text class="bt" x="762" y="97">로그인</text><text class="bs" x="762" y="113">승인 메일의 링크로</text></g>
   <g class="box c"><rect x="752" y="134" width="232" height="62" rx="6"/><text class="bt" x="762" y="153">설정 채우기</text><text class="bs" x="762" y="169">업체 정보, 에이전트, FAQ, 메시지,</text><text class="bs" x="762" y="184">링크, 전화 연결, 맞춤 학습</text></g>
@@ -426,8 +748,11 @@ section[id]{scroll-margin-top:16px}
 
   <g class="box a"><rect x="452" y="418" width="232" height="46" rx="6"/><text class="bt" x="462" y="437">셋업 요청 확인</text><text class="bs" x="462" y="453">Customers › Setup requested</text></g>
   <g class="box a"><rect x="452" y="474" width="232" height="46" rx="6"/><text class="bt" x="462" y="493">승인 또는 거절</text><text class="bs" x="462" y="509">거절 메모는 고객에게 표시</text></g>
+  <g class="box a"><rect x="452" y="530" width="232" height="46" rx="6"/><text class="bt" x="462" y="549">데모 Activity 확인</text><text class="bs" x="462" y="565">일별 통화, 발신자 기분, 고칠 점</text></g>
+  <g class="tag"><rect x="642" y="522" width="34" height="16" rx="8"/><text x="659" y="533.5" text-anchor="middle">변경</text></g>
 
-  <g class="box a"><rect x="752" y="418" width="232" height="46" rx="6"/><text class="bt" x="762" y="437">전화번호 배정</text><text class="bs" x="762" y="453">Agent numbers 화면 (Twilio)</text></g>
+  <g class="box a"><rect x="752" y="418" width="232" height="46" rx="6"/><text class="bt" x="762" y="437">번호 배정 또는 구매</text><text class="bs" x="762" y="453">Go live 체크리스트 안에서</text></g>
+  <g class="tag"><rect x="942" y="410" width="34" height="16" rx="8"/><text x="959" y="421.5" text-anchor="middle">변경</text></g>
   <g class="box a"><rect x="752" y="474" width="232" height="46" rx="6"/><text class="bt" x="762" y="493">Go live 체크리스트 확인</text><text class="bs" x="762" y="509">Accounts › Stage</text></g>
   <g class="box a"><rect x="752" y="530" width="232" height="46" rx="6"/><text class="bt" x="762" y="549">라이브 전환 (Go live)</text><text class="bs" x="762" y="565">필수 항목 통과 전엔 거부됨</text></g>
 
@@ -440,16 +765,21 @@ section[id]{scroll-margin-top:16px}
 
   <g class="box b"><rect x="452" y="618" width="232" height="62" rx="6"/><text class="bt" x="462" y="637">공개 데모 통화 실행</text><text class="bs" x="462" y="653">조합된 프롬프트 + 도구</text><text class="bs" x="462" y="668">예약은 데모 캘린더에만</text></g>
   <g class="box b"><rect x="452" y="690" width="232" height="46" rx="6"/><text class="bt" x="462" y="709">데모 계정 생성</text><text class="bs" x="462" y="725">status demo · 어드민에 요청</text></g>
+  <g class="box b"><rect x="452" y="746" width="232" height="46" rx="6"/><text class="bt" x="462" y="765">데모 통화마다 리뷰</text><text class="bs" x="462" y="781">요약, 기분, 빈틈 · gpt-5.6-luna</text></g>
+  <g class="tag"><rect x="642" y="738" width="34" height="16" rx="8"/><text x="659" y="749.5" text-anchor="middle">변경</text></g>
 
   <g class="box b"><rect x="752" y="618" width="232" height="62" rx="6"/><text class="bt" x="762" y="637">승인: 데모 → 업체</text><text class="bs" x="762" y="653">프로필 복사, 통화 설정 초안 생성,</text><text class="bs" x="762" y="668">CRM won, 로그인 링크 메일 발송</text></g>
   <g class="box b"><rect x="752" y="690" width="232" height="46" rx="6"/><text class="bt" x="762" y="709">전화 응답은 꺼 둠</text><text class="bs" x="762" y="725">/business/config: not_live_stage</text></g>
-  <g class="box b"><rect x="752" y="746" width="232" height="46" rx="6"/><text class="bt" x="762" y="765">준비 상태 점검</text><text class="bs" x="762" y="781">정보 · 퍼블리시 · 번호 · 일치</text></g>
+  <g class="box b"><rect x="752" y="746" width="232" height="62" rx="6"/><text class="bt" x="762" y="765">준비 상태 점검</text><text class="bs" x="762" y="781">정보 · 퍼블리시 · 번호 · 일치</text><text class="bs" x="762" y="796">· 전화가 에이전트에 도달</text></g>
+  <g class="tag"><rect x="942" y="738" width="34" height="16" rx="8"/><text x="959" y="749.5" text-anchor="middle">변경</text></g>
+  <g class="box b"><rect x="752" y="818" width="232" height="46" rx="6"/><text class="bt" x="762" y="837">번호의 웹훅 설정</text><text class="bs" x="762" y="853">구매, 배정, Configure 때</text></g>
+  <g class="tag"><rect x="942" y="810" width="34" height="16" rx="8"/><text x="959" y="821.5" text-anchor="middle">신규</text></g>
 
   <g class="box b"><rect x="1052" y="618" width="232" height="62" rx="6"/><text class="bt" x="1062" y="637">모든 전화 응대</text><text class="bs" x="1062" y="653">전화 에이전트 + OpenAI Realtime,</text><text class="bs" x="1062" y="668">퍼블리시된 설정을 읽음</text></g>
   <g class="box b"><rect x="1052" y="690" width="232" height="46" rx="6"/><text class="bt" x="1062" y="709">통화 기록 저장</text><text class="bs" x="1062" y="725">/calls · 통화 시간 · Google Sheet</text></g>
 </svg>
     </div>
-    <figcaption>업체는 우리가 보낸 링크나 <code>/start</code> 셀프 가입으로 들어오고, 둘 다 데모 단계에서 시작합니다. 어드민이 셋업 요청을 승인하면 고객이 설정을 마치고 퍼블리시합니다. 어드민이 번호를 배정하고 Go live를 누르면, 업체가 자기 번호를 우리 번호로 포워딩합니다.</figcaption>
+    <figcaption>업체는 우리가 보낸 링크나 <code>/start</code> 셀프 가입으로 들어오고, 둘 다 데모 단계에서 시작합니다. 데모 단계에서도 My receptionist에서 데모 통화를 볼 수 있습니다. 어드민이 셋업 요청을 승인하면 고객이 설정을 마치고 퍼블리시합니다. 어드민이 번호를 배정하거나 구매하고 Go live를 누르면, 업체가 자기 번호를 우리 번호로 포워딩합니다.</figcaption>
   </figure>
 </section>
 
@@ -457,7 +787,7 @@ section[id]{scroll-margin-top:16px}
 <section id="gates">
   <div class="text">
     <h2>두 개의 게이트</h2>
-    <p>업체는 어드민이 행동해야만 다음 단계로 갑니다. 결제와 Twilio 번호 구매는 지금은 앱 밖에서 처리합니다.</p>
+    <p>업체는 어드민이 행동해야만 다음 단계로 갑니다. 이제 Twilio 번호는 앱 안에서 살 수 있습니다. 결제는 아직 앱 밖에서 처리하며, Billing 페이지는 자리만 잡아 둔 상태입니다.</p>
   </div>
   <figure>
     <div class="scroll">
@@ -484,16 +814,18 @@ section[id]{scroll-margin-top:16px}
   <g class="box okb"><rect x="710" y="72" width="160" height="52" rx="8"/><text class="bt" x="724" y="94">라이브</text><text class="bm" x="724" y="112">production</text></g>
 </svg>
     </div>
-    <figcaption>상태 값은 <code>users.status</code>입니다. 승인하면 데모 내용이 업체 프로필로 복사되고 통화 설정 초안이 만들어집니다. 필수 항목이 통과되기 전에는 Go live가 <code>409 not_ready</code>로 거부됩니다.</figcaption>
+    <figcaption>상태 값은 <code>users.status</code>입니다. 승인하면 데모 내용이 업체 프로필로 복사되고 통화 설정 초안이 만들어집니다. 필수 항목이 통과되기 전에는 Go live가 <code>409 not_ready</code>로 거부됩니다. Launch instructions는 데모 고객에게 결제가 준비되면 온보딩이 시작된다고 안내하지만, 아직 결제를 확인하는 곳은 없습니다.</figcaption>
   </figure>
 
   <div class="tbl">
     <table>
       <thead><tr><th></th><th>데모</th><th>온보딩</th><th>라이브</th></tr></thead>
       <tbody>
+        <tr><td>고객 전용 화면</td><td>My receptionist: Overview, Call activity, Settings<span class="note"><span class="pill new">신규</span></span></td><td>설정 스튜디오와 대시보드 전체</td><td>설정 스튜디오와 대시보드 전체</td></tr>
         <tr><td>고객이 설정 수정</td><td><span class="pill bad">불가, 읽기 전용</span></td><td><span class="pill ok">가능</span></td><td><span class="pill ok">가능</span></td></tr>
         <tr><td>테스트 통화</td><td><span class="pill sim">공개 데모 페이지만</span></td><td><span class="pill ok">앱에서 가능</span><span class="note">초안 사용, 월 30분</span></td><td><span class="pill ok">앱에서 가능</span></td></tr>
         <tr><td>통화 설정 퍼블리시</td><td><span class="pill bad">불가 (403)</span></td><td><span class="pill ok">가능</span></td><td><span class="pill ok">가능</span></td></tr>
+        <tr><td>자기 전화번호</td><td><span class="pill bad">없음</span><span class="note">온보딩 때 받음</span></td><td><span class="pill warn">Go live 전</span><span class="note">어드민이 배정하거나 구매</span></td><td><span class="pill ok">있음</span><span class="note">Launch instructions에 Copy와 함께 표시</span></td></tr>
         <tr><td>실제 전화 응답</td><td><span class="pill bad">안 함</span></td><td><span class="pill bad">안 함</span><span class="note"><code>not_live_stage</code></span></td><td><span class="pill ok">가능</span></td></tr>
         <tr><td>다음 단계 조건</td><td>어드민이 셋업 요청을 승인</td><td>체크리스트 통과 후 어드민이 Go live 클릭</td><td>—</td></tr>
       </tbody>
@@ -504,11 +836,12 @@ section[id]{scroll-margin-top:16px}
     <div class="card">
       <h3>Go live 체크리스트</h3>
       <ul>
-        <li>업체 정보 완료 (이름 + 정보)</li>
+        <li>업체 정보가 채워짐</li>
         <li>통화 설정 퍼블리시됨</li>
         <li>전화번호 배정됨</li>
-        <li>퍼블리시된 설정이 그 번호와 일치</li>
-        <li>업체 연락처 또는 연결 번호 <span class="req">(경고만, 필수 아님)</span></li>
+        <li>퍼블리시된 설정이 그 번호에서 동작</li>
+        <li>번호로 온 전화가 에이전트에 도달 <span class="pill new">신규</span> <span class="req">(우리 Twilio 계정의 번호면 필수, 직접 등록한 번호면 안내만)</span></li>
+        <li>업체에 연락할 번호가 등록됨 <span class="req">(경고만, 필수 아님)</span></li>
       </ul>
     </div>
     <div class="card">
@@ -517,7 +850,7 @@ section[id]{scroll-margin-top:16px}
         <li>업체 추가(리서치는 선택)하고 CRM 단계 관리</li>
         <li><code>/c/&lt;id&gt;</code> 데모 링크 보내기</li>
         <li>셋업 요청 승인 또는 거절</li>
-        <li>Agent numbers 화면에서 Twilio 번호 배정</li>
+        <li>Go live 체크리스트 안에서 풀의 번호를 배정하거나 새로 구매</li>
         <li>체크리스트 확인 후 Go live 클릭</li>
         <li>통화 시간 확인, 피드백 답변</li>
       </ol>
@@ -574,7 +907,8 @@ section[id]{scroll-margin-top:16px}
   <!-- chain -->
   <g class="box n"><rect x="20" y="200" width="120" height="56" rx="8"/><text class="bt" x="32" y="223">발신자</text><text class="bs" x="32" y="240">업체에 전화</text></g>
   <g class="box c"><rect x="175" y="200" width="140" height="56" rx="8"/><text class="bt" x="187" y="223">업체 전화번호</text><text class="bs" x="187" y="240">우리 번호로 포워딩</text></g>
-  <g class="box a"><rect x="350" y="200" width="140" height="56" rx="8"/><text class="bt" x="362" y="223">Twilio 번호</text><text class="bs" x="362" y="240">어드민이 배정</text></g>
+  <g class="box a"><rect x="350" y="200" width="140" height="56" rx="8"/><text class="bt" x="362" y="223">Twilio 번호</text><text class="bs" x="362" y="240">백엔드가 웹훅 설정</text></g>
+  <g class="tag"><rect x="448" y="192" width="34" height="16" rx="8"/><text x="465" y="203.5" text-anchor="middle">변경</text></g>
   <g class="box b"><rect x="525" y="182" width="200" height="92" rx="8"/><text class="bt" x="539" y="206">전화 에이전트</text><text class="bm" x="539" y="224">openai-agent-app</text><text class="bs" x="539" y="242">통화 브리지 + 도구</text><text class="bs" x="539" y="258">scripts/run_server.py</text></g>
   <g class="box n"><rect x="525" y="40" width="200" height="56" rx="8"/><text class="bt" x="539" y="63">OpenAI Realtime</text><text class="bs" x="539" y="80">듣고 말하기</text></g>
 
@@ -592,10 +926,10 @@ section[id]{scroll-margin-top:16px}
   <g class="box n"><rect x="216" y="380" width="182" height="62" rx="8"/><text class="bt" x="228" y="399">직원에게 연결</text><circle class="s-warn" cx="232" cy="411" r="4"/><text class="st-warn" x="241" y="415">구현됨, 테스트 필요</text><text class="bs" x="228" y="432">현재는 번호 하나만</text></g>
   <g class="box n"><rect x="412" y="380" width="182" height="62" rx="8"/><text class="bt" x="424" y="399">메시지 받기</text><circle class="s-warn" cx="428" cy="411" r="4"/><text class="st-warn" x="437" y="415">구현됨, 테스트 필요</text><text class="bs" x="424" y="432">끊을 때 저장 (/calls)</text></g>
   <g class="box n dash"><rect x="608" y="380" width="182" height="62" rx="8"/><text class="bt" x="620" y="399">링크 문자</text><circle class="s-bad" cx="624" cy="411" r="4"/><text class="st-bad" x="633" y="415">전화에서는 미구현</text><text class="bs" x="620" y="432">SMS 발송 기능 없음</text></g>
-  <g class="box n"><rect x="216" y="480" width="182" height="56" rx="8"/><text class="bt" x="228" y="503">직원 전화</text><text class="bs" x="228" y="520">귓속말 후 연결; 안 받으면</text><text class="bs" x="228" y="533">발신자는 에이전트로 복귀</text></g>
+  <g class="box n"><rect x="216" y="480" width="182" height="56" rx="8"/><text class="bt" x="228" y="503">직원 전화</text><text class="bs" x="228" y="520">음성 귓속말, 키 입력 없음;</text><text class="bs" x="228" y="533">안 받으면 에이전트로 복귀</text></g>
 </svg>
     </div>
-    <figcaption>실제 전화는 라이브 단계 계정에만 연결됩니다. 전화 에이전트는 퍼블리시된 설정만 쓰므로 고객의 초안은 발신자에게 닿지 않습니다. 예약은 2026-09-27 실제 통화로 확인했습니다.</figcaption>
+    <figcaption>실제 전화는 라이브 단계 계정에만 연결됩니다. 전화 에이전트는 퍼블리시된 설정만 쓰므로 고객의 초안은 발신자에게 닿지 않습니다. 예약은 2026-09-27 실제 통화로 확인했습니다. 전화 연결 때 직원에게는 업체 번호가 아닌 공용 발신 번호 하나가 보입니다.</figcaption>
   </figure>
 </section>
 
@@ -611,8 +945,9 @@ section[id]{scroll-margin-top:16px}
       <tbody>
         <tr><td>업체 정보와 FAQ</td><td><span class="pill ok">동작</span></td><td><span class="pill ok">동작</span></td><td><span class="pill ok">동작</span><span class="note"><code>/business/config</code> 정보 사용</span></td></tr>
         <tr><td>예약</td><td><span class="pill ok">실제로 예약</span><span class="note">제목에 “[Test]”</span></td><td><span class="pill sim">데모 캘린더만</span></td><td><span class="pill ok">동작, 확인됨</span><span class="note">퍼블리시된 규칙만</span></td></tr>
-        <tr><td>전화 연결</td><td><span class="pill sim">시뮬레이션</span><span class="note">웜, 순차 연결, 영업시간</span></td><td><span class="pill sim">Demo로 표시</span></td><td><span class="pill warn">구현됨, 미테스트</span><span class="note">연결 번호 하나</span></td></tr>
+        <tr><td>전화 연결</td><td><span class="pill sim">시뮬레이션</span><span class="note">웜, 순차 연결, 영업시간</span></td><td><span class="pill sim">Demo로 표시</span></td><td><span class="pill warn">구현됨, 미테스트</span><span class="note">번호 하나, 음성 귓속말, 키 입력 없음</span></td></tr>
         <tr><td>메시지 받기</td><td><span class="pill ok">동작</span><span class="note">메시지 브리프 포함</span></td><td><span class="pill sim">Demo로 표시</span></td><td><span class="pill warn">구현됨, 미테스트</span><span class="note">메시지 브리프 없음</span></td></tr>
+        <tr><td>통화 후 리뷰<span class="note">요약, 기분, 답하지 못한 질문</span></td><td><span class="pill ok">동작</span></td><td><span class="pill ok">동작</span><span class="note">Call activity에 표시 <span class="pill new">신규</span></span></td><td><span class="pill bad">리뷰 없음</span></td></tr>
         <tr><td>링크 문자 (SMS)</td><td><span class="pill sim">콘솔에만 표시</span></td><td><span class="pill sim">Demo로 표시</span></td><td><span class="pill bad">미구현</span></td></tr>
         <tr><td>Call forwarding</td><td colspan="3">고객용 설정 가이드: 통신사별 코드, 부재중만 또는 모든 전화, 테스트 방법.</td></tr>
         <tr><td>Custom training, Test and improve</td><td colspan="3">프롬프트를 다듬는 대시보드 도구. 초안을 바꾸고, 퍼블리시하면 실제 전화에 반영됩니다.</td></tr>
@@ -628,10 +963,14 @@ section[id]{scroll-margin-top:16px}
     <p>자세한 내용과 테스트 체크리스트는 레포 루트의 <code>TODO.md</code>에 있습니다.</p>
   </div>
   <ul class="open">
-    <li><span class="pill bad">개발</span><b>실제 전화에서 링크 문자</b><span class="d">SMS 발송 기능, 미국 A2P 10DLC 등록(며칠 걸림), 통화 중 동의 받기, STOP/HELP 처리가 필요합니다.</span></li>
-    <li><span class="pill warn">테스트</span><b>실제 통화로 전화 연결</b><span class="d">받았을 때, 안 받았을 때(에이전트로 복귀), 제안만 했을 때와 약속했을 때, 연결 번호가 없을 때.</span></li>
+    <li><span class="pill bad">개발</span><b>포워딩 테스트와 통화 상태 <span class="pill new">신규</span></b><span class="d">Twilio phase 2. 지금은 업체가 실제로 포워딩을 걸었는지 확인하는 기능이 없습니다. 전화 에이전트 수정 세 건은 VPS가 실행하는 브랜치에 들어가야 합니다.</span></li>
+    <li><span class="pill bad">개발</span><b>실제 전화에서 링크 문자</b><span class="d">Twilio phase 3. toll-free 번호부터 시작합니다. 번호당 인증 양식 하나, 통화 중 동의 받기, STOP/HELP 처리가 필요합니다. 지역 번호용 10DLC는 뒤로 미뤘습니다.</span></li>
+    <li><span class="pill warn">테스트</span><b>실제 통화로 전화 연결</b><span class="d">받았을 때, 안 받았을 때(에이전트로 복귀), 제안만 했을 때와 약속했을 때, 연결 번호가 없을 때. 직원에게 어떤 발신 번호가 보이는지도 기록합니다.</span></li>
     <li><span class="pill warn">테스트</span><b>실제 통화로 메시지 받기</b><span class="d">대시보드와 Google Sheet 기록, 회신 번호, 연결 실패 뒤 메시지. 업체에 가는 푸시 알림은 아직 없습니다.</span></li>
-    <li><span class="pill sim">Phase 3</span><b>실제 전화에 조합된 설정 적용</b><span class="d">실제 통화는 아직 Python 룰북을 씁니다. 웜·순차 연결, 영업시간 규칙, 메시지 브리프는 앱과 데모 통화에만 적용됩니다.</span></li>
+    <li><span class="pill sim">Phase 3</span><b>실제 전화에 조합된 설정 적용</b><span class="d">실제 통화는 아직 Python 룰북을 씁니다. 조합된 세션을 전화 에이전트에 제공한 뒤 컨퍼런스 기반 웜 트랜스퍼를 만듭니다. 영업시간 규칙과 메시지 브리프도 그때 함께 들어갑니다.</span></li>
+    <li><span class="pill sim">스펙</span><b>모든 통화에 같은 프롬프트 <span class="pill new">신규</span></b><span class="d">데모의 프롬프트 편집기는 데모 빌더의 내용(FAQ 5개, 각 140자 이내)을 보여 주고, 데모 통화는 세션 빌더를 쓰고, 실제 전화는 자체 프롬프트를 만듭니다. 스펙이 필요합니다.</span></li>
+    <li><span class="pill sim">이후</span><b>앱 안의 결제 <span class="pill new">신규</span></b><span class="d">Billing 페이지는 자리만 잡아 둔 상태입니다. 결제 기능이 생기면 이 페이지에 들어갑니다.</span></li>
+    <li><span class="pill sim">배포</span><b>스테이징, 그다음 운영에 Twilio 적용 <span class="pill new">신규</span></b><span class="d">Twilio 환경 변수를 설정하고, Sync from Twilio를 한 번 누르고, 직접 등록했던 운영 번호를 Configure합니다. Status callback만 추가되고 Voice URL은 VPS 그대로입니다.</span></li>
   </ul>
 </section>
 
@@ -646,16 +985,21 @@ section[id]{scroll-margin-top:16px}
     <div><dt>조합된 세션 (Composed session)</dt><dd>설정으로 한 통화용 프롬프트와 도구를 만든 것. 지금은 앱과 데모 통화에서 씁니다.</dd></div>
     <div><dt>룰북 (Rule book)</dt><dd>전화 에이전트의 자체 Python 프롬프트. phase 3에서 조합된 세션으로 바꾸기 전까지 실제 통화가 씁니다.</dd></div>
     <div><dt>에이전트 번호 (Agent number)</dt><dd>업체에 배정된 Twilio 번호. 발신자가 직접 거는 번호는 아닙니다.</dd></div>
+    <div><dt>관리 번호 (Managed number)</dt><dd>우리 Twilio 계정에 있는 번호. 백엔드가 웹훅을 확인하고 고칠 수 있습니다. 직접 등록한 번호는 관리 번호가 아닙니다.</dd></div>
+    <div><dt>웹훅 (Webhooks)</dt><dd>Twilio가 번호마다 호출하는 URL: voice, fallback, status. 걸려 온 전화가 어디로 갈지를 정합니다.</dd></div>
     <div><dt>착신 전환 (Call forwarding)</dt><dd>업체가 자기 번호를 에이전트 번호로 돌려 둡니다. 부재중만 또는 모든 전화.</dd></div>
     <div><dt>리서치 (Research)</dt><dd>OpenAI 웹 검색으로 데모의 프로필, FAQ, 영업시간, 프롬프트를 채우는 작업.</dd></div>
-    <div><dt>준비 체크리스트 (Readiness)</dt><dd>Go live 전에 필요한 조건: 업체 정보, 퍼블리시된 설정, 번호, 둘의 일치.</dd></div>
+    <div><dt>통화 후 리뷰 (Post-call review)</dt><dd>데모나 테스트 통화가 끝나면 모델이 대화록을 읽고 요약, 발신자 기분, 어시스턴트가 답하지 못한 질문을 정리합니다.</dd></div>
+    <div><dt>고정된 프롬프트 (Frozen prompts)</dt><dd>직접 수정한 프롬프트. Rebuild하기 전까지 프로필과 FAQ 변경을 따라가지 않습니다.</dd></div>
+    <div><dt>My receptionist</dt><dd>데모 단계 업체의 화면: Overview, Call activity, Settings.</dd></div>
+    <div><dt>준비 체크리스트 (Readiness)</dt><dd>Go live 전에 필요한 조건: 업체 정보, 퍼블리시된 설정, 번호, 둘의 일치, 전화가 에이전트에 도달.</dd></div>
     <div><dt>스테이징 (Staging)</dt><dd>테스트용 별도 환경(<code>va-staging-backend</code>, Neon 브랜치). 운영 배포는 <code>master</code>에서만.</dd></div>
     <div><dt>HISTORY.md, TODO.md</dt><dd>레포 루트의 팀 변경 기록과 남은 일 목록.</dd></div>
   </dl>
 </section>
 
 <footer>
-  같은 시스템에 있는 것: 초기 접수 흐름의 아웃바운드 리드 콜백(<code>openai-agent-app</code> poller). 출처: <code>HISTORY.md</code>, <code>TODO.md</code>, <code>docs/superpowers/specs/2026-09-27-phase-gates-design.md</code>, Main-Hans 브랜치 코드.
+  같은 시스템에 있는 것: 초기 접수 흐름의 아웃바운드 리드 콜백(<code>openai-agent-app</code> poller). 출처: <code>HISTORY.md</code>, <code>TODO.md</code>, <code>docs/superpowers/specs/2026-09-27-phase-gates-design.md</code>, <code>docs/superpowers/specs/2026-09-28-twilio-numbers-forwarding-design.md</code>, 0.0.10 changelog, Main-Hans 브랜치 코드(<code>71754a5</code>).
 </footer>
 </div>
 </body>
