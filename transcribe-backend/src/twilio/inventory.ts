@@ -25,7 +25,10 @@ export function twilioClient(): TwilioClient | null {
 
 /** The webhooks every managed number should carry, or null while an origin is unset. */
 export function wantedWebhooks(): WebhookSet | null {
-  return webhookUrlsFor({ agentPublicUrl: env.twilio.agentPublicUrl, publicBackendUrl: env.publicBackendUrl });
+  return webhookUrlsFor({
+    agentPublicUrl: env.twilio.agentPublicUrl,
+    publicBackendUrl: env.publicBackendUrl || env.twilio.defaultBackendUrl,
+  });
 }
 
 function stateOf(twilio: TwilioNumber, wanted: WebhookSet | null): WebhookState {

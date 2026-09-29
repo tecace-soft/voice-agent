@@ -208,6 +208,12 @@ const twilio = {
   // Off only for a local curl at /twilio/*; with it off those routes trust anyone who can reach them.
   validateSignature: (process.env.TWILIO_VALIDATE_SIGNATURE ?? "").trim().toLowerCase() !== "false",
   agentPublicUrl,
+  // Where Twilio's status callbacks come back to when PUBLIC_BACKEND_URL isn't set: this project's own
+  // production origin, which Vercel sets on every deployment (transcribe-app-backend.vercel.app for
+  // production, the staging project's own for staging). Not the request's Host, same as above.
+  defaultBackendUrl: process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim()
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")}`
+    : "",
   forwardingTestTimeoutSeconds,
   // Phase 3: a Messaging Service to send texts through instead of the business's own number.
   messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID?.trim() ?? "",

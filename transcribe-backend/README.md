@@ -283,8 +283,8 @@ talks to Twilio — through `src/twilio/`, a small fetch client, no SDK:
 - **Buy** (local or toll-free, by area code) sets the webhooks in the purchase itself; **Configure**
   rewrites them; **Release** gives the number back. Every managed number points a ringing call at the
   phone agent (`AGENT_PUBLIC_URL/incoming`, `/incoming-fallback`) and its status callback at this backend
-  (`PUBLIC_BACKEND_URL/twilio/voice-status`) — so `PUBLIC_BACKEND_URL` is required, and must be the
-  origin Twilio actually calls.
+  (`PUBLIC_BACKEND_URL/twilio/voice-status`; unset, `https://$VERCEL_PROJECT_PRODUCTION_URL`, which Vercel
+  sets on every deployment) — it must be the origin Twilio actually calls.
 - Assigning a number (from the Numbers page or an account's Go live checklist) configures it too. Go live
   requires `webhooks_configured` for a number in the Twilio account.
 

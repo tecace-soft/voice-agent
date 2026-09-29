@@ -19,8 +19,9 @@ Format:
 - `openai-agent-app` GPT-Live bridge: with `session`, the call uses the dashboard's prompts verbatim (plus its own "This call" block), its tools, voice and greeting; `transfer_call(scenario_id)` dials that scenario's first number. New `realtime/composed.py`, `live_session.build_composed_session_start`, check `scripts/checks/verify_composed_session.py` (`--live <number>` shows what a real number gets). No session → the old hand-built prompt, as before.
 - ⚠ Not on the phone yet: warm/waterfall transfers are dialled cold to the first number; `send_link` is left out (no SMS). The Realtime bridge (`bridge.py`, `OPENAI_LIVE_MODEL` unset) still uses the hand-built prompt. Deploy the backend before (or with) the agent; either order is safe.
 
-## 2026-09-29 11:10 · Michael · transcribe-backend (Twilio: API key accepted again)
+## 2026-09-29 11:10 · Michael · transcribe-backend (Twilio: API key accepted again, no PUBLIC_BACKEND_URL needed)
 - `src/twilio/client.ts` / `env.twilio`: REST calls sign in with `TWILIO_API_KEY_SID` + `TWILIO_API_KEY_SECRET` when both are set, else `TWILIO_ACCOUNT_SID:TWILIO_AUTH_TOKEN`. Twilio counts as set up with the SID plus either one. The Agent numbers page said "Twilio isn't set up" on a backend that had the SID and a key but no auth token.
+- Twilio status callbacks no longer need `PUBLIC_BACKEND_URL` (that's for staging/local): unset, they use `https://$VERCEL_PROJECT_PRODUCTION_URL` (Vercel sets it; production = `transcribe-app-backend.vercel.app`). `env.twilio.defaultBackendUrl`, read in `twilio/inventory.ts`; calendar OAuth unchanged.
 - ⚠ Phase 2 (signature checks on `/twilio/*`) still needs `TWILIO_AUTH_TOKEN`: Twilio signs webhooks with the auth token, never a key. A restricted key needs phone numbers read + write (buying/searching too, if used).
 
 ## 2026-09-29 10:50 · Michael · workspace (merge Main-Hans; Twilio numbers: Hans's version kept)
