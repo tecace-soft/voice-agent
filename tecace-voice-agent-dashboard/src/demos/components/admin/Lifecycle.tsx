@@ -388,7 +388,7 @@ export function LifecycleNotice({
       {current.accountEmail ? (
         <a
           className="inline-flex items-center gap-1 hover:underline"
-          href={demoHref("business", undefined, { mailbox: current.accountEmail })}
+          href={demoHref("business", undefined, { customer: current.accountEmail })}
         >
           Open their business information
           <ArrowRight className="size-4" />

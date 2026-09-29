@@ -171,8 +171,13 @@ def captures() -> list[dict]:
     for v in ADMIN_VIEWS:
         caps.append({"id": f"admin:{v}:light", "token": "tok-admin", "hash": f"#/{v}", "theme": "light"})
     for v in SCOPED_VIEWS:
-        caps.append({"id": f"admin-scoped:{v}:light", "token": "tok-admin",
-                     "hash": f"#/{v}?mailbox=sam%40tecace.com", "theme": "light"})
+        cap = {"id": f"admin-scoped:{v}:light", "token": "tok-admin",
+               "hash": f"#/{v}?mailbox=sam%40tecace.com", "theme": "light"}
+        # The business an admin is viewing on these two became its own `?customer=` (the mailbox
+        # followed them to every other view). The same screen, asked for by its new address.
+        if v in ("calls", "business"):
+            cap["new_hash"] = cap["hash"] + "&customer=sam%40tecace.com"
+        caps.append(cap)
     for v in ["overview", "runs"]:
         caps.append({"id": f"admin-unattributed:{v}:light", "token": "tok-admin",
                      "hash": f"#/{v}?mailbox=unattributed", "theme": "light"})
@@ -182,6 +187,12 @@ def captures() -> list[dict]:
         caps.append({"id": f"admin:{v}:dark", "token": "tok-admin", "hash": f"#/{v}", "theme": "dark"})
     caps.append({"id": "user:overview:dark", "token": "tok-user", "hash": "#/overview", "theme": "dark"})
     caps.extend(INTERACTIONS)
+    # An admin's header mailbox picker is gone from Business information and Answered calls: those
+    # pick a business of their own (`?customer=`), and the voicemail scope changed nothing there.
+    # Hidden in the OLD app only, so the rest of each screen is still compared exactly.
+    for cap in caps:
+        if cap["token"] == "tok-admin" and cap["hash"].split("?")[0] in ("#/calls", "#/business"):
+            cap["hide_old"] = [".mailbox-picker"]
     return caps
 
 
@@ -411,9 +422,10 @@ def capture_all(label: str, base_url: str, caps: list[dict]) -> dict:
                 f"console.{m.type}: {m.text} @ {m.location.get('url', '').replace(base_url, '/')}")
                 if m.type == "error" else None)
             page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
-            page.goto(base_url + cap["hash"])
+            hide = HIDE + (cap.get("hide_old", []) if label == "old" else [])
+            page.goto(base_url + (cap.get("new_hash", cap["hash"]) if label == "new" else cap["hash"]))
             settle(page)
-            page.evaluate(HIDE_JS, HIDE)
+            page.evaluate(HIDE_JS, hide)
             step_error = None
             if cap.get("steps"):
                 try:
@@ -423,7 +435,7 @@ def capture_all(label: str, base_url: str, caps: list[dict]) -> dict:
                         raise HarnessError(f"[{cap['id']}] in OLD: {exc}") from exc
                     step_error = str(exc)  # in NEW it's a difference, reported by diff()
                 settle(page)  # the mouse is not moved again, so a hover stays held
-            page.evaluate(HIDE_JS, HIDE)  # again: a step may have re-rendered hidden elements
+            page.evaluate(HIDE_JS, hide)  # again: a step may have re-rendered hidden elements
             fp = page.evaluate(FINGERPRINT_JS, STYLE_PROPS)
             results[cap["id"]] = {
                 "text": page.evaluate("document.body.innerText"),

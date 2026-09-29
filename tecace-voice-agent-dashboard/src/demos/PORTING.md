@@ -1111,7 +1111,7 @@ Customers screens — no new route or sidebar item.
 - **`lib/phase.ts`** (new) — phase labels and badge kinds; a customer without `phase` reads as demo.
 - **`components/admin/Lifecycle.tsx`** (new) — `LifecycleBadges` (ID + phase in the operator's
   header), `LifecycleNotice` (operator, once past the demo: edits here stay in the demo; link to the
-  customer's Business information), `StartOnboarding` (customer: card + confirm dialog →
+  customer's Business information — `?customer=<account email>` since 2026-09-29, was `?mailbox=`), `StartOnboarding` (customer: card + confirm dialog →
   `POST /demo/customers/:id/onboard`).
 - **`components/admin/CustomerTable.tsx`** — ID and Phase columns, a phase filter (with counts)
   beside the status filter, search also matches the ID.

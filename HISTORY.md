@@ -13,6 +13,13 @@ Format:
 
 ---
 
+## 2026-09-29 14:10 · Michael · dashboard (navigation: admin no longer locked into a business)
+- `src/routing.ts`: new `Route.customer` / `?customer=<account email>` = which business an admin is viewing on Business information and Answered calls. These pages no longer read `?mailbox=` (that stays the voicemail views' shared scope). A link to a business's page is now `#/business?customer=…`; `demoHref(view, id, { mailbox, customer })` takes it.
+- New pure `nextRoute(current, next)` holds `navigate`'s merge rules: a view change drops `id`/`section`/`tab`/`customer` unless named; a customer change closes the section. Clicking the sidebar item of the page you're on resets it (back to the list).
+- `App.tsx`: non-admins get `?mailbox=`/`?customer=` stripped (replace); demo accounts get operator-only prospect tabs stripped; leaving a session (sign-out or a 401) clears the hash so the next account starts clean; `BusinessPage` keyed by customer, `BusinessCalls` by business; `useStats` ignores stale responses. The header mailbox picker is no longer shown on Business information / Answered calls.
+- `scripts/regression/compare.py`: captures may carry `new_hash` (the new app's address for the same screen; admin-scoped `calls`/`business`) and `hide_old` (selectors hidden in the OLD app only; the picker on admin `calls`/`business`).
+- ⚠ Old bookmarks `#/business?mailbox=…` / `#/calls?mailbox=…` now open the list, not that business.
+
 ## 2026-09-29 13:30 · Michael · transcribe-backend, openai-agent-app, dashboard (onboarding numbers answer real calls)
 - `GET /business/config`: a `pre-production` (Onboarding) account's number now answers as its business (was `assigned:false, reason:"not_live_stage"`), so businesses can call or forward to it to verify before Go live. Only `demo` still gets `not_live_stage`. Go live / readiness unchanged.
 - `openai-agent-app`: the "answering neutrally" log line now names the backend's `reason` (`no_number` / `not_live_stage` / `no_business_details`) and its fix.

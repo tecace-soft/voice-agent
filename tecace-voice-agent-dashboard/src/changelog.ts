@@ -54,7 +54,25 @@ export const CHANGELOG: Release[] = [
       },
       {
         kind: "fixed",
+        text: "Leaving a customer's Business information or Answered calls no longer keeps every other page on that customer. Clicking the page you're on in the sidebar takes you back to the list of customers.",
+        admin: true,
+      },
+      {
+        kind: "fixed",
+        text: "Switching customers quickly no longer shows the previous customer's details or calls under the new name, and a half-written description no longer carries over to the next customer.",
+        admin: true,
+      },
+      {
+        kind: "fixed",
         text: "While you're trying your receptionist, Version · Changelog opens the changelog, and a refresh stays on the section you had open.",
+      },
+      {
+        kind: "fixed",
+        text: "An old link to one of your page's other tabs opens your settings instead of a blank page.",
+      },
+      {
+        kind: "fixed",
+        text: "Signing in after someone else signed out in the same browser tab starts you on your own page, not on theirs.",
       },
       {
         kind: "fixed",

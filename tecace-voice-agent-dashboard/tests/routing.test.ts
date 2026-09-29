@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatHash, parseHash, type Route } from "../src/routing";
+import { formatHash, nextRoute, parseHash, type Route } from "../src/routing";
 
 describe("parseHash", () => {
   it("opens API keys (it used to fall back to Overview)", () => {
@@ -121,9 +121,67 @@ describe("formatHash", () => {
     const routes: Route[] = [
       "overview", "analytics", "people", "activity", "runs", "failed", "feedback", "allFeedback",
       "calls", "business", "numbers", "apiKeys", "accounts", "demoOverview", "demoProspects",
-      "demoPipeline",
+      "demoPipeline", "myOverview", "myCalls", "changelog", "billing",
     ].map((view) => ({ view, mailbox: undefined }) as Route);
     routes.push({ view: "demoProspect", mailbox: undefined, id: "pr0SPct1" });
     for (const route of routes) expect(parseHash(formatHash(route))).toEqual(route);
+  });
+});
+
+// Which business an admin is looking at (Business information, Answered calls) is its own field,
+// not the voicemail mailbox scope: it used to be `?mailbox=`, which followed the admin to every
+// other view and locked them into that business.
+describe("customer (the business an admin is viewing)", () => {
+  it("reads and writes ?customer= beside the mailbox", () => {
+    expect(parseHash("#/business?customer=sam%40tecace.com")).toEqual({
+      view: "business",
+      mailbox: undefined,
+      customer: "sam@tecace.com",
+    });
+    const route: Route = { view: "calls", mailbox: "kim@x.example", customer: "sam@tecace.com" };
+    expect(formatHash(route)).toBe("#/calls?mailbox=kim%40x.example&customer=sam%40tecace.com");
+    expect(parseHash(formatHash(route))).toEqual(route);
+  });
+
+  it("round-trips a customer with a section", () => {
+    const route: Route = { view: "business", mailbox: undefined, customer: "sam@tecace.com", section: "transfers" };
+    expect(parseHash(formatHash(route))).toEqual(route);
+  });
+});
+
+describe("nextRoute", () => {
+  const onSam: Route = { view: "business", mailbox: undefined, customer: "sam@tecace.com", section: "transfers" };
+
+  it("drops the customer when moving to another view", () => {
+    expect(nextRoute(onSam, { view: "overview" })).toEqual({ view: "overview", mailbox: undefined });
+    expect(nextRoute(onSam, { view: "calls" })).toEqual({ view: "calls", mailbox: undefined });
+  });
+
+  it("keeps the voicemail mailbox scope across views, as before", () => {
+    expect(nextRoute({ view: "overview", mailbox: "sam@tecace.com" }, { view: "runs" })).toEqual({
+      view: "runs",
+      mailbox: "sam@tecace.com",
+    });
+  });
+
+  it("keeps a customer the next route names", () => {
+    expect(nextRoute({ view: "demoProspect", mailbox: undefined, id: "x" }, { view: "business", customer: "a@b.c" })).toEqual({
+      view: "business",
+      mailbox: undefined,
+      customer: "a@b.c",
+    });
+  });
+
+  it("closes the section when the customer changes", () => {
+    expect(nextRoute(onSam, { customer: "kim@x.example" })).toEqual({
+      view: "business",
+      mailbox: undefined,
+      customer: "kim@x.example",
+    });
+    expect(nextRoute(onSam, { customer: undefined })).toEqual({ view: "business", mailbox: undefined });
+  });
+
+  it("keeps the section when only the section changes", () => {
+    expect(nextRoute(onSam, { section: "faqs" })).toEqual({ ...onSam, section: "faqs" });
   });
 });

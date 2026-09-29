@@ -44,7 +44,9 @@ export function CallsPage({
 
   const viewing = customers.find((c) => c.email === scope) ?? null;
   if (!viewing) return <CallBoards customers={customers} scope={scope} onScope={onScope} />;
-  return <BusinessCalls viewing={viewing} customers={customers} scope={scope} onScope={onScope} />;
+  // Keyed by the business, so switching never shows (or lets a slow response leave) the previous
+  // one's calls under the new name.
+  return <BusinessCalls key={viewing.id} viewing={viewing} customers={customers} scope={scope} onScope={onScope} />;
 }
 
 // Who to show, for an admin. "Every business" opens the per-business panels.
