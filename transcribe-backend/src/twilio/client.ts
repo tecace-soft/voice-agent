@@ -88,11 +88,14 @@ export interface TwilioClient {
 const API = "https://api.twilio.com";
 
 export function createTwilioClient(
-  creds: { accountSid: string; authToken: string },
+  creds: { accountSid: string; authToken?: string; apiKeySid?: string; apiKeySecret?: string },
   fetchImpl: typeof fetch = fetch,
 ): TwilioClient {
   const base = `${API}/2010-04-01/Accounts/${creds.accountSid}`;
-  const authorization = `Basic ${Buffer.from(`${creds.accountSid}:${creds.authToken}`).toString("base64")}`;
+  // An API key, when given, signs in as itself; the URL still names the account it belongs to.
+  const [user, secret] =
+    creds.apiKeySid && creds.apiKeySecret ? [creds.apiKeySid, creds.apiKeySecret] : [creds.accountSid, creds.authToken ?? ""];
+  const authorization = `Basic ${Buffer.from(`${user}:${secret}`).toString("base64")}`;
 
   async function request(method: "GET" | "POST" | "DELETE", url: string, form?: URLSearchParams): Promise<any> {
     const headers: Record<string, string> = { authorization, accept: "application/json" };

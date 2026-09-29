@@ -19,10 +19,14 @@ Format:
 - `openai-agent-app` GPT-Live bridge: with `session`, the call uses the dashboard's prompts verbatim (plus its own "This call" block), its tools, voice and greeting; `transfer_call(scenario_id)` dials that scenario's first number. New `realtime/composed.py`, `live_session.build_composed_session_start`, check `scripts/checks/verify_composed_session.py` (`--live <number>` shows what a real number gets). No session → the old hand-built prompt, as before.
 - ⚠ Not on the phone yet: warm/waterfall transfers are dialled cold to the first number; `send_link` is left out (no SMS). The Realtime bridge (`bridge.py`, `OPENAI_LIVE_MODEL` unset) still uses the hand-built prompt. Deploy the backend before (or with) the agent; either order is safe.
 
+## 2026-09-29 11:10 · Michael · transcribe-backend (Twilio: API key accepted again)
+- `src/twilio/client.ts` / `env.twilio`: REST calls sign in with `TWILIO_API_KEY_SID` + `TWILIO_API_KEY_SECRET` when both are set, else `TWILIO_ACCOUNT_SID:TWILIO_AUTH_TOKEN`. Twilio counts as set up with the SID plus either one. The Agent numbers page said "Twilio isn't set up" on a backend that had the SID and a key but no auth token.
+- ⚠ Phase 2 (signature checks on `/twilio/*`) still needs `TWILIO_AUTH_TOKEN`: Twilio signs webhooks with the auth token, never a key. A restricted key needs phone numbers read + write (buying/searching too, if used).
+
 ## 2026-09-29 10:50 · Michael · workspace (merge Main-Hans; Twilio numbers: Hans's version kept)
 - Merged Main-Hans into master. The two Twilio-numbers implementations overlapped; Hans's phase 1 (`src/routes/numbers.ts`, `src/twilio/client.ts`, sync/buy/configure/release) is kept. Michael's 09-28 16:30 one is **removed**: `GET /business/numbers/twilio`, `POST /business/numbers/twilio/:sid/connect`, `src/routes/twilioNumbers.ts`, `src/twilio/numbers.ts`, `TwilioNumbersCard.tsx`, and the `TWILIO_API_KEY_SID`/`TWILIO_API_KEY_SECRET`/`TWILIO_API_BASE` env (auth token only now).
 - `App.tsx`: the 09-29 demo-account URL normalisation now respects `DEMO_OWNER_VIEWS` — a view a demo account can't open is replaced with `#/my/overview`; `demoProspect` is pinned to their own id. Version 0.0.11 (routing fixes) sits on top of the combined 0.0.10.
-- ⚠ Deploy: drop `TWILIO_API_KEY_SID`/`TWILIO_API_KEY_SECRET` if they were set; set `TWILIO_AUTH_TOKEN` per Hans's 17:00 entry.
+- ⚠ Deploy: Twilio needs `TWILIO_ACCOUNT_SID` plus `TWILIO_AUTH_TOKEN` (or an API key, see 11:10).
 
 ## 2026-09-29 10:30 · Michael · dashboard (routing fixes)
 - `src/routing.ts`: the prospect path is now `demos/prospects/:id/:tab?`; the optional segment is a settings section **or** a tab (`activity|settings|sources|share`, `PROSPECT_TABS`). `Route` gains `tab?: ProspectTab`; `formatHash` writes a section over a tab. `navigate(next, { replace: true })` rewrites the current history entry (used for the pre-production landing and demo-account redirects).

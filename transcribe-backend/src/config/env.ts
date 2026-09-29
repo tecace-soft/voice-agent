@@ -185,6 +185,12 @@ if (!Number.isFinite(signupResearchDailyCap) || signupResearchDailyCap < 0) {
 // PUBLIC_BACKEND_URL, which is also the URL Twilio's signature is checked against. Never the request's Host.
 const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID?.trim() ?? "";
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN?.trim() ?? "";
+// An API key (Twilio console → API keys; a restricted one needs phone numbers read + write) signs the
+// REST calls instead of the auth token when both halves are set. Checking Twilio's webhook signatures
+// (phase 2) still needs the auth token: Twilio signs those with it, never with a key.
+const twilioApiKeySid = process.env.TWILIO_API_KEY_SID?.trim() ?? "";
+const twilioApiKeySecret = process.env.TWILIO_API_KEY_SECRET?.trim() ?? "";
+const twilioHasApiKey = Boolean(twilioApiKeySid && twilioApiKeySecret);
 const agentPublicUrl = (process.env.AGENT_PUBLIC_URL ?? "").trim().replace(/\/$/, "");
 // How long a forwarding test lets the business's own line ring before giving up. Must be longer than the
 // carrier's no-answer forwarding delay (20–30s is typical), or every customer who forwards only missed
@@ -196,7 +202,9 @@ if (!Number.isInteger(forwardingTestTimeoutSeconds) || forwardingTestTimeoutSeco
 const twilio = {
   accountSid: twilioAccountSid,
   authToken: twilioAuthToken,
-  enabled: Boolean(twilioAccountSid && twilioAuthToken),
+  apiKeySid: twilioHasApiKey ? twilioApiKeySid : "",
+  apiKeySecret: twilioHasApiKey ? twilioApiKeySecret : "",
+  enabled: Boolean(twilioAccountSid && (twilioAuthToken || twilioHasApiKey)),
   // Off only for a local curl at /twilio/*; with it off those routes trust anyone who can reach them.
   validateSignature: (process.env.TWILIO_VALIDATE_SIGNATURE ?? "").trim().toLowerCase() !== "false",
   agentPublicUrl,

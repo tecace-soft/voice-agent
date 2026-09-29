@@ -19,7 +19,8 @@ import { webhookStateOf, webhookUrlsFor, type WebhookSet } from "./webhooks.js";
 /** Twilio, or null when this server has no credentials — every caller turns that into one 409. */
 export function twilioClient(): TwilioClient | null {
   if (!env.twilio.enabled) return null;
-  return createTwilioClient({ accountSid: env.twilio.accountSid, authToken: env.twilio.authToken });
+  const { accountSid, authToken, apiKeySid, apiKeySecret } = env.twilio;
+  return createTwilioClient({ accountSid, authToken, apiKeySid, apiKeySecret });
 }
 
 /** The webhooks every managed number should carry, or null while an origin is unset. */

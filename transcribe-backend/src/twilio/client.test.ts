@@ -37,6 +37,23 @@ const NUMBER_JSON = {
   sms_url: "",
 };
 
+describe("credentials", () => {
+  it("signs in with an API key instead of the auth token when one is given", async () => {
+    const { calls, fetchImpl } = recorder(() => Response.json({ incoming_phone_numbers: [], next_page_uri: null }));
+    await createTwilioClient({ ...CREDS, apiKeySid: "SKtest", apiKeySecret: "key-secret" }, fetchImpl).listIncomingNumbers();
+
+    expect(calls[0]!.url).toBe(`${BASE}/IncomingPhoneNumbers.json?PageSize=1000`);
+    expect(calls[0]!.headers.get("authorization")).toBe(`Basic ${Buffer.from("SKtest:key-secret").toString("base64")}`);
+  });
+
+  it("works with an API key and no auth token at all", async () => {
+    const { calls, fetchImpl } = recorder(() => Response.json({ incoming_phone_numbers: [], next_page_uri: null }));
+    await createTwilioClient({ accountSid: CREDS.accountSid, apiKeySid: "SKtest", apiKeySecret: "key-secret" }, fetchImpl).listIncomingNumbers();
+
+    expect(calls[0]!.headers.get("authorization")).toBe(`Basic ${Buffer.from("SKtest:key-secret").toString("base64")}`);
+  });
+});
+
 describe("listIncomingNumbers", () => {
   it("authenticates with Basic auth, follows next_page_uri and maps Twilio's fields", async () => {
     const { calls, fetchImpl } = recorder((r) =>

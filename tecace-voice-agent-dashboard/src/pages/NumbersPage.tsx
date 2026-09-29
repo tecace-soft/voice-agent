@@ -135,7 +135,7 @@ export function NumbersPage() {
     webhooks === null
       ? "Couldn't read whether Twilio is set up on this server, so syncing, buying, configuring and releasing are off for now. Registering by hand and assigning still work."
       : !webhooks.twilio
-        ? "Twilio isn't set up on this server, so numbers can be registered by hand and assigned, but not synced, bought, configured or released. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN on the backend."
+        ? "Twilio isn't set up on this server, so numbers can be registered by hand and assigned, but not synced, bought, configured or released. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN (or TWILIO_API_KEY_SID and TWILIO_API_KEY_SECRET) on the backend."
         : !webhooks.webhooks
           ? "The backend has Twilio credentials but not the addresses its webhooks point at, so it can sync but not buy, configure or release. Set AGENT_PUBLIC_URL and PUBLIC_BACKEND_URL on the backend."
           : null;

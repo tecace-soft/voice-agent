@@ -56,6 +56,11 @@ export const CHANGELOG: Release[] = [
         kind: "fixed",
         text: "Pressing Back after you're taken to your business information no longer opens an empty Overview first.",
       },
+      {
+        kind: "fixed",
+        text: "Agent numbers connects to Twilio with an API key as well as the account's auth token, so syncing the account's numbers works on a server set up with a key.",
+        admin: true,
+      },
     ],
   },
   {
