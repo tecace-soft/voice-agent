@@ -23,6 +23,12 @@ Format:
 
 ---
 
+## 2026-09-29 10:30 · Michael · dashboard (routing fixes)
+- `src/routing.ts`: the prospect path is now `demos/prospects/:id/:tab?`; the optional segment is a settings section **or** a tab (`activity|settings|sources|share`, `PROSPECT_TABS`). `Route` gains `tab?: ProspectTab`; `formatHash` writes a section over a tab. `navigate(next, { replace: true })` rewrites the current history entry (used for the pre-production landing and demo-account redirects).
+- Demo-stage accounts: the URL is normalised to their own `#/demos/prospects/<businessId>` (replace, not push); the sidebar's Version · Changelog now opens `#/changelog` for them.
+- `ProspectScreen.tsx` (ported) takes `tab`/`onTab`; logged in `src/demos/PORTING.md`. Version 0.0.11.
+- ⚠ Anyone linking to a prospect tab: use `demoHref`/`formatHash` with `tab`, not a hand-written hash.
+
 ## 2026-09-28 16:30 · Michael · transcribe-backend, dashboard (Twilio numbers on Agent numbers)
 - New admin routes (`src/routes/twilioNumbers.ts`, client `src/twilio/numbers.ts`, plain fetch, nothing stored): `GET /business/numbers/twilio` → `{configured, agentUrl, numbers:[{sid, phoneE164, friendlyName, voiceUrl, status: connected|not_connected|elsewhere, registered}]}` (Twilio unset = 200 `configured:false`); `POST /business/numbers/twilio/:sid/connect {overwrite?}` sets VoiceUrl `<AGENT_PUBLIC_URL>/incoming` + fallback `/incoming-fallback` (409 `points_elsewhere` without overwrite, 503 when Twilio/agent URL unset, 502 `twilio_auth`).
 - Dashboard: Agent numbers page gets an "On our Twilio account" card (`src/pages/TwilioNumbersCard.tsx`) with Connect to agent / Add to list. Regression: `fake_backend.py` answers `configured:false`; `compare.py` HIDE `.twilio-numbers` (IDENTICAL). Version 0.0.10.

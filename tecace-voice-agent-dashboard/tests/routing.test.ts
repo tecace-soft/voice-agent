@@ -69,6 +69,36 @@ describe("settings sections", () => {
   });
 });
 
+describe("prospect tabs", () => {
+  it("reads a tab on a prospect", () => {
+    expect(parseHash("#/demos/prospects/AbC/share")).toEqual({
+      view: "demoProspect",
+      mailbox: undefined,
+      id: "AbC",
+      tab: "share",
+    });
+    expect(parseHash("#/demos/prospects/AbC/Sources").tab).toBe("sources");
+  });
+
+  it("refuses a tab name anywhere but a prospect", () => {
+    expect(parseHash("#/business/share").view).toBe("overview");
+  });
+
+  it("writes a section over a tab (a section is on Settings)", () => {
+    expect(
+      formatHash({ view: "demoProspect", mailbox: undefined, id: "AbC", tab: "settings", section: "faqs" }),
+    ).toBe("#/demos/prospects/AbC/faqs");
+    expect(formatHash({ view: "demoProspect", mailbox: undefined, id: "AbC", tab: "activity" })).toBe(
+      "#/demos/prospects/AbC/activity",
+    );
+  });
+
+  it("round-trips a tab with a mailbox scope", () => {
+    const route: Route = { view: "demoProspect", mailbox: "sam@tecace.com", id: "AbC", tab: "sources" };
+    expect(parseHash(formatHash(route))).toEqual(route);
+  });
+});
+
 describe("formatHash", () => {
   it("writes a record id into its segment, encoded", () => {
     expect(formatHash({ view: "demoProspect", mailbox: undefined, id: "a/b" })).toBe(
