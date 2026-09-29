@@ -845,8 +845,8 @@ def run() -> int:
                         per_state[label] = set(page.evaluate(TW_CLASSES_JS))
 
                     # Activity (the default tab)
-                    transcript_buttons = main_tw.get_by_role("button", name="Read the full transcript")
-                    check("activity: one card per call (4)", transcript_buttons.count() == 4,
+                    transcript_buttons = main_tw.get_by_role("button", name="Open call details")
+                    check("activity: one table row per call (4)", transcript_buttons.count() == 4,
                           str(transcript_buttons.count()))
                     fix = main_tw.locator("section", has=page.get_by_role("heading", name="What to fix"))
                     shared = fix.locator("li", has_text="No price list for implants")
@@ -862,7 +862,7 @@ def run() -> int:
                     sheet.wait_for()
                     check("activity: the transcript opens in a sheet inside [data-tw-portal]",
                           page.locator("[role=dialog]").count() == 1
-                          and sheet.get_by_role("heading", name="Call transcript").is_visible()
+                          and sheet.get_by_role("heading", name="Call details").is_visible()
                           and sheet.get_by_text("Perfect, book me in for Thursday then.").is_visible())
                     snapshot("activity + transcript sheet")
                     page.keyboard.press("Escape")
@@ -924,18 +924,10 @@ def run() -> int:
                           and body["profile"]["name"] == "Harbor Dental", str(body.get("profile")))
                     check("knowledge: ... and says Saved.", new_toast(page, "Saved."))
 
-                    # Schedule (a mock-up drawn from the profile's hours), now under the hours it shows
-                    main_tw.get_by_role("heading", name="A week on the book").wait_for()
-                    week = page.evaluate("""() => [...document.querySelectorAll('main .tw .grid-cols-7 > div')]
-                        .map((col) => [...col.querySelectorAll(':scope > div:first-child p')]
-                        .map((p) => p.textContent.trim()).join(' '))""")
-                    expected = [f"{d} 08:00 to 17:00" for d in ("Mon", "Tue", "Wed", "Thu", "Fri")] \
-                        + ["Sat Closed", "Sun Closed"]
-                    check("schedule: the week grid follows the hours (Mon-Fri 08:00-17:00, weekend closed)",
-                          week == expected, str(week))
-                    check("schedule: it says it's a mock-up",
-                          main_tw.get_by_text(re.compile(r"is a mock-up drawn from Harbor Dental")).is_visible())
-                    snapshot("schedule")
+                    # The "Your week" mock-up (SchedulePanel) left Business information on 2026-09-28;
+                    # Appointments is where the week is shown now.
+                    check("business info: no 'A week on the book' mock-up any more",
+                          main_tw.get_by_role("heading", name="A week on the book").count() == 0)
 
                     # Prompt: in Custom training, behind Advanced
                     open_setting("Custom training")

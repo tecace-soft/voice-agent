@@ -13,6 +13,11 @@ Format:
 
 ---
 
+## 2026-09-28 22:50 · bottomup32 · dashboard (Activity as a table; regression harness)
+- `demos/components/admin/ActivityTab.tsx` renders calls as a table + "Call details" sheet, with calls-per-day, mood breakdown and "What to fix" above it (operator); the demo customer's Call activity gets the mood bar + table. It now lays out its own cards — `ProspectScreen` / `MyReceptionistScreen` no longer wrap it.
+- Regression selectors changed: the per-call button is **"Open call details"** (was "Read the full transcript"), the sheet heading **"Call details"** (was "Call transcript").
+- ⚠ `compare.build()` now sets `BACKEND_URL` as well as `VITE_BACKEND_URL`: `vite.config.ts` prefers `BACKEND_URL`, so a `.env` with it made every harness build (compare, demos_e2e, tw_probe…) talk to the real backend and land on sign-in. `demos_e2e.py` also dropped the "A week on the book" check (panel removed in f360d1e).
+
 ## 2026-09-28 · bottomup32 · transcribe-backend (analysis on gpt-5.6-luna)
 - `CALL_REVIEW_MODEL` and `RESEARCH_OPENAI_MODEL` now default to `gpt-5.6-luna` (was `gpt-5.6-terra`) to cut cost. An env value still wins; staging and production set neither, so both switch on their next deploy. `OPENAI_BACKEND_MODEL` (the live call's tool delegate) stays on terra.
 

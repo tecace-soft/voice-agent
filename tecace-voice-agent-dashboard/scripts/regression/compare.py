@@ -299,7 +299,9 @@ def check_ports_free() -> None:
 
 
 def build(label: str, app_dir: Path, out: Path) -> None:
-    env = {**os.environ, "VITE_BACKEND_URL": BACKEND}
+    # vite.config.ts reads BACKEND_URL first; set both, or a BACKEND_URL in the app's .env wins and
+    # the build talks to a real backend that refuses the fake tokens.
+    env = {**os.environ, "BACKEND_URL": BACKEND, "VITE_BACKEND_URL": BACKEND}
     log = OUT_DIR / f"{label}-build.log"
     print(f"  building {app_dir.name} -> {out}  (log: {log.name})")
     with open(log, "w", encoding="utf-8") as fh:

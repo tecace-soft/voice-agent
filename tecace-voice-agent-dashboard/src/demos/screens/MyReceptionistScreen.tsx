@@ -88,11 +88,7 @@ export function MyReceptionistScreen({ id, page }: { id: string; page: "overview
             transcript.
           </p>
         </header>
-        <Card className="rounded-xl border shadow-none">
-          <CardContent className="p-4 md:p-6">
-            <ActivityTab calls={calls} customerId={id} readOnly />
-          </CardContent>
-        </Card>
+        <ActivityTab calls={calls} customerId={id} readOnly />
       </div>
     );
   }

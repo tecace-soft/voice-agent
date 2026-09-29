@@ -39,6 +39,8 @@ export const CHANGELOG: Release[] = [
       { kind: "new", text: "A Billing page, reached from Launch instructions: onboarding starts once billing is set up. Payments in the app come later." },
       { kind: "new", text: "My receptionist has an Overview: link opens, visitors, calls, minutes, calls per day, what the receptionist couldn't answer, and the latest calls." },
       { kind: "new", text: "Call activity lists every call to your demo receptionist with its summary and full transcript." },
+      { kind: "improved", text: "Call activity is a table: one row per call with its date, length, how the caller felt and what they wanted, filters by mood, and a panel with the summary and the transcript." },
+      { kind: "improved", text: "A demo's Activity tab adds calls per day, how callers felt and the commonest gaps above the call table, and filters customer calls from your tests.", admin: true },
       { kind: "new", text: "Agent numbers: sync the Twilio account's numbers into the list, see whether each number's webhooks point at the receptionist, and repair them with Configure.", admin: true },
       { kind: "new", text: "Buy a number — toll-free or local, by area code — from the Agent numbers page or straight from an account's Go live checklist; its webhooks are set as it's bought.", admin: true },
       { kind: "new", text: "Release a number bought here back to Twilio by typing it back; numbers bought in the Twilio console are released there, and numbers registered by hand are still deleted from the list.", admin: true },

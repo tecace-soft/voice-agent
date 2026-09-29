@@ -151,7 +151,7 @@ def main() -> int:
                     page.get_by_role("heading", name="Call activity").wait_for()
                     page.wait_for_timeout(500)
                     check("Call activity lists their calls",
-                          page.get_by_role("button", name="Read the full transcript").count() >= 1)
+                          page.get_by_role("button", name="Open call details").count() >= 1)
                     check("...without the operator's Test switch or Analyze",
                           page.get_by_role("switch").count() == 0
                           and page.get_by_role("button", name="Analyze").count() == 0)
