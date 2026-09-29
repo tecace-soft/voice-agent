@@ -13,6 +13,23 @@ Format:
 
 ---
 
+## 2026-09-28 22:10 · bottomup32 · dashboard (Launch instructions redesign, Billing placeholder)
+- New `src/settings/sections/LaunchGuide.tsx` replaces both the demo `Journey` (`demoSections.tsx`) and the business `LaunchSection` (removed from `ProfileSections.tsx`). One page for operator / owner / public / business: stage cards (Demo › Onboarding › Live, what each allows, what moves it on), the stage's limit + the agent number with Copy + missed/every-call forwarding, test calls with "Try asking" (from `suggestedQuestions`), and a Next step card (demo: billing; public: Request setup; onboarding: the checklist). `DemoSectionsContext` gains `onOpenSection`.
+- New view `billing` (`#/billing`, `PATHS`, `ViewId`, `BillingPage.tsx`): a placeholder, open to every account incl. demo-stage owners (`DEMO_OWNER_VIEWS`). No sidebar item; linked from a demo's Launch instructions (`BILLING_HREF`). No backend change.
+- ⚠ Billing is not wired: the demo → onboarding gate is still the admin's Approve. When payments land, `BillingPage` is where they go.
+
+## 2026-09-28 21:10 · bottomup32 · dashboard (prompts follow saves; frozen-prompts notice)
+- `BusinessSettings.tsx`: every section save now takes the server's `prompts` back (before, only Save prompts / Rebuild did, so Custom training kept stale text and "Save prompts" froze it as a hand edit). Unsaved typing in the prompt editor is kept.
+- `ProfileSections.tsx` (shared by business + demo settings): `promptsFrozen` on BusinessInfo / FAQs / CustomTraining shows a "edited by hand → rebuild" note; `previewVersion` re-reads an open "What a call is told". `BusinessInfoSection` lost its `agentName` prop and the "Your week, as the assistant sees it" panel.
+- `fake_backend.py`: business profile + prompts are now stateful per run (`BUSINESS_STATE`); a voice/language-only `PUT /business/prompts` no longer marks prompts edited (matches the real route). `business_tabs.py` covers rebuild-after-save, freeze and unfreeze.
+- ⚠ Found, not fixed (needs a spec): real phone calls don't use `prompts.*` or `composeSession` — `openai-agent-app` builds its own prompt from `/business/config`; the demo prompt editor shows the demo builder (5 FAQs ≤140 chars) while calls use the session builder.
+
+## 2026-09-28 20:40 · bottomup32 · workspace (Main-Hans sync; transfer audit on real calls)
+- Main-Hans: this PC's 4 unpushed commits were rebased onto Hans's Twilio commits (4f9ddaf, 01e2103). Both sides had written a 0.0.10 changelog entry for today; they are merged into one (demo overview + Twilio numbers).
+- Transfer audit (no code change): on a REAL call, `openai-agent-app` still does one fixed transfer — `<Dial>` to the legacy `transferNumber`, a spoken whisper, **no keypress**, no hold music, no waterfall, no per-transfer hours. The Calls-settings scenarios (cold/warm/waterfall, `collectBefore`, `holdMusic`, hours) reach in-app/demo calls only, and the UI/simulator promise "press 1" that the phone doesn't do.
+- The transfer caller ID is one global `MAIN_LINE_NUMBER`/`TWILIO_FROM_NUMBER` (`telephony/transfer.py:77`), not the business's agent number; Twilio only accepts an owned or verified number there.
+- ⚠ Integrator (phase 3): serve the composed session (`composeSession(channel:"phone")`) to the phone agent; build warm transfer on a conference (hold music + whisper + `<Gather>` press 1 + waterfall); then add a live transfer test for production accounts. Forwarding phase 2 should also cover carrier verification (DialPad auto "press 1", Google Voice SMS code) — Rosie has these as temporary account toggles.
+
 ## 2026-09-28 18:40 · Hans · transcribe-backend, dashboard (Twilio numbers: release guard, released list)
 - `POST /business/numbers/:id/release` now refuses a number not bought through the dashboard (409 `bought_elsewhere`, i.e. `purchasedAt` null — it came in by Sync). A release can't be undone; +1 425-696-9728, bought in the console, was lost this way on staging today.
 - Sync no longer takes Twilio's default friendly name ("(425) 555-0142") as a label, and clears labels an earlier sync stored that way.

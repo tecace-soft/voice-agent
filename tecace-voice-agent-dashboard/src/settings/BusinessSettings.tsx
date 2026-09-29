@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import type { BusinessProfile as DemoBusinessProfile, CustomerPrompts } from "@/lib/types";
 import { DEFAULT_VOICE } from "@/lib/types";
 import { quotedGreeting } from "@/lib/prompt";
+import { suggestedQuestions } from "@/lib/proof";
 import {
   getCallSettings,
   getSessionPreview,
@@ -26,13 +27,13 @@ import { AppointmentsSection } from "./sections/AppointmentsSection";
 import { TextLinkSection } from "./sections/TextLinkSection";
 import { TakeMessageSection } from "./sections/TakeMessageSection";
 import { ForwardingSection } from "./sections/ForwardingSection";
+import { LaunchGuide } from "./sections/LaunchGuide";
 import { BusinessTestConsole, BusinessTestSection, useTestCalls } from "./sections/TestSection";
 import {
   AgentProfileSection,
   BusinessInfoSection,
   CustomTrainingSection,
   FaqsSection,
-  LaunchSection,
   type AgentFields,
 } from "./sections/ProfileSections";
 
@@ -67,6 +68,11 @@ type Props = {
 
 type Saving = "knowledge" | "faqs" | "agent" | "rules" | "prompts" | "rebuild" | null;
 
+const NO_PROMPTS: CustomerPrompts = { live: "", backend: "", greeting: "", edited: false };
+
+const sameText = (a: CustomerPrompts, b: CustomerPrompts) =>
+  a.live === b.live && a.backend === b.backend && a.greeting === b.greeting;
+
 function agentOf(profile: BusinessProfile): AgentFields {
   return {
     agentName: profile.agentName ?? "",
@@ -81,9 +87,12 @@ export function BusinessSettings(props: Props) {
   const [knowledge, setKnowledge] = useState<DemoBusinessProfile | null>(profile.profile);
   const [agent, setAgent] = useState<AgentFields>(() => agentOf(profile));
   const [rules, setRules] = useState(profile.houseRules ?? "");
-  const [prompts, setPrompts] = useState<CustomerPrompts>(
-    profile.prompts ?? { live: "", backend: "", greeting: "", edited: false },
-  );
+  const [prompts, setPrompts] = useState<CustomerPrompts>(profile.prompts ?? NO_PROMPTS);
+  // What the server holds, so the editor can tell a person's unsaved typing from text a save made
+  // stale — and so "edited by hand" means saved that way, not merely typed into.
+  const [savedPrompts, setSavedPrompts] = useState<CustomerPrompts>(profile.prompts ?? NO_PROMPTS);
+  const savedPromptsRef = useRef(savedPrompts);
+  const [previewVersion, setPreviewVersion] = useState(0);
   const [saving, setSaving] = useState<Saving>(null);
   const [saved, setSaved] = useState<Saving>(null);
   const [error, setError] = useState<{ where: Saving; message: string } | null>(null);
@@ -101,7 +110,9 @@ export function BusinessSettings(props: Props) {
     setKnowledge(profile.profile);
     setAgent(agentOf(profile));
     setRules(profile.houseRules ?? "");
-    setPrompts(profile.prompts ?? { live: "", backend: "", greeting: "", edited: false });
+    setPrompts(profile.prompts ?? NO_PROMPTS);
+    savedPromptsRef.current = profile.prompts ?? NO_PROMPTS;
+    setSavedPrompts(savedPromptsRef.current);
     setSaved(null);
     setError(null);
   }, [profile]);
@@ -150,9 +161,17 @@ export function BusinessSettings(props: Props) {
       setAgent(agentOf(next));
     } else if (which === "rules") {
       setRules(next.houseRules ?? "");
-    } else {
-      setPrompts(next.prompts ?? { live: "", backend: "", greeting: "", edited: false });
     }
+    // Every save answers with the stored prompts, and a knowledge, FAQ or agent save rebuilds them
+    // when nobody edited them by hand. The editor follows — unless the person has typed into it
+    // and not saved yet. Left showing the old text, "Save prompts" would freeze that old text as a
+    // hand edit and quietly undo the save that rebuilt it.
+    const incoming = next.prompts ?? NO_PROMPTS;
+    const before = savedPromptsRef.current;
+    savedPromptsRef.current = incoming;
+    setSavedPrompts(incoming);
+    setPrompts((shown) => (which === "prompts" || which === "rebuild" || sameText(shown, before) ? incoming : shown));
+    setPreviewVersion((v) => v + 1);
   }
 
   async function run(
@@ -299,6 +318,8 @@ export function BusinessSettings(props: Props) {
     </div>
   );
 
+  const phase: Phase = props.phase ?? (profile.isLive && props.number ? "live" : "onboarding");
+
   const sections: SettingsSection[] = [
     {
       id: "business-info",
@@ -306,9 +327,9 @@ export function BusinessSettings(props: Props) {
         <BusinessInfoSection
           profile={knowledge}
           onChange={setKnowledge}
-          agentName={agent.agentName}
           source={source}
           footer={footer("knowledge", () => saveKnowledge("knowledge"))}
+          promptsFrozen={savedPrompts.edited}
         />
       ),
     },
@@ -326,7 +347,12 @@ export function BusinessSettings(props: Props) {
     {
       id: "faqs",
       render: () => (
-        <FaqsSection profile={knowledge} onChange={setKnowledge} footer={footer("faqs", () => saveKnowledge("faqs"))} />
+        <FaqsSection
+          profile={knowledge}
+          onChange={setKnowledge}
+          footer={footer("faqs", () => saveKnowledge("faqs"))}
+          promptsFrozen={savedPrompts.edited}
+        />
       ),
     },
     {
@@ -376,6 +402,8 @@ export function BusinessSettings(props: Props) {
             </Button>
           }
           loadPreview={(which) => getSessionPreview(which, userId)}
+          promptsFrozen={savedPrompts.edited}
+          previewVersion={previewVersion}
         />
       ),
     },
@@ -383,11 +411,22 @@ export function BusinessSettings(props: Props) {
     {
       id: "launch",
       render: () => (
-        <LaunchSection
+        <LaunchGuide
+          phase={phase}
+          audience="business"
+          agentName={agent.agentName}
           agentNumber={props.number?.phoneE164 ?? null}
-          live={profile.isLive}
-          published={Boolean(calls?.publishedAt) && !calls?.dirty}
-          onOpenForwarding={() => props.onSection("forwarding")}
+          questions={suggestedQuestions({ faqs: knowledge?.faqs ?? [] }, undefined, 3)}
+          checklist={[
+            { done: profile.isLive, label: "Business information is filled in", hint: "At least your name and what you do." },
+            { done: Boolean(props.number), label: "A phone number is assigned to your assistant", hint: "We assign it." },
+            {
+              done: Boolean(calls?.publishedAt) && !calls?.dirty,
+              label: "Transfers, links and messages are published",
+              hint: "Publish from any of those sections.",
+            },
+          ]}
+          onOpenSection={props.onSection}
         />
       ),
     },
@@ -406,7 +445,7 @@ export function BusinessSettings(props: Props) {
       sections={sections}
       active={props.section}
       onSelect={props.onSection}
-      phase={props.phase ?? (profile.isLive && props.number ? "live" : "onboarding")}
+      phase={phase}
       asideTitle="Test call"
       asideBadge="Uses your draft"
       asideBare={Boolean(calls)}

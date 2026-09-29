@@ -555,6 +555,24 @@ def _ago(**delta: float) -> str:
     return _iso_ms(datetime.now(timezone.utc) - timedelta(**delta))
 
 
+# The business account's stored prompts, for the length of a run. A knowledge save rebuilds them
+# unless they were edited by hand; "Save prompts" with changed text freezes them; rebuild unfreezes.
+BUSINESS_STATE: dict = {"profile": PROFILE["profile"], "prompts": dict(PROFILE["prompts"])}
+
+
+def _business_prompts(profile: dict) -> dict:
+    """Stands in for session/prompts.ts buildSessionPrompts(): follows the profile it was given."""
+    name = profile.get("name") or "the business"
+    return {**PROFILE["prompts"],
+            "live": f"You are Alex, the receptionist at {name}. Speak warmly and answer briefly."
+                    f" The business phone is {profile.get('phone') or 'not listed'}.",
+            "edited": False}
+
+
+def _business(**fields) -> dict:
+    return {**PROFILE, "profile": BUSINESS_STATE["profile"], "prompts": BUSINESS_STATE["prompts"], **fields}
+
+
 def _prompts(name: str, agent: str) -> dict:
     """Stands in for the promo's lib/prompt.ts buildPrompts()."""
     who = name or "the business"
@@ -1699,31 +1717,40 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
             return 403, {"error": "forbidden", "message": "Only an admin can manage the agent's phone numbers."}
         return numbers_route(method, path, query, body)
     if path == "/business/profile" and method == "GET":
-        return 200, {"profile": PROFILE, "defaultBehaviour": [
+        return 200, {"profile": _business(), "defaultBehaviour": [
             {"does": "Answers in the caller's language", "because": "Callers switch languages."},
             {"does": "Offers a callback when it can't help"}],
             "factsStale": False, "number": _number_for("u-sam"), "maxSourceChars": 4000,
             # This fixture carries a real structured profile, so there is nothing to re-read before the
             # Knowledge tab can be used.
             "needsReread": False}
-    # The two tabs' saves. Nothing is stored — the page re-reads after each one and gets the fixture
-    # back — so what these prove is the request shape and that the page survives the round trip.
+    # The two tabs' saves. Stored for the length of a run, as the real routes store them: every
+    # business answer carries the saved profile and prompts, and the page must show the prompts a
+    # save rebuilt (resolveSessionPrompts).
     if path == "/business/knowledge" and method == "PUT":
         sent = json.loads(body or b"{}")
         if not isinstance(sent.get("profile"), dict):
             return 400, {"error": "bad_profile", "message": "Send a profile."}
-        return 200, {"profile": {**PROFILE, "profile": sent["profile"]}}
+        BUSINESS_STATE["profile"] = sent["profile"]
+        if not BUSINESS_STATE["prompts"].get("edited"):
+            BUSINESS_STATE["prompts"] = _business_prompts(sent["profile"])
+        return 200, {"profile": _business()}
     if path == "/business/prompts" and method == "PUT":
         sent = json.loads(body or b"{}")
         prompts = sent.get("prompts")
-        rebuilt = sent.get("rebuild") is True
-        return 200, {"profile": {**PROFILE,
-                                 # `rebuild` throws hand edits away, which is what the real
-                                 # `resolvePrompts` does; anything else sent is kept as edited.
-                                 "prompts": PROFILE["prompts"] if rebuilt
-                                 else {**(prompts or PROFILE["prompts"]), "edited": True},
-                                 "voice": sent.get("voice") or PROFILE["voice"],
-                                 "language": sent.get("language") or PROFILE["language"]}}
+        current = BUSINESS_STATE["prompts"]
+        if sent.get("rebuild") is True:
+            # Throws hand edits away, as the real `resolveSessionPrompts({regenerate})` does.
+            BUSINESS_STATE["prompts"] = _business_prompts(BUSINESS_STATE["profile"])
+        elif isinstance(prompts, dict) and any(
+                prompts.get(k, current[k]) != current[k] for k in ("live", "backend", "greeting")):
+            # A changed text is a hand edit, frozen from then on.
+            BUSINESS_STATE["prompts"] = {**current, **{k: prompts.get(k, current[k])
+                                                      for k in ("live", "backend", "greeting")},
+                                         "edited": True}
+        # A voice or language save alone keeps what is stored (rebuilt only when nobody edited it).
+        return 200, {"profile": _business(voice=sent.get("voice") or PROFILE["voice"],
+                                          language=sent.get("language") or PROFILE["language"])}
     # ---- call settings: a draft the screens edit, a published copy, and the Publish between them.
     # Stateful for the length of a run, like the lifecycle fakes: the page shows what the save
     # returned, so a stub that answered with a fixed body would hide a screen that loses an edit.
@@ -1801,11 +1828,11 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
         }], "usage": {"usedSec": 75, "capSec": 1800, "remainingSec": 1725, "unlimited": False}}
     if path == "/business/identity" and method == "PUT":
         sent = json.loads(body or b"{}")
-        return 200, {"profile": {**PROFILE, "agentName": sent.get("agentName") or None,
+        return 200, {"profile": {**_business(), "agentName": sent.get("agentName") or None,
                                  "greeting": sent.get("greeting") or None}}
     if path == "/business/house-rules" and method == "PUT":
         sent = json.loads(body or b"{}")
-        return 200, {"profile": {**PROFILE, "houseRules": sent.get("houseRules") or None}}
+        return 200, {"profile": {**_business(), "houseRules": sent.get("houseRules") or None}}
     if path == "/calls":
         return 200, {"calls": CALLS}
     if path == "/usage/minutes":

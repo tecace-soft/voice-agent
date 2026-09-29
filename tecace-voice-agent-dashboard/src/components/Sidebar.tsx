@@ -40,7 +40,8 @@ export type ViewId =
   | "demoPipeline"
   | "myOverview"
   | "myCalls"
-  | "changelog";
+  | "changelog"
+  | "billing";
 
 const NAV: {
   key: string;

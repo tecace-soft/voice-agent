@@ -281,6 +281,32 @@ def main() -> int:
                           any("/business/session-preview" in x[1] for x in sent)
                           and "composed voice prompt" in page.inner_text("main"))
 
+                    # ---- The prompts follow the saves above, and a hand edit says it froze them
+                    voice_prompt = page.get_by_label("Voice prompt", exact=True)
+                    check("Custom training: the voice prompt shows what the Business information save rebuilt",
+                          "+1 207 555 0199" in voice_prompt.input_value(), voice_prompt.input_value()[:200])
+                    frozen = "were edited by hand, so they no longer follow"
+                    check("Custom training: not frozen before any hand edit", frozen not in page.inner_text("main"))
+                    previews = len([x for x in sent if "/business/session-preview" in x[1]])
+                    voice_prompt.fill(voice_prompt.input_value() + " Always mention free parking.")
+                    page.get_by_role("button", name="Save prompts").click()
+                    page.wait_for_timeout(900)
+                    check("Custom training: a saved hand edit says the prompts are frozen, with a rebuild",
+                          frozen in page.inner_text("main")
+                          and page.get_by_role("button", name="Rebuild from settings").count() >= 1)
+                    check("Custom training: the open preview re-reads after the save",
+                          len([x for x in sent if "/business/session-preview" in x[1]]) > previews)
+                    open_section("Business information")
+                    check("Business information: says frozen prompts won't pick up changes here",
+                          "don't pick up changes made here" in page.inner_text("main"))
+                    open_section("Custom training")
+                    page.get_by_role("button", name="Rebuild from settings").first.click()
+                    page.wait_for_timeout(900)
+                    check("Custom training: Rebuild unfreezes them",
+                          frozen not in page.inner_text("main")
+                          and any(json.loads(x[2] or "{}").get("rebuild") is True
+                                  for x in requests("/business/prompts")))
+
                     # ---- Test & improve: the test call, the allowance, and the calls already made
                     open_section("Test & improve")
                     body = page.inner_text("main")

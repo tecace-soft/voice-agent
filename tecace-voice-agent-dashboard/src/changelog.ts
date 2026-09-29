@@ -34,6 +34,8 @@ export const CHANGELOG: Release[] = [
     date: "2026-09-28",
     title: "Your demo's overview and call activity; phone numbers from Twilio",
     items: [
+      { kind: "improved", text: "Launch instructions show where your receptionist is (demo, onboarding or live) and what each stage lets you do, its own number with a copy button, how to place a test call with questions to try, and the next step." },
+      { kind: "new", text: "A Billing page, reached from Launch instructions: onboarding starts once billing is set up. Payments in the app come later." },
       { kind: "new", text: "My receptionist has an Overview: link opens, visitors, calls, minutes, calls per day, what the receptionist couldn't answer, and the latest calls." },
       { kind: "new", text: "Call activity lists every call to your demo receptionist with its summary and full transcript." },
       { kind: "new", text: "Agent numbers: sync the Twilio account's numbers into the list, see whether each number's webhooks point at the receptionist, and repair them with Configure.", admin: true },
@@ -42,6 +44,10 @@ export const CHANGELOG: Release[] = [
       { kind: "new", text: "Released numbers stay listed, with Buy back while Twilio still has them for sale.", admin: true },
       { kind: "new", text: "Each number says why its webhooks are out of date, and Configure repairs one or all of them.", admin: true },
       { kind: "improved", text: "The Go live checklist now also checks that Twilio sends the number's calls to the receptionist." },
+      { kind: "improved", text: "If your prompts were edited by hand, Business information, FAQs and Custom training now say so — changes there don't reach calls until you rebuild — with Rebuild right there." },
+      { kind: "improved", text: "\"What a call is told\" refreshes by itself after you save." },
+      { kind: "improved", text: "Business information no longer repeats your week; see Appointments for it." },
+      { kind: "fixed", text: "Custom training showed the old prompts after you saved Business information, FAQs or Agent profile, and saving them then quietly undid those changes." },
     ],
   },
   {

@@ -12,6 +12,7 @@ import { AccountsPage } from "./pages/AccountsPage";
 import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AllFeedbackPage } from "./pages/AllFeedbackPage";
+import { BillingPage } from "./pages/BillingPage";
 import { ChangelogPage } from "./pages/ChangelogPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { FailuresPage } from "./pages/FailuresPage";
@@ -57,6 +58,7 @@ const STANDALONE_VIEWS = new Set<ViewId>([
   "demoProspect",
   "demoPipeline",
   "changelog",
+  "billing",
 ]);
 
 // Overview and Daily activity fetch per person when an admin is looking at everyone, so they don't
@@ -64,7 +66,7 @@ const STANDALONE_VIEWS = new Set<ViewId>([
 const perPersonViews = new Set<ViewId>(["overview", "activity", "analytics"]);
 
 // What a demo-stage account can open; anything else lands on its Overview.
-const DEMO_OWNER_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>(["myOverview", "myCalls", "demoProspect", "changelog"]);
+const DEMO_OWNER_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>(["myOverview", "myCalls", "demoProspect", "changelog", "billing"]);
 
 const VIEW_TITLES: Record<ViewId, string> = {
   overview: "Overview",
@@ -87,6 +89,7 @@ const VIEW_TITLES: Record<ViewId, string> = {
   myOverview: "Overview",
   myCalls: "Call activity",
   changelog: "Changelog",
+  billing: "Billing",
 };
 
 // One fetch of GET /transcribe/stats, shared by every view, with a manual refresh that keeps the
@@ -156,7 +159,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // screen or a permission error. The backend refuses the rest for that account regardless
   // (`auth/guard.ts`), which is what makes this a tidy front end rather than the protection.
   const demoOnly = user.status === "demo";
-  // …except the changelog, which is every account's.
+  // …except the changelog and billing, which are every account's.
   const view = demoOnly && !DEMO_OWNER_VIEWS.has(routeView) ? "myOverview" : routeView;
   const isDemoView = DEMO_VIEWS.has(view);
   const routeId = demoOnly ? (user.businessId ?? undefined) : routeRecordId;
@@ -386,6 +389,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             ))}
           {view === "feedback" && <FeedbackPage />}
           {view === "changelog" && <ChangelogPage isAdmin={isAdmin} />}
+          {view === "billing" && <BillingPage />}
           {view === "allFeedback" &&
             (isAdmin ? (
               <AllFeedbackPage onCountChange={setOpenFeedback} />

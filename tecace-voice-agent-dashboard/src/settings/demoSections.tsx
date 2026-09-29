@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { quotedGreeting } from "@/lib/prompt";
+import { suggestedQuestions } from "@/lib/proof";
+import { customerLink } from "@/lib/share";
 import type { BusinessProfile as DemoBusinessProfile, CallSound, Customer, CustomerPrompts } from "@/lib/types";
 import type { SessionPreview } from "../api/types";
 import { SectionIntro, type SettingsSection } from "./SettingsShell";
@@ -9,6 +11,8 @@ import { TransferCallsSection } from "./sections/TransferCallsSection";
 import { TextLinkSection } from "./sections/TextLinkSection";
 import { TakeMessageSection } from "./sections/TakeMessageSection";
 import { ForwardingSection } from "./sections/ForwardingSection";
+import { LaunchGuide } from "./sections/LaunchGuide";
+import type { SectionId } from "../routing";
 import {
   AgentProfileSection,
   BusinessInfoSection,
@@ -44,15 +48,23 @@ export type DemoSectionsContext = {
   loadPreview?: () => Promise<SessionPreview>;
   /** The Test & improve section's body, where the audience has its own (the public page's call). */
   test?: ReactNode;
-  /** Under the Demo › Onboarding › Live steps (the public page's Request setup). */
+  /** In Launch instructions' Next step card (the public page's Request setup). */
   launchExtra?: ReactNode;
+  /** Opens another section (Launch instructions points at Call forwarding and Test & improve). */
+  onOpenSection?: (id: SectionId) => void;
 };
+
+/** Where a demo's "Go to billing" leads: the dashboard's billing page (a placeholder for now). */
+export const BILLING_HREF = "#/billing";
 
 export function buildDemoSections(ctx: DemoSectionsContext): SettingsSection[] {
   const { draft, setDraft, binding, audience } = ctx;
   const operator = audience === "operator";
   const businessName = draft.profile.name || draft.businessName;
   const setProfile = (profile: DemoBusinessProfile) => setDraft((current) => ({ ...current, profile }));
+  // Only the operator can rebuild, so only the operator is told. Typing into a prompt counts: the
+  // top Save would freeze it.
+  const promptsFrozen = operator && Boolean(draft.prompts.edited);
   const pageSaveNote = operator ? (
     <p className="ta-caption-1 text-muted-foreground mt-6">Press Save in the bar above to keep changes here.</p>
   ) : null;
@@ -61,7 +73,7 @@ export function buildDemoSections(ctx: DemoSectionsContext): SettingsSection[] {
     {
       id: "business-info",
       render: () => (
-        <BusinessInfoSection profile={draft.profile} onChange={setProfile} agentName={draft.agentName} footer={pageSaveNote} />
+        <BusinessInfoSection profile={draft.profile} onChange={setProfile} footer={pageSaveNote} promptsFrozen={promptsFrozen} />
       ),
     },
     {
@@ -87,7 +99,9 @@ export function buildDemoSections(ctx: DemoSectionsContext): SettingsSection[] {
     },
     {
       id: "faqs",
-      render: () => <FaqsSection profile={draft.profile} onChange={setProfile} footer={pageSaveNote} />,
+      render: () => (
+        <FaqsSection profile={draft.profile} onChange={setProfile} footer={pageSaveNote} promptsFrozen={promptsFrozen} />
+      ),
     },
     { id: "take-message", render: () => <TakeMessageSection binding={binding} /> },
     {
@@ -120,6 +134,7 @@ export function buildDemoSections(ctx: DemoSectionsContext): SettingsSection[] {
           loadPreview={operator ? ctx.loadPreview : undefined}
           // A demo has no phone line, so nothing published to compare with.
           previewTabs={false}
+          promptsFrozen={promptsFrozen}
         />
       ),
     },
@@ -146,7 +161,24 @@ export function buildDemoSections(ctx: DemoSectionsContext): SettingsSection[] {
           </div>
         )),
     },
-    { id: "launch", guide: audience === "public", render: () => <Journey audience={audience} extra={ctx.launchExtra} /> },
+    {
+      id: "launch",
+      guide: audience === "public",
+      render: () => (
+        <LaunchGuide
+          phase="demo"
+          audience={audience}
+          agentName={draft.agentName}
+          agentNumber={null}
+          questions={suggestedQuestions({ faqs: draft.profile.faqs ?? [] }, undefined, 3)}
+          // A prospect on the public page has no account to bill yet: Request setup comes first.
+          billingHref={audience === "public" ? undefined : BILLING_HREF}
+          demoPageHref={audience === "owner" ? customerLink(draft.id) : undefined}
+          nextStep={ctx.launchExtra}
+          onOpenSection={ctx.onOpenSection}
+        />
+      ),
+    },
     {
       id: "forwarding",
       guide: true,
@@ -162,52 +194,4 @@ export function buildDemoSections(ctx: DemoSectionsContext): SettingsSection[] {
       ),
     },
   ];
-}
-
-const STEPS: { title: string; body: string }[] = [
-  {
-    title: "Demo",
-    body: "Try the receptionist we built from your business, and see everything it can do.",
-  },
-  {
-    title: "Onboarding",
-    body: "Check what it knows, set up transfers, links and messages, and test calls in the app before callers get them.",
-  },
-  {
-    title: "Live",
-    body: "We give your receptionist a phone number. You forward your calls to it, and it answers the ones you miss.",
-  },
-];
-
-const JOURNEY_INTRO: Record<DemoAudience, string> = {
-  operator:
-    "A demo has no phone line. When this business starts onboarding, everything set up here — including transfers, links and message scenarios — carries over, and this is where they switch their line on.",
-  owner:
-    "Your receptionist is in its demo. Here's the way to a live line; everything you see in these settings comes with you.",
-  public:
-    "This receptionist is a demo. Request setup and, once we've approved it, everything you see here is yours to change and test before your phone line goes live.",
-};
-
-/** Demo › onboarding › live, spelled out, for a demo's launch section. */
-function Journey({ audience, extra }: { audience: DemoAudience; extra?: ReactNode }) {
-  return (
-    <div>
-      <SectionIntro>{JOURNEY_INTRO[audience]}</SectionIntro>
-      <ol className="grid gap-3 md:grid-cols-3">
-        {STEPS.map((step, i) => (
-          <li key={step.title} className={`rounded-xl border p-4 ${i === 0 ? "border-primary bg-primary/5" : ""}`}>
-            <p className="ta-caption-1 text-muted-foreground">Step {i + 1}</p>
-            <p className="ta-headline-2 mt-1">
-              {step.title}
-              {i === 0 ? (
-                <span className="ta-caption-2 text-primary ml-2">{audience === "operator" ? "Now" : audience === "owner" ? "You're here" : "Now"}</span>
-              ) : null}
-            </p>
-            <p className="ta-caption-1 text-muted-foreground mt-2">{step.body}</p>
-          </li>
-        ))}
-      </ol>
-      {extra ? <div className="mt-6">{extra}</div> : null}
-    </div>
-  );
 }

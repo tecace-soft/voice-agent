@@ -1,8 +1,7 @@
-import { useState, type ReactNode } from "react";
-import { Check, Eye } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Eye } from "lucide-react";
 import { KnowledgeEditor } from "@/components/admin/KnowledgeEditor";
 import { PromptEditor } from "@/components/admin/PromptEditor";
-import { SchedulePanel } from "@/components/public/SchedulePanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +9,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { BusinessProfile as DemoBusinessProfile, CallSound, CustomerPrompts } from "@/lib/types";
 import type { BehaviourDefault, SessionPreview } from "../../api/types";
-import { displayPhone } from "../callSettings";
 import { SectionIntro } from "../SettingsShell";
 import { FaqEditor } from "./FaqEditor";
 import { FieldMessage, toFieldError } from "./shared";
@@ -20,19 +18,36 @@ import { GREETING_EXAMPLES, INSTRUCTION_EXAMPLES, Tips } from "../examples";
 // controlled editor; the container decides whether it saves itself (a business, with `footer`) or
 // rides on the page's own Save (a demo).
 
+/**
+ * Prompts edited by hand in Custom training are frozen: they stop following the profile, the FAQs
+ * and the agent profile until they are rebuilt. Said wherever an edit would otherwise look like it
+ * reached the call.
+ */
+function FrozenPromptsNote({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="bg-primary/10 text-primary mb-6 flex flex-wrap items-center gap-3 rounded-lg p-3" role="status">
+      <p className="ta-caption-1 min-w-0 flex-1">{children}</p>
+      {action}
+    </div>
+  );
+}
+
+const FROZEN_ELSEWHERE =
+  "Your prompts in Custom training were edited by hand, so they don't pick up changes made here. Rebuild them in Custom training to include these.";
+
 export function BusinessInfoSection({
   profile,
   onChange,
-  agentName,
   source,
   footer,
+  promptsFrozen,
 }: {
   profile: DemoBusinessProfile | null;
   onChange: (profile: DemoBusinessProfile) => void;
-  agentName: string;
   /** Business only: the description card and its re-read. */
   source?: ReactNode;
   footer?: ReactNode;
+  promptsFrozen?: boolean;
 }) {
   return (
     <div>
@@ -41,6 +56,7 @@ export function BusinessInfoSection({
         callers hear it wrong — anything not here, it says it doesn't know.
       </SectionIntro>
       {source}
+      {promptsFrozen ? <FrozenPromptsNote>{FROZEN_ELSEWHERE}</FrozenPromptsNote> : null}
       {profile ? (
         <>
           <KnowledgeEditor
@@ -49,10 +65,6 @@ export function BusinessInfoSection({
             sections={["details", "hours", "services", "policies", "highlights"]}
           />
           {footer}
-          <div className="mt-8">
-            <p className="ta-headline-2 mb-2">Your week, as the assistant sees it</p>
-            <SchedulePanel profile={profile} agentName={agentName} />
-          </div>
         </>
       ) : (
         <p className="ta-body-2 text-muted-foreground">Nothing to edit yet. Add your business information first.</p>
@@ -65,10 +77,12 @@ export function FaqsSection({
   profile,
   onChange,
   footer,
+  promptsFrozen,
 }: {
   profile: DemoBusinessProfile | null;
   onChange: (profile: DemoBusinessProfile) => void;
   footer?: ReactNode;
+  promptsFrozen?: boolean;
 }) {
   return (
     <div>
@@ -77,6 +91,7 @@ export function FaqsSection({
         say them on the phone: spell a web address out as words, and keep schedules and price lists in
         Business information instead.
       </SectionIntro>
+      {promptsFrozen ? <FrozenPromptsNote>{FROZEN_ELSEWHERE}</FrozenPromptsNote> : null}
       {profile ? (
         <>
           <FaqEditor faqs={profile.faqs} onChange={(faqs) => onChange({ ...profile, faqs })} />
@@ -211,6 +226,8 @@ export function CustomTrainingSection({
   promptsFooter,
   loadPreview,
   previewTabs = true,
+  promptsFrozen,
+  previewVersion,
 }: {
   standard: BehaviourDefault[];
   /** Business only; a demo has no instructions of its own. */
@@ -226,6 +243,10 @@ export function CustomTrainingSection({
   loadPreview?: (which: "draft" | "published") => Promise<SessionPreview>;
   /** False where there is no published copy to compare with (a demo). */
   previewTabs?: boolean;
+  /** The SAVED prompts are hand-edited (not just typed into and unsaved). */
+  promptsFrozen?: boolean;
+  /** Bumped after every save that changes what a call is told; an open preview re-reads. */
+  previewVersion?: number;
 }) {
   const [advanced, setAdvanced] = useState(false);
   return (
@@ -234,6 +255,19 @@ export function CustomTrainingSection({
         How the assistant behaves on your calls. The standard rules below apply to every call and can't be
         switched off; add your own instructions on top of them.
       </SectionIntro>
+
+      {promptsFrozen ? (
+        <FrozenPromptsNote
+          action={
+            <Button variant="outline" size="sm" onClick={onRebuild} disabled={rebuilding}>
+              {rebuilding ? "Rebuilding" : "Rebuild from settings"}
+            </Button>
+          }
+        >
+          Your prompts were edited by hand, so they no longer follow Business information, FAQs or Agent
+          profile. Changes made there don't reach calls until you rebuild them.
+        </FrozenPromptsNote>
+      ) : null}
 
       {standard.length ? (
         <div className="mb-6 rounded-xl border p-4">
@@ -317,7 +351,7 @@ export function CustomTrainingSection({
               </Button>
               {promptsFooter}
             </div>
-            {loadPreview ? <SessionPreviewPanel load={loadPreview} tabs={previewTabs} /> : null}
+            {loadPreview ? <SessionPreviewPanel load={loadPreview} tabs={previewTabs} version={previewVersion} /> : null}
           </div>
         ) : null}
       </div>
@@ -328,9 +362,11 @@ export function CustomTrainingSection({
 function SessionPreviewPanel({
   load,
   tabs,
+  version,
 }: {
   load: (which: "draft" | "published") => Promise<SessionPreview>;
   tabs: boolean;
+  version?: number;
 }) {
   const [which, setWhich] = useState<"draft" | "published">("draft");
   const [model, setModel] = useState<"live" | "backend">("live");
@@ -349,6 +385,16 @@ function SessionPreviewPanel({
       setLoading(false);
     }
   }
+
+  // A save changed what a call is told: an open preview would now be showing the old text.
+  const shown = useRef(false);
+  shown.current = preview !== null;
+  const firstVersion = useRef(version);
+  useEffect(() => {
+    if (version === firstVersion.current || !shown.current) return;
+    void show();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-read on a new version only
+  }, [version]);
 
   return (
     <div className="rounded-xl border p-4">
@@ -424,75 +470,6 @@ export function TestSection({ children }: { children?: ReactNode }) {
             review afterwards.
           </p>
         </div>
-      )}
-    </div>
-  );
-}
-
-export function LaunchSection({
-  agentNumber,
-  live,
-  published,
-  checklist,
-  onOpenForwarding,
-}: {
-  agentNumber: string | null;
-  /** The business has enough information to answer as itself. */
-  live: boolean;
-  /** Call settings have been published at least once and nothing is waiting. */
-  published: boolean;
-  /** Anything else worth a line, e.g. SMS registration. */
-  checklist?: { done: boolean; label: string; hint?: string }[];
-  /** Opens the Call forwarding section, which has the codes. */
-  onOpenForwarding?: () => void;
-}) {
-  const steps = [
-    { done: live, label: "Business information is filled in", hint: "At least your name and what you do." },
-    { done: Boolean(agentNumber), label: "A phone number is assigned to your assistant", hint: "Your administrator assigns it." },
-    { done: published, label: "Transfers, links and messages are published", hint: "Publish from any of those sections." },
-    ...(checklist ?? []),
-  ];
-  return (
-    <div>
-      <SectionIntro>
-        How to switch your line over to the assistant. Most businesses forward calls when they're busy or
-        don't pick up, so the assistant catches what they miss.
-      </SectionIntro>
-
-      <ul className="mb-6 space-y-2">
-        {steps.map((step) => (
-          <li key={step.label} className="flex items-start gap-3">
-            <span
-              className={`ta-caption-2 mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full ${
-                step.done ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-              }`}
-              aria-hidden
-            >
-              {step.done ? <Check className="size-3" /> : null}
-            </span>
-            <span>
-              <span className="ta-label-1 block">{step.label}</span>
-              {!step.done && step.hint ? <span className="ta-caption-1 text-muted-foreground">{step.hint}</span> : null}
-            </span>
-          </li>
-        ))}
-      </ul>
-
-      {agentNumber ? (
-        <>
-          <div className="bg-primary/5 mb-6 rounded-xl border p-4">
-            <p className="ta-caption-1 text-muted-foreground">Your assistant's number</p>
-            <p className="ta-headline-1">{displayPhone(agentNumber)}</p>
-          </div>
-          <p className="ta-headline-2 mb-2">Forward your calls</p>
-          <p className="ta-body-2 text-muted-foreground mb-3">
-            Point your business line at this number — for missed calls or every call. Callers keep dialling the
-            number they know.
-          </p>
-          {onOpenForwarding ? <Button onClick={onOpenForwarding}>Set up call forwarding</Button> : null}
-        </>
-      ) : (
-        <p className="ta-body-2 text-muted-foreground">Once a number is assigned, forward your calls to it — see Call forwarding.</p>
       )}
     </div>
   );
