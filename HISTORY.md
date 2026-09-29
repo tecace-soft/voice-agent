@@ -13,6 +13,9 @@ Format:
 
 ---
 
+## 2026-09-28 · bottomup32 · transcribe-backend (analysis on gpt-5.6-luna)
+- `CALL_REVIEW_MODEL` and `RESEARCH_OPENAI_MODEL` now default to `gpt-5.6-luna` (was `gpt-5.6-terra`) to cut cost. An env value still wins; staging and production set neither, so both switch on their next deploy. `OPENAI_BACKEND_MODEL` (the live call's tool delegate) stays on terra.
+
 ## 2026-09-28 22:10 · bottomup32 · dashboard (Launch instructions redesign, Billing placeholder)
 - New `src/settings/sections/LaunchGuide.tsx` replaces both the demo `Journey` (`demoSections.tsx`) and the business `LaunchSection` (removed from `ProfileSections.tsx`). One page for operator / owner / public / business: stage cards (Demo › Onboarding › Live, what each allows, what moves it on), the stage's limit + the agent number with Copy + missed/every-call forwarding, test calls with "Try asking" (from `suggestedQuestions`), and a Next step card (demo: billing; public: Request setup; onboarding: the checklist). `DemoSectionsContext` gains `onOpenSection`.
 - New view `billing` (`#/billing`, `PATHS`, `ViewId`, `BillingPage.tsx`): a placeholder, open to every account incl. demo-stage owners (`DEMO_OWNER_VIEWS`). No sidebar item; linked from a demo's Launch instructions (`BILLING_HREF`). No backend change.

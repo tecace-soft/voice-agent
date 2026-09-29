@@ -58,7 +58,8 @@ const openaiApiKey = process.env.OPENAI_API_KEY?.trim() || undefined;
 // `src/demo/researchRunner.ts`); an unset or unrecognised value lands on it, and "cli" or
 // "anthropic" is answered with an error naming the branch rather than silently ignored.
 const researchProvider = process.env.RESEARCH_PROVIDER?.trim().toLowerCase() ?? "";
-const researchOpenaiModel = process.env.RESEARCH_OPENAI_MODEL?.trim() || "gpt-5.6-terra";
+// The cheaper model by default: research and the post-call review are analysis, not a live call.
+const researchOpenaiModel = process.env.RESEARCH_OPENAI_MODEL?.trim() || "gpt-5.6-luna";
 // How much of the web the search tool reads back: low | medium | high. Anything else is medium,
 // which is the promo's default and what a research run is tuned for.
 const researchSearchContext = process.env.RESEARCH_SEARCH_CONTEXT?.trim().toLowerCase() ?? "";
@@ -219,7 +220,7 @@ export const env = {
   openaiBaseUrl: (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, ""),
   openaiLiveModel: process.env.OPENAI_LIVE_MODEL || "gpt-live-1",
   openaiBackendModel: process.env.OPENAI_BACKEND_MODEL || "gpt-5.6-terra",
-  callReviewModel: process.env.CALL_REVIEW_MODEL || "gpt-5.6-terra",
+  callReviewModel: process.env.CALL_REVIEW_MODEL || "gpt-5.6-luna",
   researchProvider,
   researchOpenaiModel,
   researchSearchContext,

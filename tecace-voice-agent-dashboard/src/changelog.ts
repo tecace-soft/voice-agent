@@ -34,6 +34,7 @@ export const CHANGELOG: Release[] = [
     date: "2026-09-28",
     title: "Your demo's overview and call activity; phone numbers from Twilio",
     items: [
+      { kind: "improved", text: "Post-call reviews and business research run on a lower-cost model (gpt-5.6-luna).", admin: true },
       { kind: "improved", text: "Launch instructions show where your receptionist is (demo, onboarding or live) and what each stage lets you do, its own number with a copy button, how to place a test call with questions to try, and the next step." },
       { kind: "new", text: "A Billing page, reached from Launch instructions: onboarding starts once billing is set up. Payments in the app come later." },
       { kind: "new", text: "My receptionist has an Overview: link opens, visitors, calls, minutes, calls per day, what the receptionist couldn't answer, and the latest calls." },
