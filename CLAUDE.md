@@ -26,17 +26,19 @@ Monorepo-style workspace: each top-level directory is a **self-contained app** (
 
 | Dir | Stack | Role |
 |---|---|---|
-| `voice-agent-app/` | Python | Original voice intake agent (Retell-era; Twilio inbound + Google Form poll, Cal.com booking) |
-| `openai-agent-app/` | Python | Same lead-callback agent on OpenAI Realtime + Twilio; reuses `backend-app` tools over HTTP. Two processes: `scripts/run_server.py` (call audio) + `scripts/run_poller.py` (who to call) |
+| `voice-agent-app/` | Python | Original voice intake agent (Retell-era; Google Form poll → callback, Cal.com booking). Entry: `scripts/run_retell_poller.py` |
+| `openai-agent-app/` | Python | Voice agent on OpenAI Realtime + Twilio, one bridge for two agents: outbound lead callback (reuses `backend-app` `/agent/*` tools) and inbound receptionist (reads the business's published call settings/booking from `transcribe-backend` `GET /business/config`). Two processes: `scripts/run_server.py` (call audio) + `scripts/run_poller.py` (who to call) |
 | `backend-app/` | Bun + Elysia | Shared API for the intake/booking system (Cal.com, Retell tools/webhook, email, Postgres) |
 | `form-app/`, `admin-dashboard-app/` | React + Vite | Lead intake form; admin dashboard for `backend-app` |
-| `transcribe-app/` | Python | Voicemail pipeline: IMAP `.wav` → Whisper → Claude extraction → Google Sheet; reports each run to `transcribe-backend` (`scripts/run_poller.py` long-running, `run_transcribe.py` one pass) |
+| `transcribe-app/` | Python | Voicemail pipeline: IMAP `.wav` → Whisper → Claude extraction → Google Sheet; reports each run to `transcribe-backend` with `TRANSCRIBE_INGEST_KEY` (`scripts/run_poller.py` long-running, `run_transcribe.py` one pass). Maintained separately — changing the ingest contract on `transcribe-backend` needs a `⚠` in HISTORY.md |
 | `transcribe-backend/` | Bun + Elysia + Postgres | Backend for transcribe metrics, auth/accounts, business profiles, call minutes, and the `/demo/*` routes (demo prospects/CRM/test call/research) |
 | `transcribe-dashboard-app/` | React + Vite | **Original** transcribe dashboard — kept as the baseline the combined dashboard is regression-compared against |
 | `tecace-voice-agent-dashboard/` | React + Vite + TS | **Current combined dashboard**: transcribe screens + admin-only Demos section, single sign-in against `transcribe-backend` |
 | `deploy/` | systemd | Host-level VPS units (docker stats sampler) |
 
-Design specs/plans live in `docs/superpowers/{specs,plans}/`. Note `docs/superpowers/combined-dashboard-deployment.md` predates the move of demo data into transcribe-db (it still describes a `/promo-api` proxy and `VITE_PUBLIC_DEMO_BASE_URL`); trust `tecace-voice-agent-dashboard/CLAUDE.md` and README over it.
+Local ports: `backend-app` 8000, `transcribe-backend` 8001, `tecace-voice-agent-dashboard` 5175, `openai-agent-app` 5050 (+ poller 5060), `voice-agent-app` 3000.
+
+Design specs/plans live in `docs/superpowers/{specs,plans}/`. Two docs are stale: the root `README.md` app table stops before `transcribe-backend` and the dashboards, and `docs/superpowers/combined-dashboard-deployment.md` predates the move of demo data into transcribe-db (it still describes a `/promo-api` proxy and `VITE_PUBLIC_DEMO_BASE_URL`). Trust this file, each app's own README/CLAUDE.md over them.
 
 ## Commands
 
@@ -54,6 +56,7 @@ Non-obvious constraints that span many files:
 - Demo API bodies must keep matching the promo's `/api/admin/*` shapes since the screens parse them as-is; `demoFetch` returns a raw `Response`.
 - Prospect page `/c/<id>` is a **second entry document** (`c.html` → `src/public/`); nothing under `src/public/` may import dashboard auth (enforced by `tests/public-entry.test.ts`).
 - New views need a `PATHS` entry in `src/routing.ts`.
-- UI/style/chart work must follow the `tecace-dashboard-ui` skill (brand blue #116DFF, sentence case, tokens not hex). The same rules apply to `admin-dashboard-app` and `transcribe-dashboard-app` (plain CSS only, no Tailwind migration).
-- Regression after styling changes: `npm test`, then Python scripts in `scripts/regression/` (`compare.py` must print `IDENTICAL`, plus `tw_probe.py`, `demos_e2e.py`, `business_tabs.py`, `public_page.py`, `accounts_lifecycle.py`, `demo_customer.py`, `appointments.py`, `signup.py`). Run them **one at a time** — they share ports; they run against `fake_backend.py`.
+- UI/style/chart work must follow the `tecace-dashboard-ui` skill (brand blue #116DFF, sentence case, tokens not hex). The same rules apply to `admin-dashboard-app` and `transcribe-dashboard-app` (plain CSS only, no Tailwind migration — see each app's own `CLAUDE.md`).
+- Regression after styling changes: `npm test`, then Python scripts in `scripts/regression/` (`compare.py` must print `IDENTICAL`, plus `tw_probe.py`, `demos_e2e.py`, `business_tabs.py`, `public_page.py`, `accounts_lifecycle.py`, `demo_customer.py`, `appointments.py`, `signup.py`, `numbers_twilio.py`). Run them **one at a time** — they share ports; they run against `fake_backend.py`. `compare.py` builds `../transcribe-dashboard-app` as the baseline, so that app needs its deps installed and must not be changed to make a comparison pass.
+- Other entry documents besides `index.html`: `c.html` (prospect demo `/c/<id>`) and `start.html` (self-service sign-up `/start`); `vite.config.ts` rewrites both for dev/preview and names the build inputs, `vercel.json` routes them in production.
 - Test call and research runs are real, billable OpenAI calls gated by `OPENAI_API_KEY` on `transcribe-backend`.

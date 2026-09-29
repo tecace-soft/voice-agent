@@ -78,6 +78,13 @@ class H(http.server.SimpleHTTPRequestHandler):
         return os.path.join(ROOT, "index.html")
     def log_message(self, *a):
         pass
+# Stated explicitly: SimpleHTTPRequestHandler otherwise asks the OS, and a Windows machine whose
+# registry says .js is text/plain makes Edge refuse every module script — an app that never renders,
+# with nothing on the page to say why. These entries win over the OS lookup.
+for ext, kind in ((".js", "text/javascript"), (".mjs", "text/javascript"), (".css", "text/css"),
+                  (".html", "text/html"), (".svg", "image/svg+xml"), (".png", "image/png"),
+                  (".mp4", "video/mp4"), (".json", "application/json")):
+    H.extensions_map[ext] = kind
 socketserver.TCPServer.allow_reuse_address = True
 with socketserver.TCPServer(("127.0.0.1", {APP_PORT}), H) as httpd:
     httpd.serve_forever()

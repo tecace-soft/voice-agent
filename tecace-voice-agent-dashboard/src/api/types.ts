@@ -196,6 +196,12 @@ export interface PollerHeartbeat {
 
 // A phone number the voice agent answers, and who it belongs to. `userId` null = registered but
 // unassigned; the agent answers such a call neutrally rather than guessing whose business it is.
+//
+// The Twilio half: `twilioSid` null = registered by hand and not (yet) matched to the Twilio account,
+// so nothing about its webhooks can be known from here. `webhookState` is the last comparison of what
+// Twilio has against what the backend wants (transcribe-backend `twilio/webhooks.ts`).
+export type WebhookState = "unknown" | "ok" | "stale" | "error";
+
 export interface AgentNumber {
   id: string;
   phoneE164: string;
@@ -205,6 +211,53 @@ export interface AgentNumber {
   userName: string | null;
   createdAt: string;
   updatedAt: string;
+  twilioSid: string | null;
+  numberType: "local" | "tollfree" | null;
+  capabilities: { voice: boolean; sms: boolean; mms: boolean } | null;
+  voiceUrl: string | null;
+  voiceFallbackUrl: string | null;
+  statusCallbackUrl: string | null;
+  smsUrl: string | null;
+  webhookState: WebhookState;
+  webhookError: string | null;
+  webhooksCheckedAt: string | null;
+  syncedAt: string | null;
+  purchasedAt: string | null;
+  releasedAt: string | null;
+}
+
+/** A number Twilio sells, from `GET /business/numbers/available`. */
+export interface AvailableNumber {
+  phoneNumber: string;
+  friendlyName: string;
+  locality: string | null;
+  region: string | null;
+  postalCode: string | null;
+  capabilities: { voice: boolean; sms: boolean; mms: boolean };
+  type: "local" | "tollfree";
+}
+
+/**
+ * Where the backend points every managed number. `twilio` = it has credentials (enough to sync);
+ * `webhooks` = it has the two origins the URLs are built from (needed to buy, configure, assign);
+ * `configured` = both.
+ */
+export interface NumberWebhooks {
+  configured: boolean;
+  twilio: boolean;
+  webhooks: boolean;
+  voiceUrl?: string;
+  voiceFallbackUrl?: string;
+  statusCallback?: string;
+}
+
+export interface NumberSync {
+  numbers: AgentNumber[];
+  added: number;
+  updated: number;
+  /** Registered here but not in the Twilio account. */
+  missing: string[];
+  twilioCount: number;
 }
 
 // What a customer told us about their business, and what the agent says because of it.

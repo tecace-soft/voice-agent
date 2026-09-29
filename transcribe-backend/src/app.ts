@@ -9,6 +9,7 @@ import { lifecycle } from "./routes/lifecycle.js";
 import { feedback } from "./routes/feedback.js";
 import { health } from "./routes/health.js";
 import { business } from "./routes/business.js";
+import { numbers } from "./routes/numbers.js";
 import { testCalls } from "./routes/testCalls.js";
 import { calendar } from "./routes/calendar.js";
 import { calls } from "./routes/calls.js";
@@ -59,6 +60,9 @@ export const app = new Elysia()
   .use(feedback)
   .use(transcribe)
   .use(business)
+  // The agent's numbers against Twilio (sync, buy, webhooks, release), beside the register/assign
+  // routes that stay in `business`.
+  .use(numbers)
   .use(testCalls)
   // Calendar connections and the booking tools. Its OAuth callback is the one route under it with
   // no session; see the file.

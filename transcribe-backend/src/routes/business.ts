@@ -37,11 +37,13 @@ import {
   assignAgentNumber,
   createAgentNumber,
   deleteAgentNumber,
+  findById,
   findByPhone,
   findNumberForUser,
   listAgentNumbers,
   toE164,
 } from "../db/agentNumbers.js";
+import { ensureWebhooks, twilioClient, wantedWebhooks } from "../twilio/inventory.js";
 
 // Which phone number the voice agent answers for which customer.
 //
@@ -355,12 +357,17 @@ export const business = new Elysia({ prefix: "/business" })
     },
   )
 
-  // Every number we've registered, with its assignee.
-  .get("/numbers", async ({ headers, status }) => {
-    const caller = await authenticateAdmin(headers.authorization, NUMBERS_ARE_ADMIN);
-    if ("denied" in caller) return status(caller.denied, caller.body);
-    return { numbers: await listAgentNumbers() };
-  })
+  // Every number we've registered, with its assignee. Released numbers only when asked for.
+  .get(
+    "/numbers",
+    async ({ headers, query, status }) => {
+      const caller = await authenticateAdmin(headers.authorization, NUMBERS_ARE_ADMIN);
+      if ("denied" in caller) return status(caller.denied, caller.body);
+      const includeReleased = query.includeReleased === "1" || query.includeReleased === "true";
+      return { numbers: await listAgentNumbers({ includeReleased }) };
+    },
+    { query: t.Object({ includeReleased: t.Optional(t.String({ maxLength: 10 })) }) },
+  )
 
   // Register a number we own. Unassigned until an admin says whose it is.
   .post(
@@ -423,9 +430,21 @@ export const business = new Elysia({ prefix: "/business" })
         }
       }
 
+      const existing = await findById(params.id);
+      if (!existing) return status(404, { error: "not_found", message: "No such number." });
+      if (existing.releasedAt) {
+        return status(409, { error: "number_released", message: "That number was released and can't be assigned." });
+      }
+
       try {
-        const number = await assignAgentNumber(params.id, body.userId ?? null);
+        let number = await assignAgentNumber(params.id, body.userId ?? null);
         if (!number) return status(404, { error: "not_found", message: "No such number." });
+        // A number that now has an owner should have its calls going to the agent. Best effort: Twilio
+        // refusing is recorded on the number and shown, but the assignment itself stands — the admin
+        // can Configure again, whereas an un-assigned number helps nobody.
+        const client = body.userId ? twilioClient() : null;
+        const wanted = client ? wantedWebhooks() : null;
+        if (client && wanted && number.twilioSid) number = (await ensureWebhooks(client, wanted, number)).number;
         return { number };
       } catch (err) {
         // 23505 on the one-per-user index. Told, not silently swapped: moving a customer's line
@@ -450,6 +469,17 @@ export const business = new Elysia({ prefix: "/business" })
     async ({ headers, params, status }) => {
       const caller = await authenticateAdmin(headers.authorization, NUMBERS_ARE_ADMIN);
       if ("denied" in caller) return status(caller.denied, caller.body);
+      // Forgetting a number Twilio still bills would leave it paid for and invisible until the next
+      // sync brought it back. A managed number is Released; Delete is for the hand-registered ones
+      // and for rows already released.
+      const existing = await findById(params.id);
+      if (!existing) return status(404, { error: "not_found", message: "No such number." });
+      if (existing.twilioSid && !existing.releasedAt) {
+        return status(409, {
+          error: "use_release",
+          message: "This number is in the Twilio account and still billed. Release it instead; that also removes it here.",
+        });
+      }
       const removed = await deleteAgentNumber(params.id);
       if (!removed) return status(404, { error: "not_found", message: "No such number." });
       return { status: "deleted" };

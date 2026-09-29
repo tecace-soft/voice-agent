@@ -151,13 +151,160 @@ FEEDBACK = [
      "resolvedBy": "Ada Admin"},
 ]
 
+# Where every managed number's webhooks point (transcribe-backend `twilio/webhooks.ts`).
+WEBHOOKS = {"voiceUrl": "https://agent.test/incoming",
+            "voiceFallbackUrl": "https://agent.test/incoming-fallback",
+            "statusCallback": "https://api.test/twilio/voice-status"}
+
+
+def _twilio(sid: str | None, kind: str | None, state: str) -> dict:
+    """The Twilio half of an agent number (db/agentNumbers.ts). `sid` None = registered by hand."""
+    configured = state == "ok"
+    return {"twilioSid": sid, "numberType": kind,
+            "capabilities": {"voice": True, "sms": True, "mms": False} if sid else None,
+            "voiceUrl": WEBHOOKS["voiceUrl"] if sid else None,
+            "voiceFallbackUrl": WEBHOOKS["voiceFallbackUrl"] if sid else None,
+            "statusCallbackUrl": WEBHOOKS["statusCallback"] if configured else None,
+            "smsUrl": None, "webhookState": state, "webhookError": None,
+            "webhooksCheckedAt": iso(NOW - timedelta(hours=1)) if sid else None,
+            "syncedAt": iso(NOW - timedelta(hours=1)) if sid else None,
+            "purchasedAt": None, "releasedAt": None}
+
+
 NUMBERS = [
+    # Sam's line: bought through Twilio, webhooks as this server wants them.
     {"id": "n-1", "phoneE164": "+14255550100", "label": "Main line", "userId": "u-sam",
      "userEmail": SAM, "userName": "Sam Customer", "createdAt": iso(NOW - timedelta(days=30)),
-     "updatedAt": iso(NOW - timedelta(days=10))},
+     "updatedAt": iso(NOW - timedelta(days=10)), **_twilio("PN1", "local", "ok")},
+    # In the pool, and pointed somewhere else at Twilio: the row Configure has to repair.
     {"id": "n-2", "phoneE164": "+14255550199", "label": None, "userId": None, "userEmail": None,
-     "userName": None, "createdAt": iso(NOW - timedelta(days=3)), "updatedAt": iso(NOW - timedelta(days=3))},
+     "userName": None, "createdAt": iso(NOW - timedelta(days=3)), "updatedAt": iso(NOW - timedelta(days=3)),
+     **_twilio("PN2", "local", "stale")},
+    # Registered by hand before Twilio was wired up; not in the account, so nothing can be checked.
+    {"id": "n-3", "phoneE164": "+18885550123", "label": "Old toll-free", "userId": None,
+     "userEmail": None, "userName": None, "createdAt": iso(NOW - timedelta(days=90)),
+     "updatedAt": iso(NOW - timedelta(days=90)), **_twilio(None, None, "unknown")},
 ]
+
+AVAILABLE = {
+    "local": [{"phoneNumber": "+12065550142", "friendlyName": "(206) 555-0142", "locality": "Seattle",
+               "region": "WA", "postalCode": None, "capabilities": {"voice": True, "sms": True, "mms": True}},
+              {"phoneNumber": "+12065550177", "friendlyName": "(206) 555-0177", "locality": "Seattle",
+               "region": "WA", "postalCode": None, "capabilities": {"voice": True, "sms": True, "mms": False}}],
+    "tollfree": [{"phoneNumber": "+18335550142", "friendlyName": "(833) 555-0142", "locality": None,
+                  "region": None, "postalCode": None, "capabilities": {"voice": True, "sms": True, "mms": False}}],
+}
+_NEXT_NUMBER = [4]
+
+
+def _number_for(user_id: str | None) -> dict | None:
+    return next((n for n in NUMBERS if n["userId"] == user_id and not n["releasedAt"]), None) if user_id else None
+
+
+def numbers_route(method: str, path: str, query: dict, body: bytes):
+    """The admin's number management (routes/business.ts + routes/numbers.ts). Stateful for the run:
+    assigning, buying, configuring and releasing change NUMBERS in place, because every page that
+    drives them re-reads the list and a fixture that snapped back would hide exactly the bugs a
+    harness is for."""
+    rest = path[len("/business/numbers"):]
+    payload = _demo_json(body) or {}
+    if rest == "" and method == "GET":
+        include_released = bool((query.get("includeReleased") or [""])[0])
+        return 200, {"numbers": [n for n in NUMBERS if include_released or not n["releasedAt"]]}
+    if rest == "" and method == "POST":
+        digits = "".join(ch for ch in str(payload.get("phone", "")) if ch.isdigit())
+        phone = "+" + (digits if digits.startswith("1") and len(digits) == 11 else "1" + digits)
+        if len(phone) != 12:
+            return 400, {"error": "bad_number", "message": f'"{payload.get("phone")}" isn\'t a phone number we can match.'}
+        if any(n["phoneE164"] == phone for n in NUMBERS):
+            return 409, {"error": "already_registered", "message": f"{phone} is already registered."}
+        _NEXT_NUMBER[0] += 1
+        row = {"id": f"n-{_NEXT_NUMBER[0]}", "phoneE164": phone, "label": payload.get("label") or None,
+               "userId": None, "userEmail": None, "userName": None, "createdAt": iso(NOW),
+               "updatedAt": iso(NOW), **_twilio(None, None, "unknown")}
+        NUMBERS.append(row)
+        return 201, {"number": row}
+    if rest == "/webhooks" and method == "GET":
+        return 200, {"configured": True, "twilio": True, "webhooks": True, **WEBHOOKS}
+    if rest == "/sync" and method == "POST":
+        managed = [n for n in NUMBERS if n["twilioSid"] and not n["releasedAt"]]
+        for n in managed:
+            n["syncedAt"] = iso(NOW)
+        return 200, {"numbers": [n for n in NUMBERS if not n["releasedAt"]], "added": 0,
+                     "updated": len(managed), "twilioCount": len(managed),
+                     "missing": [n["phoneE164"] for n in NUMBERS if not n["twilioSid"] and not n["releasedAt"]]}
+    if rest == "/available" and method == "GET":
+        kind = (query.get("type") or [""])[0]
+        if kind not in AVAILABLE:
+            return 400, {"error": "bad_type", "message": 'Type must be "local" or "tollfree".', "field": "type"}
+        area = (query.get("areaCode") or [""])[0]
+        if area and not (len(area) == 3 and area.isdigit()):
+            return 400, {"error": "bad_area_code", "message": "An area code is three digits, e.g. 206.", "field": "areaCode"}
+        return 200, {"numbers": [{**n, "type": kind} for n in AVAILABLE[kind]]}
+    if rest == "/buy" and method == "POST":
+        kind = payload.get("type") or ("tollfree" if str(payload.get("phoneNumber", "")).startswith("+18") else "local")
+        if not payload.get("phoneNumber") and not payload.get("type"):
+            return 400, {"error": "bad_request", "message": "Say which number to buy, or which kind."}
+        assign_to = payload.get("assignTo")
+        owner = next((u for u in (ADMIN, USER, DEMO_CUSTOMER) if u["id"] == assign_to), None) if assign_to else None
+        if assign_to and owner is None:
+            return 404, {"error": "not_found", "message": "No such account."}
+        if owner and owner["role"] == "admin":
+            return 400, {"error": "admin_cannot_hold_number", "message": f"{owner['name']} is an admin."}
+        if owner and _number_for(owner["id"]):
+            return 409, {"error": "already_has_number", "message": "That person already has a number. Un-assign it first."}
+        _NEXT_NUMBER[0] += 1
+        phone = payload.get("phoneNumber") or AVAILABLE[kind][0]["phoneNumber"]
+        row = {"id": f"n-{_NEXT_NUMBER[0]}", "phoneE164": phone, "label": payload.get("label") or None,
+               "userId": owner["id"] if owner else None, "userEmail": owner["email"] if owner else None,
+               "userName": owner["name"] if owner else None, "createdAt": iso(NOW), "updatedAt": iso(NOW),
+               **_twilio(f"PN{_NEXT_NUMBER[0]}", kind, "ok"), "purchasedAt": iso(NOW)}
+        NUMBERS.append(row)
+        return 201, {"number": row}
+    number_id, _, action = rest.lstrip("/").partition("/")
+    row = next((n for n in NUMBERS if n["id"] == number_id), None)
+    if row is None:
+        return 404, {"error": "not_found", "message": "No such number."}
+    if method == "DELETE" and not action:
+        NUMBERS.remove(row)
+        return 200, {"status": "deleted"}
+    if action == "assign" and method == "POST":
+        if row["releasedAt"]:
+            return 409, {"error": "number_released", "message": "That number was released and can't be assigned."}
+        wanted = payload.get("userId")
+        owner = next((u for u in (ADMIN, USER, DEMO_CUSTOMER) if u["id"] == wanted), None) if wanted else None
+        if wanted and owner is None:
+            return 404, {"error": "not_found", "message": "No such account."}
+        if owner and owner["role"] == "admin":
+            return 400, {"error": "admin_cannot_hold_number", "message": f"{owner['name']} is an admin."}
+        held = _number_for(wanted) if wanted else None
+        if held and held is not row:
+            return 409, {"error": "already_has_number", "message": "That person already has a number. Un-assign it first."}
+        row.update({"userId": owner["id"] if owner else None, "userEmail": owner["email"] if owner else None,
+                    "userName": owner["name"] if owner else None, "updatedAt": iso(NOW)})
+        if owner and row["twilioSid"]:
+            row.update(_twilio(row["twilioSid"], row["numberType"], "ok"))
+        return 200, {"number": row}
+    if action == "configure" and method == "POST":
+        if row["releasedAt"]:
+            return 409, {"error": "released", "message": "That number was released."}
+        if not row["twilioSid"]:
+            return 409, {"error": "not_in_twilio",
+                         "message": "This number isn't in the Twilio account. Sync, or register it there first."}
+        row.update(_twilio(row["twilioSid"], row["numberType"], "ok"))
+        return 200, {"number": row}
+    if action == "release" and method == "POST":
+        if row["releasedAt"]:
+            return 409, {"error": "released", "message": "That number was already released."}
+        if payload.get("confirm") != row["phoneE164"]:
+            return 400, {"error": "confirm_mismatch", "message": "Type the number exactly to release it.", "field": "confirm"}
+        if row["userId"]:
+            return 409, {"error": "number_assigned", "message": "That number is assigned. Un-assign it first."}
+        if not row["twilioSid"]:
+            return 409, {"error": "not_in_twilio", "message": "This number was registered by hand — delete it from the list instead."}
+        row["releasedAt"] = iso(NOW)
+        return 200, {"number": row}
+    return 404, {"message": f"No fake for {method} {path}"}
 
 PROFILE = {
     "userId": "u-sam",
@@ -704,17 +851,25 @@ def demo_decline_route(wanted: str, body: bytes):
 def readiness(account: dict) -> dict:
     """GET /business/readiness, as business/readiness.ts answers it. Sam has a number (NUMBERS) and,
     in this fake, published settings; nobody else has either."""
-    has_number = any(n["userId"] == account["id"] for n in NUMBERS)
+    number = _number_for(account["id"])
+    has_number = number is not None
     published = account["id"] == USER["id"]
     items = [
         {"id": "business_info", "ok": True, "required": True, "label": "Business information is filled in"},
         {"id": "settings_published", "ok": published, "required": True, "label": "Call settings are published"},
-        {"id": "number_assigned", "ok": has_number, "required": True, "label": "A phone number is assigned"},
+        {"id": "number_assigned", "ok": has_number, "required": True, "label": "A phone number is assigned",
+         **({"detail": number["phoneE164"]} if number else {})},
         {"id": "published_matches_number", "ok": published and has_number, "required": True,
          "label": "Published settings work with that number"},
-        {"id": "contact_number", "ok": False, "required": False,
-         "label": "A number to reach the business is on file"},
     ]
+    # Only once there is a number to have webhooks; required only for a number in the Twilio account.
+    if number:
+        items.append({"id": "webhooks_configured", "ok": number["webhookState"] == "ok",
+                      "required": bool(number["twilioSid"]), "label": "Calls to the number reach the receptionist",
+                      **({} if number["webhookState"] == "ok" else
+                         {"detail": "Its webhooks need configuring — an administrator does this on the Agent numbers page."})})
+    items.append({"id": "contact_number", "ok": False, "required": False,
+                  "label": "A number to reach the business is on file"})
     return {"status": account["status"], "ready": all(i["ok"] or not i["required"] for i in items),
             "items": items}
 
@@ -1515,13 +1670,15 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
         wanted = (query.get("userId") or [None])[0] if admin else None
         account = next((u for u in (ADMIN, USER, DEMO_CUSTOMER) if u["id"] == wanted), user)
         return 200, readiness(account)
-    if path == "/business/numbers" and method == "GET":
-        return 200, {"numbers": NUMBERS}
+    if path.startswith("/business/numbers"):
+        if not admin:
+            return 403, {"error": "forbidden", "message": "Only an admin can manage the agent's phone numbers."}
+        return numbers_route(method, path, query, body)
     if path == "/business/profile" and method == "GET":
         return 200, {"profile": PROFILE, "defaultBehaviour": [
             {"does": "Answers in the caller's language", "because": "Callers switch languages."},
             {"does": "Offers a callback when it can't help"}],
-            "factsStale": False, "number": NUMBERS[0], "maxSourceChars": 4000,
+            "factsStale": False, "number": _number_for("u-sam"), "maxSourceChars": 4000,
             # This fixture carries a real structured profile, so there is nothing to re-read before the
             # Knowledge tab can be used.
             "needsReread": False}

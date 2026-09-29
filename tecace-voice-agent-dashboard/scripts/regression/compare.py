@@ -144,6 +144,13 @@ EXPECTED_CHANGES = {
         "the Accounts table gained the customer lifecycle: a Stage column and its controls",
         "Stage",
     ),
+    # The Numbers page talks to Twilio: sync the account's numbers, see and repair each number's
+    # webhooks, buy and release. The marker is the sync button, which the original app has no
+    # equivalent of — it only ever typed numbers in by hand.
+    "admin:numbers:light": (
+        "the Numbers page gained the Twilio side: sync, webhooks, buy and release",
+        "Sync from Twilio",
+    ),
 }
 
 HIDE_JS = """

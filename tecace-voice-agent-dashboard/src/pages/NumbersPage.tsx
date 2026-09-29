@@ -1,17 +1,24 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   assignAgentNumber,
+  buyAgentNumber,
+  configureAgentNumber,
   deleteAgentNumber,
+  getNumberWebhooks,
   listAccounts,
   listAgentNumbers,
   registerAgentNumber,
+  releaseAgentNumber,
+  searchAvailableNumbers,
+  syncAgentNumbers,
 } from "../api/backend";
-import type { AgentNumber, AuthUser } from "../api/types";
+import type { AgentNumber, AuthUser, AvailableNumber, NumberWebhooks } from "../api/types";
 import { accountErrorMessage } from "../auth";
-import { IconAlert, IconPhone, IconTrash } from "../icons";
+import { IconAlert, IconPhone, IconRefresh, IconTrash } from "../icons";
 import { formatDateTime, formatPhone } from "../lib";
 
-// Which phone number the voice agent answers for which customer. Admin only.
+// Which phone number the voice agent answers for which customer, and what Twilio knows about each
+// one. Admin only.
 //
 // Assigning a number is a different act from a customer editing their own business details, and
 // carries different risk: get the details wrong and one company's blurb is off; get the number
@@ -21,23 +28,64 @@ import { formatDateTime, formatPhone } from "../lib";
 // A number with no owner is not an error state to be hidden — it is the normal state between
 // buying a line and assigning it, and it is exactly what an admin needs to see, because the agent
 // answers those calls neutrally with no idea whose business it is.
+//
+// The Twilio side: the backend can bring the account's numbers in (sync), buy new ones, write each
+// number's webhooks so a call reaches the receptionist, and let a number go. A number registered by
+// hand before that existed is opaque until a sync matches it, and is deleted rather than released.
+
+const KIND_LABEL = { local: "Local", tollfree: "Toll-free" } as const;
+
+/** The webhook column, as a badge: what Twilio has against what the backend wants. */
+function WebhookBadge({ number }: { number: AgentNumber }) {
+  if (!number.twilioSid) {
+    return (
+      <span className="badge badge-neutral" title="Not matched to the Twilio account; sync to check it">
+        Registered by hand
+      </span>
+    );
+  }
+  switch (number.webhookState) {
+    case "ok":
+      return <span className="badge badge-success">Configured</span>;
+    case "stale":
+      return (
+        <span className="badge badge-warning" title="Twilio points this number somewhere else; Configure repairs it">
+          Out of date
+        </span>
+      );
+    case "error":
+      return (
+        <span className="badge badge-danger" title={number.webhookError ?? undefined}>
+          Failed
+        </span>
+      );
+    default:
+      return <span className="badge badge-neutral">Not checked</span>;
+  }
+}
 
 export function NumbersPage() {
   const [numbers, setNumbers] = useState<AgentNumber[] | null>(null);
   const [users, setUsers] = useState<AuthUser[]>([]);
+  const [webhooks, setWebhooks] = useState<NumberWebhooks | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [phone, setPhone] = useState("");
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
+  // Which number's release confirmation is open; the number has to be typed back.
+  const [releasing, setReleasing] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState("");
 
   const load = useCallback(() => {
-    Promise.all([listAgentNumbers(), listAccounts()])
-      .then(([n, u]) => {
+    Promise.all([listAgentNumbers(), listAccounts(), getNumberWebhooks().catch(() => null)])
+      .then(([n, u, w]) => {
         setNumbers(n);
         // Customers only. An admin is TecAce staff, not a business the agent answers for, so there
         // is nothing for it to say if a call came in on their line. The backend refuses it too —
         // this list is the convenience, that is the rule.
         setUsers(u.filter((x) => x.role !== "admin").sort((a, b) => a.name.localeCompare(b.name)));
+        setWebhooks(w);
         setError(null);
       })
       .catch((e) => setError(accountErrorMessage(e, "Couldn't load the agent's numbers.")));
@@ -47,43 +95,87 @@ export function NumbersPage() {
     load();
   }, [load]);
 
-  async function onRegister(event: FormEvent) {
-    event.preventDefault();
-    if (!phone.trim()) return;
+  // Sync needs only credentials; buying, configuring and releasing also need the two origins the
+  // webhooks are built from. `webhooks` null = the backend couldn't say (older backend, or the read
+  // failed), and every Twilio action stays off rather than failing one by one.
+  const canSync = webhooks?.twilio === true;
+  const twilioReady = webhooks?.configured === true;
+  const setupNotice =
+    webhooks === null
+      ? "Couldn't read whether Twilio is set up on this server, so syncing, buying, configuring and releasing are off for now. Registering by hand and assigning still work."
+      : !webhooks.twilio
+        ? "Twilio isn't set up on this server, so numbers can be registered by hand and assigned, but not synced, bought, configured or released. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN on the backend."
+        : !webhooks.webhooks
+          ? "The backend has Twilio credentials but not the addresses its webhooks point at, so it can sync but not buy, configure or release. Set AGENT_PUBLIC_URL and PUBLIC_BACKEND_URL on the backend."
+          : null;
+
+  async function act(fallback: string, action: () => Promise<string | null>) {
     setBusy(true);
     setError(null);
+    setNote(null);
     try {
-      await registerAgentNumber(phone.trim(), label);
-      setPhone("");
-      setLabel("");
+      const said = await action();
+      if (said) setNote(said);
       load();
     } catch (e) {
-      setError(accountErrorMessage(e, "Couldn't register that number."));
+      setError(accountErrorMessage(e, fallback));
     } finally {
       setBusy(false);
     }
   }
 
-  async function onAssign(id: string, userId: string) {
-    setError(null);
-    try {
-      await assignAgentNumber(id, userId || null);
-      load();
-    } catch (e) {
-      setError(accountErrorMessage(e, "Couldn't assign that number."));
-    }
+  async function onRegister(event: FormEvent) {
+    event.preventDefault();
+    if (!phone.trim()) return;
+    await act("Couldn't register that number.", async () => {
+      await registerAgentNumber(phone.trim(), label);
+      setPhone("");
+      setLabel("");
+      return null;
+    });
   }
 
-  async function onDelete(number: AgentNumber) {
+  const onSync = () =>
+    act("Couldn't sync with Twilio.", async () => {
+      const result = await syncAgentNumbers();
+      const missing = result.missing.length
+        ? ` · ${result.missing.length} not in Twilio: ${result.missing.map(formatPhone).join(", ")}`
+        : "";
+      return `Synced ${result.twilioCount} ${result.twilioCount === 1 ? "number" : "numbers"} from Twilio (${result.added} new)${missing}`;
+    });
+
+  const onAssign = (id: string, userId: string) =>
+    act("Couldn't assign that number.", async () => {
+      await assignAgentNumber(id, userId || null);
+      return null;
+    });
+
+  const onConfigure = (number: AgentNumber) =>
+    act("Couldn't configure that number.", async () => {
+      await configureAgentNumber(number.id);
+      return `${formatPhone(number.phoneE164)} sends its calls to the receptionist.`;
+    });
+
+  const onRelease = (number: AgentNumber) =>
+    act("Couldn't release that number.", async () => {
+      await releaseAgentNumber(number.id, confirm.trim());
+      setReleasing(null);
+      setConfirm("");
+      return `${formatPhone(number.phoneE164)} was released. Twilio stops billing it and it leaves this list.`;
+    });
+
+  const onDelete = (number: AgentNumber) => {
     if (!window.confirm(`Remove ${formatPhone(number.phoneE164)}? The agent will stop answering for it.`)) return;
-    setError(null);
-    try {
+    void act("Couldn't remove that number.", async () => {
       await deleteAgentNumber(number.id);
-      load();
-    } catch (e) {
-      setError(accountErrorMessage(e, "Couldn't remove that number."));
-    }
-  }
+      return null;
+    });
+  };
+
+  const onBought = (number: AgentNumber) => {
+    setNote(`Bought ${formatPhone(number.phoneE164)}. It's in the list below, ready to be assigned.`);
+    load();
+  };
 
   const unassigned = (numbers ?? []).filter((n) => !n.userId).length;
 
@@ -100,17 +192,28 @@ export function NumbersPage() {
               there'd be no business for the agent to answer as.
             </div>
           </div>
+          <button type="button" className="btn" onClick={onSync} disabled={busy || !canSync} title={canSync ? "Bring the Twilio account's numbers into this list" : "Twilio isn't set up on this server"}>
+            <IconRefresh size={14} />
+            Sync from Twilio
+          </button>
         </div>
 
+        {setupNotice && <p className="notice-slim ta-caption-1 muted">{setupNotice}</p>}
+        {error && (
+          <p className="error ta-label-1" role="alert">
+            {error}
+          </p>
+        )}
+        {note && (
+          <p className="ta-label-1 number-note" role="status">
+            {note}
+          </p>
+        )}
+
         <form className="feedback-form" onSubmit={onRegister}>
-          {error && (
-            <p className="error ta-label-1" role="alert">
-              {error}
-            </p>
-          )}
           <div className="number-form">
             <label className="field">
-              <span className="field-label ta-caption-1">Twilio number</span>
+              <span className="field-label ta-caption-1">Register a number by hand</span>
               <input
                 className="input"
                 value={phone}
@@ -133,16 +236,19 @@ export function NumbersPage() {
             </button>
           </div>
           <span className="field-hint ta-caption-2 muted">
-            Any format works — it's stored as +12065551234 so it matches what Twilio sends.
+            For a number that isn't in the Twilio account, or was set up in the console. Any format works — it's
+            stored as +12065551234 so it matches what Twilio sends.
           </span>
         </form>
       </section>
+
+      <BuyCard enabled={twilioReady} busy={busy} onBought={onBought} onError={setError} />
 
       <section className="card">
         <div className="card-toolbar">
           <div>
             <div className="card-title ta-headline-2">
-              Assigned numbers
+              Numbers
               {unassigned > 0 && (
                 <span className="badge badge-warning number-unassigned">
                   <IconAlert size={12} />
@@ -152,7 +258,8 @@ export function NumbersPage() {
             </div>
             <div className="card-sub ta-caption-1">
               An unassigned number still rings — the agent just answers neutrally, without claiming
-              to be any particular business.
+              to be any particular business. Webhooks say whether Twilio sends the number's calls to the
+              receptionist at all.
             </div>
           </div>
         </div>
@@ -162,8 +269,10 @@ export function NumbersPage() {
             <thead>
               <tr>
                 <th scope="col">Number</th>
+                <th scope="col">Type</th>
                 <th scope="col">Label</th>
                 <th scope="col">Answers as</th>
+                <th scope="col">Webhooks</th>
                 <th scope="col">Added</th>
                 <th scope="col" aria-label="Actions" />
               </tr>
@@ -171,63 +280,37 @@ export function NumbersPage() {
             <tbody>
               {numbers === null ? (
                 <tr>
-                  <td className="table-empty" colSpan={5}>
+                  <td className="table-empty" colSpan={7}>
                     Loading…
                   </td>
                 </tr>
               ) : numbers.length === 0 ? (
                 <tr>
-                  <td className="table-empty" colSpan={5}>
-                    No numbers yet. Add the Twilio number the agent answers on.
+                  <td className="table-empty" colSpan={7}>
+                    No numbers yet. Sync the Twilio account, buy one, or add one by hand.
                   </td>
                 </tr>
               ) : (
                 numbers.map((n) => (
-                  <tr key={n.id}>
-                    <td>
-                      <span className="number-cell">
-                        <IconPhone size={14} />
-                        {formatPhone(n.phoneE164)}
-                      </span>
-                    </td>
-                    <td className="muted">{n.label || "—"}</td>
-                    <td>
-                      <select
-                        className="input number-assign"
-                        value={n.userId ?? ""}
-                        onChange={(e) => onAssign(n.id, e.target.value)}
-                        aria-label={`Who ${formatPhone(n.phoneE164)} answers as`}
-                      >
-                        <option value="">— Not assigned —</option>
-                        {/* A number assigned to an admin before this rule existed still has to
-                            render, or the row would silently show as unassigned and nobody could
-                            see what to fix. Shown, labelled, and re-assignable — just not
-                            re-selectable once changed. */}
-                        {n.userId && !users.some((u) => u.id === n.userId) && (
-                          <option value={n.userId}>
-                            {n.userName ?? n.userEmail} · admin — reassign to a customer
-                          </option>
-                        )}
-                        {users.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.name} ({u.email})
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="muted ta-caption-1">{formatDateTime(n.createdAt)}</td>
-                    <td className="num">
-                      <button
-                        type="button"
-                        className="btn btn-quiet"
-                        onClick={() => onDelete(n)}
-                        title={`Delete ${formatPhone(n.phoneE164)} from this list entirely`}
-                        aria-label={`Delete ${formatPhone(n.phoneE164)}`}
-                      >
-                        <IconTrash size={14} />
-                      </button>
-                    </td>
-                  </tr>
+                  <NumberRow
+                    key={n.id}
+                    number={n}
+                    users={users}
+                    busy={busy}
+                    twilioReady={twilioReady}
+                    releasing={releasing === n.id}
+                    confirm={confirm}
+                    onConfirmChange={setConfirm}
+                    onAssign={(userId) => void onAssign(n.id, userId)}
+                    onConfigure={() => void onConfigure(n)}
+                    onStartRelease={() => {
+                      setReleasing(n.id);
+                      setConfirm("");
+                    }}
+                    onCancelRelease={() => setReleasing(null)}
+                    onRelease={() => void onRelease(n)}
+                    onDelete={() => onDelete(n)}
+                  />
                 ))
               )}
             </tbody>
@@ -237,11 +320,285 @@ export function NumbersPage() {
         <p className="muted ta-caption-1 view-foot">
           <strong>Set someone to "Not assigned"</strong> to take a number off their account. Their
           account and everything on it is untouched — only who the agent answers as changes, and
-          the number stays in this list ready to be given to someone else. The <strong>delete</strong>
-          button is different: it removes the number from this list entirely, so the agent stops
-          recognising it at all.
+          the number stays in this list ready to be given to someone else. <strong>Release</strong> gives a
+          number back to Twilio: it stops ringing and stops being billed. <strong>Delete</strong> only
+          forgets a number registered by hand.
         </p>
       </section>
     </div>
+  );
+}
+
+function NumberRow({
+  number: n,
+  users,
+  busy,
+  twilioReady,
+  releasing,
+  confirm,
+  onConfirmChange,
+  onAssign,
+  onConfigure,
+  onStartRelease,
+  onCancelRelease,
+  onRelease,
+  onDelete,
+}: {
+  number: AgentNumber;
+  users: AuthUser[];
+  busy: boolean;
+  twilioReady: boolean;
+  releasing: boolean;
+  confirm: string;
+  onConfirmChange: (value: string) => void;
+  onAssign: (userId: string) => void;
+  onConfigure: () => void;
+  onStartRelease: () => void;
+  onCancelRelease: () => void;
+  onRelease: () => void;
+  onDelete: () => void;
+}) {
+  const shown = formatPhone(n.phoneE164);
+  return (
+    <>
+      <tr>
+        <td>
+          <span className="number-cell">
+            <IconPhone size={14} />
+            {shown}
+          </span>
+        </td>
+        <td className="muted">{n.numberType ? KIND_LABEL[n.numberType] : "—"}</td>
+        <td className="muted">{n.label || "—"}</td>
+        <td>
+          <select
+            className="input number-assign"
+            value={n.userId ?? ""}
+            onChange={(e) => onAssign(e.target.value)}
+            aria-label={`Who ${shown} answers as`}
+            disabled={busy}
+          >
+            <option value="">— Not assigned —</option>
+            {/* A number assigned to an admin before this rule existed still has to render, or the
+                row would silently show as unassigned and nobody could see what to fix. Shown,
+                labelled, and re-assignable — just not re-selectable once changed. */}
+            {n.userId && !users.some((u) => u.id === n.userId) && (
+              <option value={n.userId}>{n.userName ?? n.userEmail} · admin — reassign to a customer</option>
+            )}
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name} ({u.email})
+              </option>
+            ))}
+          </select>
+        </td>
+        <td>
+          <WebhookBadge number={n} />
+        </td>
+        <td className="muted ta-caption-1">{formatDateTime(n.createdAt)}</td>
+        <td className="num">
+          <div className="row-actions">
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={onConfigure}
+              disabled={busy || !twilioReady}
+              title={
+                n.twilioSid
+                  ? "Write the receptionist's webhooks onto this number at Twilio"
+                  : "Look this number up in the Twilio account and, if it's there, write the webhooks"
+              }
+            >
+              Configure
+            </button>
+            {n.twilioSid ? (
+              <button
+                type="button"
+                className="btn btn-quiet"
+                onClick={onStartRelease}
+                disabled={busy || !twilioReady || Boolean(n.userId)}
+                title={n.userId ? "Un-assign it first" : `Give ${shown} back to Twilio`}
+              >
+                Release
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-quiet"
+                onClick={onDelete}
+                disabled={busy}
+                title={`Delete ${shown} from this list entirely`}
+                aria-label={`Delete ${shown}`}
+              >
+                <IconTrash size={14} />
+              </button>
+            )}
+          </div>
+        </td>
+      </tr>
+      {releasing && (
+        <tr>
+          <td colSpan={7}>
+            <div className="number-confirm" role="group" aria-label={`Release ${shown}`}>
+              <label className="field">
+                <span className="field-label ta-caption-1">Type the number to release it</span>
+                <input
+                  className="input"
+                  value={confirm}
+                  onChange={(e) => onConfirmChange(e.target.value)}
+                  placeholder={n.phoneE164}
+                  inputMode="tel"
+                  autoFocus
+                />
+              </label>
+              <button type="button" className="btn btn-danger" onClick={onRelease} disabled={busy || !confirm.trim()}>
+                Release number
+              </button>
+              <button type="button" className="btn btn-quiet" onClick={onCancelRelease} disabled={busy}>
+                Cancel
+              </button>
+              <span className="field-hint ta-caption-2 muted">
+                Twilio stops billing it and callers get a disconnected tone. This can't be undone; the number goes back
+                on sale.
+              </span>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+/**
+ * Buying: pick a kind and, for a local number, an area code; search; buy one of the results. Toll-free
+ * is recommended because texting from it later needs one verification form, where a local number needs
+ * per-business 10DLC registration — and callers never see the agent's area code anyway, since they dial
+ * the business's own number, which forwards.
+ */
+function BuyCard({
+  enabled,
+  busy,
+  onBought,
+  onError,
+}: {
+  enabled: boolean;
+  busy: boolean;
+  onBought: (number: AgentNumber) => void;
+  onError: (message: string | null) => void;
+}) {
+  const [kind, setKind] = useState<"local" | "tollfree">("tollfree");
+  const [areaCode, setAreaCode] = useState("");
+  const [label, setLabel] = useState("");
+  const [results, setResults] = useState<AvailableNumber[] | null>(null);
+  const [working, setWorking] = useState(false);
+  // One id per purchase intent, not per click: a retry after a timeout must find the number the first
+  // attempt bought rather than buy a second one. A new id only once a purchase has succeeded.
+  const requestId = useRef(crypto.randomUUID());
+
+  async function onSearch(event: FormEvent) {
+    event.preventDefault();
+    setWorking(true);
+    onError(null);
+    try {
+      setResults(await searchAvailableNumbers({ type: kind, areaCode: areaCode.trim() || undefined }));
+    } catch (e) {
+      onError(accountErrorMessage(e, "Couldn't search Twilio for numbers."));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function onBuy(candidate: AvailableNumber) {
+    setWorking(true);
+    onError(null);
+    try {
+      const bought = await buyAgentNumber({
+        phoneNumber: candidate.phoneNumber,
+        type: candidate.type,
+        ...(label.trim() ? { label: label.trim() } : {}),
+        requestId: requestId.current,
+      });
+      requestId.current = crypto.randomUUID();
+      setResults(null);
+      setLabel("");
+      onBought(bought.number);
+    } catch (e) {
+      onError(accountErrorMessage(e, "Couldn't buy that number."));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  const disabled = busy || working || !enabled;
+
+  return (
+    <section className="card" role="group" aria-label="Buy a number">
+      <div className="card-head">
+        <div>
+          <div className="card-title ta-headline-2">Buy a number</div>
+          <div className="card-sub ta-caption-1">
+            A new line from Twilio, with its webhooks set as it's bought, so it rings the receptionist from the first
+            call. It arrives unassigned; give it to a customer from the list below or from their Go live checklist.
+          </div>
+        </div>
+      </div>
+      <form className="number-buy" onSubmit={onSearch}>
+        <fieldset className="number-kinds">
+          <legend className="field-label ta-caption-1">Kind</legend>
+          <label className="number-kind ta-label-1">
+            <input type="radio" name="number-kind" checked={kind === "tollfree"} onChange={() => setKind("tollfree")} disabled={disabled} />
+            Toll-free <span className="muted ta-caption-1">recommended — one form to enable texting later</span>
+          </label>
+          <label className="number-kind ta-label-1">
+            <input type="radio" name="number-kind" checked={kind === "local"} onChange={() => setKind("local")} disabled={disabled} />
+            Local
+          </label>
+        </fieldset>
+        <label className="field">
+          <span className="field-label ta-caption-1">Area code (optional)</span>
+          <input
+            className="input"
+            value={areaCode}
+            onChange={(e) => setAreaCode(e.target.value.replace(/\D/g, "").slice(0, 3))}
+            placeholder={kind === "tollfree" ? "833" : "206"}
+            inputMode="numeric"
+            disabled={disabled}
+          />
+        </label>
+        <label className="field">
+          <span className="field-label ta-caption-1">Label (optional)</span>
+          <input className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Acme main line" disabled={disabled} />
+        </label>
+        <button type="submit" className="btn btn-primary" disabled={disabled} title={enabled ? "Ask Twilio what it sells" : "Twilio isn't set up on this server"}>
+          {working ? "Searching…" : "Search"}
+        </button>
+      </form>
+      {results !== null && (
+        <ul className="number-results" aria-label="Numbers for sale">
+          {results.length === 0 ? (
+            <li className="muted ta-caption-1">Twilio has nothing of that kind there right now. Try another area code.</li>
+          ) : (
+            results.map((candidate) => (
+              <li key={candidate.phoneNumber}>
+                <span>
+                  <span className="ta-label-1 number-cell">
+                    <IconPhone size={14} />
+                    {formatPhone(candidate.phoneNumber)}
+                  </span>
+                  <span className="muted ta-caption-1 number-meta">
+                    {KIND_LABEL[candidate.type]}
+                    {candidate.locality ? ` · ${candidate.locality}${candidate.region ? `, ${candidate.region}` : ""}` : ""}
+                    {candidate.capabilities.sms ? " · voice and text" : " · voice only"}
+                  </span>
+                </span>
+                <button type="button" className="btn btn-primary" onClick={() => void onBuy(candidate)} disabled={disabled}>
+                  Buy
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </section>
   );
 }

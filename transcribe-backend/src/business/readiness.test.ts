@@ -8,6 +8,9 @@ const READY: ReadinessInput = {
   profile: { isLive: true, transferNumber: "+12065550123", profile: null },
   agentNumber: "+12065550100",
   settings: { published: emptyCallSettings(), waterfallAllowed: false },
+  // A number bought or synced through Twilio, with its webhooks as this server wants them.
+  number: { managed: true, webhookState: "ok" },
+  twilioConfigured: true,
 };
 
 const failing = (input: ReadinessInput) =>
@@ -76,5 +79,43 @@ describe("evaluateReadiness", () => {
       profile: { isLive: true, transferNumber: null, profile: { phone: "+12065550199" } },
     };
     expect(failing(withPhone)).toEqual([]);
+  });
+
+  it("requires Twilio to send calls to the receptionist when the number is ours to configure", () => {
+    const input: ReadinessInput = { ...READY, number: { managed: true, webhookState: "stale" } };
+    const result = evaluateReadiness(input);
+    expect(result.ready).toBe(false);
+    expect(failing(input)).toEqual(["webhooks_configured"]);
+    expect(result.items.find((item) => item.id === "webhooks_configured")!.required).toBe(true);
+  });
+
+  it("shows the webhook error Twilio gave when there is one", () => {
+    const input: ReadinessInput = {
+      ...READY,
+      number: { managed: true, webhookState: "error", webhookError: "Twilio answered 401" },
+    };
+    const item = evaluateReadiness(input).items.find((entry) => entry.id === "webhooks_configured")!;
+    expect(item.ok).toBe(false);
+    expect(item.detail).toBe("Twilio answered 401");
+  });
+
+  it("only advises about the webhooks of a number registered by hand", () => {
+    const input: ReadinessInput = { ...READY, number: null };
+    const result = evaluateReadiness(input);
+    expect(result.ready).toBe(true);
+    expect(failing(input)).toEqual(["webhooks_configured"]);
+    expect(result.items.find((item) => item.id === "webhooks_configured")!.required).toBe(false);
+  });
+
+  it("cannot require what this server cannot check: no Twilio credentials, no blocking", () => {
+    const input: ReadinessInput = { ...READY, number: { managed: true, webhookState: "stale" }, twilioConfigured: false };
+    const result = evaluateReadiness(input);
+    expect(result.ready).toBe(true);
+    expect(result.items.find((item) => item.id === "webhooks_configured")!.required).toBe(false);
+  });
+
+  it("says nothing about webhooks while there is no number to have them", () => {
+    const input: ReadinessInput = { ...READY, agentNumber: null, number: null };
+    expect(evaluateReadiness(input).items.map((item) => item.id)).not.toContain("webhooks_configured");
   });
 });

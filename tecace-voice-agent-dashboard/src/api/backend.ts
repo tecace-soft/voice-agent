@@ -1,6 +1,9 @@
 import type {
   AccountStatus,
   AgentNumber,
+  AvailableNumber,
+  NumberSync,
+  NumberWebhooks,
   ApiKey,
   CallMinutes,
   CreatedApiKey,
@@ -376,8 +379,56 @@ export function listPollers(
 
 // ---- the voice agent's phone numbers (admin) ----
 
-export async function listAgentNumbers(): Promise<AgentNumber[]> {
-  return (await get<{ numbers: AgentNumber[] }>("/business/numbers")).numbers;
+/** Released numbers stay out unless asked for: they are history, not a pool. */
+export async function listAgentNumbers(options: { includeReleased?: boolean } = {}): Promise<AgentNumber[]> {
+  const query = options.includeReleased ? "?includeReleased=1" : "";
+  return (await get<{ numbers: AgentNumber[] }>(`/business/numbers${query}`)).numbers;
+}
+
+// The Twilio side. Every one of these answers 409 `twilio_not_configured` on a backend without Twilio
+// credentials, with a message the page shows as it is.
+
+export function getNumberWebhooks(): Promise<NumberWebhooks> {
+  return get<NumberWebhooks>("/business/numbers/webhooks");
+}
+
+/** Bring the Twilio account's numbers into the list; hand-registered ones pick up their SID. */
+export function syncAgentNumbers(): Promise<NumberSync> {
+  return request<NumberSync>("POST", "/business/numbers/sync", { body: {} });
+}
+
+export async function searchAvailableNumbers(query: {
+  type: "local" | "tollfree";
+  areaCode?: string;
+}): Promise<AvailableNumber[]> {
+  const params = new URLSearchParams({ type: query.type });
+  if (query.areaCode) params.set("areaCode", query.areaCode);
+  return (await get<{ numbers: AvailableNumber[] }>(`/business/numbers/available?${params}`)).numbers;
+}
+
+/**
+ * Buy a number — an exact one from a search, or the next of a kind — with its webhooks set in the same
+ * request, and optionally assign it in the same breath. `requestId` makes a double-click buy once.
+ */
+export function buyAgentNumber(input: {
+  phoneNumber?: string;
+  type?: "local" | "tollfree";
+  areaCode?: string;
+  label?: string;
+  assignTo?: string;
+  requestId: string;
+}): Promise<{ number: AgentNumber }> {
+  return request<{ number: AgentNumber }>("POST", "/business/numbers/buy", { body: input });
+}
+
+/** Write the wanted webhooks onto the number at Twilio (repair, or adopt a hand-registered one). */
+export function configureAgentNumber(id: string): Promise<{ number: AgentNumber }> {
+  return request<{ number: AgentNumber }>("POST", `/business/numbers/${id}/configure`, { body: {} });
+}
+
+/** Let the number go at Twilio. `confirm` is the number typed back by the admin. */
+export function releaseAgentNumber(id: string, confirm: string): Promise<{ number: AgentNumber }> {
+  return request<{ number: AgentNumber }>("POST", `/business/numbers/${id}/release`, { body: { confirm } });
 }
 
 export function registerAgentNumber(phone: string, label: string): Promise<{ number: AgentNumber }> {

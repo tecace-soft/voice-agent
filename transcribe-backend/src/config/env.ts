@@ -175,6 +175,35 @@ if (!Number.isFinite(signupResearchDailyCap) || signupResearchDailyCap < 0) {
   throw new Error("SIGNUP_RESEARCH_DAILY_CAP must be a non-negative number.");
 }
 
+// Twilio (src/twilio): the account the agent's phone numbers live in — the same one openai-agent-app
+// dials with. Optional in the same way as OPENAI_API_KEY: with no credentials every number route that
+// would talk to Twilio answers 409 twilio_not_configured, and registering numbers by hand, assigning them
+// and going live all keep working. Two origins go onto every managed number: a ringing call goes to the
+// phone agent (AGENT_PUBLIC_URL/incoming — it answers TwiML in milliseconds, this backend on Vercel might
+// not), and what happens after the call (status callbacks, later texts) comes here, built from
+// PUBLIC_BACKEND_URL, which is also the URL Twilio's signature is checked against. Never the request's Host.
+const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID?.trim() ?? "";
+const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN?.trim() ?? "";
+const agentPublicUrl = (process.env.AGENT_PUBLIC_URL ?? "").trim().replace(/\/$/, "");
+// How long a forwarding test lets the business's own line ring before giving up. Must be longer than the
+// carrier's no-answer forwarding delay (20–30s is typical), or every customer who forwards only missed
+// calls reads as "not forwarded".
+const forwardingTestTimeoutSeconds = Number(process.env.FORWARDING_TEST_TIMEOUT_SECONDS ?? 40);
+if (!Number.isInteger(forwardingTestTimeoutSeconds) || forwardingTestTimeoutSeconds < 10 || forwardingTestTimeoutSeconds > 120) {
+  throw new Error("FORWARDING_TEST_TIMEOUT_SECONDS must be a whole number of seconds between 10 and 120.");
+}
+const twilio = {
+  accountSid: twilioAccountSid,
+  authToken: twilioAuthToken,
+  enabled: Boolean(twilioAccountSid && twilioAuthToken),
+  // Off only for a local curl at /twilio/*; with it off those routes trust anyone who can reach them.
+  validateSignature: (process.env.TWILIO_VALIDATE_SIGNATURE ?? "").trim().toLowerCase() !== "false",
+  agentPublicUrl,
+  forwardingTestTimeoutSeconds,
+  // Phase 3: a Messaging Service to send texts through instead of the business's own number.
+  messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID?.trim() ?? "",
+};
+
 export const env = {
   nodeEnv,
   port: Number(process.env.PORT ?? 8001),
@@ -227,6 +256,7 @@ export const env = {
   // Who hears about a new sign-up or setup request. Unset = nobody is emailed; the badge still shows.
   adminNotifyEmail: process.env.ADMIN_NOTIFY_EMAIL?.trim() ?? "",
   signupResearchDailyCap,
+  twilio,
 } as const;
 
 export type Env = typeof env;

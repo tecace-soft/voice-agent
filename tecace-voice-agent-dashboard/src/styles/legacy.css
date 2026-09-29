@@ -1036,6 +1036,23 @@ select.input {
   justify-content: flex-end;
   gap: 8px;
 }
+/* Assigning a number from the Go live checklist: an inline form nested in the lifecycle panel, so
+   it drops the outer form's own padding, rule and tint rather than stacking them. The buy form sits
+   inside it and does the same. */
+.lifecycle-assign,
+.lifecycle-buy {
+  grid-column: 1 / -1;
+  padding: 12px 0 0;
+  border-bottom: 0;
+  background: transparent;
+}
+.lifecycle-assign .field {
+  grid-column: span 2;
+}
+.lifecycle-assign .inline-form-actions,
+.lifecycle-buy .inline-form-actions {
+  justify-content: flex-start;
+}
 /* the sentence under the lifecycle controls: it explains the one-way copy, so it runs the full
    width of the grid rather than sitting in a column beside a dropdown */
 .lifecycle-note {
@@ -2220,6 +2237,74 @@ button.person-primary:hover {
 .number-unassigned {
   margin-left: 8px;
   vertical-align: middle;
+}
+.number-note {
+  margin: 0 0 12px;
+  color: var(--success);
+}
+/* Buying: kind, area code, label and the search button on one line; the results as a list under it. */
+.number-buy {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+@media (max-width: 860px) {
+  .number-buy {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.number-kinds {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.number-kinds legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+.number-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.number-kind input {
+  accent-color: var(--primary);
+}
+.number-results {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.number-results li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+}
+.number-results li + li {
+  border-top: 1px solid var(--border);
+}
+.number-meta {
+  display: block;
+  margin-top: 4px;
+}
+/* Releasing: the number typed back, on a row of its own under the number it concerns. */
+.number-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  padding: 4px 0;
+}
+.number-confirm .field-hint {
+  flex-basis: 100%;
 }
 
 /* ---- business information ---- */

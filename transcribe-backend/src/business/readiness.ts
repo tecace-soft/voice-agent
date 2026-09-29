@@ -16,6 +16,7 @@ export type ReadinessId =
   | "settings_published"
   | "number_assigned"
   | "published_matches_number"
+  | "webhooks_configured"
   | "contact_number";
 
 export interface ReadinessItem {
@@ -36,9 +37,17 @@ export interface ReadinessInput {
   profile: Pick<BusinessProfile, "isLive" | "transferNumber"> & { profile?: { phone?: string } | null };
   agentNumber: string | null;
   settings: Pick<StoredCallSettings, "published" | "waterfallAllowed">;
+  /**
+   * How the assigned number stands with Twilio. `managed` = it is in the Twilio account (bought or
+   * synced, so this backend can set its webhooks); null or omitted = registered by hand, and whether
+   * Twilio sends its calls to the agent is something only the console can show.
+   */
+  number?: { managed: boolean; webhookState: "unknown" | "ok" | "stale" | "error"; webhookError?: string | null } | null;
+  /** Whether this server holds Twilio credentials at all. Without them nothing here can be checked. */
+  twilioConfigured?: boolean;
 }
 
-export function evaluateReadiness({ profile, agentNumber, settings }: ReadinessInput): Readiness {
+export function evaluateReadiness({ profile, agentNumber, settings, number, twilioConfigured }: ReadinessInput): Readiness {
   const published = settings.published;
 
   let matches = false;
@@ -83,6 +92,8 @@ export function evaluateReadiness({ profile, agentNumber, settings }: ReadinessI
       label: "Published settings work with that number",
       ...(matchDetail ? { detail: matchDetail } : {}),
     },
+    // Only once there is a number to have webhooks: without one, "number_assigned" already says it all.
+    ...(agentNumber ? [webhooksItem(number ?? null, Boolean(twilioConfigured))] : []),
     {
       id: "contact_number",
       ok: contact,
@@ -92,4 +103,31 @@ export function evaluateReadiness({ profile, agentNumber, settings }: ReadinessI
   ];
 
   return { ready: items.every((item) => item.ok || !item.required), items };
+}
+
+// Does Twilio send this number's calls to the receptionist? Required only when this server can both
+// know and fix the answer: a number in the Twilio account, on a server with Twilio credentials. A
+// hand-registered number, or a server with no credentials, gets the same line as advice — refusing Go
+// live over something nobody here can check would just be a locked door.
+function webhooksItem(
+  number: NonNullable<ReadinessInput["number"]> | null,
+  twilioConfigured: boolean,
+): ReadinessItem {
+  const ok = number?.webhookState === "ok";
+  const required = Boolean(number?.managed && twilioConfigured);
+  // Read by the customer on their Business page as well as by the admin, so the words are theirs:
+  // what happens to a call, and who does the fixing.
+  let detail: string | undefined;
+  if (!ok) {
+    if (!number?.managed) detail = "The number was registered by hand — its webhooks are confirmed in the Twilio console.";
+    else if (!twilioConfigured) detail = "Twilio isn't set up on this server, so this can't be checked.";
+    else detail = number.webhookError || "Its webhooks need configuring — an administrator does this on the Agent numbers page.";
+  }
+  return {
+    id: "webhooks_configured",
+    ok,
+    required,
+    label: "Calls to the number reach the receptionist",
+    ...(detail ? { detail } : {}),
+  };
 }
