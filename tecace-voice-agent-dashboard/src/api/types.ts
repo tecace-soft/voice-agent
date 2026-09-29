@@ -196,6 +196,12 @@ export interface PollerHeartbeat {
 
 // A phone number the voice agent answers, and who it belongs to. `userId` null = registered but
 // unassigned; the agent answers such a call neutrally rather than guessing whose business it is.
+//
+// The Twilio half: `twilioSid` null = registered by hand and not (yet) matched to the Twilio account,
+// so nothing about its webhooks can be known from here. `webhookState` is the last comparison of what
+// Twilio has against what the backend wants (transcribe-backend `twilio/webhooks.ts`).
+export type WebhookState = "unknown" | "ok" | "stale" | "error";
+
 export interface AgentNumber {
   id: string;
   phoneE164: string;
@@ -205,33 +211,53 @@ export interface AgentNumber {
   userName: string | null;
   createdAt: string;
   updatedAt: string;
-}
-
-// A number on our Twilio account (GET /business/numbers/twilio). `status` is where its calls go
-// relative to the voice agent; `registered` is its row in the Agent numbers list, if it has one.
-export type TwilioAgentStatus = "connected" | "not_connected" | "elsewhere";
-
-export interface TwilioNumber {
-  sid: string;
-  phoneE164: string;
-  friendlyName: string;
+  twilioSid: string | null;
+  numberType: "local" | "tollfree" | null;
+  capabilities: { voice: boolean; sms: boolean; mms: boolean } | null;
   voiceUrl: string | null;
-  status: TwilioAgentStatus;
-  registered: {
-    id: string;
-    label: string | null;
-    userId: string | null;
-    userName: string | null;
-    userEmail: string | null;
-  } | null;
+  voiceFallbackUrl: string | null;
+  statusCallbackUrl: string | null;
+  smsUrl: string | null;
+  webhookState: WebhookState;
+  webhookError: string | null;
+  webhooksCheckedAt: string | null;
+  syncedAt: string | null;
+  purchasedAt: string | null;
+  releasedAt: string | null;
 }
 
-export interface TwilioNumbersResponse {
-  /** False when Twilio isn't set up on the backend; `numbers` is then empty. */
+/** A number Twilio sells, from `GET /business/numbers/available`. */
+export interface AvailableNumber {
+  phoneNumber: string;
+  friendlyName: string;
+  locality: string | null;
+  region: string | null;
+  postalCode: string | null;
+  capabilities: { voice: boolean; sms: boolean; mms: boolean };
+  type: "local" | "tollfree";
+}
+
+/**
+ * Where the backend points every managed number. `twilio` = it has credentials (enough to sync);
+ * `webhooks` = it has the two origins the URLs are built from (needed to buy, configure, assign);
+ * `configured` = both.
+ */
+export interface NumberWebhooks {
   configured: boolean;
-  /** The agent's incoming-call URL, or null when AGENT_PUBLIC_URL isn't set on the backend. */
-  agentUrl: string | null;
-  numbers: TwilioNumber[];
+  twilio: boolean;
+  webhooks: boolean;
+  voiceUrl?: string;
+  voiceFallbackUrl?: string;
+  statusCallback?: string;
+}
+
+export interface NumberSync {
+  numbers: AgentNumber[];
+  added: number;
+  updated: number;
+  /** Registered here but not in the Twilio account. */
+  missing: string[];
+  twilioCount: number;
 }
 
 // What a customer told us about their business, and what the agent says because of it.

@@ -271,6 +271,28 @@ from its Accounts page.
 - **transcribe-dashboard-app**: `VITE_BACKEND_URL` → this backend's URL. Add its origin to
   `CORS_ORIGIN` here.
 
+## Agent numbers and Twilio
+
+The dashboard's Agent numbers page manages the phone lines the receptionist answers on. With
+`TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` set (the same account openai-agent-app dials with), it also
+talks to Twilio — through `src/twilio/`, a small fetch client, no SDK:
+
+- **Sync** brings the account's numbers into `agent_numbers`; a number registered by hand picks up its
+  SID by phone number. Each row records whether Twilio's webhooks are the ones this server wants
+  (`webhookState`: `ok`, `stale`, `error`, or `unknown` for a hand-registered number).
+- **Buy** (local or toll-free, by area code) sets the webhooks in the purchase itself; **Configure**
+  rewrites them; **Release** gives the number back. Every managed number points a ringing call at the
+  phone agent (`AGENT_PUBLIC_URL/incoming`, `/incoming-fallback`) and its status callback at this backend
+  (`PUBLIC_BACKEND_URL/twilio/voice-status`) — so `PUBLIC_BACKEND_URL` is required, and must be the
+  origin Twilio actually calls.
+- Assigning a number (from the Numbers page or an account's Go live checklist) configures it too. Go live
+  requires `webhooks_configured` for a number in the Twilio account.
+
+Without credentials, those routes answer 409 `twilio_not_configured` and everything else keeps working.
+First deploy: set the env, Sync once, then Configure the number that was set up in the console by hand
+(this adds the status callback and leaves its voice URL as it was). Design and the next phases:
+`../docs/superpowers/specs/2026-09-28-twilio-numbers-forwarding-design.md`.
+
 ## Database
 
 `voicemail_runs` is independent of the main backend's `intakes`. Point `DATABASE_URL` at a fresh

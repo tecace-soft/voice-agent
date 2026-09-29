@@ -144,8 +144,15 @@ Run all three after any styling change:
   open with it (details, code, the build screen, landing signed in), the sign-in page's Forgot
   password / sign-up links only when the backend has email, and an invite link that takes its token
   out of the address bar and signs in. `public_page.py` covers the demo page's Request setup.
+- `python scripts/regression/numbers_twilio.py` — the Agent numbers page against Twilio (faked): sync,
+  the Type and Webhooks columns, Configure, the Buy card (kind, area code, search, buy with a request
+  id), Release by typing the number back, un-assign; then the Accounts Go live checklist assigning a
+  number from the pool, with Go live opening once the checklist re-reads.
 
-Run the Python scripts one at a time — they share ports.
+Run the Python scripts one at a time — they share ports. The six browser scripts serve the build from
+Python's `http.server` with the MIME types stated explicitly: left to the OS, a Windows registry that
+maps `.js` to `text/plain` makes Edge refuse every module script, and every check fails on an empty
+page with no error to explain it.
 
 ## Hard rules (from the skill)
 - Brand blue **#116DFF** only — never `#3366FF` or `#2AA25F`.

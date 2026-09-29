@@ -110,6 +110,7 @@ export function DemoSettings(props: Props) {
     loadPreview: operator
       ? async () => readJson<SessionPreview>(await demoFetch(`/customers/${props.customerId}/session-preview`))
       : undefined,
+    onOpenSection: props.onSection,
   });
 
   return (

@@ -58,7 +58,8 @@ const openaiApiKey = process.env.OPENAI_API_KEY?.trim() || undefined;
 // `src/demo/researchRunner.ts`); an unset or unrecognised value lands on it, and "cli" or
 // "anthropic" is answered with an error naming the branch rather than silently ignored.
 const researchProvider = process.env.RESEARCH_PROVIDER?.trim().toLowerCase() ?? "";
-const researchOpenaiModel = process.env.RESEARCH_OPENAI_MODEL?.trim() || "gpt-5.6-terra";
+// The cheaper model by default: research and the post-call review are analysis, not a live call.
+const researchOpenaiModel = process.env.RESEARCH_OPENAI_MODEL?.trim() || "gpt-5.6-luna";
 // How much of the web the search tool reads back: low | medium | high. Anything else is medium,
 // which is the promo's default and what a research run is tuned for.
 const researchSearchContext = process.env.RESEARCH_SEARCH_CONTEXT?.trim().toLowerCase() ?? "";
@@ -175,17 +176,34 @@ if (!Number.isFinite(signupResearchDailyCap) || signupResearchDailyCap < 0) {
   throw new Error("SIGNUP_RESEARCH_DAILY_CAP must be a non-negative number.");
 }
 
-// Twilio: listing the numbers we own and pointing one at the voice agent (src/twilio/numbers.ts).
-// A restricted API key (phone numbers read + write) is preferred; the account's auth token is the
-// fallback. All optional — unset, the Agent numbers page says Twilio isn't connected, and numbers
-// can still be typed in by hand.
+// Twilio (src/twilio): the account the agent's phone numbers live in — the same one openai-agent-app
+// dials with. Optional in the same way as OPENAI_API_KEY: with no credentials every number route that
+// would talk to Twilio answers 409 twilio_not_configured, and registering numbers by hand, assigning them
+// and going live all keep working. Two origins go onto every managed number: a ringing call goes to the
+// phone agent (AGENT_PUBLIC_URL/incoming — it answers TwiML in milliseconds, this backend on Vercel might
+// not), and what happens after the call (status callbacks, later texts) comes here, built from
+// PUBLIC_BACKEND_URL, which is also the URL Twilio's signature is checked against. Never the request's Host.
 const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID?.trim() ?? "";
-const twilioApiKeySid = process.env.TWILIO_API_KEY_SID?.trim() ?? "";
-const twilioApiKeySecret = process.env.TWILIO_API_KEY_SECRET?.trim() ?? "";
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN?.trim() ?? "";
-// The voice agent's public origin (openai-agent-app). "Connect" sets a number's voice URL to
-// <this>/incoming and its fallback to <this>/incoming-fallback.
-const agentPublicUrl = (process.env.AGENT_PUBLIC_URL ?? "").trim().replace(/\/+$/, "");
+const agentPublicUrl = (process.env.AGENT_PUBLIC_URL ?? "").trim().replace(/\/$/, "");
+// How long a forwarding test lets the business's own line ring before giving up. Must be longer than the
+// carrier's no-answer forwarding delay (20–30s is typical), or every customer who forwards only missed
+// calls reads as "not forwarded".
+const forwardingTestTimeoutSeconds = Number(process.env.FORWARDING_TEST_TIMEOUT_SECONDS ?? 40);
+if (!Number.isInteger(forwardingTestTimeoutSeconds) || forwardingTestTimeoutSeconds < 10 || forwardingTestTimeoutSeconds > 120) {
+  throw new Error("FORWARDING_TEST_TIMEOUT_SECONDS must be a whole number of seconds between 10 and 120.");
+}
+const twilio = {
+  accountSid: twilioAccountSid,
+  authToken: twilioAuthToken,
+  enabled: Boolean(twilioAccountSid && twilioAuthToken),
+  // Off only for a local curl at /twilio/*; with it off those routes trust anyone who can reach them.
+  validateSignature: (process.env.TWILIO_VALIDATE_SIGNATURE ?? "").trim().toLowerCase() !== "false",
+  agentPublicUrl,
+  forwardingTestTimeoutSeconds,
+  // Phase 3: a Messaging Service to send texts through instead of the business's own number.
+  messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID?.trim() ?? "",
+};
 
 export const env = {
   nodeEnv,
@@ -202,7 +220,7 @@ export const env = {
   openaiBaseUrl: (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, ""),
   openaiLiveModel: process.env.OPENAI_LIVE_MODEL || "gpt-live-1",
   openaiBackendModel: process.env.OPENAI_BACKEND_MODEL || "gpt-5.6-terra",
-  callReviewModel: process.env.CALL_REVIEW_MODEL || "gpt-5.6-terra",
+  callReviewModel: process.env.CALL_REVIEW_MODEL || "gpt-5.6-luna",
   researchProvider,
   researchOpenaiModel,
   researchSearchContext,
@@ -239,13 +257,7 @@ export const env = {
   // Who hears about a new sign-up or setup request. Unset = nobody is emailed; the badge still shows.
   adminNotifyEmail: process.env.ADMIN_NOTIFY_EMAIL?.trim() ?? "",
   signupResearchDailyCap,
-  twilioAccountSid,
-  twilioApiKeySid,
-  twilioApiKeySecret,
-  twilioAuthToken,
-  // Only tests point this elsewhere.
-  twilioApiBase: (process.env.TWILIO_API_BASE || "https://api.twilio.com").replace(/\/+$/, ""),
-  agentPublicUrl,
+  twilio,
 } as const;
 
 export type Env = typeof env;

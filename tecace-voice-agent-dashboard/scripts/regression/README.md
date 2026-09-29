@@ -271,6 +271,31 @@ the page view has been tracked.
 It stops short of a real call — the fake answers with an SDP no browser can complete, which is as
 far as this can go without OpenAI.
 
+## `numbers_twilio.py` — the agent's numbers against Twilio
+
+The Numbers page and the Accounts Go live panel, with Twilio faked by `fake_backend.py`'s
+`numbers_route` (stateful for the run: buying appends, assigning moves, configuring and releasing change
+the row). The fixtures are three numbers: Sam's, bought and configured; one in the pool whose webhooks
+Twilio has drifted on (`stale`), and one registered by hand before Twilio was wired up (no SID).
+
+What it asserts, at the wire: Sync posts `/business/numbers/sync` and names the number Twilio doesn't
+have; the Webhooks column reads Configured / Out of date / Registered by hand, and only a managed number
+offers Release while a hand-registered one offers Delete; Configure posts `/:id/configure` and the row
+turns Configured; the Buy card searches `/business/numbers/available?type=…`, lists what Twilio sells
+and buys the exact number picked with a `requestId`; Release wants the number typed back and posts it as
+`confirm`; un-assigning posts `userId: null`. Then, on Accounts, an account being set up with no number
+gets an "Assign a number" group in its Go live checklist — the pool without the released number, and a
+"Buy a new number" button — and assigning from it posts `/business/numbers/:id/assign` for that account,
+after which the checklist shows the number, the webhook item, and Go live opens.
+
+## Serving the build: MIME types are stated, not asked for
+
+The browser scripts serve their build from Python's `http.server`, which asks the OS for MIME types. A
+Windows machine whose registry maps `.js` to `text/plain` (it happens) makes Edge refuse every module
+script — the app never renders, every check fails, and nothing on the page says why. The embedded
+servers therefore set `extensions_map` for `.js`, `.css`, `.html`, `.svg`, `.png`, `.mp4` and `.json`
+themselves. `compare.py` serves with `vite preview` and was never affected.
+
 ## A local `.env` with `BACKEND_URL` breaks every script
 
 `vite.config.ts` prefers `BACKEND_URL` over `VITE_BACKEND_URL`, and reads it from `.env` as well as

@@ -38,7 +38,10 @@ const PATHS: Record<ViewId, string> = {
   demoProspects: "demos/prospects",
   demoProspect: "demos/prospects/:id/:tab?",
   demoPipeline: "demos/pipeline",
+  myOverview: "my/overview",
+  myCalls: "my/calls",
   changelog: "changelog",
+  billing: "billing",
 };
 
 const DEFAULT_VIEW: ViewId = "overview";

@@ -3,6 +3,7 @@ import type { ProspectTab, SectionId } from "../routing";
 import { DemosGate } from "./DemosGate";
 import { OverviewScreen } from "./screens/OverviewScreen";
 import { PipelineScreen } from "./screens/PipelineScreen";
+import { MyReceptionistScreen } from "./screens/MyReceptionistScreen";
 import { ProspectScreen } from "./screens/ProspectScreen";
 import { ProspectsScreen } from "./screens/ProspectsScreen";
 import { isPromoId } from "./routes";
@@ -37,7 +38,9 @@ export function DemosView({
   if (!operator) {
     return (
       <DemosGate>
-        {id && isPromoId(id) ? (
+        {id && isPromoId(id) && (view === "myOverview" || view === "myCalls") ? (
+          <MyReceptionistScreen key={`${view}-${id}`} id={id} page={view === "myCalls" ? "calls" : "overview"} />
+        ) : id && isPromoId(id) ? (
           <ProspectScreen
             key={id}
             id={id}

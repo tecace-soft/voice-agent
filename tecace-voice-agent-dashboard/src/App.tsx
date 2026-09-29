@@ -12,6 +12,7 @@ import { AccountsPage } from "./pages/AccountsPage";
 import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AllFeedbackPage } from "./pages/AllFeedbackPage";
+import { BillingPage } from "./pages/BillingPage";
 import { ChangelogPage } from "./pages/ChangelogPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { FailuresPage } from "./pages/FailuresPage";
@@ -57,11 +58,15 @@ const STANDALONE_VIEWS = new Set<ViewId>([
   "demoProspect",
   "demoPipeline",
   "changelog",
+  "billing",
 ]);
 
 // Overview and Daily activity fetch per person when an admin is looking at everyone, so they don't
 // wait on (or fail with) the shared all-mailboxes stats call either.
 const perPersonViews = new Set<ViewId>(["overview", "activity", "analytics"]);
+
+// What a demo-stage account can open; anything else lands on its Overview.
+const DEMO_OWNER_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>(["myOverview", "myCalls", "demoProspect", "changelog", "billing"]);
 
 const VIEW_TITLES: Record<ViewId, string> = {
   overview: "Overview",
@@ -81,7 +86,10 @@ const VIEW_TITLES: Record<ViewId, string> = {
   demoProspects: "Customers",
   demoProspect: "Detail",
   demoPipeline: "CRM",
+  myOverview: "Overview",
+  myCalls: "Call activity",
   changelog: "Changelog",
+  billing: "Billing",
 };
 
 // One fetch of GET /transcribe/stats, shared by every view, with a manual refresh that keeps the
@@ -153,8 +161,8 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // screen or a permission error. The backend refuses the rest for that account regardless
   // (`auth/guard.ts`), which is what makes this a tidy front end rather than the protection.
   const demoOnly = user.status === "demo";
-  // …except the changelog, which is every account's.
-  const view = demoOnly && routeView !== "changelog" ? "demoProspect" : routeView;
+  // …except the changelog and billing, which are every account's.
+  const view = demoOnly && !DEMO_OWNER_VIEWS.has(routeView) ? "myOverview" : routeView;
   const isDemoView = DEMO_VIEWS.has(view);
   const routeId = demoOnly ? (user.businessId ?? undefined) : routeRecordId;
   const mailbox: MailboxScope = isAdmin ? routeMailbox : undefined;
@@ -165,12 +173,14 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // Which tab of a prospect's page is open, in the URL for the same reasons. Choosing a tab closes
   // the section, so the address never names a Settings section while Activity is on screen.
   const setTab = useCallback((next: ProspectTab) => navigate({ tab: next, section: undefined }), [navigate]);
-  // A demo-stage customer's address says where they are: their own page. Without this a typed
-  // `#/overview` (or another prospect's id) stayed in the bar, and a section they opened never
-  // reached it, so a refresh lost it.
+  // A demo-stage customer's address says where they are. Without this a typed `#/overview` (or
+  // another prospect's id) stayed in the bar, and a section they opened never reached it, so a
+  // refresh lost it. A view that isn't theirs becomes their Overview; their settings page always
+  // carries their own record id.
   useEffect(() => {
-    if (!demoOnly || routeView === "changelog" || !user.businessId) return;
-    if (routeView !== "demoProspect" || routeRecordId !== user.businessId) {
+    if (!demoOnly) return;
+    if (!DEMO_OWNER_VIEWS.has(routeView)) navigate({ view: "myOverview" }, { replace: true });
+    else if (routeView === "demoProspect" && user.businessId && routeRecordId !== user.businessId) {
       navigate({ view: "demoProspect", id: user.businessId }, { replace: true });
     }
   }, [demoOnly, routeView, routeRecordId, user.businessId, navigate]);
@@ -254,9 +264,8 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   const showMailbox = isAdmin && mailbox === undefined;
 
   const openView = (id: ViewId) => {
-    // For a demo-stage account there is one destination, and it needs the record id in the path —
-    // besides the changelog, which the sidebar's version line opens for every account.
-    if (demoOnly && id !== "changelog") navigate({ view: "demoProspect", id: user.businessId ?? undefined });
+    // For a demo-stage account there is one destination, and it needs the record id in the path.
+    if (demoOnly && id === "demoProspect") navigate({ view: "demoProspect", id: user.businessId ?? undefined });
     else navigate({ view: id });
     if (window.innerWidth < 900) closeNav();
   };
@@ -297,12 +306,12 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           {studio && <div className="topbar-slot tw" ref={setSlotMain} />}
           {!studio && (
           <nav className="crumbs ta-label-1" aria-label="Breadcrumb">
-            <span className="muted">{isDemoView ? "Demo" : "Transcribe"}</span>
+            <span className="muted">{demoOnly ? "My receptionist" : isDemoView ? "Demo" : "Transcribe"}</span>
             <span className="muted" aria-hidden="true">
               /
             </span>
             <span className="crumb-current">
-              {demoOnly && view !== "changelog" ? "My receptionist" : VIEW_TITLES[view]}
+              {demoOnly && view === "demoProspect" ? "Settings" : VIEW_TITLES[view]}
             </span>
           </nav>
           )}
@@ -396,6 +405,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             ))}
           {view === "feedback" && <FeedbackPage />}
           {view === "changelog" && <ChangelogPage isAdmin={isAdmin} />}
+          {view === "billing" && <BillingPage />}
           {view === "allFeedback" &&
             (isAdmin ? (
               <AllFeedbackPage onCountChange={setOpenFeedback} />

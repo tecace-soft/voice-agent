@@ -1,10 +1,13 @@
-import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
+  assignAgentNumber,
+  buyAgentNumber,
   createAccount,
   getReadiness,
   goLiveAccount,
   inviteAccount,
   listAccounts,
+  listAgentNumbers,
   promoteAccount,
   removeAccount,
   resetAccountPassword,
@@ -14,7 +17,7 @@ import {
   setAccountStatus,
   type Readiness,
 } from "../api/backend";
-import { ACCOUNT_STATUS_LABEL, type AccountStatus, type AuthUser, type Role } from "../api/types";
+import { ACCOUNT_STATUS_LABEL, type AccountStatus, type AgentNumber, type AuthUser, type Role } from "../api/types";
 import { demoFetch } from "../demos/api";
 import { readJson } from "../demos/lib/http";
 import { accountErrorMessage } from "../auth";
@@ -28,7 +31,7 @@ import {
   IconTrash,
   IconUsers,
 } from "../icons";
-import { formatDateTime } from "../lib";
+import { formatDateTime, formatPhone } from "../lib";
 
 // Who can sign in to the dashboard, and what each of them may do. Admins only — the sidebar hides
 // this page from a `user`, and the backend refuses their requests regardless.
@@ -144,6 +147,11 @@ const STAGES: AccountStatus[] = ["unassigned", "demo", "pre-production"];
  * The Go live checklist for an account being set up (`GET /business/readiness?userId=`), and the
  * button that switches its line on. Read when the panel opens and again after a refused Go live,
  * so what it shows is what the backend just checked.
+ *
+ * The number is the one item the admin can tick from here: while it is missing, the checklist offers
+ * a number from the pool or a new one from Twilio, assigned to this account in the same step. Going
+ * live is where a business gets its number, so that is where the control is — not on a page the
+ * admin has to remember to visit first.
  */
 function GoLive({
   user,
@@ -165,6 +173,8 @@ function GoLive({
       .catch(() => setFailed(true));
   }, [user.id]);
   useEffect(load, [load]);
+
+  const needsNumber = readiness?.items.some((item) => item.id === "number_assigned" && !item.ok) ?? false;
 
   return (
     <div className="lifecycle-note readiness" aria-label="Go live checklist">
@@ -190,6 +200,7 @@ function GoLive({
           ))}
         </ul>
       )}
+      {needsNumber && <AssignNumber user={user} busy={busy} onDone={load} />}
       <div className="inline-form-actions">
         <button
           type="button"
@@ -201,6 +212,141 @@ function GoLive({
           Go live
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Give this account a number: one already in the pool (registered or bought, unassigned), or a new one
+ * bought from Twilio right now. Either way the backend writes the number's webhooks as part of it, so
+ * the next item on the checklist — Twilio sends calls to the receptionist — ticks in the same move.
+ */
+function AssignNumber({ user, busy, onDone }: { user: AuthUser; busy: boolean; onDone: () => void }) {
+  const [pool, setPool] = useState<AgentNumber[] | null>(null);
+  const [picked, setPicked] = useState("");
+  const [buying, setBuying] = useState(false);
+  const [kind, setKind] = useState<"local" | "tollfree">("tollfree");
+  const [areaCode, setAreaCode] = useState("");
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // One id per purchase intent (see BuyCard on the Numbers page): a retried click finds the number the
+  // first attempt bought and assigned, instead of buying another.
+  const requestId = useRef(crypto.randomUUID());
+
+  // Re-read after every attempt, not only the first paint: a refusal such as "already has a number"
+  // or "that number was released" means the pool on screen is no longer the pool.
+  const loadPool = useCallback(() => {
+    let active = true;
+    listAgentNumbers()
+      .then((numbers) => active && setPool(numbers.filter((n) => !n.userId)))
+      .catch(() => active && setPool([]));
+    return () => {
+      active = false;
+    };
+  }, []);
+  useEffect(loadPool, [loadPool]);
+
+  async function run(fallback: string, action: () => Promise<void>) {
+    setWorking(true);
+    setError(null);
+    try {
+      await action();
+      onDone();
+    } catch (e) {
+      setError(accountErrorMessage(e, fallback));
+      loadPool();
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  const disabled = busy || working;
+
+  return (
+    <div className="inline-form lifecycle-assign" role="group" aria-label="Assign a number">
+      <label className="field">
+        <span className="field-label ta-caption-1">Number from the pool</span>
+        <select
+          aria-label="Number from the pool"
+          className="input"
+          value={picked}
+          onChange={(e) => setPicked(e.target.value)}
+          disabled={disabled || pool === null}
+        >
+          <option value="">{pool === null ? "Loading…" : pool.length ? "Choose a number" : "No unassigned numbers"}</option>
+          {(pool ?? []).map((n) => (
+            <option key={n.id} value={n.id}>
+              {formatPhone(n.phoneE164)}
+              {n.label ? ` · ${n.label}` : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="inline-form-actions">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={disabled || !picked}
+          onClick={() => void run("Couldn't assign that number.", async () => {
+            await assignAgentNumber(picked, user.id);
+          })}
+        >
+          Assign
+        </button>
+        <button type="button" className="btn" disabled={disabled} onClick={() => setBuying((open) => !open)}>
+          Buy a new number
+        </button>
+      </div>
+      {buying && (
+        <div className="inline-form lifecycle-buy" role="group" aria-label="Buy a new number">
+          <label className="field">
+            <span className="field-label ta-caption-1">Kind</span>
+            <select aria-label="Kind" className="input" value={kind} onChange={(e) => setKind(e.target.value as "local" | "tollfree")} disabled={disabled}>
+              <option value="tollfree">Toll-free (recommended)</option>
+              <option value="local">Local</option>
+            </select>
+          </label>
+          <label className="field">
+            <span className="field-label ta-caption-1">Area code (optional)</span>
+            <input
+              className="input"
+              value={areaCode}
+              onChange={(e) => setAreaCode(e.target.value.replace(/\D/g, "").slice(0, 3))}
+              placeholder={kind === "tollfree" ? "833" : "206"}
+              inputMode="numeric"
+              disabled={disabled}
+            />
+          </label>
+          <div className="inline-form-actions">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={disabled}
+              onClick={() => void run("Couldn't buy a number.", async () => {
+                await buyAgentNumber({
+                  type: kind,
+                  ...(areaCode.trim() ? { areaCode: areaCode.trim() } : {}),
+                  assignTo: user.id,
+                  requestId: requestId.current,
+                });
+                requestId.current = crypto.randomUUID();
+                setBuying(false);
+              })}
+            >
+              Buy and assign
+            </button>
+          </div>
+          <p className="ta-caption-1 muted lifecycle-note">
+            Bought from Twilio and billed monthly from now. Toll-free is recommended: texting from it later takes one
+            form, and callers never see this number — they dial the business's own, which forwards to it.
+          </p>
+        </div>
+      )}
+      {error && (
+        <p className="error ta-label-1" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

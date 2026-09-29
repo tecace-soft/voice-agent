@@ -105,9 +105,6 @@ HIDE = [
     '.sidebar-user .user-password',
     # versioning: "Version x.y.z · Changelog" under Last run opens the changelog. New by design.
     '.sidebar-version',
-    # Twilio numbers: the Agent numbers page lists the numbers on our Twilio account above the
-    # original cards. New by design; hidden so the rest of the page is still compared.
-    '.twilio-numbers',
 ]
 
 # Captures that are MEANT to differ: id -> (why, marker). The marker must appear in the new app's
@@ -146,6 +143,13 @@ EXPECTED_CHANGES = {
     "admin:accounts:light+add-user": (
         "the Accounts table gained the customer lifecycle: a Stage column and its controls",
         "Stage",
+    ),
+    # The Numbers page talks to Twilio: sync the account's numbers, see and repair each number's
+    # webhooks, buy and release. The marker is the sync button, which the original app has no
+    # equivalent of — it only ever typed numbers in by hand.
+    "admin:numbers:light": (
+        "the Numbers page gained the Twilio side: sync, webhooks, buy and release",
+        "Sync from Twilio",
     ),
 }
 
@@ -295,7 +299,9 @@ def check_ports_free() -> None:
 
 
 def build(label: str, app_dir: Path, out: Path) -> None:
-    env = {**os.environ, "VITE_BACKEND_URL": BACKEND}
+    # vite.config.ts reads BACKEND_URL first; set both, or a BACKEND_URL in the app's .env wins and
+    # the build talks to a real backend that refuses the fake tokens.
+    env = {**os.environ, "BACKEND_URL": BACKEND, "VITE_BACKEND_URL": BACKEND}
     log = OUT_DIR / f"{label}-build.log"
     print(f"  building {app_dir.name} -> {out}  (log: {log.name})")
     with open(log, "w", encoding="utf-8") as fh:

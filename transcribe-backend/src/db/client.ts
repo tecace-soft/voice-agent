@@ -145,6 +145,40 @@ export async function initDb(): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS agent_numbers_one_per_user
     ON agent_numbers (user_id) WHERE user_id IS NOT NULL
   `;
+  // What Twilio knows about each number (docs/superpowers/specs/2026-09-28-twilio-numbers-forwarding-
+  // design.md). NULL twilio_sid = registered by hand before this existed, or a number Twilio no longer
+  // has; a sync fills it in by matching phone_e164 against the account. webhook_state is the last
+  // comparison of Twilio's URLs with the ones this server wants: unknown | ok | stale | error.
+  // released_at is soft on purpose — call records point at the number by text, and the row keeps who
+  // let go of what; buying the same number again clears it.
+  await sql`
+    ALTER TABLE agent_numbers
+      ADD COLUMN IF NOT EXISTS twilio_sid          TEXT,
+      ADD COLUMN IF NOT EXISTS number_type         TEXT,
+      ADD COLUMN IF NOT EXISTS capabilities        JSONB,
+      ADD COLUMN IF NOT EXISTS voice_url           TEXT,
+      ADD COLUMN IF NOT EXISTS voice_fallback_url  TEXT,
+      ADD COLUMN IF NOT EXISTS status_callback_url TEXT,
+      ADD COLUMN IF NOT EXISTS sms_url             TEXT,
+      ADD COLUMN IF NOT EXISTS webhook_state       TEXT NOT NULL DEFAULT 'unknown',
+      ADD COLUMN IF NOT EXISTS webhook_error       TEXT,
+      ADD COLUMN IF NOT EXISTS webhooks_checked_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS synced_at           TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS purchased_at        TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS purchase_request_id TEXT,
+      ADD COLUMN IF NOT EXISTS released_at         TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS released_by         UUID REFERENCES users(id) ON DELETE SET NULL
+  `;
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS agent_numbers_twilio_sid
+    ON agent_numbers (twilio_sid) WHERE twilio_sid IS NOT NULL
+  `;
+  // A Buy that is clicked twice, or retried after a timeout, finds the row it already made instead of
+  // buying a second number.
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS agent_numbers_purchase_request
+    ON agent_numbers (purchase_request_id) WHERE purchase_request_id IS NOT NULL
+  `;
 
   // What a customer told us about their business. source_text is theirs and is the only editable
   // part; every other column is derived from it by the extractor and is safe to regenerate.
@@ -849,6 +883,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT email_verified_at, signup_source FROM users LIMIT 1`;
     await sql`SELECT research_started_at FROM signup_requests LIMIT 1`;
     await sql`SELECT 1 FROM auth_tokens LIMIT 1`;
+    await sql`SELECT twilio_sid, webhook_state, released_at FROM agent_numbers LIMIT 1`;
     const [guard] = await sql`SELECT 1 FROM pg_trigger WHERE tgname = 'demo_customers_code_guard'`;
     if (!guard) throw new Error("customer codes not converted");
     return;

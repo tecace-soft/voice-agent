@@ -28,7 +28,7 @@ export type PublicSettingsProps = {
   capabilities: PublicCapabilities;
   /** The Test & improve section: points back at the page's own call. */
   test: ReactNode;
-  /** Under the steps in Launch: the Request setup button. */
+  /** In Launch instructions' Next step card: the Request setup button. */
   launchExtra: ReactNode;
   /** Across the top: what this is, and the way to change it. */
   notice: ReactNode;
@@ -73,6 +73,7 @@ export function PublicSettings(props: PublicSettingsProps) {
     setDraft: () => {},
     test: props.test,
     launchExtra: props.launchExtra,
+    onOpenSection: setSection,
   });
 
   return (

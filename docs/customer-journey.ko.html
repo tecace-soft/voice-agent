@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Published copy: https://claude.ai/artifact/3eiJvCTMR9XUYtaGDEjEaE -->
+<title>Voice Agent 고객 여정</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600&family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F6F8FB; --surface:#FFFFFF; --ink:#131A2A; --muted:#5A6478; --line:#D8DEE9;
+  --brand:#116DFF; --cust:#116DFF; --adm:#0E8A7E; --be:#4B5563; --gate:#E8590C;
+  --ok:#15803D; --warn:#B45309; --bad:#DC2626;
+  --display:"Poppins","Pretendard","Noto Sans KR",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --sans:"Pretendard","Noto Sans KR",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0E1219; --surface:#151B26; --ink:#E6EAF2; --muted:#9AA5B9; --line:#283246;
+    --brand:#4C8DFF; --cust:#4C8DFF; --adm:#2EB8A8; --be:#A3AEC2; --gate:#FF8A3D;
+    --ok:#4ADE80; --warn:#FBBF24; --bad:#F87171;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0E1219; --surface:#151B26; --ink:#E6EAF2; --muted:#9AA5B9; --line:#283246;
+  --brand:#4C8DFF; --cust:#4C8DFF; --adm:#2EB8A8; --be:#A3AEC2; --gate:#FF8A3D;
+  --ok:#4ADE80; --warn:#FBBF24; --bad:#F87171;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 var(--sans);padding-inline:16px;padding-block:32px 64px}
+.wrap{max-width:1380px;margin:0 auto;display:flex;flex-direction:column;gap:56px}
+.text{max-width:760px}
+header{display:flex;flex-direction:column;gap:10px}
+.eyebrow{font:500 12px var(--mono);letter-spacing:.04em;color:var(--muted);text-transform:uppercase}
+h1{font:600 clamp(28px,4vw,40px)/1.15 var(--display);margin:0;text-wrap:balance}
+h2{font:600 22px/1.25 var(--display);margin:0 0 6px;text-wrap:balance}
+h3{font:600 15px/1.3 var(--display);margin:0}
+p{margin:0}
+.lede{font-size:17px;color:var(--muted);max-width:720px}
+section{display:flex;flex-direction:column;gap:18px}
+code,.mono{font-family:var(--mono);font-size:.86em}
+code{background:color-mix(in srgb,var(--line) 55%,transparent);padding:1px 5px;border-radius:4px}
+figure{margin:0;display:flex;flex-direction:column;gap:12px}
+.scroll{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.scroll svg{display:block;height:auto}
+figcaption{color:var(--muted);font-size:14px;max-width:760px}
+.hint{display:none;font-size:12px;color:var(--muted)}
+@media (max-width:900px){.hint{display:block}}
+.legend{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.sw{width:14px;height:14px;border-radius:4px;display:inline-block;border:1.5px solid}
+.ln-g{width:26px;height:0;border-top:2px solid var(--gate);display:inline-block}
+.ln-a{width:26px;height:0;border-top:1.5px solid var(--muted);display:inline-block}
+
+/* SVG parts, styled from the page tokens so both themes work */
+.lane-c{fill:var(--cust);fill-opacity:.06}
+.lane-a{fill:var(--adm);fill-opacity:.07}
+.lane-b{fill:var(--be);fill-opacity:.07}
+.lname{font:600 15px var(--display)}
+.lname.c{fill:var(--cust)} .lname.a{fill:var(--adm)} .lname.b{fill:var(--be)}
+.lsub{font:400 11px var(--sans);fill:var(--muted)}
+.ph rect{fill:var(--surface);stroke:var(--line)}
+.pt{font:600 14px var(--display);fill:var(--ink)}
+.ps{font:400 10.5px var(--mono);fill:var(--muted)}
+.sep{stroke:var(--line);stroke-dasharray:4 4}
+.box rect{fill:var(--surface);stroke-width:1.2}
+.box.c rect{stroke:var(--cust);stroke-opacity:.55}
+.box.a rect{stroke:var(--adm);stroke-opacity:.6}
+.box.b rect{stroke:var(--be);stroke-opacity:.55}
+.box.n rect{stroke:var(--line)}
+.box.okb rect{stroke:var(--ok);stroke-width:1.6}
+.box.dash rect{stroke-dasharray:5 4}
+.bt{font:600 12.5px var(--sans);fill:var(--ink)}
+.bs{font:400 11px var(--sans);fill:var(--muted)}
+.bm{font:500 11px var(--mono);fill:var(--ink)}
+.arr{fill:none;stroke:var(--muted);stroke-width:1.4}
+.arr.d{stroke-dasharray:5 4}
+.gate{fill:none;stroke:var(--gate);stroke-width:2}
+.ah{fill:var(--muted)} .ahg{fill:var(--gate)}
+.dot{fill:var(--muted)}
+.lbl{font:500 10.5px var(--sans);fill:var(--muted);paint-order:stroke;stroke:var(--surface);stroke-width:5px;stroke-linejoin:round}
+.lbl.g{fill:var(--gate);font-weight:600}
+.s-ok{fill:var(--ok)} .s-warn{fill:var(--warn)} .s-bad{fill:var(--bad)}
+.st-ok{font:600 11px var(--sans);fill:var(--ok)}
+.st-warn{font:600 11px var(--sans);fill:var(--warn)}
+.st-bad{font:600 11px var(--sans);fill:var(--bad)}
+.panel{fill:var(--be);fill-opacity:.06;stroke:var(--be);stroke-opacity:.35}
+.ptitle{font:600 13px var(--display);fill:var(--be)}
+
+/* tables */
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:680px;font-size:14px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font:600 12px var(--sans);letter-spacing:.03em;color:var(--muted);text-transform:uppercase;background:color-mix(in srgb,var(--line) 30%,transparent)}
+td:first-child{font-weight:600}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.pill.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 12%,transparent)}
+.pill.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.pill.bad{color:var(--bad);background:color-mix(in srgb,var(--bad) 12%,transparent)}
+.pill.sim{color:var(--muted);background:color-mix(in srgb,var(--muted) 12%,transparent)}
+.note{display:block;color:var(--muted);font-size:12.5px;font-weight:400;margin-top:4px}
+
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:10px}
+.card ul,.card ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.card li::marker{color:var(--muted)}
+.req{color:var(--muted);font-size:12.5px}
+.open{display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none}
+.open li{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 18px;display:grid;grid-template-columns:auto 1fr;gap:4px 14px;align-items:start}
+.open li .pill{grid-row:span 2}
+.open b{font-weight:600}
+.open span.d{color:var(--muted);font-size:14px}
+footer{color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:18px}
+a{color:var(--brand)}
+a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+/* v2: overview, system map, feature list, glossary */
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.lang{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;font-size:13px;background:var(--surface)}
+.lang a,.lang span{padding:4px 12px;text-decoration:none;color:var(--muted)}
+.lang span{background:var(--brand);color:#fff;font-weight:600}
+.toc{display:flex;flex-wrap:wrap;gap:8px}
+.toc a{font-size:13px;text-decoration:none;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px 12px}
+.toc a:hover{border-color:var(--brand);color:var(--brand)}
+section[id]{scroll-margin-top:16px}
+.who{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.who .card{border-top:3px solid var(--line)}
+.who .card.c{border-top-color:var(--cust)} .who .card.a{border-top-color:var(--adm)} .who .card.n{border-top-color:var(--be)}
+.who p{color:var(--muted);font-size:14px}
+.promise{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:0;padding:0;list-style:none}
+.promise li{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.promise b{font:600 15px var(--display)}
+.promise span{color:var(--muted);font-size:13.5px}
+.feats{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px;align-items:start}
+.feats .card{gap:4px}
+.feats .card > p{color:var(--muted);font-size:13.5px;margin-bottom:6px}
+.sub{font:600 11.5px var(--sans);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-top:10px}
+.feat{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:9px 0;border-top:1px solid var(--line)}
+.feat b{font-weight:600;font-size:14.5px}
+.feat .d{grid-column:1;color:var(--muted);font-size:13.5px;line-height:1.5}
+.feat .pill{grid-column:2;grid-row:1;align-self:start}
+.terms{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0 28px;margin:0}
+.terms div{padding:12px 0;border-top:1px solid var(--line)}
+.terms dt{font-weight:600}
+.terms dd{margin:2px 0 0;color:var(--muted);font-size:14px}
+.pill.blue{color:var(--brand);background:color-mix(in srgb,var(--brand) 12%,transparent)}
+.ext rect{fill:var(--surface);stroke:var(--line);stroke-dasharray:4 3}
+.hub{fill:var(--be);fill-opacity:.07;stroke:var(--be);stroke-opacity:.5}
+.db rect{fill:var(--surface);stroke:var(--be);stroke-opacity:.5}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header>
+  <div class="topbar">
+    <div class="eyebrow">TecAce Voice Agent · 2026-09-28 기준 · v0.0.9</div>
+    <div class="lang" aria-label="언어"><a href="https://claude.ai/artifact/DM1JiVC95iN2HZoukLWxoS">English</a><span>한국어</span></div>
+  </div>
+  <h1>고객 여정: 데모에서 실제 전화 응대까지</h1>
+  <p class="lede">이 제품이 무엇인지, 구성 요소가 어떻게 연결되는지, 어떤 기능이 있는지, 그리고 업체가 첫 데모부터 실제 전화를 받는 어시스턴트까지 어떻게 가는지 정리했습니다. 프로젝트를 처음 보는 사람도 따라올 수 있게 썼습니다.</p>
+  <nav class="toc" aria-label="목차">
+    <a href="#overview">1분 요약</a>
+    <a href="#system">시스템 구조</a>
+    <a href="#features">전체 기능</a>
+    <a href="#journey">고객 여정</a>
+    <a href="#gates">두 개의 게이트</a>
+    <a href="#call">실제 통화</a>
+    <a href="#where">어디서 되는지</a>
+    <a href="#open">남은 일</a>
+    <a href="#terms">용어집</a>
+  </nav>
+</header>
+
+<!-- ============ 0a. OVERVIEW ============ -->
+<section id="overview">
+  <div class="text">
+    <h2>1분 요약</h2>
+    <p>Voice Agent는 소규모 업체를 위한 AI 전화 응대원입니다. 손님이 업체에 전화했는데 아무도 받지 않으면(업체가 원하면 모든 전화를) 우리 어시스턴트가 받습니다. 자연스러운 목소리로 말하고, 업체 정보를 알고 있으며, 사장님이 설정한 대로 통화를 처리합니다.</p>
+  </div>
+  <ul class="promise">
+    <li><b>질문에 답변</b><span>영업시간, 가격, 서비스, 위치, FAQ를 업체 프로필에서 찾아 답합니다.</span></li>
+    <li><b>예약 잡기</b><span>빈 시간을 확인하고 업체 캘린더에 직접 예약을 넣습니다.</span></li>
+    <li><b>담당자 연결</b><span>사람이 필요한 전화는 맞는 담당자에게 돌려줍니다.</span></li>
+    <li><b>메시지 받기</b><span>이름, 회신 번호, 용건을 대시보드와 Google Sheet에 남깁니다.</span></li>
+    <li><b>링크 문자 보내기</b><span>예약 페이지나 메뉴를 문자로 보냅니다. 데모에서만 되고 실제 전화는 아직입니다.</span></li>
+  </ul>
+  <div class="who">
+    <div class="card c"><h3>업체 (고객)</h3><p>전화번호의 주인입니다. 데모를 써 보고, 대시보드에서 어시스턴트를 설정해 퍼블리시하고, 자기 번호를 우리 번호로 포워딩합니다. 이후 통화와 메시지를 확인합니다.</p></div>
+    <div class="card a"><h3>TecAce 어드민</h3><p>업체를 찾아 데모를 만들고, 셋업을 승인하고, 전화번호를 배정하고, 회선을 켭니다(Go live). 사용량을 지켜봅니다.</p></div>
+    <div class="card n"><h3>발신자</h3><p>업체의 손님들입니다. 우리 제품을 볼 일은 없고, 평소처럼 업체에 전화해서 어시스턴트와 대화합니다.</p></div>
+  </div>
+</section>
+
+<!-- ============ 0b. SYSTEM ============ -->
+<section id="system">
+  <div class="text">
+    <h2>시스템 구조 한눈에 보기</h2>
+    <p>모든 데이터는 백엔드 하나에 있습니다. 전화 에이전트, 대시보드, 공개 페이지, 음성사서함 워커가 모두 이 백엔드와 통신합니다. 각 상자는 레포 안의 독립된 앱이고 각자 README가 있습니다.</p>
+  </div>
+  <figure>
+    <p class="hint">옆으로 스크롤하면 전체가 보입니다 →</p>
+    <div class="scroll">
+<svg viewBox="0 0 1120 510" width="1120" role="img" aria-label="시스템 구조: 발신자는 Twilio 번호와 전화 에이전트로 연결되고, 에이전트는 OpenAI Realtime으로 말한다. 업체와 어드민은 대시보드를, 잠재 고객은 공개 페이지를 쓴다. 모두 transcribe-backend와 Postgres에 연결된다. 백엔드는 리서치, 캘린더, 이메일에 외부 서비스를 쓰고, transcribe-app은 음성사서함을 읽어 Google Sheet에 쓴다.">
+  <defs>
+    <marker id="ah0" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+  </defs>
+  <text class="ps" x="20" y="24">사람</text>
+  <text class="ps" x="220" y="24">접점</text>
+  <text class="ps" x="470" y="24">우리 서비스</text>
+  <text class="ps" x="820" y="24">외부 서비스</text>
+
+  <!-- edges -->
+  <path class="arr" d="M160 75 H218" marker-end="url(#ah0)"/><text class="lbl" x="189" y="67" text-anchor="middle">전화</text>
+  <path class="arr" d="M410 75 H468" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="439" y="67" text-anchor="middle">음성</text>
+  <path class="arr" d="M700 75 H818" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="759" y="67" text-anchor="middle">실시간 음성</text>
+  <path class="arr" d="M585 112 V198" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="593" y="150">설정, 도구,</text><text class="lbl" x="593" y="164">통화 기록</text>
+  <path class="arr" d="M160 215 H218" marker-end="url(#ah0)"/>
+  <path class="arr" d="M160 275 H218" marker-end="url(#ah0)"/>
+  <path class="arr" d="M160 355 H218" marker-end="url(#ah0)"/>
+  <path class="arr" d="M410 240 H468" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="439" y="232" text-anchor="middle">API</text>
+  <path class="arr" d="M410 350 H468" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="439" y="342" text-anchor="middle">공개 API</text>
+  <path class="arr" d="M730 205 H818" marker-end="url(#ah0)"/><text class="lbl" x="774" y="197" text-anchor="middle">리서치</text>
+  <path class="arr" d="M730 262 H818" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="774" y="254" text-anchor="middle">빈 시간, 예약</text>
+  <path class="arr" d="M730 327 H818" marker-end="url(#ah0)"/><text class="lbl" x="774" y="319" text-anchor="middle">코드, 링크</text>
+  <path class="arr" d="M600 418 V382" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="608" y="404">실행 기록, 메시지</text>
+  <path class="arr" d="M410 450 H468" marker-end="url(#ah0)"/><text class="lbl" x="439" y="442" text-anchor="middle">읽기</text>
+  <path class="arr" d="M730 450 H818" marker-end="url(#ah0)"/><text class="lbl" x="774" y="442" text-anchor="middle">행 기록</text>
+
+  <!-- people -->
+  <g class="box n"><rect x="20" y="50" width="140" height="50" rx="8"/><text class="bt" x="32" y="72">발신자</text><text class="bs" x="32" y="88">업체에 전화</text></g>
+  <g class="box c"><rect x="20" y="190" width="140" height="50" rx="8"/><text class="bt" x="32" y="212">업체 사장님</text><text class="bs" x="32" y="228">우리 고객</text></g>
+  <g class="box a"><rect x="20" y="250" width="140" height="50" rx="8"/><text class="bt" x="32" y="272">어드민</text><text class="bs" x="32" y="288">TecAce 팀</text></g>
+  <g class="box n"><rect x="20" y="330" width="140" height="50" rx="8"/><text class="bt" x="32" y="352">잠재 고객</text><text class="bs" x="32" y="368">계정 없음</text></g>
+
+  <!-- ways in -->
+  <g class="box a"><rect x="220" y="45" width="190" height="60" rx="8"/><text class="bt" x="232" y="68">Twilio 번호</text><text class="bs" x="232" y="85">업체당 하나, 우리 소유</text></g>
+  <g class="box c"><rect x="220" y="200" width="190" height="80" rx="8"/><text class="bt" x="232" y="222">대시보드</text><text class="bm" x="232" y="240">tecace-voice-agent-</text><text class="bm" x="232" y="254">dashboard</text><text class="bs" x="232" y="271">React · Vercel</text></g>
+  <g class="box c"><rect x="220" y="320" width="190" height="60" rx="8"/><text class="bt" x="232" y="343">공개 페이지</text><text class="bs" x="232" y="360">/c/&lt;id&gt; 데모 · /start 가입</text></g>
+  <g class="box n"><rect x="220" y="420" width="190" height="60" rx="8"/><text class="bt" x="232" y="443">음성사서함 메일함</text><text class="bs" x="232" y="460">.wav 첨부 메일 (IMAP)</text></g>
+
+  <!-- our services -->
+  <g class="box b"><rect x="470" y="40" width="230" height="72" rx="8"/><text class="bt" x="484" y="63">전화 에이전트</text><text class="bm" x="484" y="81">openai-agent-app</text><text class="bs" x="484" y="99">Python · 모든 전화 응대</text></g>
+  <rect class="hub" x="470" y="200" width="260" height="182" rx="10"/>
+  <text class="bt" x="484" y="223">transcribe-backend</text>
+  <text class="bs" x="484" y="240">Bun + Elysia · Vercel · 유일한 API</text>
+  <text class="bs" x="484" y="262">· 계정, 로그인, 단계</text>
+  <text class="bs" x="484" y="278">· 업체 프로필, 통화 설정</text>
+  <text class="bs" x="484" y="294">· 데모, 리서치, CRM</text>
+  <text class="bs" x="484" y="310">· 통화, 통화 시간, 캘린더 도구</text>
+  <g class="db"><rect x="484" y="326" width="232" height="42" rx="6"/><text class="bt" x="496" y="345">Postgres (Neon)</text><text class="bs" x="496" y="360">백엔드만 접근</text></g>
+  <g class="box b"><rect x="470" y="420" width="260" height="60" rx="8"/><text class="bt" x="484" y="443">음성사서함 워커</text><text class="bs" x="484" y="460">transcribe-app · Whisper + Claude</text></g>
+
+  <!-- outside -->
+  <g class="ext"><rect x="820" y="45" width="280" height="60" rx="8"/><text class="bt" x="834" y="68">OpenAI Realtime</text><text class="bs" x="834" y="85">모든 통화의 음성 모델</text></g>
+  <g class="ext"><rect x="820" y="180" width="280" height="50" rx="8"/><text class="bt" x="834" y="201">OpenAI</text><text class="bs" x="834" y="218">웹 리서치, 앱 테스트 통화</text></g>
+  <g class="ext"><rect x="820" y="237" width="280" height="50" rx="8"/><text class="bt" x="834" y="258">업체 캘린더</text><text class="bs" x="834" y="275">Apple, Google, Outlook, Cal.com, Calendly…</text></g>
+  <g class="ext"><rect x="820" y="302" width="280" height="50" rx="8"/><text class="bt" x="834" y="323">이메일 (SMTP)</text><text class="bs" x="834" y="340">가입 코드, 로그인 링크</text></g>
+  <g class="ext"><rect x="820" y="425" width="280" height="50" rx="8"/><text class="bt" x="834" y="446">Google Sheets</text><text class="bs" x="834" y="463">업체별 음성사서함과 메시지</text></g>
+</svg>
+    </div>
+    <figcaption>레포의 예전 앱들(<code>voice-agent-app</code>, <code>backend-app</code>, <code>form-app</code>, <code>admin-dashboard-app</code>)은 초기 리드 접수 흐름입니다. <code>transcribe-dashboard-app</code>은 회귀 비교용 기준으로만 남겨 둡니다.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 0c. FEATURES ============ -->
+<section id="features">
+  <div class="text">
+    <h2>전체 기능</h2>
+    <p>누가 쓰는지로 묶었습니다. 오른쪽 표시는 실제 전화나 제품에서 지금 어떤 상태인지입니다.</p>
+  </div>
+  <div class="feats">
+    <div class="card">
+      <h3>통화 중, 발신자를 위해</h3>
+      <p>어시스턴트가 통화 중에 할 수 있는 일.</p>
+      <div class="feat"><b>질문 답변</b><span class="pill ok">운영 중</span><span class="d">업체 정보, FAQ, 지금 영업 중인지 여부.</span></div>
+      <div class="feat"><b>예약</b><span class="pill ok">운영 중</span><span class="d">연결된 캘린더에서 빈 시간을 찾고 퍼블리시된 규칙대로 예약.</span></div>
+      <div class="feat"><b>담당자 연결</b><span class="pill warn">테스트 필요</span><span class="d">업체 번호로 걸어 누구 전화인지 먼저 귓속말로 알림. 안 받으면 발신자는 어시스턴트에게 돌아옴.</span></div>
+      <div class="feat"><b>메시지 받기</b><span class="pill warn">테스트 필요</span><span class="d">이름, 회신 번호(다시 읽어 확인), 용건, 원하는 시간.</span></div>
+      <div class="feat"><b>링크 문자</b><span class="pill bad">전화 미지원</span><span class="d">예약 페이지, 메뉴, 양식을 문자로. 데모에서만 표시.</span></div>
+    </div>
+
+    <div class="card">
+      <h3>업체용, 대시보드에서</h3>
+      <p>설정 스튜디오: 왼쪽 메뉴, 가운데 섹션, 오른쪽 테스트 콘솔.</p>
+      <div class="sub">업체</div>
+      <div class="feat"><b>Business information (업체 정보)</b><span class="d">이름, 영업시간, 주소, 서비스. 리서치로 채우고 사장님이 수정.</span></div>
+      <div class="feat"><b>Agent profile (에이전트 프로필)</b><span class="d">어시스턴트 이름, 목소리, 언어, 통화음.</span></div>
+      <div class="feat"><b>FAQs (자주 묻는 질문)</b><span class="d">질문과 답변 최대 20개, 순서 지정.</span></div>
+      <div class="sub">통화</div>
+      <div class="feat"><b>Take a message (메시지)</b><span class="d">메시지 브리프: 통화 종류별로 무엇을 물을지.</span></div>
+      <div class="feat"><b>Transfer calls (전화 연결)</b><span class="d">누구에게, 언제, 어떻게: 웜 트랜스퍼, 순차 연결(waterfall), 영업시간.</span></div>
+      <div class="feat"><b>Text a link (링크 문자)</b><span class="d">어시스턴트가 보낼 수 있는 링크와 보낼 때.</span></div>
+      <div class="feat"><b>Appointments (예약)</b><span class="d">캘린더 연결; 길이, 간격, 최소 사전 시간, 예약 가능 기간, 시간대.</span></div>
+      <div class="sub">튜닝과 라이브</div>
+      <div class="feat"><b>Custom training (맞춤 학습)</b><span class="d">업체 규칙, 프롬프트 직접 수정, 전체 프롬프트 미리보기.</span></div>
+      <div class="feat"><b>Test and improve (테스트)</b><span class="pill blue">월 30분</span><span class="d">브라우저에서 초안 설정으로 어시스턴트와 통화.</span></div>
+      <div class="feat"><b>Launch instructions, Call forwarding</b><span class="d">라이브 전 남은 일; 통신사별 포워딩 코드.</span></div>
+      <div class="sub">다른 화면</div>
+      <div class="feat"><b>Answered calls (응대한 통화)</b><span class="d">모든 통화의 대화록, 발신자, 메시지.</span></div>
+      <div class="feat"><b>음성사서함 화면</b><span class="d">Overview, Analytics, Daily activity, All runs. 음성사서함 받아쓰기용.</span></div>
+      <div class="feat"><b>Feedback, Changelog</b><span class="d">피드백 보내기; 버전별 변경 사항 보기.</span></div>
+    </div>
+
+    <div class="card">
+      <h3>TecAce 어드민용</h3>
+      <p>어드민 전용 메뉴. 고객에게는 보이지 않습니다.</p>
+      <div class="feat"><b>Demo › Customers</b><span class="d">업체 추가, 리서치 실행, 셋업 요청 확인, 선택 삭제.</span></div>
+      <div class="feat"><b>Demo › CRM</b><span class="d">파이프라인: new, contacted, interested, won, lost.</span></div>
+      <div class="feat"><b>Demo › Overview</b><span class="d">데모 현황: 조회수와 통화.</span></div>
+      <div class="feat"><b>고객 상세 페이지</b><span class="d">테스트 콘솔이 있는 설정 스튜디오, Activity, Sources, Share(/c/&lt;id&gt; 링크).</span></div>
+      <div class="feat"><b>Accounts (계정)</b><span class="d">단계, 승인·거절, Go live 체크리스트, 로그인 링크, 테스트 통화 한도.</span></div>
+      <div class="feat"><b>Agent numbers (번호)</b><span class="d">Twilio 번호를 등록하고 업체에 배정.</span></div>
+      <div class="feat"><b>API keys (API 키)</b><span class="d">사용량을 읽는 외부 시스템용 키. 한 번만 표시.</span></div>
+      <div class="feat"><b>Per person, Failed runs, All feedback</b><span class="d">지원용 전체 계정 화면.</span></div>
+      <div class="sub">로그인 전: 잠재 고객용</div>
+      <div class="feat"><b>공개 데모 페이지 /c/&lt;id&gt;</b><span class="pill ok">운영 중</span><span class="d">브라우저로 어시스턴트와 통화; 동작은 Demo로 표시; 셋업 요청.</span></div>
+      <div class="feat"><b>셀프 가입 /start</b><span class="pill sim">SMTP 필요</span><span class="d">가입하면 그 업체의 데모가 화면에서 바로 리서치됨.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 1. SWIMLANE ============ -->
+<section id="journey">
+  <div class="text">
+    <h2>고객 여정 한눈에 보기</h2>
+    <p>4단계, 3개 레인. 주황 화살표는 게이트로, 누군가 행동해야 다음 단계로 넘어갑니다. 회색 화살표는 전달과 데이터 흐름입니다.</p>
+  </div>
+  <figure>
+    <div class="legend">
+      <span><i class="sw" style="border-color:var(--cust)"></i>고객 (업체 사장님)</span>
+      <span><i class="sw" style="border-color:var(--adm)"></i>어드민 (TecAce 팀)</span>
+      <span><i class="sw" style="border-color:var(--be)"></i>백엔드와 에이전트</span>
+      <span><i class="ln-g"></i>게이트: 누군가 행동해야 함</span>
+      <span><i class="ln-a"></i>전달 또는 데이터</span>
+    </div>
+    <p class="hint">옆으로 스크롤하면 4단계가 모두 보입니다 →</p>
+    <div class="scroll">
+<svg viewBox="0 0 1350 826" width="1350" role="img" aria-label="고객 여정 스윔레인: 발굴, 데모, 온보딩, 라이브 4단계와 고객, 어드민, 백엔드 3개 레인, 각 전달과 게이트를 화살표로 표시.">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+    <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahg"/></marker>
+  </defs>
+
+  <!-- phase headers -->
+  <g class="ph"><rect x="146" y="8" width="288" height="48" rx="8"/><text class="pt" x="160" y="29">1 · 발굴</text><text class="ps" x="160" y="46">계정 없음</text></g>
+  <g class="ph"><rect x="446" y="8" width="288" height="48" rx="8"/><text class="pt" x="460" y="29">2 · 데모</text><text class="ps" x="460" y="46">status: demo</text></g>
+  <g class="ph"><rect x="746" y="8" width="288" height="48" rx="8"/><text class="pt" x="760" y="29">3 · 온보딩</text><text class="ps" x="760" y="46">status: pre-production</text></g>
+  <g class="ph"><rect x="1046" y="8" width="288" height="48" rx="8"/><text class="pt" x="1060" y="29">4 · 라이브</text><text class="ps" x="1060" y="46">status: production</text></g>
+
+  <!-- lanes -->
+  <rect class="lane-c" x="8" y="64" width="1334" height="330" rx="10"/>
+  <rect class="lane-a" x="8" y="404" width="1334" height="190" rx="10"/>
+  <rect class="lane-b" x="8" y="604" width="1334" height="210" rx="10"/>
+  <text class="lname c" x="20" y="90">고객</text>
+  <text class="lsub" x="20" y="108">업체 사장님</text>
+  <text class="lname a" x="20" y="430">어드민</text>
+  <text class="lsub" x="20" y="448">TecAce 팀</text>
+  <text class="lname b" x="20" y="630">백엔드</text>
+  <text class="lsub" x="20" y="648">transcribe-backend</text>
+  <text class="lsub" x="20" y="662">+ 전화 에이전트</text>
+
+  <line class="sep" x1="440" y1="64" x2="440" y2="814"/>
+  <line class="sep" x1="740" y1="64" x2="740" y2="814"/>
+  <line class="sep" x1="1040" y1="64" x2="1040" y2="814"/>
+
+  <!-- arrows first, boxes on top -->
+  <!-- find -->
+  <path class="arr" d="M384 101 H448" marker-end="url(#ah)"/>
+  <text class="lbl" x="416" y="93" text-anchor="middle">열기</text>
+  <path class="arr" d="M384 165 H398 V649 H388" marker-end="url(#ah)"/>
+  <path class="arr" d="M384 441 H398"/>
+  <circle class="dot" cx="398" cy="441" r="3"/>
+  <text class="lbl" transform="translate(398 548) rotate(-90)" text-anchor="middle" dy="3.5">리서치</text>
+  <path class="arr" d="M152 553 H144 V101 H150" marker-end="url(#ah)"/>
+  <text class="lbl" transform="translate(144 300) rotate(-90)" text-anchor="middle" dy="3.5">/c/&lt;id&gt; 전달</text>
+  <!-- demo -->
+  <path class="arr" d="M452 128 H446 V649 H450" marker-end="url(#ah)"/>
+  <text class="lbl" transform="translate(446 556) rotate(-90)" text-anchor="middle" dy="3.5">데모 통화</text>
+  <path class="gate" d="M684 237 H698 V441 H688" marker-end="url(#ahg)"/>
+  <text class="lbl g" transform="translate(698 340) rotate(-90)" text-anchor="middle" dy="3.5">셋업 요청</text>
+  <path class="gate" d="M684 497 H726 V649 H748" marker-end="url(#ahg)"/>
+  <text class="lbl g" transform="translate(726 574) rotate(-90)" text-anchor="middle" dy="3.5">승인</text>
+  <!-- onboarding -->
+  <path class="arr" d="M752 630 H746 V101 H750" marker-end="url(#ah)"/>
+  <text class="lbl" transform="translate(746 300) rotate(-90)" text-anchor="middle" dy="3.5">로그인 메일</text>
+  <path class="gate" d="M984 553 H998 V760 H988" marker-end="url(#ahg)"/>
+  <text class="lbl g" transform="translate(998 655) rotate(-90)" text-anchor="middle" dy="3.5">라이브 전환</text>
+  <path class="arr" d="M984 357 H1014 V778 H988" marker-end="url(#ah)"/>
+  <text class="lbl" transform="translate(1014 470) rotate(-90)" text-anchor="middle" dy="3.5">퍼블리시</text>
+  <!-- live -->
+  <path class="arr" d="M1284 109 H1298 V649 H1288" marker-end="url(#ah)"/>
+  <text class="lbl" transform="translate(1298 400) rotate(-90)" text-anchor="middle" dy="3.5">포워딩된 전화</text>
+  <path class="arr" d="M1052 713 H1046 V181 H1050" marker-end="url(#ah)"/>
+  <text class="lbl" transform="translate(1046 400) rotate(-90)" text-anchor="middle" dy="3.5">통화·메시지</text>
+
+  <!-- CUSTOMER -->
+  <g class="box c"><rect x="152" y="78" width="232" height="46" rx="6"/><text class="bt" x="162" y="97">데모 링크를 받음</text><text class="bs" x="162" y="113">우리 팀의 메일이나 전화로</text></g>
+  <g class="box c"><rect x="152" y="134" width="232" height="62" rx="6"/><text class="bt" x="162" y="153">…또는 /start에서 가입</text><text class="bs" x="162" y="169">셀프 가입, 데모가 화면에서</text><text class="bs" x="162" y="184">바로 리서치됨 (SMTP 필요)</text></g>
+
+  <g class="box c"><rect x="452" y="78" width="232" height="62" rx="6"/><text class="bt" x="462" y="97">브라우저로 통화해 봄</text><text class="bs" x="462" y="113">/c/&lt;id&gt; · “이렇게 말해보세요” 카드</text><text class="bs" x="462" y="128">연결·문자·예약은 Demo로 표시</text></g>
+  <g class="box c"><rect x="452" y="150" width="232" height="46" rx="6"/><text class="bt" x="462" y="169">설정을 읽기 전용으로 봄</text><text class="bs" x="462" y="185">“셋업 후 수정 가능”</text></g>
+  <g class="box c"><rect x="452" y="206" width="232" height="62" rx="6"/><text class="bt" x="462" y="225">셋업 요청</text><text class="bs" x="462" y="241">가입: 이름, 이메일, 비밀번호,</text><text class="bs" x="462" y="256">6자리 이메일 코드, 메모(선택)</text></g>
+
+  <g class="box c"><rect x="752" y="78" width="232" height="46" rx="6"/><text class="bt" x="762" y="97">로그인</text><text class="bs" x="762" y="113">승인 메일의 링크로</text></g>
+  <g class="box c"><rect x="752" y="134" width="232" height="62" rx="6"/><text class="bt" x="762" y="153">설정 채우기</text><text class="bs" x="762" y="169">업체 정보, 에이전트, FAQ, 메시지,</text><text class="bs" x="762" y="184">링크, 전화 연결, 맞춤 학습</text></g>
+  <g class="box c"><rect x="752" y="206" width="232" height="62" rx="6"/><text class="bt" x="762" y="225">캘린더 연결</text><text class="bs" x="762" y="241">Apple, CalDAV, Cal.com, Calendly,</text><text class="bs" x="762" y="256">Acuity, Google, Outlook</text></g>
+  <g class="box c"><rect x="752" y="278" width="232" height="46" rx="6"/><text class="bt" x="762" y="297">앱에서 테스트 통화</text><text class="bs" x="762" y="313">초안 사용 · 월 30분</text></g>
+  <g class="box c"><rect x="752" y="334" width="232" height="46" rx="6"/><text class="bt" x="762" y="353">퍼블리시</text><text class="bs" x="762" y="369">실제 전화는 이 버전만 사용</text></g>
+
+  <g class="box c"><rect x="1052" y="78" width="232" height="62" rx="6"/><text class="bt" x="1062" y="97">업체 번호를 포워딩</text><text class="bs" x="1062" y="113">부재중만 또는 모든 전화</text><text class="bs" x="1062" y="128">통신사 코드는 Call forwarding에</text></g>
+  <g class="box c"><rect x="1052" y="150" width="232" height="62" rx="6"/><text class="bt" x="1062" y="169">통화·메시지 확인</text><text class="bs" x="1062" y="185">통화 목록, 대화록, 예약</text><text class="bs" x="1062" y="200">메시지는 Google Sheet에도 기록</text></g>
+  <g class="box c"><rect x="1052" y="222" width="232" height="46" rx="6"/><text class="bt" x="1062" y="241">계속 다듬기</text><text class="bs" x="1062" y="257">수정 → 테스트 통화 → 퍼블리시</text></g>
+
+  <!-- ADMIN -->
+  <g class="box a"><rect x="152" y="418" width="232" height="46" rx="6"/><text class="bt" x="162" y="437">고객 추가</text><text class="bs" x="162" y="453">이름, 웹사이트 · 리서치는 선택</text></g>
+  <g class="box a"><rect x="152" y="474" width="232" height="46" rx="6"/><text class="bt" x="162" y="493">CRM 관리</text><text class="bs" x="162" y="509">new → contacted → interested</text></g>
+  <g class="box a"><rect x="152" y="530" width="232" height="46" rx="6"/><text class="bt" x="162" y="549">데모 링크 공유</text><text class="bs" x="162" y="565">/c/&lt;id&gt; 페이지, 로그인 불필요</text></g>
+
+  <g class="box a"><rect x="452" y="418" width="232" height="46" rx="6"/><text class="bt" x="462" y="437">셋업 요청 확인</text><text class="bs" x="462" y="453">Customers › Setup requested</text></g>
+  <g class="box a"><rect x="452" y="474" width="232" height="46" rx="6"/><text class="bt" x="462" y="493">승인 또는 거절</text><text class="bs" x="462" y="509">거절 메모는 고객에게 표시</text></g>
+
+  <g class="box a"><rect x="752" y="418" width="232" height="46" rx="6"/><text class="bt" x="762" y="437">전화번호 배정</text><text class="bs" x="762" y="453">Agent numbers 화면 (Twilio)</text></g>
+  <g class="box a"><rect x="752" y="474" width="232" height="46" rx="6"/><text class="bt" x="762" y="493">Go live 체크리스트 확인</text><text class="bs" x="762" y="509">Accounts › Stage</text></g>
+  <g class="box a"><rect x="752" y="530" width="232" height="46" rx="6"/><text class="bt" x="762" y="549">라이브 전환 (Go live)</text><text class="bs" x="762" y="565">필수 항목 통과 전엔 거부됨</text></g>
+
+  <g class="box a"><rect x="1052" y="418" width="232" height="46" rx="6"/><text class="bt" x="1062" y="437">사용량 모니터링</text><text class="bs" x="1062" y="453">계정별 통화 시간</text></g>
+  <g class="box a"><rect x="1052" y="474" width="232" height="46" rx="6"/><text class="bt" x="1062" y="493">피드백 답변</text><text class="bs" x="1062" y="509">대시보드의 피드백함</text></g>
+
+  <!-- BACKEND -->
+  <g class="box b"><rect x="152" y="618" width="232" height="62" rx="6"/><text class="bt" x="162" y="637">업체 리서치</text><text class="bs" x="162" y="653">OpenAI 웹 검색 → 프로필,</text><text class="bs" x="162" y="668">FAQ, 영업시간, 음성 프롬프트</text></g>
+  <g class="box b"><rect x="152" y="690" width="232" height="46" rx="6"/><text class="bt" x="162" y="709">데모 고객 저장</text><text class="bs" x="162" y="725">ID 예: GLHF-0009, 바뀌지 않음</text></g>
+
+  <g class="box b"><rect x="452" y="618" width="232" height="62" rx="6"/><text class="bt" x="462" y="637">공개 데모 통화 실행</text><text class="bs" x="462" y="653">조합된 프롬프트 + 도구</text><text class="bs" x="462" y="668">예약은 데모 캘린더에만</text></g>
+  <g class="box b"><rect x="452" y="690" width="232" height="46" rx="6"/><text class="bt" x="462" y="709">데모 계정 생성</text><text class="bs" x="462" y="725">status demo · 어드민에 요청</text></g>
+
+  <g class="box b"><rect x="752" y="618" width="232" height="62" rx="6"/><text class="bt" x="762" y="637">승인: 데모 → 업체</text><text class="bs" x="762" y="653">프로필 복사, 통화 설정 초안 생성,</text><text class="bs" x="762" y="668">CRM won, 로그인 링크 메일 발송</text></g>
+  <g class="box b"><rect x="752" y="690" width="232" height="46" rx="6"/><text class="bt" x="762" y="709">전화 응답은 꺼 둠</text><text class="bs" x="762" y="725">/business/config: not_live_stage</text></g>
+  <g class="box b"><rect x="752" y="746" width="232" height="46" rx="6"/><text class="bt" x="762" y="765">준비 상태 점검</text><text class="bs" x="762" y="781">정보 · 퍼블리시 · 번호 · 일치</text></g>
+
+  <g class="box b"><rect x="1052" y="618" width="232" height="62" rx="6"/><text class="bt" x="1062" y="637">모든 전화 응대</text><text class="bs" x="1062" y="653">전화 에이전트 + OpenAI Realtime,</text><text class="bs" x="1062" y="668">퍼블리시된 설정을 읽음</text></g>
+  <g class="box b"><rect x="1052" y="690" width="232" height="46" rx="6"/><text class="bt" x="1062" y="709">통화 기록 저장</text><text class="bs" x="1062" y="725">/calls · 통화 시간 · Google Sheet</text></g>
+</svg>
+    </div>
+    <figcaption>업체는 우리가 보낸 링크나 <code>/start</code> 셀프 가입으로 들어오고, 둘 다 데모 단계에서 시작합니다. 어드민이 셋업 요청을 승인하면 고객이 설정을 마치고 퍼블리시합니다. 어드민이 번호를 배정하고 Go live를 누르면, 업체가 자기 번호를 우리 번호로 포워딩합니다.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 2. GATES ============ -->
+<section id="gates">
+  <div class="text">
+    <h2>두 개의 게이트</h2>
+    <p>업체는 어드민이 행동해야만 다음 단계로 갑니다. 결제와 Twilio 번호 구매는 지금은 앱 밖에서 처리합니다.</p>
+  </div>
+  <figure>
+    <div class="scroll">
+<svg viewBox="0 0 900 184" width="900" role="img" aria-label="상태 변화: 고객이 셋업을 요청하면 셋업 요청됨, 어드민이 거절하면 데모로 복귀, 승인하면 온보딩, 체크리스트 통과 후 Go live 하면 라이브.">
+  <defs>
+    <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+    <marker id="ahg2" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahg"/></marker>
+  </defs>
+  <path class="arr" d="M180 98 H248" marker-end="url(#ah2)"/>
+  <text class="lbl" x="214" y="48" text-anchor="middle">고객</text>
+  <text class="lbl" x="214" y="62" text-anchor="middle">셋업 요청</text>
+  <path class="gate" d="M410 98 H478" marker-end="url(#ahg2)"/>
+  <text class="lbl g" x="444" y="48" text-anchor="middle">어드민</text>
+  <text class="lbl g" x="444" y="62" text-anchor="middle">승인</text>
+  <path class="gate" d="M640 98 H708" marker-end="url(#ahg2)"/>
+  <text class="lbl g" x="674" y="48" text-anchor="middle">어드민</text>
+  <text class="lbl g" x="674" y="62" text-anchor="middle">Go live (체크리스트)</text>
+  <path class="arr d" d="M330 124 C330 170 100 170 100 126" marker-end="url(#ah2)"/>
+  <text class="lbl" x="215" y="150" text-anchor="middle">어드민: 거절 (메모 포함)</text>
+
+  <g class="box c"><rect x="20" y="72" width="160" height="52" rx="8"/><text class="bt" x="34" y="94">데모</text><text class="bm" x="34" y="112">demo</text></g>
+  <g class="box c"><rect x="250" y="72" width="160" height="52" rx="8"/><text class="bt" x="264" y="94">셋업 요청됨</text><text class="bm" x="264" y="112">demo + request</text></g>
+  <g class="box c"><rect x="480" y="72" width="160" height="52" rx="8"/><text class="bt" x="494" y="94">온보딩</text><text class="bm" x="494" y="112">pre-production</text></g>
+  <g class="box okb"><rect x="710" y="72" width="160" height="52" rx="8"/><text class="bt" x="724" y="94">라이브</text><text class="bm" x="724" y="112">production</text></g>
+</svg>
+    </div>
+    <figcaption>상태 값은 <code>users.status</code>입니다. 승인하면 데모 내용이 업체 프로필로 복사되고 통화 설정 초안이 만들어집니다. 필수 항목이 통과되기 전에는 Go live가 <code>409 not_ready</code>로 거부됩니다.</figcaption>
+  </figure>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th></th><th>데모</th><th>온보딩</th><th>라이브</th></tr></thead>
+      <tbody>
+        <tr><td>고객이 설정 수정</td><td><span class="pill bad">불가, 읽기 전용</span></td><td><span class="pill ok">가능</span></td><td><span class="pill ok">가능</span></td></tr>
+        <tr><td>테스트 통화</td><td><span class="pill sim">공개 데모 페이지만</span></td><td><span class="pill ok">앱에서 가능</span><span class="note">초안 사용, 월 30분</span></td><td><span class="pill ok">앱에서 가능</span></td></tr>
+        <tr><td>통화 설정 퍼블리시</td><td><span class="pill bad">불가 (403)</span></td><td><span class="pill ok">가능</span></td><td><span class="pill ok">가능</span></td></tr>
+        <tr><td>실제 전화 응답</td><td><span class="pill bad">안 함</span></td><td><span class="pill bad">안 함</span><span class="note"><code>not_live_stage</code></span></td><td><span class="pill ok">가능</span></td></tr>
+        <tr><td>다음 단계 조건</td><td>어드민이 셋업 요청을 승인</td><td>체크리스트 통과 후 어드민이 Go live 클릭</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Go live 체크리스트</h3>
+      <ul>
+        <li>업체 정보 완료 (이름 + 정보)</li>
+        <li>통화 설정 퍼블리시됨</li>
+        <li>전화번호 배정됨</li>
+        <li>퍼블리시된 설정이 그 번호와 일치</li>
+        <li>업체 연락처 또는 연결 번호 <span class="req">(경고만, 필수 아님)</span></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>어드민이 하는 일 (순서대로)</h3>
+      <ol>
+        <li>업체 추가(리서치는 선택)하고 CRM 단계 관리</li>
+        <li><code>/c/&lt;id&gt;</code> 데모 링크 보내기</li>
+        <li>셋업 요청 승인 또는 거절</li>
+        <li>Agent numbers 화면에서 Twilio 번호 배정</li>
+        <li>체크리스트 확인 후 Go live 클릭</li>
+        <li>통화 시간 확인, 피드백 답변</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3. LIVE CALL ============ -->
+<section id="call">
+  <div class="text">
+    <h2>실제 통화에서 일어나는 일</h2>
+    <p>업체가 번호를 포워딩하면 모든 전화가 전화 에이전트를 거칩니다. 에이전트는 전화를 받을 때 퍼블리시된 설정을 읽고, 통화 중에 도구를 호출하고, 끊으면 통화를 기록합니다.</p>
+  </div>
+  <figure>
+    <div class="scroll">
+<svg viewBox="0 0 1120 552" width="1120" role="img" aria-label="실제 통화: 발신자가 업체 번호로 전화하면 Twilio 번호와 전화 에이전트로 포워딩된다. 에이전트는 OpenAI Realtime으로 대화하고, transcribe-backend에서 설정을 읽고, 도구를 호출하고, 끊으면 대시보드와 Google Sheet에 기록한다.">
+  <defs>
+    <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+  </defs>
+
+  <!-- backend panel -->
+  <rect class="panel" x="810" y="40" width="290" height="300" rx="10"/>
+  <text class="ptitle" x="824" y="63">transcribe-backend</text>
+
+  <!-- edges -->
+  <path class="arr" d="M140 228 H173" marker-end="url(#ah3)"/>
+  <text class="lbl" x="157" y="219" text-anchor="middle">전화</text>
+  <path class="arr" d="M315 228 H348" marker-end="url(#ah3)"/>
+  <path class="arr" d="M490 228 H523" marker-start="url(#ah3)" marker-end="url(#ah3)"/>
+  <text class="lbl" x="507" y="219" text-anchor="middle">음성</text>
+  <path class="arr" d="M625 182 V98" marker-start="url(#ah3)" marker-end="url(#ah3)"/>
+  <text class="lbl" x="633" y="144">양방향 실시간 음성</text>
+  <path class="arr" d="M725 196 H760 V105 H820" marker-end="url(#ah3)"/>
+  <path class="arr" d="M725 216 H775 V171 H820" marker-end="url(#ah3)"/>
+  <path class="arr" d="M725 237 H820" marker-end="url(#ah3)"/>
+  <path class="arr" d="M725 258 H760 V303 H820" marker-end="url(#ah3)"/>
+  <!-- tools bus -->
+  <path class="arr" d="M625 274 V340"/>
+  <path class="arr" d="M111 340 H699"/>
+  <circle class="dot" cx="625" cy="340" r="3"/>
+  <text class="lbl" x="405" y="333" text-anchor="middle">모델이 부를 수 있는 도구</text>
+  <path class="arr" d="M111 340 V378" marker-end="url(#ah3)"/>
+  <path class="arr" d="M307 340 V378" marker-end="url(#ah3)"/>
+  <path class="arr" d="M503 340 V378" marker-end="url(#ah3)"/>
+  <path class="arr d" d="M699 340 V378" marker-end="url(#ah3)"/>
+  <path class="arr" d="M307 442 V478" marker-end="url(#ah3)"/>
+  <text class="lbl" x="316" y="464">Twilio 리다이렉트</text>
+  <!-- to dashboard / sheet -->
+  <path class="arr" d="M879 340 V398" marker-end="url(#ah3)"/>
+  <text class="lbl" x="887" y="373">읽기</text>
+  <path class="arr" d="M1031 340 V398" marker-end="url(#ah3)"/>
+  <text class="lbl" x="1039" y="373">transcribe-app</text>
+
+  <!-- chain -->
+  <g class="box n"><rect x="20" y="200" width="120" height="56" rx="8"/><text class="bt" x="32" y="223">발신자</text><text class="bs" x="32" y="240">업체에 전화</text></g>
+  <g class="box c"><rect x="175" y="200" width="140" height="56" rx="8"/><text class="bt" x="187" y="223">업체 전화번호</text><text class="bs" x="187" y="240">우리 번호로 포워딩</text></g>
+  <g class="box a"><rect x="350" y="200" width="140" height="56" rx="8"/><text class="bt" x="362" y="223">Twilio 번호</text><text class="bs" x="362" y="240">어드민이 배정</text></g>
+  <g class="box b"><rect x="525" y="182" width="200" height="92" rx="8"/><text class="bt" x="539" y="206">전화 에이전트</text><text class="bm" x="539" y="224">openai-agent-app</text><text class="bs" x="539" y="242">통화 브리지 + 도구</text><text class="bs" x="539" y="258">scripts/run_server.py</text></g>
+  <g class="box n"><rect x="525" y="40" width="200" height="56" rx="8"/><text class="bt" x="539" y="63">OpenAI Realtime</text><text class="bs" x="539" y="80">듣고 말하기</text></g>
+
+  <!-- backend rows -->
+  <g class="box b"><rect x="822" y="76" width="266" height="58" rx="6"/><text class="bm" x="834" y="98">GET /business/config</text><text class="bs" x="834" y="118">받을 때: 퍼블리시된 설정, 예약</text></g>
+  <g class="box b"><rect x="822" y="142" width="266" height="58" rx="6"/><text class="bm" x="834" y="164">POST …/calendar/agent-tool</text><text class="bs" x="834" y="184">통화 중: 빈 시간, 예약</text></g>
+  <g class="box b"><rect x="822" y="208" width="266" height="58" rx="6"/><text class="bm" x="834" y="230">POST /calls</text><text class="bs" x="834" y="250">끊을 때: 대화록, 메시지</text></g>
+  <g class="box b"><rect x="822" y="274" width="266" height="54" rx="6"/><text class="bm" x="834" y="296">통화 시간</text><text class="bs" x="834" y="314">끊을 때: 계정별 통화 시간</text></g>
+
+  <g class="box c"><rect x="810" y="400" width="138" height="56" rx="8"/><text class="bt" x="822" y="423">대시보드</text><text class="bs" x="822" y="440">통화·메시지</text></g>
+  <g class="box c"><rect x="962" y="400" width="138" height="56" rx="8"/><text class="bt" x="974" y="423">Google Sheet</text><text class="bs" x="974" y="440">메시지당 한 행</text></g>
+
+  <!-- tools -->
+  <g class="box okb"><rect x="20" y="380" width="182" height="62" rx="8"/><text class="bt" x="32" y="399">예약하기</text><circle class="s-ok" cx="36" cy="411" r="4"/><text class="st-ok" x="45" y="415">실제 전화에서 동작</text><text class="bs" x="32" y="432">agent-tool로 예약</text></g>
+  <g class="box n"><rect x="216" y="380" width="182" height="62" rx="8"/><text class="bt" x="228" y="399">직원에게 연결</text><circle class="s-warn" cx="232" cy="411" r="4"/><text class="st-warn" x="241" y="415">구현됨, 테스트 필요</text><text class="bs" x="228" y="432">현재는 번호 하나만</text></g>
+  <g class="box n"><rect x="412" y="380" width="182" height="62" rx="8"/><text class="bt" x="424" y="399">메시지 받기</text><circle class="s-warn" cx="428" cy="411" r="4"/><text class="st-warn" x="437" y="415">구현됨, 테스트 필요</text><text class="bs" x="424" y="432">끊을 때 저장 (/calls)</text></g>
+  <g class="box n dash"><rect x="608" y="380" width="182" height="62" rx="8"/><text class="bt" x="620" y="399">링크 문자</text><circle class="s-bad" cx="624" cy="411" r="4"/><text class="st-bad" x="633" y="415">전화에서는 미구현</text><text class="bs" x="620" y="432">SMS 발송 기능 없음</text></g>
+  <g class="box n"><rect x="216" y="480" width="182" height="56" rx="8"/><text class="bt" x="228" y="503">직원 전화</text><text class="bs" x="228" y="520">귓속말 후 연결; 안 받으면</text><text class="bs" x="228" y="533">발신자는 에이전트로 복귀</text></g>
+</svg>
+    </div>
+    <figcaption>실제 전화는 라이브 단계 계정에만 연결됩니다. 전화 에이전트는 퍼블리시된 설정만 쓰므로 고객의 초안은 발신자에게 닿지 않습니다. 예약은 2026-09-27 실제 통화로 확인했습니다.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 4. FEATURE MATRIX ============ -->
+<section id="where">
+  <div class="text">
+    <h2>기능별로 어디서 되는지</h2>
+    <p>같은 설정이 세 종류의 통화에 쓰입니다. 새 기능은 앱 테스트 통화와 공개 데모에 먼저 들어가고, 실제 전화는 phase 3에서 따라잡습니다.</p>
+  </div>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>기능</th><th>앱 테스트 통화</th><th>공개 데모 페이지</th><th>실제 전화</th></tr></thead>
+      <tbody>
+        <tr><td>업체 정보와 FAQ</td><td><span class="pill ok">동작</span></td><td><span class="pill ok">동작</span></td><td><span class="pill ok">동작</span><span class="note"><code>/business/config</code> 정보 사용</span></td></tr>
+        <tr><td>예약</td><td><span class="pill ok">실제로 예약</span><span class="note">제목에 “[Test]”</span></td><td><span class="pill sim">데모 캘린더만</span></td><td><span class="pill ok">동작, 확인됨</span><span class="note">퍼블리시된 규칙만</span></td></tr>
+        <tr><td>전화 연결</td><td><span class="pill sim">시뮬레이션</span><span class="note">웜, 순차 연결, 영업시간</span></td><td><span class="pill sim">Demo로 표시</span></td><td><span class="pill warn">구현됨, 미테스트</span><span class="note">연결 번호 하나</span></td></tr>
+        <tr><td>메시지 받기</td><td><span class="pill ok">동작</span><span class="note">메시지 브리프 포함</span></td><td><span class="pill sim">Demo로 표시</span></td><td><span class="pill warn">구현됨, 미테스트</span><span class="note">메시지 브리프 없음</span></td></tr>
+        <tr><td>링크 문자 (SMS)</td><td><span class="pill sim">콘솔에만 표시</span></td><td><span class="pill sim">Demo로 표시</span></td><td><span class="pill bad">미구현</span></td></tr>
+        <tr><td>Call forwarding</td><td colspan="3">고객용 설정 가이드: 통신사별 코드, 부재중만 또는 모든 전화, 테스트 방법.</td></tr>
+        <tr><td>Custom training, Test and improve</td><td colspan="3">프롬프트를 다듬는 대시보드 도구. 초안을 바꾸고, 퍼블리시하면 실제 전화에 반영됩니다.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 5. OPEN ============ -->
+<section id="open">
+  <div class="text">
+    <h2>남은 일</h2>
+    <p>자세한 내용과 테스트 체크리스트는 레포 루트의 <code>TODO.md</code>에 있습니다.</p>
+  </div>
+  <ul class="open">
+    <li><span class="pill bad">개발</span><b>실제 전화에서 링크 문자</b><span class="d">SMS 발송 기능, 미국 A2P 10DLC 등록(며칠 걸림), 통화 중 동의 받기, STOP/HELP 처리가 필요합니다.</span></li>
+    <li><span class="pill warn">테스트</span><b>실제 통화로 전화 연결</b><span class="d">받았을 때, 안 받았을 때(에이전트로 복귀), 제안만 했을 때와 약속했을 때, 연결 번호가 없을 때.</span></li>
+    <li><span class="pill warn">테스트</span><b>실제 통화로 메시지 받기</b><span class="d">대시보드와 Google Sheet 기록, 회신 번호, 연결 실패 뒤 메시지. 업체에 가는 푸시 알림은 아직 없습니다.</span></li>
+    <li><span class="pill sim">Phase 3</span><b>실제 전화에 조합된 설정 적용</b><span class="d">실제 통화는 아직 Python 룰북을 씁니다. 웜·순차 연결, 영업시간 규칙, 메시지 브리프는 앱과 데모 통화에만 적용됩니다.</span></li>
+  </ul>
+</section>
+
+<!-- ============ 6. TERMS ============ -->
+<section id="terms">
+  <div class="text"><h2>용어집</h2></div>
+  <dl class="terms">
+    <div><dt>데모 고객 (Demo customer)</dt><dd>우리가 데모를 만든 업체. <code>GLHF-0009</code> 같은 영구 ID를 받습니다.</dd></div>
+    <div><dt>단계 (Phase)</dt><dd>데모 → 온보딩 → 라이브. <code>users.status</code>에 <code>demo</code>, <code>pre-production</code>, <code>production</code>으로 저장.</dd></div>
+    <div><dt>초안과 퍼블리시 (Draft / Published)</dt><dd>설정 수정은 초안입니다. 테스트 통화는 초안을, 실제 전화는 퍼블리시된 것만 씁니다.</dd></div>
+    <div><dt>통화 설정 (Call settings)</dt><dd>메시지, 전화 연결, 링크, 예약 규칙. 설정 스튜디오의 Calls 그룹입니다.</dd></div>
+    <div><dt>조합된 세션 (Composed session)</dt><dd>설정으로 한 통화용 프롬프트와 도구를 만든 것. 지금은 앱과 데모 통화에서 씁니다.</dd></div>
+    <div><dt>룰북 (Rule book)</dt><dd>전화 에이전트의 자체 Python 프롬프트. phase 3에서 조합된 세션으로 바꾸기 전까지 실제 통화가 씁니다.</dd></div>
+    <div><dt>에이전트 번호 (Agent number)</dt><dd>업체에 배정된 Twilio 번호. 발신자가 직접 거는 번호는 아닙니다.</dd></div>
+    <div><dt>착신 전환 (Call forwarding)</dt><dd>업체가 자기 번호를 에이전트 번호로 돌려 둡니다. 부재중만 또는 모든 전화.</dd></div>
+    <div><dt>리서치 (Research)</dt><dd>OpenAI 웹 검색으로 데모의 프로필, FAQ, 영업시간, 프롬프트를 채우는 작업.</dd></div>
+    <div><dt>준비 체크리스트 (Readiness)</dt><dd>Go live 전에 필요한 조건: 업체 정보, 퍼블리시된 설정, 번호, 둘의 일치.</dd></div>
+    <div><dt>스테이징 (Staging)</dt><dd>테스트용 별도 환경(<code>va-staging-backend</code>, Neon 브랜치). 운영 배포는 <code>master</code>에서만.</dd></div>
+    <div><dt>HISTORY.md, TODO.md</dt><dd>레포 루트의 팀 변경 기록과 남은 일 목록.</dd></div>
+  </dl>
+</section>
+
+<footer>
+  같은 시스템에 있는 것: 초기 접수 흐름의 아웃바운드 리드 콜백(<code>openai-agent-app</code> poller). 출처: <code>HISTORY.md</code>, <code>TODO.md</code>, <code>docs/superpowers/specs/2026-09-27-phase-gates-design.md</code>, Main-Hans 브랜치 코드.
+</footer>
+</div>
+</body>
+</html>

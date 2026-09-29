@@ -488,11 +488,7 @@ export function ProspectScreen({
         {operator && (
           <TabsContent value="activity" className="flex flex-col gap-4 p-4 md:p-6">
             {statCards}
-            <Card className="rounded-xl border shadow-none">
-              <CardContent className="p-4 md:p-6">
-                <ActivityTab calls={calls} customerId={id} onChanged={load} />
-              </CardContent>
-            </Card>
+            <ActivityTab calls={calls} customerId={id} onChanged={load} />
           </TabsContent>
         )}
 

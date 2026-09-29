@@ -71,6 +71,13 @@ class H(http.server.SimpleHTTPRequestHandler):
         return os.path.join(ROOT, "c.html" if clean.startswith("/c/") else "index.html")
     def log_message(self, *a):
         pass
+# Stated explicitly: SimpleHTTPRequestHandler otherwise asks the OS, and a Windows machine whose
+# registry says .js is text/plain makes Edge refuse every module script — an app that never renders,
+# with nothing on the page to say why. These entries win over the OS lookup.
+for ext, kind in ((".js", "text/javascript"), (".mjs", "text/javascript"), (".css", "text/css"),
+                  (".html", "text/html"), (".svg", "image/svg+xml"), (".png", "image/png"),
+                  (".mp4", "video/mp4"), (".json", "application/json")):
+    H.extensions_map[ext] = kind
 socketserver.TCPServer.allow_reuse_address = True
 with socketserver.TCPServer(("127.0.0.1", {APP_PORT}), H) as httpd:
     httpd.serve_forever()
@@ -125,13 +132,36 @@ def main() -> int:
                     rail = page.get_by_role("navigation", name="Dashboard sections")
                     labels = [b.inner_text().strip() for b in rail.get_by_role("button").all()]
                     check("the rail offers their receptionist and nothing else",
-                          [l for l in labels if l and "Sign out" not in l] == ["My receptionist"],
+                          [l for l in labels if l and "Sign out" not in l and "Changelog" not in l] == ["Overview", "Call activity", "Settings"],
                           str(labels))
-                    for gone in ("Overview", "All runs", "Business information", "Accounts",
+                    for gone in ("All runs", "Business information", "Accounts",
                                  "Answered calls", "Customers", "CRM", "Send feedback"):
                         check(f"...no {gone!r} in the rail", gone not in labels, str(labels))
 
+                    # ---- their Overview (the landing): how the demo has been used
+                    main = page.inner_text("main")
+                    check("they land on their Overview", page.locator("main h1").first.inner_text().strip() == "Overview",
+                          main[:200])
+                    check("...with the demo's numbers and calls per day",
+                          "Link opens" in main and "Calls per day" in main and "Recent calls" in main, main[:400])
+                    check("...and what it couldn't answer", "No price list for implants" in main, main[:400])
+
+                    # ---- Call activity: their calls, read-only, our tests left out
+                    rail.get_by_role("button", name="Call activity").click()
+                    page.get_by_role("heading", name="Call activity").wait_for()
+                    page.wait_for_timeout(500)
+                    check("Call activity lists their calls",
+                          page.get_by_role("button", name="Open call details").count() >= 1)
+                    check("...without the operator's Test switch or Analyze",
+                          page.get_by_role("switch").count() == 0
+                          and page.get_by_role("button", name="Analyze").count() == 0)
+                    check("...and without our own test calls", "your own test" not in page.inner_text("main"))
+
                     # ---- their settings: every section, as a read-only preview
+                    rail.get_by_role("button", name="Settings").click()
+                    page.locator("#settings-section-title").wait_for()
+                    page.wait_for_timeout(700)
+                    body = page.inner_text("body")
                     # No tabs: Activity, Sources and Share are the operator's, and Settings is all that's left.
                     for tab in ("Activity", "Sources", "Share", "Settings"):
                         check(f"no {tab} tab", page.get_by_role("tab", name=tab).count() == 0)
@@ -232,7 +262,7 @@ def main() -> int:
                     after = page.inner_text("body")
                     check("the card then says the request is in", "Setup requested" in after, after[:300])
                     labels = [b.inner_text().strip() for b in rail.get_by_role("button").all()]
-                    check("...and they are still in the demo-only view", "My receptionist" in labels,
+                    check("...and they are still in the demo-only view", "Settings" in labels and "Accounts" not in labels,
                           str(labels))
 
                     check("no page errors", not errors, "; ".join(errors[:3]))
