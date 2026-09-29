@@ -128,9 +128,37 @@ def build_live_session_start(
     only on the VOICE half — the backend never speaks, and a greeting order would only confuse it.
     """
     tools = TOOL_SCHEMAS if tools is None else tools
+    return _session_start(
+        cfg,
+        voice_instructions=_voice_preamble(tools) + instructions,
+        backend_instructions=_BACKEND_PREAMBLE + instructions,
+        tools=tools,
+        greet_now=greet_now,
+    )
+
+
+def build_composed_session_start(
+    cfg: Config, live: str, backend: str, tools: list[dict], greet_now: str = "", voice: str = ""
+) -> dict:
+    """session.start for a call the dashboard composed (realtime/composed.py).
+
+    Its prompts already open with their own delegation preamble and backend preamble, written for
+    exactly these tools, so nothing is prepended here. `voice` is the business's chosen voice, or
+    "" for the deployment's.
+    """
+    return _session_start(
+        cfg, voice_instructions=live, backend_instructions=backend, tools=tools,
+        greet_now=greet_now, voice=voice,
+    )
+
+
+def _session_start(
+    cfg: Config, *, voice_instructions: str, backend_instructions: str, tools: list[dict],
+    greet_now: str, voice: str = "",
+) -> dict:
     responses: dict = {
         "model": cfg.openai_live_backend_model,
-        "instructions": _BACKEND_PREAMBLE + instructions,
+        "instructions": backend_instructions,
         "tools": _backend_tools(tools),
         "tool_choice": "auto",
         # One call at a time. The booking flow is a sequence (check a time, then book it), and
@@ -146,13 +174,11 @@ def build_live_session_start(
         "session": {
             "model": cfg.openai_live_model,
             "instructions": (
-                _voice_preamble(tools)
-                + instructions
-                + (f"\n\n# RIGHT NOW\n{greet_now}\n" if greet_now else "")
+                voice_instructions + (f"\n\n# RIGHT NOW\n{greet_now}\n" if greet_now else "")
             ),
             "audio": {
                 "format": {"type": "audio/pcmu", "rate": 8000},
-                "output": {"voice": cfg.openai_voice.lower()},
+                "output": {"voice": (voice or cfg.openai_voice).lower()},
             },
             "delegation": {"type": "responses", "responses": responses},
         },

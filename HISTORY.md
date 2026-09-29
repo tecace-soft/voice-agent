@@ -13,6 +13,12 @@ Format:
 
 ---
 
+## 2026-09-29 11:10 · Michael · transcribe-backend, openai-agent-app (real calls run on the composed session)
+- `GET /business/config?to=` gains `session` (null for a profile without a structured profile): `{live, backend, greetingLine, voice, language, tools, transfers:[{id,name,mode,numbers}], reachable, canBook, returnLeg:{live,backend,tools}}` from new `src/session/phone.ts` → `composeSession(channel:"phone")` on the PUBLISHED call settings. All existing flat fields are unchanged.
+- `composeSession` gains optional `canText` (false = no `send_link`, no links block) and `canTransfer` (false = nobody to reach; used for `returnLeg`, the leg after a transfer nobody answered).
+- `openai-agent-app` GPT-Live bridge: with `session`, the call uses the dashboard's prompts verbatim (plus its own "This call" block), its tools, voice and greeting; `transfer_call(scenario_id)` dials that scenario's first number. New `realtime/composed.py`, `live_session.build_composed_session_start`, check `scripts/checks/verify_composed_session.py` (`--live <number>` shows what a real number gets). No session → the old hand-built prompt, as before.
+- ⚠ Not on the phone yet: warm/waterfall transfers are dialled cold to the first number; `send_link` is left out (no SMS). The Realtime bridge (`bridge.py`, `OPENAI_LIVE_MODEL` unset) still uses the hand-built prompt. Deploy the backend before (or with) the agent; either order is safe.
+
 ## 2026-09-29 10:50 · Michael · workspace (merge Main-Hans; Twilio numbers: Hans's version kept)
 - Merged Main-Hans into master. The two Twilio-numbers implementations overlapped; Hans's phase 1 (`src/routes/numbers.ts`, `src/twilio/client.ts`, sync/buy/configure/release) is kept. Michael's 09-28 16:30 one is **removed**: `GET /business/numbers/twilio`, `POST /business/numbers/twilio/:sid/connect`, `src/routes/twilioNumbers.ts`, `src/twilio/numbers.ts`, `TwilioNumbersCard.tsx`, and the `TWILIO_API_KEY_SID`/`TWILIO_API_KEY_SECRET`/`TWILIO_API_BASE` env (auth token only now).
 - `App.tsx`: the 09-29 demo-account URL normalisation now respects `DEMO_OWNER_VIEWS` — a view a demo account can't open is replaced with `#/my/overview`; `demoProspect` is pinned to their own id. Version 0.0.11 (routing fixes) sits on top of the combined 0.0.10.

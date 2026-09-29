@@ -86,6 +86,16 @@ export type ComposeInput = {
    * offered when this is set AND the settings switch it on. A demo passes nothing.
    */
   booking?: BookingTarget | null;
+  /**
+   * False where nothing can send a text: `send_link` and the links section are left out, so the
+   * receptionist never promises a text that will not arrive. The phone agent has no SMS yet.
+   */
+  canText?: boolean;
+  /**
+   * False when this leg of the call can reach nobody whatever the settings say — the phone agent's
+   * return leg, after a transfer nobody answered. The rule book is then written for "no person".
+   */
+  canTransfer?: boolean;
 };
 
 export type ComposedSession = {
@@ -244,7 +254,8 @@ export function composeSession(input: ComposeInput): ComposedSession {
   if (!demo && input.neverPublished && !settings.transfer.scenarios.length && record.legacyTransferNumber) {
     transfers = [legacyScenario(record.legacyTransferNumber, record.legacyTransferTopics)];
   }
-  const links = activeLinks(settings);
+  if (input.canTransfer === false) transfers = [];
+  const links = input.canText === false ? [] : activeLinks(settings);
   const messages = activeMessages(settings);
   const reachable = transfers.length > 0;
   const appointments = input.booking && settings.appointments.enabled ? settings.appointments : null;

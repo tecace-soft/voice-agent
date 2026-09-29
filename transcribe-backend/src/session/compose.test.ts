@@ -4,6 +4,7 @@ import { validateCallSettings } from "../business/callSettings.js";
 import { BRIDGE_COUPLED_PHRASES } from "./callRules.js";
 import { composeSession, LEGACY_SCENARIO_ID, type SessionRecord } from "./compose.js";
 import { openState } from "./blocks.js";
+import { phoneSession } from "./phone.js";
 import { SESSION_PROMPT_VERSION, buildSessionPrompts } from "./prompts.js";
 
 // What a call is told, per channel. These pin the contract the phone agent, the in-app test call and
@@ -198,6 +199,44 @@ describe("the phone channel", () => {
     const session = composeSession({ record, callSettings: settings, channel: "phone", now, timeZone: tz, waterfallAllowed: false, neverPublished: true });
     expect(session.live).not.toContain("# This call");
     expect(session.live).toContain("# Date and time");
+  });
+});
+
+describe("what /business/config sends the phone agent", () => {
+  const phone = phoneSession({ record, published: settings, waterfallAllowed: false, booking: null, now, timeZone: tz });
+
+  it("is the business's own session, with no texting — the phone cannot send one", () => {
+    expect(phone.tools.map((t) => t.name)).toEqual(["transfer_call", "take_message", "end_call"]);
+    expect(phone.live).not.toContain("send_link");
+    expect(phone.live).toContain("Mention the free parking.");
+    expect(phone.live).toContain("Do you take new patients?");
+    expect(phone.live).not.toContain("# This call");
+    expect(phone.greetingLine).toBe("Thanks for calling Acme Dental, this is Mia. How can I help?");
+    expect(phone.voice).toBe("gleam");
+  });
+
+  it("resolves each transfer scenario to its numbers, for transfer_call to dial", () => {
+    expect(phone.transfers).toEqual([{ id: "billing", name: "Billing", mode: "warm", numbers: ["+12535550111"] }]);
+    expect(phone.reachable).toBe(true);
+  });
+
+  it("carries a return leg that can reach nobody", () => {
+    expect(phone.returnLeg.tools.map((t) => t.name)).toEqual(["take_message", "end_call"]);
+    expect(phone.returnLeg.live).not.toContain("transfer_call");
+    expect(phone.returnLeg.live).toContain("Mention the free parking.");
+  });
+
+  it("books only with a calendar", () => {
+    const booking = validateCallSettings({ appointments: { enabled: true } }, { waterfallAllowed: false });
+    const withCalendar = phoneSession({ record, published: booking, waterfallAllowed: false, booking: { providerName: "Google Calendar", kind: "calendar" }, now, timeZone: tz });
+    expect(withCalendar.canBook).toBe(true);
+    expect(withCalendar.tools.map((t) => t.name)).toContain("book_appointment");
+    expect(phoneSession({ record, published: booking, waterfallAllowed: false, booking: null, now, timeZone: tz }).canBook).toBe(false);
+  });
+
+  it("keeps the legacy transfer number for a business that never published", () => {
+    const legacy = phoneSession({ record: { ...record, legacyTransferNumber: "+12535550199" }, published: null, waterfallAllowed: false, booking: null, now, timeZone: tz });
+    expect(legacy.transfers).toEqual([{ id: LEGACY_SCENARIO_ID, name: "Someone on the team", mode: "cold", numbers: ["+12535550199"] }]);
   });
 });
 
