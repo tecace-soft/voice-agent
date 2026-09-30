@@ -171,8 +171,9 @@ function BoardCard({ line, highlighted }: { line: CardLine; highlighted: boolean
       data-card={line.key}
       data-highlight={highlighted || undefined}
       className={cn(
-        "rounded-2xl border p-3 transition-[box-shadow,border-color] duration-150 ease-in-out",
-        highlighted && "ring-primary/40 border-primary ring-2",
+        // An outline, not a ring: a ring is a box-shadow, and a card never has both border and shadow.
+        "rounded-2xl border p-3 outline-2 outline-offset-0 outline-transparent transition-[outline-color,border-color] duration-150 ease-in-out",
+        highlighted && "border-primary outline-primary/40",
       )}
     >
       <div className="flex flex-wrap items-center gap-2">

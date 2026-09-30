@@ -16,7 +16,7 @@ import {
   saveHouseRules,
   setWaterfallAllowed,
 } from "../api/backend";
-import type { AgentNumber, BehaviourDefault, BusinessProfile, SetupSession } from "../api/types";
+import type { AgentNumber, BehaviourDefault, BusinessProfile } from "../api/types";
 import { accountErrorMessage } from "../auth";
 import type { SectionId } from "../routing";
 import { displayPhone, withDefaults, type CallSettings, type StoredCallSettings } from "./callSettings";
@@ -68,7 +68,7 @@ type Props = {
   /** A line across the top of the studio: the Go live checklist, a line that isn't answering yet. */
   notice?: ReactNode;
   /** Where the guided setup stands, so the page can offer it to a business that hasn't started it. */
-  onSetupState?: (state: { available: boolean; session: SetupSession | null }) => void;
+  onSetupState?: (state: { available: boolean; hasSession: boolean }) => void;
 };
 
 type Saving = "knowledge" | "faqs" | "agent" | "rules" | "prompts" | "rebuild" | null;
@@ -166,11 +166,14 @@ export function BusinessSettings(props: Props) {
     },
     queue: callsQueue,
   });
+  // Two booleans, not the session: a new session object arrives with every turn, and the page only
+  // needs to know whether to offer the interview.
   const onSetupStateRef = useRef(props.onSetupState);
   onSetupStateRef.current = props.onSetupState;
+  const hasSession = setup.session !== null;
   useEffect(() => {
-    onSetupStateRef.current?.({ available: setup.available, session: setup.session });
-  }, [setup.available, setup.session]);
+    onSetupStateRef.current?.({ available: setup.available, hasSession });
+  }, [setup.available, hasSession]);
 
   // The side panel on the guided setup: the settings board, over a console that stays mounted.
   const guided = props.section === "guided-setup";
@@ -181,6 +184,9 @@ export function BusinessSettings(props: Props) {
   }, [guided]);
   const boardDraft = calls?.draft ?? setup.draft;
   const showBoard = guided && asideView === "board" && Boolean(boardDraft);
+  // The console draws its own header; so does the board. Anywhere else with no console (its
+  // settings didn't load), the shell keeps its "Test call" header around the status line.
+  const asideBare = Boolean(calls) || (guided && Boolean(boardDraft));
   const highlightIds = useMemo(() => new Set(setup.highlightIds), [setup.highlightIds]);
 
   /** What a successful save of each section takes back from the saved row — and nothing else. */
@@ -503,7 +509,7 @@ export function BusinessSettings(props: Props) {
       phase={phase}
       asideTitle={guided ? "Settings board" : "Test call"}
       asideBadge="Uses your draft"
-      asideBare={Boolean(boardDraft)}
+      asideBare={asideBare}
       notice={props.notice}
       aside={
         boardDraft ? (
@@ -543,7 +549,7 @@ export function BusinessSettings(props: Props) {
                   onCallState={setCallActive}
                 />
               ) : (
-                <div className="p-4">{callsStatus}</div>
+                <div className={asideBare ? "p-4" : undefined}>{callsStatus}</div>
               )}
             </div>
           </div>

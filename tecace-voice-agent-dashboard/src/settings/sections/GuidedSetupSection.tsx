@@ -9,7 +9,7 @@ import type { SectionId } from "../../routing";
 import { SectionIntro } from "../SettingsShell";
 import type { GuidedSetup } from "../setup/useGuidedSetup";
 import { TOPIC_LABEL, canSend, changeLabel, visibleMessages } from "../setup/setupState";
-import { EmptyState, FieldMessage, Tag, toFieldError } from "./shared";
+import { EmptyState, FieldMessage, Tag, usePublish } from "./shared";
 
 // Guided setup: the consultant interviews the owner and writes transfers, message scenarios and
 // appointments into the call-settings draft as they go. The board beside it (SetupBoard, in the
@@ -36,11 +36,15 @@ export function GuidedSetupSection({ setup, onOpenSection, onPublish, dirty }: P
     scrollToEnd(endRef.current);
   }, [visible.length, setup.pending]);
 
-  // Focus the composer when an interview appears, and again when a turn comes back: the input was
-  // disabled meanwhile, so focus would otherwise have fallen to the page.
+  // Focus the composer when an interview appears while this is open (not one that was already there
+  // when the section opened — that would pop the keyboard on a phone), and again when a turn comes
+  // back: the input was disabled meanwhile, so focus would otherwise have fallen to the page.
+  const sessionId = session?.id;
+  const lastSessionId = useRef(sessionId);
   useEffect(() => {
-    if (session?.id) textareaRef.current?.focus();
-  }, [session?.id]);
+    if (sessionId && sessionId !== lastSessionId.current) textareaRef.current?.focus();
+    lastSessionId.current = sessionId;
+  }, [sessionId]);
   const wasPending = useRef(setup.pending);
   useEffect(() => {
     if (wasPending.current !== null && setup.pending === null) textareaRef.current?.focus();
@@ -64,7 +68,8 @@ export function GuidedSetupSection({ setup, onOpenSection, onPublish, dirty }: P
 
   function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
     // Enter sends, Shift+Enter is a new line — and never while an IME (Korean input) is composing.
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+    // Safari fires the Enter that commits a composition with isComposing false but keyCode 229.
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
       e.preventDefault();
       submit();
     }
@@ -308,20 +313,7 @@ function FinishedPanel({
   onReview: () => void;
   onReset: () => void;
 }) {
-  const [publishing, setPublishing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function publish() {
-    setPublishing(true);
-    setError(null);
-    try {
-      await onPublish();
-    } catch (e) {
-      setError(toFieldError(e, "Couldn't publish. Nothing changed for callers.").message);
-    } finally {
-      setPublishing(false);
-    }
-  }
+  const { publishing, error, publish } = usePublish(onPublish);
 
   return (
     <div className="bg-primary/5 flex flex-col gap-3 border-t p-4">
