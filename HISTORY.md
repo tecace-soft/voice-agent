@@ -13,6 +13,28 @@ Format:
 
 ---
 
+## 2026-09-29 11:10 · Michael · transcribe-backend, openai-agent-app (real calls run on the composed session)
+- `GET /business/config?to=` gains `session` (null for a profile without a structured profile): `{live, backend, greetingLine, voice, language, tools, transfers:[{id,name,mode,numbers}], reachable, canBook, returnLeg:{live,backend,tools}}` from new `src/session/phone.ts` → `composeSession(channel:"phone")` on the PUBLISHED call settings. All existing flat fields are unchanged.
+- `composeSession` gains optional `canText` (false = no `send_link`, no links block) and `canTransfer` (false = nobody to reach; used for `returnLeg`, the leg after a transfer nobody answered).
+- `openai-agent-app` GPT-Live bridge: with `session`, the call uses the dashboard's prompts verbatim (plus its own "This call" block), its tools, voice and greeting; `transfer_call(scenario_id)` dials that scenario's first number. New `realtime/composed.py`, `live_session.build_composed_session_start`, check `scripts/checks/verify_composed_session.py` (`--live <number>` shows what a real number gets). No session → the old hand-built prompt, as before.
+- ⚠ Not on the phone yet: warm/waterfall transfers are dialled cold to the first number; `send_link` is left out (no SMS). The Realtime bridge (`bridge.py`, `OPENAI_LIVE_MODEL` unset) still uses the hand-built prompt. Deploy the backend before (or with) the agent; either order is safe.
+
+## 2026-09-29 11:10 · Michael · transcribe-backend (Twilio: API key accepted again, no PUBLIC_BACKEND_URL needed)
+- `src/twilio/client.ts` / `env.twilio`: REST calls sign in with `TWILIO_API_KEY_SID` + `TWILIO_API_KEY_SECRET` when both are set, else `TWILIO_ACCOUNT_SID:TWILIO_AUTH_TOKEN`. Twilio counts as set up with the SID plus either one. The Agent numbers page said "Twilio isn't set up" on a backend that had the SID and a key but no auth token.
+- Twilio status callbacks no longer need `PUBLIC_BACKEND_URL` (that's for staging/local): unset, they use `https://$VERCEL_PROJECT_PRODUCTION_URL` (Vercel sets it; production = `transcribe-app-backend.vercel.app`). `env.twilio.defaultBackendUrl`, read in `twilio/inventory.ts`; calendar OAuth unchanged.
+- ⚠ Phase 2 (signature checks on `/twilio/*`) still needs `TWILIO_AUTH_TOKEN`: Twilio signs webhooks with the auth token, never a key. A restricted key needs phone numbers read + write (buying/searching too, if used).
+
+## 2026-09-29 10:50 · Michael · workspace (merge Main-Hans; Twilio numbers: Hans's version kept)
+- Merged Main-Hans into master. The two Twilio-numbers implementations overlapped; Hans's phase 1 (`src/routes/numbers.ts`, `src/twilio/client.ts`, sync/buy/configure/release) is kept. Michael's 09-28 16:30 one is **removed**: `GET /business/numbers/twilio`, `POST /business/numbers/twilio/:sid/connect`, `src/routes/twilioNumbers.ts`, `src/twilio/numbers.ts`, `TwilioNumbersCard.tsx`, and the `TWILIO_API_KEY_SID`/`TWILIO_API_KEY_SECRET`/`TWILIO_API_BASE` env (auth token only now).
+- `App.tsx`: the 09-29 demo-account URL normalisation now respects `DEMO_OWNER_VIEWS` — a view a demo account can't open is replaced with `#/my/overview`; `demoProspect` is pinned to their own id. Version 0.0.11 (routing fixes) sits on top of the combined 0.0.10.
+- ⚠ Deploy: Twilio needs `TWILIO_ACCOUNT_SID` plus `TWILIO_AUTH_TOKEN` (or an API key, see 11:10).
+
+## 2026-09-29 10:30 · Michael · dashboard (routing fixes)
+- `src/routing.ts`: the prospect path is now `demos/prospects/:id/:tab?`; the optional segment is a settings section **or** a tab (`activity|settings|sources|share`, `PROSPECT_TABS`). `Route` gains `tab?: ProspectTab`; `formatHash` writes a section over a tab. `navigate(next, { replace: true })` rewrites the current history entry (used for the pre-production landing and demo-account redirects).
+- Demo-stage accounts: the URL is normalised to their own `#/demos/prospects/<businessId>` (replace, not push); the sidebar's Version · Changelog now opens `#/changelog` for them.
+- `ProspectScreen.tsx` (ported) takes `tab`/`onTab`; logged in `src/demos/PORTING.md`. Version 0.0.11.
+- ⚠ Anyone linking to a prospect tab: use `demoHref`/`formatHash` with `tab`, not a hand-written hash.
+
 ## 2026-09-29 08:15 · bottomup32 · workspace (customer journey page, 29 Sep edition)
 - [docs/customer-journey.html](docs/customer-journey.html) and [docs/customer-journey.ko.html](docs/customer-journey.ko.html) now describe 0.0.10 (Main-Hans @ 71754a5). New section "What changed since 28 Sep": the life of a Twilio number and its webhooks, a demo customer's screens before and after, prompts following saves, the transfer audit as a table, models, and notes for developers. The system map, swimlane, gates and live-call drawings carry violet New / Changed tags.
 - Published in place, same links: English https://claude.ai/artifact/DM1JiVC95iN2HZoukLWxoS, Korean https://claude.ai/artifact/3eiJvCTMR9XUYtaGDEjEaE.
@@ -56,6 +78,11 @@ Format:
 - ⚠ Regression harness: the six browser scripts' embedded static servers now state their MIME types. On a Windows machine whose registry maps `.js` to `text/plain`, Edge refused every module script and every script saw an empty app (all checks failed with no page error). `compare.py` (vite preview) was never affected.
 - ⚠ Deploy: set the Twilio env on the backend (staging first), open Agent numbers → **Sync from Twilio** once, then **Configure** the live hand-registered number — that only adds the StatusCallback; its VoiceUrl stays on the VPS. Phases 2 (forwarding test, status callbacks) and 3 (SMS) follow the design in `docs/superpowers/specs/2026-09-28-twilio-numbers-forwarding-design.md`.
 
+## 2026-09-28 16:30 · Michael · transcribe-backend, dashboard (Twilio numbers on Agent numbers)
+- New admin routes (`src/routes/twilioNumbers.ts`, client `src/twilio/numbers.ts`, plain fetch, nothing stored): `GET /business/numbers/twilio` → `{configured, agentUrl, numbers:[{sid, phoneE164, friendlyName, voiceUrl, status: connected|not_connected|elsewhere, registered}]}` (Twilio unset = 200 `configured:false`); `POST /business/numbers/twilio/:sid/connect {overwrite?}` sets VoiceUrl `<AGENT_PUBLIC_URL>/incoming` + fallback `/incoming-fallback` (409 `points_elsewhere` without overwrite, 503 when Twilio/agent URL unset, 502 `twilio_auth`).
+- Dashboard: Agent numbers page gets an "On our Twilio account" card (`src/pages/TwilioNumbersCard.tsx`) with Connect to agent / Add to list. Regression: `fake_backend.py` answers `configured:false`; `compare.py` HIDE `.twilio-numbers` (IDENTICAL). Version 0.0.10.
+- ⚠ Deploy: new optional env on `transcribe-app-backend` (and staging `va-staging-backend`): `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY_SID` + `TWILIO_API_KEY_SECRET` (restricted key, phone numbers read+write; `TWILIO_AUTH_TOKEN` as fallback), `AGENT_PUBLIC_URL=https://31-97-214-59.sslip.io`. Staging and production share the Twilio account — connecting from either rewires the real number.
+
 ## 2026-09-28 13:58 · Hans · workspace (CLAUDE.md refresh)
 - Root `CLAUDE.md`: local ports per app, the dashboard's three entry documents (`index`/`c`/`start.html`), `openai-agent-app`'s inbound receptionist role, root `README.md` flagged as stale, and `compare.py`'s dependency on an untouched `transcribe-dashboard-app`.
 - `transcribe-app/` is noted as maintained separately: changes to `transcribe-backend`'s ingest contract (`TRANSCRIBE_INGEST_KEY`, run reporting) need a `⚠` entry here.
@@ -63,6 +90,12 @@ Format:
 ## 2026-09-28 · bottomup32 · dashboard (demo customer: Overview + Call activity)
 - New views `myOverview` (`#/my/overview`) and `myCalls` (`#/my/calls`) for demo-stage accounts; their rail is "My receptionist" › Overview / Call activity / Settings, landing on Overview (was: settings only). No backend change — `GET /demo/customers/:id` already answers the owner with calls, events and stats.
 - `ActivityTab` gains `readOnly`. Regression: `demo_customer.py` updated (rail, Overview, Call activity); all 9 pass, compare IDENTICAL. Changelog 0.0.10.
+
+## 2026-09-28 12:25 · Michael · deploy (production DB: staging data merged in)
+- Neon `transcribe-db`: `main` (production, `transcribe-app-backend`) was restored from branch `staging`, then the rows production wrote after the fork (voicemail runs, inbound calls, agent call sessions, demo call events, +530s call minutes, poller heartbeat) were copied back. Production now has staging's users, business profiles, demo customers/calls and its 8 new tables / 17 columns (sign-up, auth tokens, calendar, bookings, call settings, SMS consents, customer codes, user status).
+- Old production kept as Neon branch `main-backup-before-merge` (has its own compute). Delete it once production looks right.
+- Users edited on staging keep staging's version (e.g. hansoo@tecace.com's staging password is now the production password).
+- `transcribe-app-backend.vercel.app` had been pinned to a Sep 24 build (4d556b3, rollback state; master builds weren't taking the domain). Promoted today's `master` build (34bb276) — production backend code now matches the merged schema, and new `master` builds take the domain again.
 
 ## 2026-09-27 23:40 · bottomup32 · workspace (Calls: real-phone test list)
 - New [TODO.md](TODO.md): status of the Calls features on REAL phone calls and what is left. Appointments booking verified on a real call. Still open: send a text (SMS, not built), call transfer (test on a real call), take a message (test on a real call).
@@ -74,6 +107,7 @@ Format:
 - Product version starts at **0.0.1**; today is **0.0.9** (one release per working day since 2026-09-17, back-filled from git + this log). Source: `tecace-voice-agent-dashboard/src/changelog.ts`; `package.json` version must match (`tests/changelog.test.ts`).
 - Dashboard: "Version x.y.z · Changelog" under Last run in the sidebar opens `#/changelog` (every account, demo-stage customers included; `admin: true` lines hidden from customers). New `ViewId` `changelog` in `routing.ts` / `App.tsx` / `Sidebar.tsx`; `.sidebar-version` added to `compare.py` HIDE.
 - ⚠ Everyone: CLAUDE.md now requires a changelog entry + version bump for user-visible changes (same-day changes share that day's entry). HISTORY.md stays the technical log.
+
 
 ## 2026-09-27 23:00 · bottomup32 · transcribe-backend, dashboard (customers: research optional, delete a selection)
 - `POST /demo/customers` takes `research` (boolean, default true = old behaviour). `false` saves at `status: "ready"` with no run/`researchedAt`; the dashboard badges it "Not researched" and the customer page offers **Run research**. New dialog buttons: **Add customer** (no research) / **Add and research**.

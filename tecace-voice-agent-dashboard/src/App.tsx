@@ -29,7 +29,7 @@ import { PersonBoardsPage } from "./pages/PersonBoardsPage";
 import { RunsPage } from "./pages/RunsPage";
 import { SetupPage } from "./pages/SetupPage";
 import { useAccountNames } from "./people";
-import { useRoute, type SectionId } from "./routing";
+import { useRoute, type ProspectTab, type SectionId } from "./routing";
 import { ThemeToggle } from "./theme";
 import { DashboardSkeleton } from "./ui";
 
@@ -125,8 +125,10 @@ function useStats(mailbox: MailboxScope, skip = false) {
 function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void }) {
   // The view and the mailbox both live in the URL, so a refresh stays where you were and the
   // browser's Back button walks the views you visited.
-  const [{ view: routeView, mailbox: routeMailbox, id: routeRecordId, section: routeSection }, navigate] =
-    useRoute();
+  const [
+    { view: routeView, mailbox: routeMailbox, id: routeRecordId, section: routeSection, tab: routeTab },
+    navigate,
+  ] = useRoute();
   // Open by default on a desktop-width screen; on narrow screens the rail is an overlay, so it
   // starts closed and the header's toggle brings it in.
   const [navOpen, setNavOpen] = useState(() => window.innerWidth >= 900);
@@ -168,6 +170,20 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // Which settings section is open, on the Business page and a demo's page. In the URL like the
   // view, so a refresh stays on it and a link can point at "Transfer calls".
   const setSection = useCallback((next: SectionId) => navigate({ section: next }), [navigate]);
+  // Which tab of a prospect's page is open, in the URL for the same reasons. Choosing a tab closes
+  // the section, so the address never names a Settings section while Activity is on screen.
+  const setTab = useCallback((next: ProspectTab) => navigate({ tab: next, section: undefined }), [navigate]);
+  // A demo-stage customer's address says where they are. Without this a typed `#/overview` (or
+  // another prospect's id) stayed in the bar, and a section they opened never reached it, so a
+  // refresh lost it. A view that isn't theirs becomes their Overview; their settings page always
+  // carries their own record id.
+  useEffect(() => {
+    if (!demoOnly) return;
+    if (!DEMO_OWNER_VIEWS.has(routeView)) navigate({ view: "myOverview" }, { replace: true });
+    else if (routeView === "demoProspect" && user.businessId && routeRecordId !== user.businessId) {
+      navigate({ view: "demoProspect", id: user.businessId }, { replace: true });
+    }
+  }, [demoOnly, routeView, routeRecordId, user.businessId, navigate]);
   const { data, loading, error, refresh } = useStats(mailbox, demoOnly);
 
   // How many notes are waiting on the team, for the sidebar badge. Admins only — it's the one
@@ -197,7 +213,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // voicemail Overview they have no use for. Only when nothing else was asked for in the address.
   useEffect(() => {
     if (!isAdmin && user.status === "pre-production" && ASKED_AT_LOAD === "") {
-      navigate({ view: "business", section: "business-info" });
+      navigate({ view: "business", section: "business-info" }, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -404,13 +420,22 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             ))}
           {isDemoView &&
             (isAdmin ? (
-              <DemosView view={view} id={routeId} section={routeSection} onSection={setSection} />
+              <DemosView
+                view={view}
+                id={routeId}
+                section={routeSection}
+                onSection={setSection}
+                tab={routeTab}
+                onTab={setTab}
+              />
             ) : demoOnly ? (
               <DemosView
                 view={view}
                 id={routeId}
                 section={routeSection}
                 onSection={setSection}
+                tab={routeTab}
+                onTab={setTab}
                 operator={false}
               />
             ) : (

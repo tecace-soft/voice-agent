@@ -63,7 +63,14 @@ from .instructions_inbound import build_instructions as build_instructions_inbou
 from .instructions_neutral import NEUTRAL_GREETING, build_instructions_neutral
 from .booking_inbound import apply_booking, tools_with_booking
 from .korean import HANGUL, korean_speech_guide
-from .live_session import LIVE_URL, VOICE_PRICE_PER_MINUTE, backend_cost, build_live_session_start
+from .composed import composed_call, transfer_number
+from .live_session import (
+    LIVE_URL,
+    VOICE_PRICE_PER_MINUTE,
+    backend_cost,
+    build_composed_session_start,
+    build_live_session_start,
+)
 
 log = logging.getLogger(__name__)
 
@@ -369,6 +376,13 @@ async def _open_live(cfg: Config):
     )
 
 
+def _books(business, composed) -> bool:
+    """Whether this call can book: the composed session's say, else the flat `booking` block."""
+    if composed is not None:
+        return bool((business.session or {}).get("canBook"))
+    return bool(business.booking)
+
+
 async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     await twilio_ws.accept()
     # Opened alongside Twilio's start handshake, as in bridge.py — every millisecond is silence.
@@ -388,6 +402,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     prerendered: bytes | None = None
     returning = str(params.get("transfer_failed", "")).lower() in ("yes", "true", "1")
     business = None
+    composed = None  # the dashboard's own session for this business — see composed.py
 
     # The same prompt and tool selection as run_bridge — see the reasoning there.
     if is_inbound:
@@ -406,6 +421,16 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             # cannot identify still deserves to hear that somebody picked up.
             opening = NEUTRAL_GREETING
             greeting_audio.warm(cfg, opening)
+        elif business.session:
+            # What the business set up in the dashboard — prompts, knowledge, FAQs, house rules,
+            # published scenarios — composed there on the same rule book as its in-app test call.
+            composed = composed_call(
+                cfg, business, caller=caller, returning=returning,
+                caller_name=str(params.get("caller_name", "")),
+                known_request=str(params.get("known_request", "")),
+            )
+            instructions = composed.live
+            log.info("answering for %r on the session composed in the dashboard", business.business_name)
         else:
             instructions = build_instructions_inbound(
                 caller=caller,
@@ -440,7 +465,11 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         # /incoming webhook starts that while Twilio connects), it is played the instant the stream
         # opens and the model is told what was said instead of being asked to say it — which is the
         # ~2.5s the model needs before its first audible word, spent before the call was answered.
-        if business is not None and not returning:
+        if composed is not None and not returning:
+            opening = composed.opening
+            greeting_audio.warm(cfg, opening)
+            prerendered = greeting_audio.ready(cfg, opening) if cfg.prerendered_greeting else None
+        elif business is not None and not returning:
             opening = spoken_greeting(
                 greeting=business.greeting or cfg.greeting,
                 business_name=business.business_name,
@@ -453,9 +482,11 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             prerendered = greeting_audio.ready(cfg, opening) if cfg.prerendered_greeting else None
 
         tools = INBOUND_TOOL_SCHEMAS
-        if returning or (business is not None and not business.transfer_number):
+        if composed is not None:
+            tools = composed.tools
+        elif returning or (business is not None and not business.transfer_number):
             tools = [t for t in INBOUND_TOOL_SCHEMAS if t.get("name") != "transfer_to_human"]
-        if business is not None and business.booking:
+        if composed is None and business is not None and business.booking:
             tools = tools_with_booking(tools)
     else:
         log.info(
@@ -477,7 +508,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     executor = ToolExecutor(
         cfg,
         intake_id=params.get("intake_id", ""),
-        booking_line=business.to if is_inbound and business is not None and business.booking else "",
+        booking_line=business.to if is_inbound and business is not None and _books(business, composed) else "",
         caller=caller if is_inbound else "",
     )
 
@@ -489,7 +520,12 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "is_mini": False,
         "caller": caller,
         "dialled": str(params.get("dialled", "")),
-        "human_number": business.transfer_number if business else "",
+        "human_number": (
+            composed.default_number if composed is not None
+            else business.transfer_number if business else ""
+        ),
+        # Read by transfer_call, to dial the scenario the agent chose.
+        "business": business if composed is not None else None,
         "caller_name": str(params.get("caller_name", "")),
         "outcome": None,
         "messages": [],
@@ -563,9 +599,15 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 first_turn = _GREET_NOW
             else:
                 first_turn = ""
-            await live_ws.send(json.dumps(build_live_session_start(
-                cfg, instructions, tools, greet_now=first_turn,
-            )))
+            start = (
+                build_composed_session_start(
+                    cfg, composed.live, composed.backend, composed.tools,
+                    greet_now=first_turn, voice=composed.voice,
+                )
+                if composed is not None
+                else build_live_session_start(cfg, instructions, tools, greet_now=first_turn)
+            )
+            await live_ws.send(json.dumps(start))
 
             # Said before the model is even connected — this is the whole point of rendering it.
             if is_inbound and prerendered:
@@ -1374,7 +1416,13 @@ async def _on_backend_event(
             args = {}
         if name == "end_call":
             await _handle_end_call(twilio_ws, live_ws, call_id, state)
-        elif name == "transfer_to_human":
+        elif name in ("transfer_to_human", "transfer_call"):
+            if name == "transfer_call" and state.get("business") is not None:
+                # The dashboard's scenarios: dial the one the agent chose.
+                number = transfer_number(state["business"], str(args.get("scenario_id") or ""))
+                if number:
+                    state["human_number"] = number
+                log.info("transfer_call — scenario %r -> %s", args.get("scenario_id"), number or "none")
             await _handle_transfer(twilio_ws, live_ws, call_id, args, state, cfg)
         else:
             if name == "take_message":

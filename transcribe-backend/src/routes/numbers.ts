@@ -25,7 +25,7 @@ const NUMBERS_ARE_ADMIN = "Only an admin can manage the agent's phone numbers.";
 
 const TWILIO_NOT_CONFIGURED = {
   error: "twilio_not_configured",
-  message: "Twilio isn't set up on this server. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN.",
+  message: "Twilio isn't set up on this server. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN (or TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET).",
 } as const;
 
 const WEBHOOKS_NOT_CONFIGURED = {

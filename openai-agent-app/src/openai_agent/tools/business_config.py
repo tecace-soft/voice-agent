@@ -80,6 +80,21 @@ class BusinessConfig:
     # {providerName, kind, title, durationMinutes, horizonDays, instructions}. None = no booking; the
     # receptionist hands appointments to a person or takes a message, exactly as before.
     booking: dict | None = None
+    # The call as the dashboard composed it — see realtime/composed.py: {live, backend, greetingLine,
+    # voice, language, tools, transfers, reachable, canBook, returnLeg}. None for a business whose
+    # profile predates the structured editor; the hand-built prompt is used then.
+    session: dict | None = None
+
+
+def _usable_session(value: object) -> dict | None:
+    """The composed session, or None when it is missing or not something a call can run on."""
+    if not isinstance(value, dict):
+        return None
+    if not str(value.get("live") or "").strip() or not str(value.get("backend") or "").strip():
+        return None
+    if not isinstance(value.get("tools"), list) or not isinstance(value.get("returnLeg"), dict):
+        return None
+    return value
 
 
 async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | None:
@@ -157,6 +172,7 @@ async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | N
         transfer_topics=str(biz.get("transferTopics") or ""),
         house_rules=str(biz.get("houseRules") or ""),
         booking=biz.get("booking") if isinstance(biz.get("booking"), dict) else None,
+        session=_usable_session(data.get("session")),
     )
     _cache[dialled] = (time.monotonic(), business)
     return business

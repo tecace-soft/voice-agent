@@ -1272,3 +1272,8 @@ Spec: `docs/superpowers/specs/2026-09-27-phase-gates-design.md`.
 ## Activity as a table (2026-09-28) — dashboard-only
 - `components/admin/ActivityTab.tsx` no longer lists calls as cards. It lays out its own cards: (operator) `CallsPerDayChart` + a "How callers felt" mood bar (customer calls only), "What to fix" with a bar per gap, then a **Calls** table — When, Length (bar against the longest call), Mood (or **Analyze**), what was tested / what the caller wanted (+ gap count), Counted as (the Test switch), and an "Open call details" button. Chips filter by Customers/Tests and by mood; 25 rows, then "Show more". A row opens **Call details** (sheet): status, mood, the review, the transcript. `readOnly` (the demo customer): the mood bar and the table, no switch/Analyze/chart/roll-up, review labels "Caller wanted / Went well / Missed".
 - `screens/ProspectScreen.tsx` and `screens/MyReceptionistScreen.tsx` no longer wrap it in a Card.
+
+## Routing: the prospect's tab is in the URL (2026-09-29) — dashboard-only
+- `screens/ProspectScreen.tsx`: new `tab` / `onTab` props. With `onTab` (the dashboard) the open tab comes from the route (`#/demos/prospects/<id>/<activity|settings|sources|share>`, or a settings section, which means Settings); without it the promo's local `useState` is kept. Before, the tab was only local state: Back/Forward to a section URL left Activity on screen, and a refresh dropped the tab.
+- `screens/ProspectScreen.tsx`: the header's "Customers" link is `demoHref("demoProspects")` instead of a literal `#/demos/prospects`, so it keeps the mailbox scope like every other ported link.
+- `DemosView.tsx` passes `tab` / `onTab` through.

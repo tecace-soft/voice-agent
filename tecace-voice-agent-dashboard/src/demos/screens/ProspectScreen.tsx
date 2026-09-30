@@ -30,7 +30,8 @@ import { DemoSettings } from "../../settings/DemoSettings";
 import { TestCallPanel } from "../../settings/simulator/TestCallPanel";
 import { ExampleCallPanel } from "../../settings/simulator/ExampleCallPanel";
 import { withDefaults } from "../../settings/callSettings";
-import type { SectionId } from "../../routing";
+import type { ProspectTab, SectionId } from "../../routing";
+import { demoHref } from "@/routes";
 import type {
   CallLog,
   CrmNote,
@@ -39,7 +40,7 @@ import type {
   TrackEvent,
 } from "@/lib/types";
 
-type Tab = "activity" | "settings" | "sources" | "share";
+type Tab = ProspectTab;
 
 type Payload = {
   customer: Customer;
@@ -67,19 +68,32 @@ export function ProspectScreen({
   operator = true,
   section,
   onSection,
+  tab: routeTab,
+  onTab,
 }: {
   id: string;
   operator?: boolean;
   /** Dashboard-only: the open settings section, held in the URL. */
   section?: SectionId;
   onSection?: (section: SectionId) => void;
+  /** Dashboard-only: the open tab, held in the URL like the section. Without `onTab` it is local state. */
+  tab?: Tab;
+  onTab?: (tab: Tab) => void;
 }) {
   const [data, setData] = useState<Payload | null>(null);
   const [draft, setDraft] = useState<Customer | null>(null);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [researching, setResearching] = useState(false);
-  const [tab, setTab] = useState<Tab>(operator && !section ? "activity" : "settings");
+  const [localTab, setLocalTab] = useState<Tab>(operator && !section ? "activity" : "settings");
+  // Dashboard-only: read from the URL, so Back/Forward, a link or a refresh opens the tab the
+  // address names (an open section is on Settings); local state only where no router is attached.
+  const tab: Tab = onTab
+    ? section
+      ? "settings"
+      : (routeTab ?? (operator ? "activity" : "settings"))
+    : localTab;
+  const setTab = onTab ?? setLocalTab;
   // Dashboard-only (PORTING.md, B2): the page takes the whole screen — sidebar as an icon rail, its
   // header in the app's top bar — on every tab, so switching tabs doesn't move the header.
   useStudioChrome(true);
@@ -314,7 +328,7 @@ export function ProspectScreen({
       <nav className="ta-label-1 flex min-w-16 shrink items-center gap-1.5 overflow-hidden whitespace-nowrap" aria-label="Breadcrumb">
         {operator ? (
           <span className="hidden items-center gap-1.5 xl:flex">
-            <a href="#/demos/prospects" className="text-muted-foreground hover:text-foreground">
+            <a href={demoHref("demoProspects")} className="text-muted-foreground hover:text-foreground">
               Customers
             </a>
             <span className="text-muted-foreground/60" aria-hidden>

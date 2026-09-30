@@ -1,5 +1,5 @@
 import type { ViewId } from "../components/Sidebar";
-import type { SectionId } from "../routing";
+import type { ProspectTab, SectionId } from "../routing";
 import { DemosGate } from "./DemosGate";
 import { OverviewScreen } from "./screens/OverviewScreen";
 import { PipelineScreen } from "./screens/PipelineScreen";
@@ -22,12 +22,17 @@ export function DemosView({
   operator = true,
   section,
   onSection,
+  tab,
+  onTab,
 }: {
   view: ViewId;
   id: string | undefined;
   /** Dashboard-only: the open settings section on a prospect's page. */
   section?: SectionId;
   onSection?: (section: SectionId) => void;
+  /** Dashboard-only: the open tab on a prospect's page. */
+  tab?: ProspectTab;
+  onTab?: (tab: ProspectTab) => void;
   operator?: boolean;
 }) {
   if (!operator) {
@@ -42,6 +47,8 @@ export function DemosView({
             operator={false}
             section={section}
             onSection={onSection}
+            tab={tab}
+            onTab={onTab}
           />
         ) : (
           <p className="ta-body-2 text-muted-foreground">
@@ -58,7 +65,9 @@ export function DemosView({
       {view === "demoProspects" && <ProspectsScreen />}
       {/* Only a well-formed id reaches ProspectScreen (kept verbatim), which puts it in a demo path. */}
       {view === "demoProspect" &&
-        (id && isPromoId(id) ? <ProspectScreen key={id} id={id} section={section} onSection={onSection} /> : <ProspectsScreen />)}
+        (id && isPromoId(id) ? (
+          <ProspectScreen key={id} id={id} section={section} onSection={onSection} tab={tab} onTab={onTab} />
+        ) : <ProspectsScreen />)}
       {view === "demoPipeline" && <PipelineScreen />}
     </DemosGate>
   );

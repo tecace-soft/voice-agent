@@ -31,6 +31,7 @@ import {
 import { composeSession } from "../session/compose.js";
 import { bookingTargetFor } from "../calendar/service.js";
 import { fromBusinessRow } from "../session/records.js";
+import { phoneSession } from "../session/phone.js";
 import { promptsOutdated } from "../session/prompts.js";
 import type { BusinessProfile as StructuredProfile } from "../demo/types.js";
 import {
@@ -165,6 +166,22 @@ export const business = new Elysia({ prefix: "/business" })
             }
           : null;
 
+      // What the call is told, composed exactly as the dashboard's test call is (Custom training's
+      // prompts, knowledge, FAQs, house rules, published scenarios). Null for a row that predates the
+      // structured profile; the agent then builds its own prompt from the flat fields below.
+      const record = fromBusinessRow(profile);
+      const published = callSettings?.published ?? null;
+      const session = record
+        ? phoneSession({
+            record,
+            published,
+            waterfallAllowed: callSettings?.waterfallAllowed ?? false,
+            booking: rules?.enabled ? calendar : null,
+            now: new Date(),
+            timeZone: published?.timezone ?? env.timezone,
+          })
+        : null;
+
       return {
         assigned: true,
         to: number.phoneE164,
@@ -190,6 +207,7 @@ export const business = new Elysia({ prefix: "/business" })
           transferNumber: profile.transferNumber,
           booking,
         },
+        session,
       };
     },
     { query: t.Object({ to: t.String({ minLength: 1, maxLength: 40 }) }) },

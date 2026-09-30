@@ -30,6 +30,40 @@ export type Release = {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.0.11",
+    date: "2026-09-29",
+    title: "Links, Back and refresh land where you were",
+    items: [
+      {
+        kind: "improved",
+        text: "Real calls to your number now follow what you set up here, the same as a test call: your prompts and Custom training, knowledge, FAQs, instructions, greeting and voice, plus the transfers and message situations you published. Texting a link is test-call only for now.",
+      },
+      {
+        kind: "fixed",
+        text: "A customer's Activity, Settings, Sources and Share tabs are in the address now: a refresh, Back and Forward, or a shared link opens the same tab, and the address no longer names a settings section while another tab is open.",
+        admin: true,
+      },
+      {
+        kind: "fixed",
+        text: "The Customers link at the top of a customer's page keeps the mailbox you were looking at.",
+        admin: true,
+      },
+      {
+        kind: "fixed",
+        text: "While you're trying your receptionist, Version · Changelog opens the changelog, and a refresh stays on the section you had open.",
+      },
+      {
+        kind: "fixed",
+        text: "Pressing Back after you're taken to your business information no longer opens an empty Overview first.",
+      },
+      {
+        kind: "fixed",
+        text: "Agent numbers connects to Twilio with an API key as well as the account's auth token, so syncing the account's numbers works on a server set up with a key.",
+        admin: true,
+      },
+    ],
+  },
+  {
     version: "0.0.10",
     date: "2026-09-28",
     title: "Your demo's overview and call activity; phone numbers from Twilio",

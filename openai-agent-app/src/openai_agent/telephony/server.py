@@ -49,6 +49,7 @@ from ..realtime import amd
 from ..realtime.bridge import run_bridge
 from ..realtime import greeting_audio
 from ..realtime.live_bridge import run_live_bridge
+from ..realtime.composed import opening_line
 from ..realtime.instructions_inbound import spoken_greeting
 from ..tools.business_config import fetch_business_config
 from . import transfer
@@ -153,7 +154,8 @@ def _warm_for_call(dialled: str) -> None:
         business = await fetch_business_config(cfg, dialled)
         if business is None:
             return
-        greeting_audio.warm(cfg, spoken_greeting(
+        # The same line the bridge will say: the dashboard's composed greeting where there is one.
+        greeting_audio.warm(cfg, opening_line(cfg, business) if business.session else spoken_greeting(
             greeting=business.greeting or cfg.greeting,
             business_name=business.business_name,
             agent_name=business.agent_name or cfg.agent_name,

@@ -275,6 +275,18 @@ describe("GET /business/numbers/webhooks", () => {
       Object.assign(settingsEnv, { publicBackendUrl: "https://api.test" });
     }
   });
+
+  it("falls back to the deployment's own production origin when PUBLIC_BACKEND_URL is unset", async () => {
+    Object.assign(settingsEnv, { publicBackendUrl: "" });
+    Object.assign(settingsEnv.twilio, { defaultBackendUrl: "https://backend.vercel.test" });
+    try {
+      const { body } = await call("GET", "/business/numbers/webhooks", ADMIN);
+      expect(body).toMatchObject({ configured: true, webhooks: true, statusCallback: "https://backend.vercel.test/twilio/voice-status" });
+    } finally {
+      Object.assign(settingsEnv, { publicBackendUrl: "https://api.test" });
+      Object.assign(settingsEnv.twilio, { defaultBackendUrl: "" });
+    }
+  });
 });
 
 describe("POST /business/numbers/sync", () => {
