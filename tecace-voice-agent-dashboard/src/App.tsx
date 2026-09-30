@@ -97,7 +97,7 @@ const VIEW_TITLES: Record<ViewId, string> = {
   failed: "Failed runs",
   feedback: "Send feedback",
   allFeedback: "All feedback",
-  calls: "Answered calls",
+  calls: "Transcripts",
   business: "Business information",
   numbers: "Agent numbers",
   apiKeys: "API keys",
@@ -202,7 +202,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   const routeId = demoOnly ? (user.businessId ?? undefined) : routeRecordId;
   const mailbox: MailboxScope = isAdmin ? routeMailbox : undefined;
   const setMailbox = useCallback((next: MailboxScope) => navigate({ mailbox: next }), [navigate]);
-  // Which business an admin is viewing on Business information / Answered calls. Separate from the
+  // Which business an admin is viewing on Business information / Transcripts. Separate from the
   // mailbox, and dropped when they leave that page (`nextRoute`).
   const customer = isAdmin ? routeCustomer : undefined;
   const setCustomer = useCallback((next: MailboxScope) => navigate({ customer: next ?? undefined }), [navigate]);
@@ -337,7 +337,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
         lastRunAt={data?.lastRunAt ?? null}
         mailboxLabel={mailboxLabel}
         mailboxSubLabel={mailboxSubLabel}
-        showScope={!isDemoView && view !== "dashboard"}
+        showScope={!isDemoView && view !== "dashboard" && view !== "calls"}
         user={user}
         onSignOut={onSignOut}
         setupRequests={setupRequests}
@@ -363,7 +363,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           {!studio && (
           <nav className="crumbs ta-label-1" aria-label="Breadcrumb">
             <span className="muted">
-              {demoOnly ? "My receptionist" : isDemoView ? "Demo" : view === "dashboard" ? "Dashboard" : "Transcribe"}
+              {demoOnly ? "My receptionist" : isDemoView ? "Demo" : view === "dashboard" || view === "calls" ? "Dashboard" : "Transcribe"}
             </span>
             <span className="muted" aria-hidden="true">
               /
@@ -377,13 +377,14 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             {studio && <div className="topbar-end tw" ref={setSlotEnd} />}
             {/* The studio's pages say whose settings these are in their own breadcrumb, and read no
                 transcription stats, so neither the picker nor Refresh applies there. */}
-            {/* Not on Business information / Answered calls: they pick a business of their own
+            {/* Not on Business information / Transcripts: they pick a business of their own
                 (`customer`), and the voicemail scope would be a control that changes nothing there. */}
             {/* Nor on Dashboard › Overview: it reads calls, not transcriptions, and has its own picker. */}
             {isAdmin && !isDemoView && !studio && view !== "business" && view !== "calls" && view !== "dashboard" && (
               <MailboxPicker value={mailbox} onChange={setMailbox} />
             )}
-            {!isDemoView && !studio && view !== "dashboard" && (
+            {/* Refresh reloads the voicemail stats, which the Dashboard group's pages don't read. */}
+            {!isDemoView && !studio && view !== "dashboard" && view !== "calls" && (
               <button
                 type="button"
                 className="btn btn-primary"

@@ -195,7 +195,7 @@ export function ReceptionistOverviewScreen({
                 href={demoHref("calls", undefined, viewing ? { customer: viewing.email } : undefined)}
                 className="ta-label-1 text-primary hover:underline"
               >
-                See all calls
+                See all transcripts
               </a>
             </CardAction>
           ) : null}

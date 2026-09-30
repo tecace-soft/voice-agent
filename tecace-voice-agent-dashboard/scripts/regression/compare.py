@@ -65,7 +65,8 @@ INTERACTIONS = [
     {"id": "admin:runs:light+hover-row", "token": "tok-admin", "hash": "#/runs", "theme": "light",
      "steps": [("hover", {"css": "main.content tbody tr"})]},
     {"id": "admin:runs:light+hover-nav", "token": "tok-admin", "hash": "#/runs", "theme": "light",
-     "steps": [("hover", {"within": NAV, "role": "button", "name": "Accounts"})]},
+     # "Send feedback", not "Accounts": the Settings group is hidden on both sides (see HIDE_OLD).
+     "steps": [("hover", {"within": NAV, "role": "button", "name": "Send feedback"})]},
     # Popover open.
     {"id": "admin:runs:light+columns-menu", "token": "tok-admin", "hash": "#/runs", "theme": "light",
      "steps": [("click", {"role": "button", "name": "Columns"}),
@@ -114,9 +115,14 @@ HIDE = [
 HIDE_OLD = [
     '.sidebar > .sidebar-group:nth-child(2)',
     '.sidebar > .sidebar-group:nth-child(3)',
+    # transcripts: "Answered calls" (the first item of the original's Settings group, child 5) moved
+    # to the new app's Dashboard group as "Transcripts". Hiding only that item would still leave the
+    # next one its `.nav-item + .nav-item` margin, so each app's Settings group is hidden whole.
+    '.sidebar > .sidebar-group:nth-child(5)',
 ]
-# dashboard group: new by design (Dashboard › Overview, the receptionist's calls), above Voicemail.
-HIDE_NEW = ['.sidebar-group[data-group="voicemail"]', '.sidebar-group[data-group="dashboard"]']
+# dashboard group: new by design (Dashboard › Overview and Transcripts), above Voicemail.
+HIDE_NEW = ['.sidebar-group[data-group="voicemail"]', '.sidebar-group[data-group="dashboard"]',
+            '.sidebar-group[data-group="settings"]']
 
 # Captures that are MEANT to differ: id -> (why, marker). The marker must appear in the new app's
 # text and not in the old app's — the change is proven, not merely skipped.
@@ -162,6 +168,12 @@ EXPECTED_CHANGES = {
         "the Numbers page gained the Twilio side: sync, webhooks, buy and release",
         "Sync from Twilio",
     ),
+    # Answered calls became Transcripts, in the Dashboard group, and an open call's conversation is
+    # chat bubbles (the demo's Exchange, in a .tw island) instead of the indented rail. The marker is
+    # the new name, in the breadcrumb and the card title; the original never says it.
+    **{cid: ("Answered calls became Transcripts; the conversation reads as a chat", "Transcripts")
+       for cid in ("admin:calls:light", "admin-scoped:calls:light", "user:calls:light",
+                   "user:calls:light+open-call")},
 }
 
 HIDE_JS = """

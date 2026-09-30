@@ -32,8 +32,12 @@ export const CHANGELOG: Release[] = [
   {
     version: "0.0.12",
     date: "2026-09-30",
-    title: "A calls overview for your receptionist; voicemail gets its own section",
+    title: "A calls overview and chat-style transcripts; voicemail gets its own section",
     items: [
+      {
+        kind: "improved",
+        text: "Answered calls is now Transcripts, under Dashboard next to Overview. Open a call and the conversation reads like a text-message chat — the caller on the right, your receptionist on the left — just like the test call on your demo.",
+      },
       {
         kind: "new",
         text: "Dashboard › Overview: your receptionist at a glance — calls, minutes, callbacks requested and this month's talk time, calls per day, and your most recent calls with what each caller wanted and how it ended. Pick the last 7, 30 or 90 days. It's the page you land on when you sign in.",

@@ -135,7 +135,7 @@ def main() -> int:
                           [l for l in labels if l and "Sign out" not in l and "Changelog" not in l] == ["Overview", "Call activity", "Settings"],
                           str(labels))
                     for gone in ("All runs", "Business information", "Accounts",
-                                 "Answered calls", "Customers", "CRM", "Send feedback"):
+                                 "Answered calls", "Transcripts", "Customers", "CRM", "Send feedback"):
                         check(f"...no {gone!r} in the rail", gone not in labels, str(labels))
 
                     # ---- their Overview (the landing): how the demo has been used

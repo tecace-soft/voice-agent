@@ -49,12 +49,15 @@ const NAV: {
   group: string;
   items: { id: ViewId; label: string; icon: typeof IconOverview; adminOnly?: boolean }[];
 }[] = [
-  // The receptionist a business runs: its answered calls at a glance (the Demo Overview's page, for
-  // one business — src/demos/screens/ReceptionistOverviewScreen.tsx).
+  // The receptionist a business runs: its calls at a glance (the Demo Overview's page, for one
+  // business — src/demos/screens/ReceptionistOverviewScreen.tsx), and every call's transcript.
   {
     key: "dashboard",
     group: "Dashboard",
-    items: [{ id: "dashboard", label: "Overview", icon: IconOverview }],
+    items: [
+      { id: "dashboard", label: "Overview", icon: IconOverview },
+      { id: "calls", label: "Transcripts", icon: IconMessage },
+    ],
   },
   // The voicemail pipeline's numbers and runs (GET /transcribe/*) — one group of their own, so they
   // aren't read as the dashboard's main page now that the dashboard is mostly the receptionist.
@@ -82,7 +85,6 @@ const NAV: {
     key: "settings",
     group: "Settings",
     items: [
-      { id: "calls", label: "Answered calls", icon: IconPhone },
       { id: "business", label: "Business information", icon: IconIdea },
       { id: "numbers", label: "Agent numbers", icon: IconPhone, adminOnly: true },
       { id: "apiKeys", label: "API keys", icon: IconKey, adminOnly: true },

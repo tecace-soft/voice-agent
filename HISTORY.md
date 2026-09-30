@@ -13,6 +13,11 @@ Format:
 
 ---
 
+## 2026-09-30 16:30 · Michael · dashboard (Answered calls → Transcripts, chat-style)
+- Sidebar: "Answered calls" left the Settings group and is now "Transcripts" in the Dashboard group (Overview, Transcripts). View id and address are unchanged (`calls`, `#/calls?customer=`), so existing links keep working. Breadcrumb "Dashboard / Transcripts"; the voicemail scope block and Refresh are hidden there, as on Dashboard › Overview.
+- An open call's conversation is now chat bubbles: new `src/components/CallConversation.tsx` renders the demo's `Exchange` (caller right/blue, receptionist left/grey) in a `.tw` island; the legacy `.call-turn*` CSS is removed. Copy that said "Answered calls" (Take a message section, examples) now says Transcripts.
+- `compare.py`: each app's Settings group is hidden whole (HIDE_OLD child 5, HIDE_NEW `data-group="settings"`), the hover-nav capture hovers "Send feedback", and the four `#/calls` captures are expected changes (marker "Transcripts"). Still IDENTICAL. `demo_customer.py` also checks "Transcripts" is absent for a demo account.
+
 ## 2026-09-30 15:40 · Michael · dashboard (sign-in lands on Dashboard › Overview)
 - `src/routing.ts` `DEFAULT_VIEW` is now `dashboard` (was `overview`): a sign-in with no address, and any unknown `#/…` path, lands on Dashboard › Overview. The voicemail Overview is still at `#/overview`.
 - Unchanged: demo-stage accounts still land on `#/my/overview`; a pre-production customer signing in with no address still goes to Business information.
