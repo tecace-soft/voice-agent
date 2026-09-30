@@ -201,9 +201,12 @@ function text(raw: unknown, field: string, max: number, label: string): string {
   return clean(value, max);
 }
 
+/** A fresh scenario id — the same shape the settings screens mint, and what `id()` falls back to. */
+export const newScenarioId = (): string => crypto.randomUUID().slice(0, 12);
+
 function id(raw: unknown): string {
   const value = typeof raw === "string" ? raw.trim() : "";
-  return /^[A-Za-z0-9_-]{1,40}$/.test(value) ? value : crypto.randomUUID().slice(0, 12);
+  return /^[A-Za-z0-9_-]{1,40}$/.test(value) ? value : newScenarioId();
 }
 
 /**
@@ -469,7 +472,7 @@ export function validateCallSettings(raw: unknown, ctx: ValidationContext): Call
 function uniqueIds<T extends { id: string }>(rows: T[]): T[] {
   const seen = new Set<string>();
   return rows.map((row) => {
-    const next = seen.has(row.id) ? { ...row, id: crypto.randomUUID().slice(0, 12) } : row;
+    const next = seen.has(row.id) ? { ...row, id: newScenarioId() } : row;
     seen.add(next.id);
     return next;
   });

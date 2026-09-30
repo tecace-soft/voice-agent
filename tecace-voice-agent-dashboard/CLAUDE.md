@@ -112,6 +112,30 @@ The header of `src/styles/index.css` explains the layer order and why; read it b
   phone line only ever uses the published copy.
 - The open section is in the URL (`#/business/transfers`, `#/demos/prospects/<id>/faqs`); new
   sections need an id in `SECTION_IDS` (`src/routing.ts`) and an entry in `SECTION_META`.
+- `guided-setup` is a chat over `/business/setup*` (the consultant interview, `setup/` +
+  `sections/GuidedSetupSection.tsx`, with `setup/SetupBoard.tsx` in the side panel); every turn's
+  returned draft is adopted into `BusinessSettings` (`calls` + `latestCalls`) and the turn is chained
+  on the call-settings save queue, so a section save can't overwrite the consultant's write.
+
+## List screens (tables that grow) — one pattern for all of them
+
+Customers is the reference (`src/demos/components/admin/CustomerTable.tsx`); build every new list the
+same way, from the kit in `src/demos/components/ui/data-table.tsx`, so they search, sort and page alike:
+- **Width:** the view goes in `App.tsx` `WIDE_VIEWS` (`.content-wide`: no 1440px cap). The table is
+  `table-fixed` with percentage widths per column and `truncate` + `title` in text cells, so it **never
+  scrolls sideways** at 1280px and up. Merge related numbers into one two-line cell ("3 calls · 9 min" /
+  "14 opens · 4 people") instead of adding columns.
+- **Height:** rows have one fixed height (two lines, 57px); `useFitRows` sizes the default page to the
+  window ("Fit to screen"), so the page **never scrolls down**. `TablePagination` offers 25 / 50 / 100 and
+  shows "1–25 of 1,240 …"; `usePaged` resets to page 1 when a filter changes; `useRemembered` keeps the
+  viewer's page size and sort.
+- **Finding things:** segment tabs with counts for the main split (phase), one search box that matches
+  every text column, then `Select` filters (category, status), a Sort select, and `SortableHead` on the
+  sortable columns (second click flips the direction). Always show a created date.
+- **Selection:** a checkbox column; select-all covers the current page; bulk actions appear at the right of
+  the toolbar only while something is ticked.
+- Paging is client-side today; keep the (page, pageSize, total) shape so a list can move to a server-side
+  `?page=&pageSize=&q=` without changing the UI once it passes a few thousand rows.
 
 ## Proving nothing broke
 
@@ -124,9 +148,12 @@ Run all three after any styling change:
 - `python scripts/regression/demos_e2e.py` — walks the Demos section against a fake backend
   (`fake_backend.py`).
 - `python scripts/regression/business_tabs.py` — opens the Business page's receptionist settings
-  (`src/settings/`): the ten-item menu, each section holding the business's data and saving to its
+  (`src/settings/`): the twelve-item menu, each section holding the business's data and saving to its
   own `/business/*` endpoint (never `/demo/`), a transfer saved as a draft, refused by the backend
   under its field, then published, the composed-session preview, and the `.tw` boundary.
+- `python scripts/regression/guided_setup.py` — the Guided setup against the fake's scripted
+  consultant: the Business page's offer, a turn held in flight, the reply on the board (lit, then
+  not), Edit into Transfers with no extra save, the unavailable state, Start over keeping the draft.
 - `python scripts/regression/public_page.py` — opens a demo link (`/c/<id>`) in a browser: the page
   renders the business and not the dashboard, carries none of the operator's fields, the scenarios
   and pricing links navigate, an unknown or unready id is the quiet page, `/` is still the

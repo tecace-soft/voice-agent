@@ -7,6 +7,7 @@ import type {
   BusinessProfile as DemoBusinessProfile,
   CustomerPrompts,
 } from "../demos/lib/types";
+import type { CallSettings } from "../settings/callSettings";
 
 export type { CustomerPrompts, DemoBusinessProfile };
 
@@ -451,3 +452,13 @@ export type Readiness = {
   declined?: { declinedAt: string; note: string | null } | null;
   items: ReadinessItem[];
 };
+
+// ---- Guided setup: the consultant interview (GET/POST /business/setup*) ----
+export type SetupTopic = "transfers" | "messages" | "appointments";
+export type TopicStatus = "pending" | "done" | "skipped";
+export type SetupChange = { kind: "transfer" | "message" | "appointments" | "timezone"; op: "add" | "update" | "remove"; id?: string; label: string };
+export type SetupMessage = { role: "user" | "assistant"; text: string; at: string; changes?: SetupChange[] };
+export type SetupSession = { id: string; status: "active" | "finished"; topics: Record<SetupTopic, TopicStatus>; turnCount: number; maxTurns: number; messages: SetupMessage[]; startedAt: string; finishedAt?: string };
+export type SetupUnavailableReason = "no_openai_key" | "demo_stage" | "no_profile";
+export interface SetupStateResponse { session: SetupSession | null; draft: CallSettings; dirty: boolean; available: boolean; unavailableReason?: SetupUnavailableReason }
+export interface SetupTurnResponse { session: SetupSession; reply: SetupMessage; draft: CallSettings; dirty: boolean }

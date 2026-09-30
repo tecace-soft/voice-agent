@@ -6,6 +6,7 @@ import {
   FlaskConical,
   FolderOpen,
   MessageSquareText,
+  MessagesSquare,
   PanelRightClose,
   PanelRightOpen,
   PhoneForwarded,
@@ -48,6 +49,7 @@ import type { SectionId } from "../routing";
 
 export const SECTION_META: Record<SectionId, { label: string; icon: typeof Building2 }> = {
   "business-info": { label: "Business information", icon: Building2 },
+  "guided-setup": { label: "Guided setup", icon: MessagesSquare },
   "agent-profile": { label: "Agent profile", icon: Smile },
   faqs: { label: "FAQs", icon: CircleHelp },
   "take-message": { label: "Take a message", icon: MessageSquareText },
@@ -62,6 +64,7 @@ export const SECTION_META: Record<SectionId, { label: string; icon: typeof Build
 
 /** The menu's groups, in the order a new business works through them. */
 export const SECTION_GROUPS: { label: string; ids: SectionId[] }[] = [
+  { label: "Start here", ids: ["guided-setup"] },
   { label: "Business", ids: ["business-info", "agent-profile", "faqs"] },
   { label: "Calls", ids: ["take-message", "transfers", "text-link", "appointments"] },
   { label: "Tuning", ids: ["custom-training", "test"] },

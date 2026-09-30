@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import type { BusinessProfile as DemoBusinessProfile, CustomerPrompts } from "@/lib/types";
@@ -32,6 +32,9 @@ import { ForwardingSection } from "./sections/ForwardingSection";
 import { LaunchGuide } from "./sections/LaunchGuide";
 import { RequestGoLive } from "./sections/RequestGoLive";
 import { BusinessTestConsole, BusinessTestSection, useTestCalls } from "./sections/TestSection";
+import { GuidedSetupSection } from "./sections/GuidedSetupSection";
+import { SetupBoard } from "./setup/SetupBoard";
+import { useGuidedSetup } from "./setup/useGuidedSetup";
 import {
   AgentProfileSection,
   BusinessInfoSection,
@@ -79,6 +82,8 @@ type Props = {
   onReadinessChanged?: (next: Readiness) => void;
   /** After a publish: the page re-reads the checklist ("Call settings are published"). */
   onPublished?: () => void;
+  /** Where the guided setup stands, so the page can offer it to a business that hasn't started it. */
+  onSetupState?: (state: { available: boolean; hasSession: boolean }) => void;
 };
 
 /** The sections that save themselves. */
@@ -157,6 +162,40 @@ export function BusinessSettings(props: Props) {
   useEffect(() => {
     loadCalls();
   }, [loadCalls]);
+
+  // The guided setup writes the same call-settings draft the sections edit. Every draft a turn
+  // returns is adopted into BOTH the ref and the state — the ref is what the next section save is
+  // applied to, so leaving it behind would PUT a stale draft over the consultant's write — and each
+  // turn waits its place on `callsQueue` behind any section save in flight.
+  const setup = useGuidedSetup(userId, {
+    onDraft: (draft, dirty) => {
+      latestCalls.current = draft;
+      setCalls((c) => (c ? { ...c, draft, dirty } : c));
+    },
+    queue: callsQueue,
+  });
+  // Two booleans, not the session: a new session object arrives with every turn, and the page only
+  // needs to know whether to offer the interview.
+  const onSetupStateRef = useRef(props.onSetupState);
+  onSetupStateRef.current = props.onSetupState;
+  const hasSession = setup.session !== null;
+  useEffect(() => {
+    onSetupStateRef.current?.({ available: setup.available, hasSession });
+  }, [setup.available, hasSession]);
+
+  // The side panel on the guided setup: the settings board, over a console that stays mounted.
+  const guided = props.section === "guided-setup";
+  const [asideView, setAsideView] = useState<"board" | "console">("board");
+  const [callActive, setCallActive] = useState(false);
+  useEffect(() => {
+    if (!guided) setAsideView("board");
+  }, [guided]);
+  const boardDraft = calls?.draft ?? setup.draft;
+  const showBoard = guided && asideView === "board" && Boolean(boardDraft);
+  // The console draws its own header; so does the board. Anywhere else with no console (its
+  // settings didn't load), the shell keeps its "Test call" header around the status line.
+  const asideBare = Boolean(calls) || (guided && Boolean(boardDraft));
+  const highlightIds = useMemo(() => new Set(setup.highlightIds), [setup.highlightIds]);
 
   /**
    * What a save takes back from the saved row. The sections that save themselves keep their own
@@ -382,6 +421,8 @@ export function BusinessSettings(props: Props) {
 
   const phase: Phase = props.phase ?? (profile.isLive && props.number ? "live" : "onboarding");
 
+  const businessName = profile.businessName ?? profile.profile?.name ?? "";
+
   const sections: SettingsSection[] = [
     {
       id: "business-info",
@@ -392,6 +433,18 @@ export function BusinessSettings(props: Props) {
           source={source}
           footer={footer(knowledgeSave)}
           promptsFrozen={savedPrompts.edited}
+        />
+      ),
+    },
+    // Not first: the shell opens sections[0] when none is chosen. The menu order is SECTION_GROUPS'.
+    {
+      id: "guided-setup",
+      render: () => (
+        <GuidedSetupSection
+          setup={setup}
+          onOpenSection={openSection}
+          onPublish={publish}
+          dirty={Boolean(calls?.dirty)}
         />
       ),
     },
@@ -508,35 +561,71 @@ export function BusinessSettings(props: Props) {
     },
   ];
 
-  const PUBLISHED_SECTIONS: SectionId[] = ["transfers", "text-link", "take-message"];
-  const businessName = profile.businessName ?? profile.profile?.name ?? "";
+  const PUBLISHED_SECTIONS: SectionId[] = ["transfers", "text-link", "take-message", "guided-setup"];
 
+  const callsStatus = (
+    <p className={callsError ? "ta-body-2 text-destructive" : "ta-body-2 text-muted-foreground"}>
+      {callsError ?? "Loading…"}
+    </p>
+  );
+
+  // The aside, and the test console must never unmount while a call may be running (see SettingsShell).
+  // Only when this section is open, the settings board sits over the console, which is then hidden with
+  // CSS, never removed: the tree below keeps the console in the same place whichever is showing.
   return (
     <SettingsShell
       sections={sections}
       active={props.section}
       onSelect={openSection}
       phase={phase}
-      asideTitle="Test call"
+      asideTitle={guided ? "Settings board" : "Test call"}
       asideBadge="Uses your draft"
-      asideBare={Boolean(calls)}
+      asideBare={asideBare}
       notice={props.notice}
       aside={
-        calls ? (
-          <BusinessTestConsole
-            test={test}
-            userId={userId}
-            profileUserId={profile.userId}
-            settings={calls.draft}
-            businessName={businessName}
-            agentNumber={calls.agentNumber}
-            agentName={agent.agentName || undefined}
-            greetingLine={quotedGreeting(prompts.greeting)}
-          />
+        boardDraft ? (
+          <div className="flex h-full min-h-0 flex-col">
+            {showBoard ? (
+              <SetupBoard
+                draft={boardDraft}
+                dirty={calls?.dirty ?? setup.dirty}
+                publishedAt={calls?.publishedAt ?? null}
+                topics={setup.session?.topics ?? null}
+                highlightIds={highlightIds}
+                onEdit={setup.available ? openSection : undefined}
+                onShowConsole={() => setAsideView("console")}
+                callActive={callActive}
+              />
+            ) : null}
+            <div className={showBoard ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
+              {guided ? (
+                <button
+                  type="button"
+                  className="ta-caption-1 text-primary border-b px-4 py-2 text-left hover:underline"
+                  onClick={() => setAsideView("board")}
+                >
+                  ‹ Back to the settings board
+                </button>
+              ) : null}
+              {calls ? (
+                <BusinessTestConsole
+                  test={test}
+                  userId={userId}
+                  profileUserId={profile.userId}
+                  settings={calls.draft}
+                  businessName={businessName}
+                  agentNumber={calls.agentNumber}
+                  agentName={agent.agentName || undefined}
+                  greetingLine={quotedGreeting(prompts.greeting)}
+                  onCallState={setCallActive}
+                />
+              ) : (
+                <div className={asideBare ? "p-4" : undefined}>{callsStatus}</div>
+              )}
+            </div>
+          </div>
         ) : (
-          <p className={callsError ? "ta-body-2 text-destructive" : "ta-body-2 text-muted-foreground"}>
-            {callsError ?? "Loading…"}
-          </p>
+          callsStatus
         )
       }
       toolbar={(current) =>

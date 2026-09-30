@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatHash, parseHash, type Route } from "../src/routing";
+import { SECTION_IDS, formatHash, parseHash, type Route } from "../src/routing";
 
 describe("parseHash", () => {
   it("opens API keys (it used to fall back to Overview)", () => {
@@ -66,6 +66,13 @@ describe("settings sections", () => {
     expect(formatHash(route)).toBe("#/business/text-link?mailbox=jane%40tecace.com");
     expect(parseHash(formatHash(route))).toEqual(route);
     expect(formatHash({ view: "business", mailbox: undefined })).toBe("#/business");
+  });
+
+  it("opens the guided setup section", () => {
+    expect(SECTION_IDS).toContain("guided-setup");
+    const route = parseHash("#/business/guided-setup");
+    expect(route).toEqual({ view: "business", mailbox: undefined, section: "guided-setup" });
+    expect(formatHash(route)).toBe("#/business/guided-setup");
   });
 });
 

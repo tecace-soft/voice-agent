@@ -98,6 +98,8 @@ export function BusinessPage({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
+  // Where the guided setup stands (reported by the settings), for the line that offers it.
+  const [setupState, setSetupState] = useState<{ available: boolean; hasSession: boolean } | null>(null);
 
   // Who we're actually reading and writing. Undefined = the signed-in user's own.
   const viewing = isAdmin
@@ -466,6 +468,20 @@ export function BusinessPage({
       </div>
     ) : null;
 
+  // An account being set up that hasn't started the guided interview: offer it, until it starts.
+  const setupLine =
+    onboarding && setupState?.available && !setupState.hasSession && section !== "guided-setup" ? (
+      <div className="bg-primary/5 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b px-4 py-2.5" role="status">
+        <span className="ta-caption-1 min-w-0 flex-1">
+          <b className="font-semibold">New here?</b> Answer a few questions and the consultant sets up transfers,
+          messages and appointments for you.
+        </span>
+        <button type="button" className="ta-caption-1 text-primary hover:underline" onClick={() => onSection?.("guided-setup")}>
+          Set up with a guided interview
+        </button>
+      </div>
+    ) : null;
+
   const statusNotice =
     onboarding && readiness ? (
       // Where the business stands on its way to a live line, and its Request go live — the same
@@ -521,13 +537,15 @@ export function BusinessPage({
         onReadinessChanged={setReadiness}
         onPublished={() => void load(true)}
         notice={
-          welcomeLine || statusNotice ? (
+          welcomeLine || setupLine || statusNotice ? (
             <>
               {welcomeLine}
+              {setupLine}
               {statusNotice}
             </>
           ) : null
         }
+        onSetupState={setSetupState}
         onSaved={(next) => {
           setProfile(next);
           setJustSaved(true);

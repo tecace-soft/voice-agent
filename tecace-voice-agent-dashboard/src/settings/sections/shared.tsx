@@ -78,19 +78,8 @@ export function FieldMessage({ children }: { children?: ReactNode }) {
   );
 }
 
-/**
- * Unpublished changes, and the button that makes them live. Disabled when there is nothing new,
- * which is also the only feedback that a publish worked.
- */
-export function PublishBar({
-  dirty,
-  publishedAt,
-  onPublish,
-}: {
-  dirty: boolean;
-  publishedAt: string | null;
-  onPublish: () => Promise<void>;
-}) {
+/** Pressing Publish: in flight, and why it failed — the one place for the failure's wording. */
+export function usePublish(onPublish: () => Promise<void>) {
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -105,6 +94,24 @@ export function PublishBar({
       setPublishing(false);
     }
   }
+
+  return { publishing, error, publish };
+}
+
+/**
+ * Unpublished changes, and the button that makes them live. Disabled when there is nothing new,
+ * which is also the only feedback that a publish worked.
+ */
+export function PublishBar({
+  dirty,
+  publishedAt,
+  onPublish,
+}: {
+  dirty: boolean;
+  publishedAt: string | null;
+  onPublish: () => Promise<void>;
+}) {
+  const { publishing, error, publish } = usePublish(onPublish);
 
   return (
     <div className="bg-muted/40 mb-6 flex flex-wrap items-center gap-3 rounded-xl border p-3">
@@ -141,20 +148,7 @@ export function PublishControl({
   publishedAt: string | null;
   onPublish: () => Promise<void>;
 }) {
-  const [publishing, setPublishing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function publish() {
-    setPublishing(true);
-    setError(null);
-    try {
-      await onPublish();
-    } catch (e) {
-      setError(toFieldError(e, "Couldn't publish. Nothing changed for callers.").message);
-    } finally {
-      setPublishing(false);
-    }
-  }
+  const { publishing, error, publish } = usePublish(onPublish);
 
   return (
     <div className="flex flex-wrap items-center gap-3">

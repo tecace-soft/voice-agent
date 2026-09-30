@@ -71,6 +71,9 @@ const STANDALONE_VIEWS = new Set<ViewId>([
 // wait on (or fail with) the shared all-mailboxes stats call either.
 const perPersonViews = new Set<ViewId>(["overview", "activity", "analytics"]);
 
+// List screens that take the full width (no 1440px cap). See CLAUDE.md "List screens".
+const WIDE_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>(["demoProspects"]);
+
 // What a demo-stage account can open; anything else lands on its Overview.
 const DEMO_OWNER_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>(["myOverview", "myCalls", "demoProspect", "changelog", "billing"]);
 
@@ -349,7 +352,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           </div>
         </header>
 
-        <main className={studio ? "content content-bleed" : "content"}>
+        <main className={studio ? "content content-bleed" : WIDE_VIEWS.has(view) ? "content content-wide" : "content"}>
           {/* The accounts view doesn't depend on the stats, so a stats failure shouldn't hide it. */}
           {error && !STANDALONE_VIEWS.has(view) && !(showMailbox && perPersonViews.has(view)) && (
             <p className="error ta-body-2">{error}</p>

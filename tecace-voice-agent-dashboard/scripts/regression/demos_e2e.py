@@ -1194,9 +1194,9 @@ def run() -> int:
                     # Last on the prospect page on purpose: a finished run replaces the draft with
                     # the researched record, and every check above reads a prospect as the fixtures
                     # leave it. Cedar is the one the fixtures leave mid-research — no profile, no
-                    # dossier — so a run here has something visible to finish. Its table link reads
-                    # "Unnamed" for exactly that reason.
-                    cedar_link = page.get_by_role("link", name="Unnamed", exact=True)
+                    # dossier — so a run here has something visible to finish. With no profile name
+                    # yet, its table link reads the business name it was added under.
+                    cedar_link = page.locator("main .tw table").get_by_role("link", name="Cedar Bakery", exact=True)
                     cedar_link.wait_for()
                     cedar_link.click()
                     page.get_by_role("heading", name="Cedar Bakery", level=1).wait_for()
