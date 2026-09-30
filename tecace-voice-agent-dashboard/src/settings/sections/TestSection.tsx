@@ -71,6 +71,7 @@ export function BusinessTestConsole({
   agentNumber,
   agentName,
   greetingLine,
+  onCallState,
 }: {
   test: TestCalls;
   agentName?: string;
@@ -81,6 +82,8 @@ export function BusinessTestConsole({
   agentNumber: string | null;
   /** The greeting as callers hear it, for the Example call tab. */
   greetingLine?: string | null;
+  /** Whether a call is under way, for the settings board that can sit over this console. */
+  onCallState?: (active: boolean) => void;
 }) {
   const usage = test.usage;
   return (
@@ -93,6 +96,7 @@ export function BusinessTestConsole({
       agentName={agentName}
       disabled={test.out}
       onEnded={test.reload}
+      onCallState={onCallState}
       bookingTool={(name, args) => runCalendarTool(name, args, userId)}
       notice={
         test.out ? (
