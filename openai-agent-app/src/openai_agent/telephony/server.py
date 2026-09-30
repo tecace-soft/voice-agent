@@ -35,22 +35,26 @@ AUTHENTICATION. These endpoints are on a public host, so they verify Twilio's re
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hmac
 import logging
 import os
+import time
+from contextlib import asynccontextmanager
 from urllib.parse import parse_qs
 
 from fastapi import FastAPI, Request, Response, WebSocket
+from twilio.http.http_client import TwilioHttpClient
 from twilio.request_validator import RequestValidator
+from twilio.rest import Client
 from twilio.twiml.voice_response import Connect, Stream, VoiceResponse
 
 from ..config import Config
 from ..realtime import amd
 from ..realtime.bridge import run_bridge
 from ..realtime import greeting_audio
+from ..realtime import pickup
 from ..realtime.live_bridge import run_live_bridge
-from ..realtime.composed import opening_line
-from ..realtime.instructions_inbound import spoken_greeting
 from ..tools.business_config import fetch_business_config
 from . import transfer
 
@@ -71,7 +75,21 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 cfg = Config.load()
-app = FastAPI(title="openai-agent-app media stream")
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    # Render every number's greeting before anyone calls it — see _keep_greetings_warm.
+    warmer = asyncio.create_task(_keep_greetings_warm())
+    try:
+        yield
+    finally:
+        warmer.cancel()
+        # Wait for the cancellation to land, so shutdown does not end with a "Task was destroyed
+        # but it is pending" warning for the warm-up loop.
+        with contextlib.suppress(asyncio.CancelledError):
+            await warmer
+
+
+app = FastAPI(title="openai-agent-app media stream", lifespan=_lifespan)
 
 # Which engine answers calls. Logged at startup because the answer lives in .env, and a container
 # that was restarted instead of recreated silently keeps the old one.
@@ -154,13 +172,7 @@ def _warm_for_call(dialled: str) -> None:
         business = await fetch_business_config(cfg, dialled)
         if business is None:
             return
-        # The same line the bridge will say: the dashboard's composed greeting where there is one.
-        greeting_audio.warm(cfg, opening_line(cfg, business) if business.session else spoken_greeting(
-            greeting=business.greeting or cfg.greeting,
-            business_name=business.business_name,
-            agent_name=business.agent_name or cfg.agent_name,
-            disclose_recording=cfg.disclose_recording,
-        ))
+        greeting_audio.warm(cfg, pickup.expected_opening(cfg, business))
 
     task = asyncio.create_task(run())
     _warming.add(task)
@@ -168,6 +180,86 @@ def _warm_for_call(dialled: str) -> None:
 
 
 _warming: set[asyncio.Task] = set()
+
+
+async def _hold_for_pickup(dialled: str) -> str:
+    """Keep the phone ringing until the greeting is ready — or PICKUP_HOLD_SECONDS, whichever is
+    first. Returns what it found, for the pickup log.
+
+    Twilio does not answer an inbound call until our TwiML arrives, so every moment spent here is
+    ringing. Spent after answering, the same moment is an open line with nobody on it — which is
+    what callers heard while the greeting rendered, and what the dashboard's test call hides behind
+    its ringtone. With the greeting already rendered this is just the business lookup.
+    """
+    deadline = time.monotonic() + cfg.pickup_hold_seconds
+    try:
+        business = await asyncio.wait_for(fetch_business_config(cfg, dialled), cfg.pickup_hold_seconds)
+    except asyncio.TimeoutError:
+        _warm_for_call(dialled)  # the lookup was cancelled with the wait; start it again unwaited
+        return "timeout"
+    if business is None:
+        return "none"
+    text = pickup.expected_opening(cfg, business)
+    greeting_audio.warm(cfg, text)
+    _audio, source = await greeting_audio.await_ready(
+        cfg, text, timeout=max(0.0, deadline - time.monotonic())
+    )
+    return source
+
+
+def _our_numbers() -> list[str]:
+    """Every number on the Twilio account: any of them may be assigned to a business. Blocking —
+    the Twilio SDK is synchronous — so it runs on a thread, never on the call loop."""
+    # A timeout, because a Twilio API call that hangs would otherwise hold this worker thread
+    # forever — and the warm-up loop awaiting it would never run another pass.
+    client = Client(cfg.twilio_account_sid, cfg.twilio_auth_token, http_client=TwilioHttpClient(timeout=10))
+    return [n.phone_number for n in client.incoming_phone_numbers.list()]
+
+
+async def _warm_all_greetings() -> tuple[int, int]:
+    """One pass: render the opening line of every number that belongs to a business. Returns
+    (greetings ready, numbers that failed).
+
+    Each number is tried on its own: one business whose lookup or render breaks must not abort the
+    pass — it would then abort every pass, and every number after it in the list would never be
+    warmed.
+
+    One render at a time: a startup with many numbers must not burst the speech API or stack
+    conversion threads beside calls in progress. Already-rendered greetings cost a file read.
+    """
+    rendered = failed = 0
+    for number in await asyncio.to_thread(_our_numbers):
+        try:
+            business = await fetch_business_config(cfg, number, quiet=True)
+            if business is None:
+                continue
+            if await greeting_audio.render(cfg, pickup.expected_opening(cfg, business)):
+                rendered += 1
+        except Exception as exc:  # noqa: BLE001 — see the docstring: one number never stops the pass
+            failed += 1
+            log.warning("greeting warm-up failed for %s (%s)", number, exc)
+    return rendered, failed
+
+
+async def _keep_greetings_warm() -> None:
+    """Why: /incoming renders the dialled number's greeting, but a render takes ~2s and the
+    first call to a business after a deploy used to lose that race and greet through the model
+    (~2.5s of an answered, silent line). Rendering ahead makes the first call as quick as the rest,
+    and re-running picks up a greeting a business changed in the dashboard."""
+    if not (cfg.openai_api_key and cfg.twilio_account_sid and cfg.twilio_auth_token
+            and cfg.business_config_url and cfg.agent_config_key):
+        log.info("greeting warm-up off — it needs OPENAI_API_KEY, Twilio credentials, "
+                 "BUSINESS_CONFIG_URL and AGENT_CONFIG_KEY")
+        return
+    while True:
+        try:
+            ready, failed = await _warm_all_greetings()
+            log.info("greeting warm-up: %d business greeting(s) ready, %d number(s) failed", ready, failed)
+        except Exception as exc:  # noqa: BLE001 — a failed pass must never take the server down
+            log.warning("greeting warm-up failed (%s) — trying again next pass", exc)
+        if cfg.greeting_warm_interval <= 0:
+            return
+        await asyncio.sleep(cfg.greeting_warm_interval)
 
 
 @app.post("/incoming")
@@ -191,11 +283,30 @@ async def incoming(request: Request) -> Response:
         fields.get("CallerName", ""),
         fields.get("CallSid", ""),
     )
-    # Start the "whose business is this?" lookup now, while Twilio is still setting up the media
-    # stream. It used to run when the stream connected, with the caller listening to silence. The
-    # greeting audio for that business is rendered in the same breath, so the first words are ready
-    # to play the moment the stream opens.
-    _warm_for_call(fields.get("To", ""))
+    call_sid = fields.get("CallSid", "")
+    dialled = fields.get("To", "")
+    pickup.note(call_sid, incoming_at=time.monotonic())
+    # "Whose business is this?" and that business's rendered greeting, while the phone still rings
+    # (see _hold_for_pickup). With the hold off, the lookup and render still start now, unwaited,
+    # so they are ready as early as possible once the stream opens.
+    # Only the GPT-Live bridge plays the pre-rendered greeting, and only with PRERENDERED_GREETING
+    # on. On the Realtime engine, or with it off, nothing plays a rendered greeting first, so
+    # holding the TwiML would only add ringing; those calls take the unwaited warm-up below, which
+    # still keeps the rescue render and the config cache warm.
+    if (cfg.pickup_hold_seconds > 0 and dialled
+            and cfg.openai_live_model and cfg.prerendered_greeting):
+        # Nothing the hold raises may become a 500: Twilio would send the caller to
+        # /incoming-fallback on EVERY call while the lookup is broken. The hold only exists to make
+        # pickup faster, so when it fails we answer without it.
+        try:
+            source = await _hold_for_pickup(dialled)
+        except Exception as exc:  # noqa: BLE001 — a faster pickup is never worth failing the call
+            log.warning("pickup hold failed (%s) — answering without it", exc)
+            _warm_for_call(dialled)
+            source = "error"
+        pickup.note(call_sid, hold_source=source)
+    else:
+        _warm_for_call(dialled)
 
     response = VoiceResponse()
 
@@ -228,6 +339,7 @@ async def incoming(request: Request) -> Response:
     stream.parameter(name="forwarded_from", value=fields.get("ForwardedFrom", ""))
     connect.append(stream)
     response.append(connect)
+    pickup.note(call_sid, twiml_at=time.monotonic())
     return _xml(str(response))
 
 

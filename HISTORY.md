@@ -13,6 +13,12 @@ Format:
 
 ---
 
+## 2026-09-30 10:12 · Michael · openai-agent-app (instant pickup on the phone)
+- Inbound: `/incoming` now holds its TwiML up to `PICKUP_HOLD_SECONDS` (default 3.0, clamped to max 8.0 because Twilio's webhook timeout is 15s; `0` = old behaviour) until the business's pre-rendered greeting is ready — the caller hears ringing instead of an answered silent line. Rendered greetings persist in `GREETING_CACHE_DIR` (default `/data/greetings`) and are warmed for every Twilio number at startup and every `GREETING_WARM_INTERVAL` s (600). The hold applies only on the GPT-Live engine (`OPENAI_LIVE_MODEL` set) with `PRERENDERED_GREETING` on; otherwise `/incoming` answers at once.
+- New per-call log line `pickup: greeting=… held=… hold=…ms …` (GPT-Live bridge only; logs only, no API change), plus `greeting warm-up: N business greeting(s) ready, M number(s) failed`.
+- openai-agent-app internals: `realtime/pickup.py` `expected_opening` is now the single source for the inbound opening text (server + bridge); `fetch_business_config` gained a keyword-only `quiet=` flag.
+- ⚠ Deploy: `docker compose up -d --build` creates the new `greetings` volume on the `server` service; no other service or contract changes.
+
 ## 2026-09-30 09:40 · Michael · workspace (merge Main-Hans into master)
 - Merged Main-Hans @ ed71a8a (guided setup interview, Customers list kit, docs) with master's navigation (`?customer=`), pre-production calls and Agent numbers changes. Conflicts were only the HISTORY.md order and the `routing.test.ts` import line (now imports both `SECTION_IDS` and `nextRoute`).
 - Verified on the merged tree: dashboard typecheck + vitest 366/366, transcribe-backend typecheck + `bun test` 1011/1011, `compare.py` IDENTICAL, all 10 other regression scripts pass (incl. `guided_setup.py`, `numbers_twilio.py`).

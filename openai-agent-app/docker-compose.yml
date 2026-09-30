@@ -15,6 +15,10 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    volumes:
+      # Rendered greetings (GREETING_CACHE_DIR). A volume so `up -d --build` keeps them: without
+      # it every deploy sends each business's next call back to the model's slow greeting.
+      - greetings:/data/greetings
     networks:
       - traefik
     labels:
@@ -85,3 +89,6 @@ networks:
   traefik:
     external: true
     name: root_default
+
+volumes:
+  greetings:
