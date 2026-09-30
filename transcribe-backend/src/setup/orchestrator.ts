@@ -1,0 +1,210 @@
+import type { CallSettings } from "../business/callSettings.js";
+import { bookingTargetFor } from "../calendar/service.js";
+import { env } from "../config/env.js";
+import { findNumberForUser } from "../db/agentNumbers.js";
+import { findProfile } from "../db/businessProfiles.js";
+import { findCallSettings, saveCallSettingsDraft } from "../db/callSettings.js";
+import * as sessions from "../db/setupSessions.js";
+import { OpenAIError } from "../demo/openai.js";
+import { agentNameOf } from "../session/prompts.js";
+import { createSetupResponse } from "./llm.js";
+import { buildSetupInstructions } from "./prompt.js";
+import { SETUP_TOOLS, executeSetupTool, type ToolContext } from "./tools.js";
+import type { SetupChange, SetupInputItem, SetupMessage, SetupSession } from "./types.js";
+
+// One turn of the guided setup interview: the owner's message in, the consultant's reply out, with
+// every tool the model called in between run here, on the server, before the reply is sent. One
+// blocking request per message and no streaming — the dashboard shows a spinner, and a turn is
+// either saved whole or (when OpenAI drops out mid-way) saved as far as it got with a note saying so.
+//
+// Nothing here publishes. The only setting a turn can change is the call-settings DRAFT, and only
+// through executeSetupTool, which runs every write through validateCallSettings.
+
+export class SetupTurnError extends Error {
+  constructor(
+    public code: "empty_message" | "turn_cap" | "turn_in_progress" | "no_profile",
+    public status: 400 | 409 | 429,
+    message: string,
+  ) {
+    super(message);
+    this.name = "SetupTurnError";
+  }
+}
+
+export type TurnResult = { session: SetupSession; reply: SetupMessage; draft: CallSettings; dirty: boolean };
+
+const MAX_ROUNDS = 8; // model calls per user message
+const CALL_TIMEOUT_MS = 45_000;
+const TURN_BUDGET_MS = 110_000; // research already relies on 180 s invocations; stay well inside
+const CLAIM_TTL_S = 150;
+const MAX_ITEMS = 400;
+const MAX_ITEM_CHARS = 250_000; // transcript trim thresholds
+const OPENER =
+  "(The owner just opened the setup assistant. Greet them in one or two lines, say what you'll go through, and ask the first question about transfers.)";
+
+const isUserItem = (item: SetupInputItem) => item.type === "message" && item.role === "user";
+
+/**
+ * The transcript the model is sent, kept under size by dropping whole exchanges from the front: a
+ * user message through to just before the next one. A reasoning / function_call / function_call_output
+ * run is never split — the API refuses an output whose call is missing. The latest exchange is kept
+ * whatever its size.
+ */
+function trimItems(items: SetupInputItem[]): SetupInputItem[] {
+  let out = items;
+  const tooBig = (list: SetupInputItem[]) => list.length > MAX_ITEMS || JSON.stringify(list).length > MAX_ITEM_CHARS;
+  while (tooBig(out)) {
+    const next = out.findIndex((item, i) => i > 0 && isUserItem(item));
+    if (next < 0) break;
+    out = out.slice(next);
+  }
+  return out;
+}
+
+export async function runTurn(userId: string, message: string): Promise<TurnResult> {
+  const startedAt = Date.now();
+  const session =
+    (await sessions.findActiveSetupSession(userId)) ??
+    (await sessions.createSetupSession(userId, env.setupAssistantModel));
+
+  const text = message.trim();
+  const isStart = text === "" && session.turnCount === 0;
+  if (text === "" && !isStart) throw new SetupTurnError("empty_message", 400, "Type a message.");
+  if (session.turnCount + 1 > env.setupMaxTurns) {
+    throw new SetupTurnError(
+      "turn_cap",
+      429,
+      `This conversation has reached its limit of ${env.setupMaxTurns} messages. Reset it to start again; everything saved so far stays in your draft.`,
+    );
+  }
+  if (!(await sessions.claimSetupTurn(session.id, CLAIM_TTL_S))) {
+    throw new SetupTurnError("turn_in_progress", 409, "Still working on your last message.");
+  }
+
+  const turnCount = session.turnCount + 1;
+  const userMessage: SetupMessage[] = isStart ? [] : [{ role: "user", text, at: new Date().toISOString() }];
+  const items: SetupInputItem[] = [
+    ...session.items,
+    { type: "message", role: "user", content: [{ type: "input_text", text: isStart ? OPENER : text }] },
+  ];
+  const changes: SetupChange[] = [];
+  const topics = { ...session.topics };
+  let saved = false;
+
+  try {
+    const [profileRow, settings, number, calendar] = await Promise.all([
+      findProfile(userId),
+      findCallSettings(userId),
+      findNumberForUser(userId),
+      bookingTargetFor(userId),
+    ]);
+    const profile = profileRow?.profile;
+    if (!profileRow || !profile) throw new SetupTurnError("no_profile", 409, "Add your business information first.");
+
+    const ctx: ToolContext = {
+      // Loaded fresh on every execution, so the second tool in a turn sees the first one's write.
+      store: { load: () => findCallSettings(userId), save: (draft) => saveCallSettingsDraft(userId, draft) },
+      agentNumber: number?.phoneE164 ?? null,
+      calendar,
+      profileHours: profile.hours ?? [],
+      timeZone: settings.draft.timezone ?? env.timezone,
+      topics,
+      finished: false,
+    };
+
+    let reply = "";
+    for (let round = 1; round <= MAX_ROUNDS && Date.now() - startedAt < TURN_BUDGET_MS; round++) {
+      // Rebuilt every round, so the snapshot in the instructions reflects the tools just run.
+      const current = await ctx.store.load();
+      ctx.timeZone = current.draft.timezone ?? env.timezone;
+      const instructions = buildSetupInstructions({
+        businessName: profileRow.businessName ?? profile.name ?? "",
+        profile,
+        agentName: agentNameOf(profileRow.agentName),
+        draft: current.draft,
+        dirty: current.dirty,
+        neverPublished: current.published === null,
+        agentNumber: ctx.agentNumber,
+        calendar,
+        timeZone: ctx.timeZone,
+        defaultTimeZone: env.timezone,
+        topics: ctx.topics,
+        turnCount,
+        maxTurns: env.setupMaxTurns,
+      });
+
+      const res = await createSetupResponse(
+        { model: session.model, instructions, input: items, tools: SETUP_TOOLS },
+        CALL_TIMEOUT_MS,
+      );
+      items.push(...res.items);
+      if (res.functionCalls.length === 0) {
+        reply = res.text;
+        break;
+      }
+
+      for (const call of res.functionCalls) {
+        const outcome = await executeSetupTool(call.name, call.arguments, ctx);
+        items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify(outcome.output) });
+        if (outcome.change) changes.push(outcome.change);
+      }
+      // Text said alongside tool calls is usually a preamble the next round supersedes. The one
+      // exception is a goodbye said with finish_interview: another round would only say it again.
+      if (ctx.finished && res.text.trim()) {
+        reply = res.text;
+        break;
+      }
+    }
+
+    if (reply === "") {
+      reply = changes.length
+        ? "I've saved those changes. What would you like to do next?"
+        : "Sorry, I lost my thread — could you say that again?";
+    }
+
+    const replyMessage: SetupMessage = {
+      role: "assistant",
+      text: reply,
+      at: new Date().toISOString(),
+      ...(changes.length ? { changes } : {}),
+    };
+    const row = await sessions.saveSetupTurn(session.id, {
+      items: trimItems(items),
+      messages: [...session.messages, ...userMessage, replyMessage],
+      topics: ctx.topics,
+      turnCount,
+      finished: ctx.finished,
+    });
+    saved = true;
+
+    const final = await findCallSettings(userId);
+    return { session: sessions.toPublicSession(row, env.setupMaxTurns), reply: replyMessage, draft: final.draft, dirty: final.dirty };
+  } catch (err) {
+    if (err instanceof OpenAIError && !saved) {
+      // Keep what happened: the owner's message, and anything already written to the draft, so the
+      // chat says what was saved rather than looking as if nothing was.
+      const note: SetupMessage[] = changes.length
+        ? [
+            {
+              role: "assistant",
+              text: `I saved: ${changes.map((c) => c.label).join("; ")}. Then I lost the connection — say "continue" and I'll carry on.`,
+              at: new Date().toISOString(),
+              changes,
+            },
+          ]
+        : [];
+      await sessions.saveSetupTurn(session.id, {
+        items: trimItems(items),
+        messages: [...session.messages, ...userMessage, ...note],
+        topics,
+        turnCount,
+        finished: false,
+      });
+      saved = true;
+    }
+    throw err;
+  } finally {
+    // saveSetupTurn clears the claim; anything that failed before a save hands the turn back here.
+    if (!saved) await sessions.releaseSetupTurn(session.id).catch(() => undefined);
+  }
+}

@@ -13,6 +13,12 @@ Format:
 
 ---
 
+## 2026-09-29 23:14 · Claude · transcribe-backend (guided setup interview — backend)
+- New `src/setup/` (types, capabilities, llm, tools, prompt, orchestrator) + `src/routes/setup.ts`: `GET /business/setup?userId=` → `{session|null, draft, dirty, available, unavailableReason?: "no_openai_key"|"demo_stage"|"no_profile"}`; `POST /business/setup/turn {message}` (`""` opens) → `{session, reply, draft, dirty}`, errors `{error, message}` with `demo_read_only` 403, `rate_limited` 429 (12/min per account), `no_openai_key` 503, `daily_cap` 429, `empty_message` 400, `turn_cap` 429, `turn_in_progress` 409, `no_profile` 409, `openai` (OpenAI's status); `POST /business/setup/reset` → `{session:null}`. It writes only `business_call_settings.draft`, through `validateCallSettings`, and never publishes.
+- `business/callSettings.ts` exports `newScenarioId()`; `routes/demoCommon.ts` `rateLimited(key, limit?)` takes an optional per-minute limit (default 5 unchanged).
+- ⚠ DB: new table `business_setup_sessions` (self-migrates; probe in `migrateIfNeeded`); Reset deletes an account's rows; user delete cascades.
+- ⚠ Env (optional): `SETUP_ASSISTANT_MODEL` (default `gpt-5.6-luna`), `SETUP_MAX_TURNS` (80), `SETUP_DAILY_TURN_CAP` (150/day, admins exempt); same `OPENAI_API_KEY` gate. ⚠ The consultant tells customers the phone truth from `src/setup/capabilities.ts` (one cold-dialled number per transfer, no keypress accept, no hold music, no waterfall, no SMS, no after-hours mode, booking = new appointments only with a connected calendar) — update the manifest in the same commit as any phone-agent capability change.
+
 ## 2026-09-29 · bottomup32 · dashboard (Customers list for hundreds of rows; list-screen kit)
 - Customers: phase tabs + counts, category filter, created date, sort select + sortable headers, full width (`App.tsx` `WIDE_VIEWS` → `.content-wide`), `table-fixed` so it never scrolls sideways, pages sized to the window (Fit to screen / 25 / 50 / 100).
 - New shared kit `src/demos/components/ui/data-table.tsx`; the pattern is written down in `tecace-voice-agent-dashboard/CLAUDE.md` "List screens" — ⚠ build new list screens with it.
