@@ -107,6 +107,17 @@ HIDE = [
     '.sidebar-version',
 ]
 
+# The same, for a block that is shaped differently on each side, so each app hides its own version.
+# voicemail group: the original's "Dashboard" and "Runs" groups (children 2 and 3 of the nav, after
+# the brand row) became ONE "Voicemail" group with all six items. Hidden whole on both sides, both
+# out of layout, so the groups below them still line up and are compared as before.
+HIDE_OLD = [
+    '.sidebar > .sidebar-group:nth-child(2)',
+    '.sidebar > .sidebar-group:nth-child(3)',
+]
+# dashboard group: new by design (Dashboard › Overview, the receptionist's calls), above Voicemail.
+HIDE_NEW = ['.sidebar-group[data-group="voicemail"]', '.sidebar-group[data-group="dashboard"]']
+
 # Captures that are MEANT to differ: id -> (why, marker). The marker must appear in the new app's
 # text and not in the old app's — the change is proven, not merely skipped.
 EXPECTED_CHANGES = {
@@ -422,7 +433,7 @@ def capture_all(label: str, base_url: str, caps: list[dict]) -> dict:
                 f"console.{m.type}: {m.text} @ {m.location.get('url', '').replace(base_url, '/')}")
                 if m.type == "error" else None)
             page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
-            hide = HIDE + (cap.get("hide_old", []) if label == "old" else [])
+            hide = HIDE + (HIDE_OLD + cap.get("hide_old", []) if label == "old" else HIDE_NEW)
             page.goto(base_url + (cap.get("new_hash", cap["hash"]) if label == "new" else cap["hash"]))
             settle(page)
             page.evaluate(HIDE_JS, hide)

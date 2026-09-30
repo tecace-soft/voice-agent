@@ -1,7 +1,7 @@
 {
   "name": "tecace-voice-agent-dashboard",
   "private": true,
-  "version": "0.0.11",
+  "version": "0.0.12",
   "type": "module",
   "description": "TecAce voice agent dashboard (React + Vite).",
   "scripts": {

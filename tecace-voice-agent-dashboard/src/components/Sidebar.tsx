@@ -21,6 +21,7 @@ import { formatDateTime } from "../lib";
 import { APP_VERSION } from "../changelog";
 
 export type ViewId =
+  | "dashboard"
   | "overview"
   | "analytics"
   | "people"
@@ -48,20 +49,23 @@ const NAV: {
   group: string;
   items: { id: ViewId; label: string; icon: typeof IconOverview; adminOnly?: boolean }[];
 }[] = [
+  // The receptionist a business runs: its answered calls at a glance (the Demo Overview's page, for
+  // one business — src/demos/screens/ReceptionistOverviewScreen.tsx).
   {
     key: "dashboard",
     group: "Dashboard",
+    items: [{ id: "dashboard", label: "Overview", icon: IconOverview }],
+  },
+  // The voicemail pipeline's numbers and runs (GET /transcribe/*) — one group of their own, so they
+  // aren't read as the dashboard's main page now that the dashboard is mostly the receptionist.
+  {
+    key: "voicemail",
+    group: "Voicemail",
     items: [
       { id: "overview", label: "Overview", icon: IconOverview },
       { id: "analytics", label: "Analytics", icon: IconAnalytics },
       { id: "people", label: "Per person", icon: IconUsers, adminOnly: true },
       { id: "activity", label: "Daily activity", icon: IconActivity },
-    ],
-  },
-  {
-    key: "runs",
-    group: "Runs",
-    items: [
       { id: "runs", label: "All runs", icon: IconRuns },
       { id: "failed", label: "Failed runs", icon: IconAlert, adminOnly: true },
     ],

@@ -16,12 +16,14 @@ import type { ViewId } from "./components/Sidebar";
 //   #/demos/prospects/<id>/share           (…and which of its tabs is open)
 //   #/business/transfers                   (a settings section, optional)
 //   #/business?customer=sam%40tecace.com   (which business an admin is viewing)
+//   #/dashboard?customer=sam%40tecace.com  (…also on Dashboard › Overview)
 
 // Every view's path. A Record, so a view missing here is a compile error rather than a page that
 // silently falls back to Overview on refresh (which is what happened to API keys). `:id` marks the
 // one segment a view carries a record id in; `:section?` an optional settings section, and `:tab?`
 // an optional prospect tab — or a settings section, which is on the Settings tab.
 const PATHS: Record<ViewId, string> = {
+  dashboard: "dashboard",
   overview: "overview",
   analytics: "analytics",
   people: "people",
@@ -45,7 +47,9 @@ const PATHS: Record<ViewId, string> = {
   billing: "billing",
 };
 
-const DEFAULT_VIEW: ViewId = "overview";
+// Where an account lands on sign-in (no hash) and where an unknown address falls back to: the
+// receptionist's calls (Dashboard › Overview), not the voicemail Overview.
+const DEFAULT_VIEW: ViewId = "dashboard";
 
 /**
  * The settings sections a `:section?` segment may name (`src/settings/sections.ts` renders them).

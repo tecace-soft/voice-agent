@@ -171,6 +171,10 @@ Run all three after any styling change:
   open with it (details, code, the build screen, landing signed in), the sign-in page's Forgot
   password / sign-up links only when the backend has email, and an invite link that takes its token
   out of the address bar and signs in. `public_page.py` covers the demo page's Request setup.
+- `python scripts/regression/dashboard_overview.py` — Dashboard › Overview (the receptionist's calls
+  in the Demo Overview's layout): the rail's Dashboard group, the four cards, the chart and recent
+  calls read from `/calls` + `/usage/minutes`, no Demo-only cards, a customer's own business with no
+  picker, an admin's Every business (Business column) and picking one into `?customer=`.
 - `python scripts/regression/numbers_twilio.py` — the Agent numbers page against Twilio (faked): sync,
   the Type and Webhooks columns, Configure, the Buy card (kind, area code, search, buy with a request
   id), Release by typing the number back, un-assign; then the Accounts Go live checklist assigning a

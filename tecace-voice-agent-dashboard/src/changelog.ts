@@ -30,6 +30,26 @@ export type Release = {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.0.12",
+    date: "2026-09-30",
+    title: "A calls overview for your receptionist; voicemail gets its own section",
+    items: [
+      {
+        kind: "new",
+        text: "Dashboard › Overview: your receptionist at a glance — calls, minutes, callbacks requested and this month's talk time, calls per day, and your most recent calls with what each caller wanted and how it ended. Pick the last 7, 30 or 90 days. It's the page you land on when you sign in.",
+      },
+      {
+        kind: "new",
+        text: "Admins can view every business together or pick one on Dashboard › Overview; the choice stays in the address.",
+        admin: true,
+      },
+      {
+        kind: "improved",
+        text: "Overview, Analytics, Per person, Daily activity and the runs lists are grouped under Voicemail in the menu, since they show your voicemail transcriptions rather than your receptionist's calls.",
+      },
+    ],
+  },
+  {
     version: "0.0.11",
     date: "2026-09-29",
     title: "Guided setup; links, Back and refresh land where you were",

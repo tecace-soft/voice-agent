@@ -5,7 +5,9 @@ import { useAuth } from "./auth";
 import { ChromeContext } from "./chrome";
 import { Sidebar, type ViewId } from "./components/Sidebar";
 import { MailboxPicker } from "./components/MailboxPicker";
+import { DemosGate } from "./demos/DemosGate";
 import { DemosView } from "./demos/DemosView";
+import { ReceptionistOverviewScreen } from "./demos/screens/ReceptionistOverviewScreen";
 import { DEMO_VIEWS } from "./demos/views";
 import { IconPanelLeft, IconRefresh } from "./icons";
 import { AccountsPage } from "./pages/AccountsPage";
@@ -53,6 +55,7 @@ function clearRoute() {
 // Views that don't read the transcription stats, so a stats failure shouldn't hide them.
 // Analytics reads its own endpoint, so it belongs with the views that don't wait on /transcribe/stats.
 const STANDALONE_VIEWS = new Set<ViewId>([
+  "dashboard",
   "accounts",
   "feedback",
   "allFeedback",
@@ -85,6 +88,7 @@ const DEMO_OWNER_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>(["myOverview", "my
 const DEMO_OWNER_TAB: ProspectTab = "settings";
 
 const VIEW_TITLES: Record<ViewId, string> = {
+  dashboard: "Overview",
   overview: "Overview",
   analytics: "Analytics",
   people: "Per person",
@@ -257,7 +261,8 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
     };
   }, [isAdmin, routeView]);
   // A customer who has just been approved lands on their own business information, not on the
-  // voicemail Overview they have no use for. Only when nothing else was asked for in the address.
+  // Dashboard › Overview everyone else lands on: their receptionist isn't answering calls yet, so
+  // there is nothing on it. Only when nothing else was asked for in the address.
   useEffect(() => {
     if (!isAdmin && user.status === "pre-production" && askedAtMount === "") {
       navigate({ view: "business", section: "business-info" }, { replace: true });
@@ -332,7 +337,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
         lastRunAt={data?.lastRunAt ?? null}
         mailboxLabel={mailboxLabel}
         mailboxSubLabel={mailboxSubLabel}
-        showScope={!isDemoView}
+        showScope={!isDemoView && view !== "dashboard"}
         user={user}
         onSignOut={onSignOut}
         setupRequests={setupRequests}
@@ -357,7 +362,9 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           {studio && <div className="topbar-slot tw" ref={setSlotMain} />}
           {!studio && (
           <nav className="crumbs ta-label-1" aria-label="Breadcrumb">
-            <span className="muted">{demoOnly ? "My receptionist" : isDemoView ? "Demo" : "Transcribe"}</span>
+            <span className="muted">
+              {demoOnly ? "My receptionist" : isDemoView ? "Demo" : view === "dashboard" ? "Dashboard" : "Transcribe"}
+            </span>
             <span className="muted" aria-hidden="true">
               /
             </span>
@@ -372,10 +379,11 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
                 transcription stats, so neither the picker nor Refresh applies there. */}
             {/* Not on Business information / Answered calls: they pick a business of their own
                 (`customer`), and the voicemail scope would be a control that changes nothing there. */}
-            {isAdmin && !isDemoView && !studio && view !== "business" && view !== "calls" && (
+            {/* Nor on Dashboard › Overview: it reads calls, not transcriptions, and has its own picker. */}
+            {isAdmin && !isDemoView && !studio && view !== "business" && view !== "calls" && view !== "dashboard" && (
               <MailboxPicker value={mailbox} onChange={setMailbox} />
             )}
-            {!isDemoView && !studio && (
+            {!isDemoView && !studio && view !== "dashboard" && (
               <button
                 type="button"
                 className="btn btn-primary"
@@ -434,6 +442,11 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             ) : (
               <p className="muted ta-body-2">Only an admin can see transcription failures.</p>
             ))}
+          {view === "dashboard" && (
+            <DemosGate>
+              <ReceptionistOverviewScreen isAdmin={isAdmin} customer={customer} onCustomer={setCustomer} />
+            </DemosGate>
+          )}
           {view === "calls" && (
             <CallsPage isAdmin={isAdmin} scope={customer} onScope={setCustomer} />
           )}

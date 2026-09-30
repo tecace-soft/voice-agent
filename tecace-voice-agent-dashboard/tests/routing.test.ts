@@ -28,10 +28,10 @@ describe("parseHash", () => {
     expect(parseHash("#/demos/prospects/a%2Fb").id).toBe("a/b");
   });
 
-  it("falls back to Overview for anything unknown", () => {
-    expect(parseHash("").view).toBe("overview");
-    expect(parseHash("#/nope").view).toBe("overview");
-    expect(parseHash("#/demos/prospects/x/extra").view).toBe("overview");
+  it("lands on Dashboard › Overview, and falls back to it for anything unknown", () => {
+    expect(parseHash("").view).toBe("dashboard");
+    expect(parseHash("#/nope").view).toBe("dashboard");
+    expect(parseHash("#/demos/prospects/x/extra").view).toBe("dashboard");
   });
 
   it("keeps the mailbox scope, as before", () => {
@@ -58,7 +58,7 @@ describe("settings sections", () => {
   });
 
   it("refuses a section that does not exist", () => {
-    expect(parseHash("#/business/nope").view).toBe("overview");
+    expect(parseHash("#/business/nope").view).toBe("dashboard");
   });
 
   it("writes and round-trips a section", () => {
@@ -88,7 +88,7 @@ describe("prospect tabs", () => {
   });
 
   it("refuses a tab name anywhere but a prospect", () => {
-    expect(parseHash("#/business/share").view).toBe("overview");
+    expect(parseHash("#/business/share").view).toBe("dashboard");
   });
 
   it("writes a section over a tab (a section is on Settings)", () => {

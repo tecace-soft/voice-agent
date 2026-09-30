@@ -13,6 +13,20 @@ Format:
 
 ---
 
+## 2026-09-30 15:40 · Michael · dashboard (sign-in lands on Dashboard › Overview)
+- `src/routing.ts` `DEFAULT_VIEW` is now `dashboard` (was `overview`): a sign-in with no address, and any unknown `#/…` path, lands on Dashboard › Overview. The voicemail Overview is still at `#/overview`.
+- Unchanged: demo-stage accounts still land on `#/my/overview`; a pre-production customer signing in with no address still goes to Business information.
+- ⚠ Links or scripts that relied on an unknown path falling back to the voicemail Overview now get `#/dashboard`; use `#/overview` explicitly.
+
+## 2026-09-30 15:10 · Michael · dashboard (Dashboard › Overview for the receptionist)
+- New view `dashboard` (`#/dashboard`, `?customer=` for an admin) in a new first sidebar group "Dashboard" (`data-group="dashboard"`), above Voicemail: `src/demos/screens/ReceptionistOverviewScreen.tsx`, the Demo Overview's layout over `GET /calls` + `GET /usage/minutes` (cards Calls, Minutes, Callbacks requested, Talk time this month; calls per day; recent calls). No backend/API change. Helpers in `src/demos/lib/receptionistStats.ts`.
+- `ViewId`/`PATHS`/`VIEW_TITLES`/`STANDALONE_VIEWS` gained `dashboard`; the default landing is still the voicemail `overview`. Breadcrumb reads "Dashboard"; mailbox picker and Refresh are hidden there.
+- `compare.py` `HIDE_NEW` also hides the dashboard group (still IDENTICAL). New `scripts/regression/dashboard_overview.py` (ports 8895/4185). Changelog 0.0.12 gained the items.
+
+## 2026-09-30 13:58 · Michael · dashboard (Voicemail nav group)
+- Sidebar: the "Dashboard" and "Runs" nav groups are merged into one "Voicemail" group (`data-group="voicemail"`): Overview, Analytics, Per person, Daily activity, All runs, Failed runs. The `dashboard`/`runs` group keys are gone; views, `ViewId`s and `#/` paths are unchanged.
+- `scripts/regression/compare.py` gained `HIDE_OLD` / `HIDE_NEW` (each app hides its own version of that block: the old app's groups 2+3, the new app's voicemail group); still IDENTICAL. Changelog 0.0.12, package version bumped.
+
 ## 2026-09-30 10:12 · Michael · openai-agent-app (instant pickup on the phone)
 - Inbound: `/incoming` now holds its TwiML up to `PICKUP_HOLD_SECONDS` (default 3.0, clamped to max 8.0 because Twilio's webhook timeout is 15s; `0` = old behaviour) until the business's pre-rendered greeting is ready — the caller hears ringing instead of an answered silent line. Rendered greetings persist in `GREETING_CACHE_DIR` (default `/data/greetings`) and are warmed for every Twilio number at startup and every `GREETING_WARM_INTERVAL` s (600). The hold applies only on the GPT-Live engine (`OPENAI_LIVE_MODEL` set) with `PRERENDERED_GREETING` on; otherwise `/incoming` answers at once.
 - New per-call log line `pickup: greeting=… held=… hold=…ms …` (GPT-Live bridge only; logs only, no API change), plus `greeting warm-up: N business greeting(s) ready, M number(s) failed`.
