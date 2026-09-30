@@ -13,6 +13,17 @@ Format:
 
 ---
 
+## 2026-09-29 16:40 · Michael · dashboard (Agent numbers: register-by-hand card removed)
+- `src/pages/NumbersPage.tsx`: the "Agent phone numbers" card (intro + "Register a number by hand" form) is gone; numbers come from Twilio sync/buy only. "Sync from Twilio" and the page's setup/error/status messages moved into the Numbers table card's toolbar (`.number-toolbar-actions`; `.number-form` CSS removed).
+- The dashboard no longer calls `registerAgentNumber` / `POST /business/numbers`; the backend route and the client function are untouched. Existing hand-registered rows still show and can still be deleted.
+- `scripts/regression/numbers_twilio.py` updated (checks the card is gone; message alignment is measured against the Numbers card title).
+
+## 2026-09-29 16:05 · Michael · transcribe-backend production env (open /start sign-up)
+- Production `/start` showed "Sign-up isn't open here yet" because `transcribe-app-backend` (production) had no SMTP env, so `/auth/setup-state` returned `signup:false`. The /start code is identical on staging and production.
+- Added to `transcribe-app-backend` (Production): `SMTP_USERNAME` (resend, as staging), `ADMIN_NOTIFY_EMAIL` (as staging), `DASHBOARD_URL=https://ax-voiceagent.tecace.com`.
+- ⚠ Still needed, copied from `va-staging-backend`: `SMTP_HOST`, `SMTP_PORT`, `SMTP_PASSWORD`, `SMTP_FROM`; then redeploy the backend. Sign-up opens only once host + username + password are all set.
+- Vercel free plan hit its 100 deployments/day limit (every push built ~7 projects). Vercel projects `voice-agent-backend`, `voice-agent-voicemail-dashboard`, `voice-agent-form`, `voice-agent-dashboard` and `voice-agent` (repo-root leftover) now have Ignored Build Step `exit 0`: pushes no longer build them; their last deployment stays live. ⚠ To deploy one again, clear that setting first.
+
 ## 2026-09-29 14:10 · Michael · dashboard (navigation: admin no longer locked into a business)
 - `src/routing.ts`: new `Route.customer` / `?customer=<account email>` = which business an admin is viewing on Business information and Answered calls. These pages no longer read `?mailbox=` (that stays the voicemail views' shared scope). A link to a business's page is now `#/business?customer=…`; `demoHref(view, id, { mailbox, customer })` takes it.
 - New pure `nextRoute(current, next)` holds `navigate`'s merge rules: a view change drops `id`/`section`/`tab`/`customer` unless named; a customer change closes the section. Clicking the sidebar item of the page you're on resets it (back to the list).

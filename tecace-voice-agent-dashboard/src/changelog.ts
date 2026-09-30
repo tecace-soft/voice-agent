@@ -83,6 +83,11 @@ export const CHANGELOG: Release[] = [
         text: "Agent numbers connects to Twilio with an API key as well as the account's auth token, so syncing the account's numbers works on a server set up with a key.",
         admin: true,
       },
+      {
+        kind: "improved",
+        text: "Agent numbers no longer has a form to register a number by hand: the list comes from Twilio, and Sync from Twilio now sits on the Numbers table.",
+        admin: true,
+      },
     ],
   },
   {

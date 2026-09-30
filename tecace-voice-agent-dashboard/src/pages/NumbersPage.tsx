@@ -7,7 +7,6 @@ import {
   getNumberWebhooks,
   listAccounts,
   listAgentNumbers,
-  registerAgentNumber,
   releaseAgentNumber,
   searchAvailableNumbers,
   syncAgentNumbers,
@@ -96,8 +95,6 @@ export function NumbersPage() {
   const [webhooks, setWebhooks] = useState<NumberWebhooks | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [phone, setPhone] = useState("");
-  const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
   // Which number's release confirmation is open; the number has to be typed back.
   const [releasing, setReleasing] = useState<string | null>(null);
@@ -133,9 +130,9 @@ export function NumbersPage() {
   const twilioReady = webhooks?.configured === true;
   const setupNotice =
     webhooks === null
-      ? "Couldn't read whether Twilio is set up on this server, so syncing, buying, configuring and releasing are off for now. Registering by hand and assigning still work."
+      ? "Couldn't read whether Twilio is set up on this server, so syncing, buying, configuring and releasing are off for now. Assigning still works."
       : !webhooks.twilio
-        ? "Twilio isn't set up on this server, so numbers can be registered by hand and assigned, but not synced, bought, configured or released. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN (or TWILIO_API_KEY_SID and TWILIO_API_KEY_SECRET) on the backend."
+        ? "Twilio isn't set up on this server, so numbers already in the list can be assigned, but not synced, bought, configured or released. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN (or TWILIO_API_KEY_SID and TWILIO_API_KEY_SECRET) on the backend."
         : !webhooks.webhooks
           ? "The backend has Twilio credentials but not the addresses its webhooks point at, so it can sync but not buy, configure or release. Set AGENT_PUBLIC_URL and PUBLIC_BACKEND_URL on the backend."
           : null;
@@ -153,17 +150,6 @@ export function NumbersPage() {
     } finally {
       setBusy(false);
     }
-  }
-
-  async function onRegister(event: FormEvent) {
-    event.preventDefault();
-    if (!phone.trim()) return;
-    await act("Couldn't register that number.", async () => {
-      await registerAgentNumber(phone.trim(), label);
-      setPhone("");
-      setLabel("");
-      return null;
-    });
   }
 
   const onSync = () =>
@@ -243,21 +229,43 @@ export function NumbersPage() {
 
   return (
     <div className="view">
+      <BuyCard enabled={twilioReady} busy={busy} onBought={onBought} onError={setError} />
+
       <section className="card">
-        <div className="card-head">
+        <div className="card-toolbar">
           <div>
-            <div className="card-title ta-headline-2">Agent phone numbers</div>
+            <div className="card-title ta-headline-2">
+              Numbers
+              {unassigned > 0 && (
+                <span className="badge badge-warning number-unassigned">
+                  <IconAlert size={12} />
+                  {unassigned} unassigned
+                </span>
+              )}
+            </div>
             <div className="card-sub ta-caption-1">
-              When one of these rings, the agent answers as the person it's assigned to. A number
-              can belong to only one customer — one line per business is what keeps the agent from
-              reading the wrong company's details to a caller. Admin accounts can't hold a number:
-              there'd be no business for the agent to answer as.
+              The Twilio account's numbers. When one rings, the agent answers as the customer it's
+              assigned to; an unassigned number still rings, and the agent answers neutrally. Webhooks
+              say whether Twilio sends the number's calls to the receptionist at all.
             </div>
           </div>
-          <button type="button" className="btn" onClick={onSync} disabled={busy || !canSync} title={canSync ? "Bring the Twilio account's numbers into this list" : "Twilio isn't set up on this server"}>
-            <IconRefresh size={14} />
-            Sync from Twilio
-          </button>
+          <div className="number-toolbar-actions">
+            {outOfDate.length > 0 && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void onConfigureAll()}
+                disabled={busy || !twilioReady}
+                title="Write the receptionist's webhooks onto every number that is out of date"
+              >
+                Configure {outOfDate.length} out of date
+              </button>
+            )}
+            <button type="button" className="btn" onClick={onSync} disabled={busy || !canSync} title={canSync ? "Bring the Twilio account's numbers into this list" : "Twilio isn't set up on this server"}>
+              <IconRefresh size={14} />
+              Sync from Twilio
+            </button>
+          </div>
         </div>
 
         {(setupNotice || error || note) && (
@@ -275,71 +283,6 @@ export function NumbersPage() {
             )}
           </div>
         )}
-
-        <form className="feedback-form" onSubmit={onRegister}>
-          <div className="number-form">
-            <label className="field">
-              <span className="field-label ta-caption-1">Register a number by hand</span>
-              <input
-                className="input"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+1 206 555 1234"
-                inputMode="tel"
-              />
-            </label>
-            <label className="field">
-              <span className="field-label ta-caption-1">Label (optional)</span>
-              <input
-                className="input"
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                placeholder="Acme main line"
-              />
-            </label>
-            <button type="submit" className="btn btn-primary" disabled={busy || !phone.trim()}>
-              {busy ? "Adding…" : "Add number"}
-            </button>
-          </div>
-          <span className="field-hint ta-caption-2 muted">
-            For a number that isn't in the Twilio account, or was set up in the console. Any format works — it's
-            stored as +12065551234 so it matches what Twilio sends.
-          </span>
-        </form>
-      </section>
-
-      <BuyCard enabled={twilioReady} busy={busy} onBought={onBought} onError={setError} />
-
-      <section className="card">
-        <div className="card-toolbar">
-          <div>
-            <div className="card-title ta-headline-2">
-              Numbers
-              {unassigned > 0 && (
-                <span className="badge badge-warning number-unassigned">
-                  <IconAlert size={12} />
-                  {unassigned} unassigned
-                </span>
-              )}
-            </div>
-            <div className="card-sub ta-caption-1">
-              An unassigned number still rings — the agent just answers neutrally, without claiming
-              to be any particular business. Webhooks say whether Twilio sends the number's calls to the
-              receptionist at all.
-            </div>
-          </div>
-          {outOfDate.length > 0 && (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => void onConfigureAll()}
-              disabled={busy || !twilioReady}
-              title="Write the receptionist's webhooks onto every number that is out of date"
-            >
-              Configure {outOfDate.length} out of date
-            </button>
-          )}
-        </div>
 
         <div className="table-wrap">
           <table>
@@ -364,7 +307,7 @@ export function NumbersPage() {
               ) : numbers.length === 0 ? (
                 <tr>
                   <td className="table-empty" colSpan={7}>
-                    No numbers yet. Sync the Twilio account, buy one, or add one by hand.
+                    No numbers yet. Sync the Twilio account or buy one.
                   </td>
                 </tr>
               ) : (

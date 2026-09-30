@@ -2209,16 +2209,11 @@ button.person-primary:hover {
 
 /* ---- agent phone numbers ---- */
 
-.number-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 12px;
-}
-@media (max-width: 720px) {
-  .number-form {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.number-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .number-cell {
   display: inline-flex;
@@ -2243,7 +2238,7 @@ button.person-primary:hover {
 .number-messages {
   display: grid;
   gap: 8px;
-  padding: 8px 20px 0;
+  padding: 12px 16px 0; /* the Numbers card's .card-toolbar inset, so a message lines up with its title */
 }
 .number-messages p {
   margin: 0;

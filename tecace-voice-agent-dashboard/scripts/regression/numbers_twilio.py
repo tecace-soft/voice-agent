@@ -118,7 +118,9 @@ def main() -> int:
                     page.goto(f"{base}/#/numbers", wait_until="networkidle")
                     page.wait_for_timeout(600)
                     body = page.inner_text("body")
-                    check("the Numbers page still loads", "Agent phone numbers" in body, body[:200])
+                    check("the Numbers page still loads", "Sync from Twilio" in body, body[:200])
+                    check("the register-by-hand card is gone", "Agent phone numbers" not in body
+                          and "Register a number by hand" not in body, body[:200])
 
                     # ---- what Twilio knows, per number
                     check("there is a Type column", page.get_by_role("columnheader", name="Type").count() == 1)
@@ -156,7 +158,7 @@ def main() -> int:
                           "(888) 555-0123" in after and "not in Twilio" in after, after[:400])
                     # A .card has no padding of its own; a message that isn't inset sits on the card's edge.
                     note_box = page.get_by_role("status").first.bounding_box()
-                    title_box = page.get_by_text("Agent phone numbers", exact=True).bounding_box()
+                    title_box = page.locator("main.content .card-toolbar .card-title").first.bounding_box()
                     check("...in a message lined up with the card's title, not on its edge",
                           bool(note_box and title_box) and abs(note_box["x"] - title_box["x"]) < 2,
                           f"note x={note_box and note_box['x']} title x={title_box and title_box['x']}")
