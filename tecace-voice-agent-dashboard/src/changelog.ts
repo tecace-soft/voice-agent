@@ -36,6 +36,11 @@ export const CHANGELOG: Release[] = [
     items: [
       {
         kind: "improved",
+        text: "Customers: built for hundreds of customers — phase tabs with counts, a category filter, a created date, sorting by any column, and pages sized to fit the screen (or 25 / 50 / 100 per page). The list uses the full width and never scrolls sideways.",
+        admin: true,
+      },
+      {
+        kind: "improved",
         text: "Real calls to your number now follow what you set up here, the same as a test call: your prompts and Custom training, knowledge, FAQs, instructions, greeting and voice, plus the transfers and message situations you published. Texting a link is test-call only for now.",
       },
       {

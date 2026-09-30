@@ -113,6 +113,26 @@ The header of `src/styles/index.css` explains the layer order and why; read it b
 - The open section is in the URL (`#/business/transfers`, `#/demos/prospects/<id>/faqs`); new
   sections need an id in `SECTION_IDS` (`src/routing.ts`) and an entry in `SECTION_META`.
 
+## List screens (tables that grow) — one pattern for all of them
+
+Customers is the reference (`src/demos/components/admin/CustomerTable.tsx`); build every new list the
+same way, from the kit in `src/demos/components/ui/data-table.tsx`, so they search, sort and page alike:
+- **Width:** the view goes in `App.tsx` `WIDE_VIEWS` (`.content-wide`: no 1440px cap). The table is
+  `table-fixed` with percentage widths per column and `truncate` + `title` in text cells, so it **never
+  scrolls sideways** at 1280px and up. Merge related numbers into one two-line cell ("3 calls · 9 min" /
+  "14 opens · 4 people") instead of adding columns.
+- **Height:** rows have one fixed height (two lines, 57px); `useFitRows` sizes the default page to the
+  window ("Fit to screen"), so the page **never scrolls down**. `TablePagination` offers 25 / 50 / 100 and
+  shows "1–25 of 1,240 …"; `usePaged` resets to page 1 when a filter changes; `useRemembered` keeps the
+  viewer's page size and sort.
+- **Finding things:** segment tabs with counts for the main split (phase), one search box that matches
+  every text column, then `Select` filters (category, status), a Sort select, and `SortableHead` on the
+  sortable columns (second click flips the direction). Always show a created date.
+- **Selection:** a checkbox column; select-all covers the current page; bulk actions appear at the right of
+  the toolbar only while something is ticked.
+- Paging is client-side today; keep the (page, pageSize, total) shape so a list can move to a server-side
+  `?page=&pageSize=&q=` without changing the UI once it passes a few thousand rows.
+
 ## Proving nothing broke
 
 Run all three after any styling change:

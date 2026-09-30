@@ -13,6 +13,11 @@ Format:
 
 ---
 
+## 2026-09-29 · bottomup32 · dashboard (Customers list for hundreds of rows; list-screen kit)
+- Customers: phase tabs + counts, category filter, created date, sort select + sortable headers, full width (`App.tsx` `WIDE_VIEWS` → `.content-wide`), `table-fixed` so it never scrolls sideways, pages sized to the window (Fit to screen / 25 / 50 / 100).
+- New shared kit `src/demos/components/ui/data-table.tsx`; the pattern is written down in `tecace-voice-agent-dashboard/CLAUDE.md` "List screens" — ⚠ build new list screens with it.
+- Regression: `demos_e2e.py` expects Cedar's link as "Cedar Bakery" (business name fallback, was "Unnamed"). All 9 pass, compare IDENTICAL, vitest 317/317. Changelog 0.0.11 item added.
+
 ## 2026-09-29 11:10 · Michael · transcribe-backend, openai-agent-app (real calls run on the composed session)
 - `GET /business/config?to=` gains `session` (null for a profile without a structured profile): `{live, backend, greetingLine, voice, language, tools, transfers:[{id,name,mode,numbers}], reachable, canBook, returnLeg:{live,backend,tools}}` from new `src/session/phone.ts` → `composeSession(channel:"phone")` on the PUBLISHED call settings. All existing flat fields are unchanged.
 - `composeSession` gains optional `canText` (false = no `send_link`, no links block) and `canTransfer` (false = nobody to reach; used for `returnLeg`, the leg after a transfer nobody answered).

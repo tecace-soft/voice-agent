@@ -1,9 +1,9 @@
 
 import { demoFetch } from "@/api";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
-  ArrowDown,
   CalendarClock,
+  Search,
   Copy,
   ExternalLink,
   Mail,
@@ -11,7 +11,6 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { dueFollowUps } from "@/lib/analytics";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -55,6 +54,17 @@ import { CUSTOMER_PHASES, type CustomerPhase, type CustomerWithStats } from "@/l
 import { PHASE_KIND, PHASE_LABELS, phaseOf } from "@/lib/phase";
 import { demoHref } from "@/routes";
 import { readJson } from "@/lib/http";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  SortableHead,
+  TablePagination,
+  nextSort,
+  useFitRows,
+  usePaged,
+  useRemembered,
+  type PageSize,
+  type SortState,
+} from "@/components/ui/data-table";
 
 type Props = {
   customers: CustomerWithStats[];
@@ -68,12 +78,10 @@ const STATUS_LABELS: Record<string, string> = {
   error: "Error",
 };
 
-const PHASE_FILTER_LABELS: Record<string, string> = {
-  all: "All phases",
-  requested: "Setup requested",
-  signups: "New signups",
-  ...PHASE_LABELS,
-};
+/** The tabs across the top: every customer, the ones waiting on us, then each phase. */
+type PhaseTab = "all" | "requested" | "signups" | CustomerPhase;
+
+const NO_CATEGORY = "(none)";
 
 function relative(iso?: string): string {
   if (!iso) return "Never";
@@ -87,61 +95,59 @@ function relative(iso?: string): string {
 }
 
 /** Which column the list is ordered by. Heat first: it answers "who now?". */
-type SortKey = "heat" | "name" | "views" | "visitors" | "calls" | "minutes" | "last";
+type SortKey = "heat" | "name" | "category" | "calls" | "views" | "created" | "last";
 
+const SORT_LABELS: Record<SortKey, string> = {
+  heat: "Interest",
+  name: "Name",
+  category: "Category",
+  calls: "Calls",
+  views: "Link opens",
+  created: "Created",
+  last: "Last activity",
+};
+
+/** Each comparator sorts descending ("most first"); `asc` reverses it. Name and category read A–Z as desc. */
 const SORTS: Record<SortKey, (a: CustomerWithStats, b: CustomerWithStats) => number> = {
   heat: (a, b) => b.heat.score - a.heat.score,
-  name: (a, b) => (a.profile.name || "").localeCompare(b.profile.name || ""),
-  views: (a, b) => b.stats.views - a.stats.views,
-  visitors: (a, b) => b.stats.visitors - a.stats.visitors,
-  calls: (a, b) => b.stats.calls - a.stats.calls,
-  minutes: (a, b) => b.stats.totalSec - a.stats.totalSec,
+  name: (a, b) => (a.profile.name || a.businessName || "").localeCompare(b.profile.name || b.businessName || ""),
+  category: (a, b) => (a.profile.category || "~").localeCompare(b.profile.category || "~"),
+  calls: (a, b) => b.stats.calls - a.stats.calls || b.stats.totalSec - a.stats.totalSec,
+  views: (a, b) => b.stats.views - a.stats.views || b.stats.visitors - a.stats.visitors,
+  created: (a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""),
   last: (a, b) =>
     (b.stats.lastCallAt ?? b.stats.lastViewAt ?? "").localeCompare(
       a.stats.lastCallAt ?? a.stats.lastViewAt ?? "",
     ),
 };
 
-const HEAT_KIND = { hot: "negative", warm: "caution", cold: "neutral" } as const;
+/** Where a first click on a column starts: A–Z for words, most/newest first for the rest. */
+const NATURAL: Record<SortKey, "asc" | "desc"> = {
+  heat: "desc",
+  name: "desc",
+  category: "desc",
+  calls: "desc",
+  views: "desc",
+  created: "desc",
+  last: "desc",
+};
 
-function SortHead({
-  label,
-  column,
-  sort,
-  onSort,
-  className,
-}: {
-  label: string;
-  column: SortKey;
-  sort: SortKey;
-  onSort: (column: SortKey) => void;
-  className?: string;
-}) {
-  const active = sort === column;
-  return (
-    <TableHead className={cn("ta-caption-1 text-muted-foreground", className)}>
-      <button
-        type="button"
-        onClick={() => onSort(column)}
-        className={cn(
-          "hover:text-foreground inline-flex items-center gap-1",
-          active && "text-foreground",
-        )}
-        aria-label={`Sort by ${label.toLowerCase()}`}
-      >
-        {label}
-        <ArrowDown
-          className={cn("size-3", active ? "opacity-100" : "opacity-0")}
-          aria-hidden
-        />
-      </button>
-    </TableHead>
-  );
+function created(iso?: string): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  const sameYear = date.getFullYear() === new Date().getFullYear();
+  return date.toLocaleDateString(undefined, sameYear ? { month: "short", day: "numeric" } : { year: "numeric", month: "short", day: "numeric" });
 }
+
+/** The table's rows are two lines tall; the page is sized to whole rows of this height. */
+const ROW_HEIGHT = 57;
+
+const HEAT_KIND = { hot: "negative", warm: "caution", cold: "neutral" } as const;
 
 export function CustomerTable({ customers, onChanged }: Props) {
   const [status, setStatus] = useState("all");
-  const [phase, setPhase] = useState("all");
+  const [phase, setPhase] = useState<PhaseTab>("all");
+  const [category, setCategory] = useState("all");
   const phaseCounts = useMemo(() => {
     const counts: Record<CustomerPhase, number> = { demo: 0, onboarding: 0, production: 0 };
     for (const customer of customers) counts[phaseOf(customer)] += 1;
@@ -155,8 +161,18 @@ export function CustomerTable({ customers, onChanged }: Props) {
   // Businesses that signed themselves up at /start and are still in the demo.
   const isSignup = (customer: CustomerWithStats) => customer.account?.source === "start" && phaseOf(customer) === "demo";
   const signupCount = useMemo(() => customers.filter(isSignup).length, [customers]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The business categories research found, commonest first, for the category filter.
+  const categories = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const customer of customers) {
+      const name = customer.profile.category?.trim() || NO_CATEGORY;
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [customers]);
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<SortKey>("heat");
+  const [sort, setSort] = useRemembered<SortState<SortKey>>("customers.sort", { key: "heat", dir: "desc" });
+  const [pageSize, setPageSize] = useRemembered<PageSize>("customers.pageSize", "fit");
   const [dueOnly, setDueOnly] = useState(false);
   const dueCount = useMemo(() => dueFollowUps(customers).length, [customers]);
   // Dashboard-only (PORTING.md): delete works on a selection, one row from its menu or many ticked.
@@ -171,6 +187,7 @@ export function CustomerTable({ customers, onChanged }: Props) {
     const filtered = customers.filter((customer) => {
       if (dueOnly && !due.has(customer.id)) return false;
       if (status !== "all" && customer.status !== status) return false;
+      if (category !== "all" && (customer.profile.category?.trim() || NO_CATEGORY) !== category) return false;
       if (phase === "requested") {
         if (!customer.request) return false;
       } else if (phase === "signups") {
@@ -182,6 +199,8 @@ export function CustomerTable({ customers, onChanged }: Props) {
       return [
         customer.customerCode,
         customer.profile.name,
+        customer.businessName,
+        customer.profile.category,
         customer.label,
         customer.contactName,
         customer.contactEmail,
@@ -189,8 +208,18 @@ export function CustomerTable({ customers, onChanged }: Props) {
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(term));
     });
-    return [...filtered].sort(SORTS[sort]);
-  }, [customers, dueOnly, phase, query, sort, status]);
+    const compare = SORTS[sort.key] ?? SORTS.heat;
+    const ordered = [...filtered].sort(compare);
+    return sort.dir === "asc" ? ordered.reverse() : ordered;
+  }, [customers, dueOnly, phase, query, sort, status, category]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Paging: by default as many rows as fit the window, so the list never scrolls.
+  const tableRef = useRef<HTMLDivElement>(null);
+  const fitRows = useFitRows(tableRef, ROW_HEIGHT);
+  const size = pageSize === "fit" ? fitRows : pageSize;
+  const paged = usePaged(rows, size, JSON.stringify([query, status, phase, category, dueOnly, sort, size]));
+  const onSort = (key: SortKey) => setSort(nextSort(sort, key, NATURAL[key]));
+  const filtered = query || status !== "all" || category !== "all" || dueOnly;
 
   async function toggleActive(customer: CustomerWithStats, active: boolean) {
     setBusyId(customer.id);
@@ -228,7 +257,7 @@ export function CustomerTable({ customers, onChanged }: Props) {
     onChanged();
   }
 
-  const visibleIds = rows.map((customer) => customer.id);
+  const visibleIds = paged.pageRows.map((customer) => customer.id);
   const selectedRows = customers.filter((customer) => selected.has(customer.id));
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
   function toggleOne(id: string, on: boolean) {
@@ -266,15 +295,47 @@ export function CustomerTable({ customers, onChanged }: Props) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      <Tabs value={phase} onValueChange={(value) => setPhase(value as PhaseTab)}>
+        <TabsList aria-label="Customers by phase" className="h-auto flex-wrap">
+          <TabsTrigger value="all">All · {customers.length}</TabsTrigger>
+          <TabsTrigger value="requested">Setup requested · {requestedCount}</TabsTrigger>
+          <TabsTrigger value="signups">New signups · {signupCount}</TabsTrigger>
+          {CUSTOMER_PHASES.map((value) => (
+            <TabsTrigger key={value} value={value}>
+              {PHASE_LABELS[value]} · {phaseCounts[value]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
       <div className="flex flex-wrap items-center gap-2">
-        <Input
-          placeholder="Search ID, business or contact"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          className="max-w-64"
-          aria-label="Search customers"
-        />
+        <div className="relative w-full sm:w-72">
+          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+          <Input
+            placeholder="Search name, ID, category or contact"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className="pl-8"
+            aria-label="Search customers"
+          />
+        </div>
+        <Select value={category} onValueChange={(value) => setCategory(value ?? "all")}>
+          <SelectTrigger className="w-56" aria-label="Filter by category">
+            <SelectValue>
+              <span className="truncate">{category === "all" ? "All categories" : category}</span>
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent className="max-h-80">
+            <SelectItem value="all">All categories</SelectItem>
+            {categories.map(([name, count]) => (
+              <SelectItem key={name} value={name}>
+                <span className="max-w-72 truncate">{name}</span>
+                <span className="text-muted-foreground ml-auto pl-3 tabular-nums">{count}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={status} onValueChange={(value) => setStatus(value ?? "all")}>
           <SelectTrigger className="w-40" aria-label="Filter by status">
             <SelectValue>{STATUS_LABELS[status]}</SelectValue>
@@ -286,19 +347,27 @@ export function CustomerTable({ customers, onChanged }: Props) {
             <SelectItem value="error">Error</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={phase} onValueChange={(value) => setPhase(value ?? "all")}>
-          <SelectTrigger className="w-44" aria-label="Filter by phase">
-            <SelectValue>{PHASE_FILTER_LABELS[phase]}</SelectValue>
+        <Select
+          value={`${sort.key}:${sort.dir}`}
+          onValueChange={(value) => {
+            const [key, dir] = String(value).split(":") as [SortKey, "asc" | "desc"];
+            setSort({ key, dir });
+          }}
+        >
+          <SelectTrigger className="w-48" aria-label="Sort customers">
+            <SelectValue>
+              Sort: {SORT_LABELS[sort.key]} {sort.dir === "asc" ? "↑" : "↓"}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All phases</SelectItem>
-            <SelectItem value="requested">Setup requested ({requestedCount})</SelectItem>
-            <SelectItem value="signups">New signups ({signupCount})</SelectItem>
-            {CUSTOMER_PHASES.map((value) => (
-              <SelectItem key={value} value={value}>
-                {PHASE_LABELS[value]} ({phaseCounts[value]})
-              </SelectItem>
-            ))}
+            <SelectItem value="heat:desc">Interest, hottest first</SelectItem>
+            <SelectItem value="created:desc">Newest first</SelectItem>
+            <SelectItem value="created:asc">Oldest first</SelectItem>
+            <SelectItem value="name:desc">Name, A–Z</SelectItem>
+            <SelectItem value="category:desc">Category, A–Z</SelectItem>
+            <SelectItem value="calls:desc">Most calls</SelectItem>
+            <SelectItem value="views:desc">Most link opens</SelectItem>
+            <SelectItem value="last:desc">Recently active</SelectItem>
           </SelectContent>
         </Select>
         <Button
@@ -309,13 +378,13 @@ export function CustomerTable({ customers, onChanged }: Props) {
           Follow-ups due
           {dueCount ? ` (${dueCount})` : ""}
         </Button>
-        {query || status !== "all" || phase !== "all" || dueOnly ? (
+        {filtered ? (
           <Button
             variant="ghost"
             onClick={() => {
               setQuery("");
               setStatus("all");
-              setPhase("all");
+              setCategory("all");
               setDueOnly(false);
             }}
           >
@@ -346,10 +415,13 @@ export function CustomerTable({ customers, onChanged }: Props) {
           }
         />
       ) : (
-        <Table>
+        <div ref={tableRef}>
+        {/* Fixed layout: the columns share the width instead of pushing it, so the list never
+            scrolls sideways; long names and categories are cut with an ellipsis (full text on hover). */}
+        <Table className="table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-8">
+              <TableHead className="w-9">
                 <input
                   type="checkbox"
                   className="accent-primary size-4 align-middle"
@@ -358,59 +430,26 @@ export function CustomerTable({ customers, onChanged }: Props) {
                   onChange={(event) => toggleAllVisible(event.target.checked)}
                 />
               </TableHead>
-              <TableHead className="ta-caption-1 text-muted-foreground">ID</TableHead>
-              <SortHead label="Business" column="name" sort={sort} onSort={setSort} />
-              <TableHead className="ta-caption-1 text-muted-foreground">Phase</TableHead>
-              <TableHead className="ta-caption-1 text-muted-foreground">Contact</TableHead>
-              <SortHead label="Interest" column="heat" sort={sort} onSort={setSort} />
-              <TableHead className="ta-caption-1 text-muted-foreground">Status</TableHead>
-              <TableHead className="ta-caption-1 text-muted-foreground">Live</TableHead>
-              <SortHead
-                label="People"
-                column="visitors"
-                sort={sort}
-                onSort={setSort}
-                className="text-right"
-              />
-              <SortHead
-                label="Opens"
-                column="views"
-                sort={sort}
-                onSort={setSort}
-                className="text-right"
-              />
-              <SortHead
-                label="Calls"
-                column="calls"
-                sort={sort}
-                onSort={setSort}
-                className="text-right"
-              />
-              <SortHead
-                label="Minutes"
-                column="minutes"
-                sort={sort}
-                onSort={setSort}
-                className="text-right"
-              />
-              <SortHead
-                label="Last call"
-                column="last"
-                sort={sort}
-                onSort={setSort}
-                className="hidden xl:table-cell"
-              />
-              <TableHead className="w-10" />
+              <SortableHead label="Customer" column="name" sort={sort} onSort={onSort} className="w-[24%]" />
+              <TableHead className="ta-caption-1 text-muted-foreground w-[17%]">Contact</TableHead>
+              <TableHead className="ta-caption-1 text-muted-foreground w-[12%]">Phase</TableHead>
+              <SortableHead label="Interest" column="heat" sort={sort} onSort={onSort} className="w-[12%]" />
+              <TableHead className="ta-caption-1 text-muted-foreground w-[11%]">Status</TableHead>
+              <TableHead className="ta-caption-1 text-muted-foreground w-12">Live</TableHead>
+              <SortableHead label="Activity" column="calls" sort={sort} onSort={onSort} className="w-[14%]" />
+              <SortableHead label="Created" column="created" sort={sort} onSort={onSort} className="w-[8%]" />
+              <TableHead className="w-11" />
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((customer) => (
+            {paged.pageRows.map((customer) => (
               <TableRow
                 key={customer.id}
-                className="hover:bg-accent h-11"
+                className="hover:bg-accent"
+                style={{ height: ROW_HEIGHT }}
                 data-state={selected.has(customer.id) ? "selected" : undefined}
               >
-                <TableCell className="w-8">
+                <TableCell>
                   <input
                     type="checkbox"
                     className="accent-primary size-4 align-middle"
@@ -419,19 +458,28 @@ export function CustomerTable({ customers, onChanged }: Props) {
                     onChange={(event) => toggleOne(customer.id, event.target.checked)}
                   />
                 </TableCell>
-                <TableCell className="ta-caption-1 text-muted-foreground font-mono whitespace-nowrap">
-                  {customer.customerCode ?? "—"}
-                </TableCell>
-                <TableCell className="ta-label-1">
+                <TableCell className="min-w-0">
                   <a
                     href={demoHref("demoProspect", customer.id)}
-                    className="hover:underline"
+                    className="ta-label-1 block truncate font-semibold hover:underline"
+                    title={customer.profile.name || customer.businessName || undefined}
                   >
-                    {customer.profile.name || "Unnamed"}
+                    {customer.profile.name || customer.businessName || "Unnamed"}
                   </a>
-                  {customer.label ? (
-                    <span className="ta-caption-1 text-muted-foreground block">
-                      {customer.label}
+                  <span
+                    className="ta-caption-1 text-muted-foreground block truncate"
+                    title={[customer.profile.category, customer.label].filter(Boolean).join(" · ") || undefined}
+                  >
+                    <span className="font-mono">{customer.customerCode ?? "—"}</span>
+                    {customer.profile.category ? ` · ${customer.profile.category}` : ""}
+                    {customer.label ? ` · ${customer.label}` : ""}
+                  </span>
+                </TableCell>
+                <TableCell className="min-w-0">
+                  <span className="ta-label-1 block truncate">{customer.contactName || "—"}</span>
+                  {customer.contactEmail ? (
+                    <span className="ta-caption-1 text-muted-foreground block truncate" title={customer.contactEmail}>
+                      {customer.contactEmail}
                     </span>
                   ) : null}
                 </TableCell>
@@ -446,21 +494,13 @@ export function CustomerTable({ customers, onChanged }: Props) {
                     {isSignup(customer) ? <StatusBadge kind="neutral">Signed up</StatusBadge> : null}
                   </span>
                 </TableCell>
-                <TableCell className="ta-label-1">
-                  {customer.contactName || "—"}
-                  {customer.contactEmail ? (
-                    <span className="ta-caption-1 text-muted-foreground block">
-                      {customer.contactEmail}
-                    </span>
-                  ) : null}
-                </TableCell>
-                <TableCell>
+                <TableCell className="min-w-0">
                   <span title={customer.heat.reason}>
                     <StatusBadge kind={HEAT_KIND[customer.heat.level]}>
                       {customer.heat.level}
                     </StatusBadge>
                   </span>
-                  <span className="ta-caption-2 text-muted-foreground block pt-0.5">
+                  <span className="ta-caption-2 text-muted-foreground block truncate pt-0.5" title={customer.heat.reason}>
                     {customer.heat.reason}
                   </span>
                 </TableCell>
@@ -493,20 +533,19 @@ export function CustomerTable({ customers, onChanged }: Props) {
                     aria-label={`Toggle the demo for ${customer.profile.name}`}
                   />
                 </TableCell>
-                <TableCell className="ta-label-1 text-right tabular-nums">
-                  {customer.stats.visitors}
+                <TableCell className="min-w-0 tabular-nums">
+                  <span className="ta-label-1 block truncate">
+                    {customer.stats.calls} calls · {Math.round((customer.stats.totalSec / 60) * 10) / 10} min
+                  </span>
+                  <span
+                    className="ta-caption-1 text-muted-foreground block truncate"
+                    title={`Last call: ${relative(customer.stats.lastCallAt)}`}
+                  >
+                    {customer.stats.views} opens · {customer.stats.visitors} people
+                  </span>
                 </TableCell>
-                <TableCell className="ta-label-1 text-right tabular-nums">
-                  {customer.stats.views}
-                </TableCell>
-                <TableCell className="ta-label-1 text-right tabular-nums">
-                  {customer.stats.calls}
-                </TableCell>
-                <TableCell className="ta-label-1 text-right tabular-nums">
-                  {Math.round((customer.stats.totalSec / 60) * 10) / 10}
-                </TableCell>
-                <TableCell className="ta-label-1 hidden xl:table-cell">
-                  {relative(customer.stats.lastCallAt)}
+                <TableCell className="ta-label-1 whitespace-nowrap tabular-nums" title={customer.createdAt ? new Date(customer.createdAt).toLocaleString() : undefined}>
+                  {created(customer.createdAt)}
                 </TableCell>
                 <TableCell>
                   <DropdownMenu>
@@ -559,6 +598,19 @@ export function CustomerTable({ customers, onChanged }: Props) {
             ))}
           </TableBody>
         </Table>
+        <TablePagination
+          page={paged.page}
+          pageCount={paged.pageCount}
+          from={paged.from}
+          to={paged.to}
+          total={paged.total}
+          noun="customers"
+          pageSize={pageSize}
+          fitRows={fitRows}
+          onPage={paged.setPage}
+          onPageSize={setPageSize}
+        />
+        </div>
       )}
 
       <Dialog

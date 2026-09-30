@@ -336,6 +336,10 @@ code {
   max-width: none;
   padding: 0;
 }
+/* List screens (App.tsx WIDE_VIEWS) use the whole width: a long table reads better wide than capped. */
+.content-wide {
+  max-width: none;
+}
 
 /* ---- the studio's chrome: the sidebar as an icon rail, the top bar carrying the page's row ---- */
 .topbar-slot {
