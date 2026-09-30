@@ -175,7 +175,7 @@ def check_transcripts(check: Checks, page, base: str, who: str, theme: str, shot
     check(f"{tag} an open call shows the conversation as a chat in a .tw island",
           chat.count() == 1 and page.locator(".call-detail .tw").count() == 1)
     bubbles = chat.locator("p")
-    check(f"{tag} one bubble per turn", bubbles.count() == 2, str(bubbles.count()))
+    check(f"{tag} one bubble per turn", bubbles.count() == 2, str(bubbles.count()))  # Jordan's: 2 turns
     # The caller's bubble sits right in brand blue, the receptionist's left in grey — as on the demo.
     agent, caller = bubbles.nth(0), bubbles.nth(1)
     box = chat.bounding_box()
@@ -188,13 +188,33 @@ def check_transcripts(check: Checks, page, base: str, who: str, theme: str, shot
     check(f"{tag} and they are different colours", colors[0] != colors[1], str(colors))
     check(f"{tag} speaker labels name the receptionist and the caller",
           "Receptionist" in chat.inner_text() and "Jordan Lee" in chat.inner_text(), chat.inner_text())
+    rows = page.locator(".call-item")
+    check(f"{tag} each call is its own outlined row",
+          rows.count() == 2 and page.evaluate(
+              "(el) => getComputedStyle(el).borderTopWidth", rows.nth(1).element_handle()) == "1px")
     if shots:
         page.screenshot(path=str(shots / f"transcripts-{who}-{theme}.png"), full_page=True)
+    page.get_by_role("button", name="Hide conversation").click()
+    page.wait_for_timeout(300)
+    check(f"{tag} Hide conversation closes the call",
+          page.get_by_label("Call transcript").count() == 0
+          and page.locator(".call-head").first.get_attribute("aria-expanded") == "false")
 
 
 def main() -> int:
     shots = Path(sys.argv[sys.argv.index("--shots") + 1]) if "--shots" in sys.argv else None
     check = Checks()
+    # A second, older call for Sam (this script only), so Transcripts shows where one row ends and
+    # the next begins. Jordan Lee's stays the newest, which the Overview checks rely on.
+    fake_backend.CALLS.append({
+        **fake_backend.CALLS[0], "id": "c-2", "callerName": "Riley Park", "caller": "+15559876543",
+        "callbackNumber": None, "request": "Opening hours", "summary": "Asked when the office opens.",
+        "outcome": None, "callbackRequested": False, "durationSeconds": 41,
+        "turns": [{"speaker": "agent", "text": "Hello, Sam's Dental."},
+                  {"speaker": "caller", "text": "When do you open tomorrow?"},
+                  {"speaker": "agent", "text": "We open at eight."}],
+        "startedAt": fake_backend.iso(fake_backend.NOW - fake_backend.timedelta(days=2)),
+    })
     backend = fake_backend.start(BACKEND_PORT)
     try:
         with tempfile.TemporaryDirectory(prefix="dashboard-overview-") as tmp:

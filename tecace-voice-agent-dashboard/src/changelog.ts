@@ -36,7 +36,7 @@ export const CHANGELOG: Release[] = [
     items: [
       {
         kind: "improved",
-        text: "Answered calls is now Transcripts, under Dashboard next to Overview. Open a call and the conversation reads like a text-message chat — the caller on the right, your receptionist on the left — just like the test call on your demo.",
+        text: "Answered calls is now Transcripts, under Dashboard next to Overview. Open a call and the conversation reads like a text-message chat — the caller on the right, your receptionist on the left — just like the test call on your demo. Each call sits in its own outlined box, the open one is outlined in blue, and Hide conversation at the bottom closes it.",
       },
       {
         kind: "new",

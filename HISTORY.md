@@ -16,6 +16,7 @@ Format:
 ## 2026-09-30 16:30 · Michael · dashboard (Answered calls → Transcripts, chat-style)
 - Sidebar: "Answered calls" left the Settings group and is now "Transcripts" in the Dashboard group (Overview, Transcripts). View id and address are unchanged (`calls`, `#/calls?customer=`), so existing links keep working. Breadcrumb "Dashboard / Transcripts"; the voicemail scope block and Refresh are hidden there, as on Dashboard › Overview.
 - An open call's conversation is now chat bubbles: new `src/components/CallConversation.tsx` renders the demo's `Exchange` (caller right/blue, receptionist left/grey) in a `.tw` island; the legacy `.call-turn*` CSS is removed. Copy that said "Answered calls" (Take a message section, examples) now says Transcripts.
+- Call rows (`legacy.css` `.call-list`/`.call-item`, used by Transcripts and the admin's per-business panels): each call is an outlined row (new token `--border-row` = `--line-normal-normal`), 8px apart; the open one is outlined in `--primary` with a shaded head; new "Hide conversation" button (`.call-close`) opposite Delete.
 - `compare.py`: each app's Settings group is hidden whole (HIDE_OLD child 5, HIDE_NEW `data-group="settings"`), the hover-nav capture hovers "Send feedback", and the four `#/calls` captures are expected changes (marker "Transcripts"). Still IDENTICAL. `demo_customer.py` also checks "Transcripts" is absent for a demo account.
 
 ## 2026-09-30 15:40 · Michael · dashboard (sign-in lands on Dashboard › Overview)

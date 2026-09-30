@@ -105,7 +105,12 @@ The conversation is removed permanently — this can't be undone.`)) return;
             {showWho && call.userId === null ? " · not assigned to a customer" : ""}
           </p>
           {failed && <p className="error ta-caption-1">{failed}</p>}
+          {/* Close sits at the far side from Delete, so reaching for one never lands on the other. */}
           <div className="call-actions">
+            <button type="button" className="btn btn-quiet call-close" onClick={() => setOpen(false)}>
+              <IconChevronDown size={14} className="icon chevron" />
+              Hide conversation
+            </button>
             <button
               type="button"
               className="btn btn-quiet call-delete"
