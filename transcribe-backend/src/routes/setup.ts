@@ -5,7 +5,7 @@ import { findProfile } from "../db/businessProfiles.js";
 import { findCallSettings } from "../db/callSettings.js";
 import {
   countSetupTurnsSince,
-  deleteSetupSessions,
+  discardSetupSessions,
   findLatestSetupSession,
   toPublicSession,
 } from "../db/setupSessions.js";
@@ -132,7 +132,8 @@ export const setup = new Elysia({ prefix: "/business/setup" })
     },
   )
 
-  // Forget the conversation. The draft keeps everything written to it.
+  // Forget the conversation. The draft keeps everything written to it. The rows are discarded, not
+  // deleted, so Start over does not hand back a fresh daily allowance.
   .post(
     "/reset",
     async ({ headers, query, status }) => {
@@ -141,7 +142,7 @@ export const setup = new Elysia({ prefix: "/business/setup" })
       if (user.role !== "admin" && user.status === "demo") return status(403, DEMO_READ_ONLY);
       const target = targetFor(user, query.userId);
       if (target !== user.id && !(await findUserById(target))) return status(404, NOT_FOUND);
-      await deleteSetupSessions(target);
+      await discardSetupSessions(target);
       return { session: null };
     },
     { query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }) },

@@ -11,7 +11,8 @@ import {
 
 // The guided setup interview's conversations (src/setup). A row holds the chat, never a setting:
 // every write the consultant makes goes into the call-settings draft through the same checks as the
-// settings screen, so deleting a row (Reset) loses a conversation and nothing the phone line uses.
+// settings screen, so discarding a row (Reset) loses a conversation and nothing the phone line uses.
+// A discarded row is never shown or continued again, but it is kept: the daily cap counts from it.
 
 export interface SetupSessionRow {
   id: string;
@@ -26,6 +27,8 @@ export interface SetupSessionRow {
   createdAt: string;
   updatedAt: string;
   finishedAt: string | null;
+  /** Set by Reset: the row is hidden from the owner but still counts toward the daily cap. */
+  discardedAt: string | null;
 }
 
 const iso = (value: Date | string | null): string | null => (value == null ? null : new Date(value).toISOString());
@@ -45,6 +48,7 @@ function toRow(r: any): SetupSessionRow {
     createdAt: iso(r.created_at)!,
     updatedAt: iso(r.updated_at)!,
     finishedAt: iso(r.finished_at),
+    discardedAt: iso(r.discarded_at ?? null),
   };
 }
 
@@ -64,14 +68,16 @@ export function toPublicSession(row: SetupSessionRow, maxTurns: number): SetupSe
 
 export async function findActiveSetupSession(userId: string): Promise<SetupSessionRow | null> {
   const [row] = await sql`
-    SELECT * FROM business_setup_sessions WHERE user_id = ${userId} AND status = 'active'
+    SELECT * FROM business_setup_sessions WHERE user_id = ${userId} AND status = 'active' AND discarded_at IS NULL
   `;
   return row ? toRow(row) : null;
 }
 
 export async function findLatestSetupSession(userId: string): Promise<SetupSessionRow | null> {
   const [row] = await sql`
-    SELECT * FROM business_setup_sessions WHERE user_id = ${userId} ORDER BY created_at DESC LIMIT 1
+    SELECT * FROM business_setup_sessions
+    WHERE user_id = ${userId} AND discarded_at IS NULL
+    ORDER BY created_at DESC LIMIT 1
   `;
   return row ? toRow(row) : null;
 }
@@ -136,15 +142,29 @@ export async function saveSetupTurn(
   return toRow(row);
 }
 
-/** Reset: every session this account has, active or finished. Returns rows deleted. */
-export async function deleteSetupSessions(userId: string): Promise<number> {
-  const rows = await sql`DELETE FROM business_setup_sessions WHERE user_id = ${userId} RETURNING id`;
+/**
+ * Reset: every session this account has, active or finished, is finished and hidden — not deleted,
+ * so the daily cap still counts what was sent in it. A turn in flight is handed back (busy_until
+ * cleared); its save lands on a row nobody reads again. Returns rows discarded.
+ */
+export async function discardSetupSessions(userId: string): Promise<number> {
+  const rows = await sql`
+    UPDATE business_setup_sessions SET
+      status = 'finished',
+      finished_at = COALESCE(finished_at, now()),
+      busy_until = NULL,
+      discarded_at = now(),
+      updated_at = now()
+    WHERE user_id = ${userId} AND discarded_at IS NULL
+    RETURNING id
+  `;
   return rows.length;
 }
 
 /**
  * User messages this account sent since `since`, across sessions — the daily cap. Counted from the
- * messages' own times rather than turn_count, which is per session and spans days.
+ * messages' own times rather than turn_count, which is per session and spans days. Discarded
+ * sessions count too: that is why Reset keeps the rows.
  */
 export async function countSetupTurnsSince(userId: string, since: Date): Promise<number> {
   const [row] = await sql`

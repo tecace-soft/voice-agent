@@ -90,8 +90,19 @@ export function useGuidedSetup(
           if (liveRef.current) dispatch({ type: "highlight_cleared" });
         }, HIGHLIGHT_MS);
       } catch (e) {
-        if (liveRef.current) {
-          dispatch({ type: "failed", message: accountErrorMessage(e, "The consultant didn't answer. Try again.") });
+        if (!liveRef.current) return;
+        dispatch({ type: "failed", message: accountErrorMessage(e, "The consultant didn't answer. Try again.") });
+        // The server may have kept part of the turn (the message, a draft write, a "say continue"
+        // note). Read it back so the board and the chat show it, and the composer doesn't offer to
+        // resend a message the transcript already holds.
+        try {
+          const state = await getSetup(userId);
+          if (liveRef.current) {
+            onDraftRef.current?.(withDefaults(state.draft), state.dirty);
+            dispatch({ type: "synced", response: state, failedText: text });
+          }
+        } catch {
+          // The failed dispatch already told the user.
         }
       }
     },

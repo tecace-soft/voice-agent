@@ -99,6 +99,13 @@ describe("buildSetupInstructions", () => {
     expect(buildSetupInstructions(context({ agentNumber: null }))).toContain("none assigned yet");
   });
 
+  it("asks for finish_interview in the same reply as the summary, with no closing question", () => {
+    const text = buildSetupInstructions(context());
+    expect(text).toContain("call finish_interview in the same reply");
+    expect(text).toContain("Marking the last topic done ends the setup.");
+    expect(text).toContain("Do not end that final reply with a question");
+  });
+
   it("shows a transfer in the snapshot with its number written the way people write it", () => {
     const text = buildSetupInstructions(context());
     const snapshot = text.slice(text.indexOf("## Current draft"));

@@ -74,7 +74,8 @@ const setupMaxTurns = Number(process.env.SETUP_MAX_TURNS ?? 80);
 if (!Number.isInteger(setupMaxTurns) || setupMaxTurns < 1 || setupMaxTurns > 1000) {
   throw new Error("SETUP_MAX_TURNS must be a whole number between 1 and 1000.");
 }
-const setupDailyTurnCap = Number(process.env.SETUP_DAILY_TURN_CAP ?? 150);
+// Blank falls back to the default, not to 0 — 0 means "no cap", so an empty line must not lift it.
+const setupDailyTurnCap = Number(process.env.SETUP_DAILY_TURN_CAP?.trim() || 150);
 if (!Number.isInteger(setupDailyTurnCap) || setupDailyTurnCap < 0) {
   throw new Error("SETUP_DAILY_TURN_CAP must be a non-negative whole number.");
 }

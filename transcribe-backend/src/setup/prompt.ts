@@ -77,7 +77,9 @@ Everything you write is a DRAFT: the owner publishes it later from the settings 
 - A tool result with ok:false means nothing was saved: fix the input using its message, or ask the owner.
   Never say something is set up unless the tool answered ok:true.
 - Reply in the language the owner writes in. Write scenario names and briefs in that language too.
-- Close with finish_interview once every topic is done or skipped, after a two-line summary and a reminder to Publish.
+- When every topic is done or skipped — or the owner says they're done — call finish_interview in the same reply
+  as your two-line summary and the reminder to Publish. Marking the last topic done ends the setup.
+  Do not end that final reply with a question — the chat closes after it.
 
 # What the receptionist can and cannot do
 ${renderCapabilities()}

@@ -158,6 +158,7 @@ const BOB = await bearerFor("bob@tecace.com", "user");
 const CAROL = await bearerFor("carol@tecace.com", "user");
 const DAVE = await bearerFor("dave@tecace.com", "user");
 const ERIN = await bearerFor("erin@tecace.com", "user");
+const FRANK = await bearerFor("frank@tecace.com", "user");
 
 const { env } = await import("../config/env.js");
 const settingsEnv = env as unknown as Record<string, unknown>;
@@ -224,7 +225,7 @@ const { app } = await import("../app.js");
 const { findUserByEmail, setLifecycleById } = await import("../db/users.js");
 const { saveProfile } = await import("../db/businessProfiles.js");
 const { createAgentNumber, assignAgentNumber } = await import("../db/agentNumbers.js");
-const { findActiveSetupSession, saveSetupTurn } = await import("../db/setupSessions.js");
+const { countSetupTurnsSince, findActiveSetupSession, saveSetupTurn } = await import("../db/setupSessions.js");
 type SetupMessage = import("../setup/types.js").SetupMessage;
 
 const jane = (await findUserByEmail("jane@tecace.com"))!;
@@ -232,6 +233,7 @@ const bob = (await findUserByEmail("bob@tecace.com"))!;
 const carol = (await findUserByEmail("carol@tecace.com"))!;
 const dave = (await findUserByEmail("dave@tecace.com"))!;
 const erin = (await findUserByEmail("erin@tecace.com"))!;
+const frank = (await findUserByEmail("frank@tecace.com"))!;
 
 async function seedProfile(userId: string, name: string) {
   await saveProfile(
@@ -251,6 +253,7 @@ await seedProfile(jane.id, "Jane's Salon");
 await seedProfile(carol.id, "Carol's Cuts");
 await seedProfile(dave.id, "Dave's Barbers");
 await seedProfile(erin.id, "Erin's Nails");
+await seedProfile(frank.id, "Frank's Fades");
 await assignAgentNumber((await createAgentNumber({ phone: "+12065550100", label: "Jane" })).id, jane.id);
 
 async function call(method: string, path: string, auth: string, payload?: unknown) {
@@ -411,6 +414,39 @@ describe("guided setup interview", () => {
     expect(responders).toHaveLength(0);
   });
 
+  it("finishes on its own once the last topic is marked, even without finish_interview", async () => {
+    // Two topics settled: the conversation goes on, one is still pending.
+    responders.push(
+      answer(fc("mark_topic", { topic: "transfers", status: "done" }, "call_f1")),
+      answer(fc("mark_topic", { topic: "messages", status: "skipped" }, "call_f2")),
+      answer(msg("Great. Now, do you take appointments?")),
+    );
+    const midway = await turn(FRANK, "Transfers are fine, skip messages.");
+    expect(midway.status).toBe(200);
+    expect(midway.body.session.status).toBe("active");
+    expect(midway.body.session.finishedAt).toBeUndefined();
+
+    // The last one marked, then a summary — and no finish_interview, as a live model did.
+    responders.push(
+      answer(fc("mark_topic", { topic: "appointments", status: "done" }, "call_f3")),
+      answer(msg("All set: transfers done, appointments done. Nothing is live until you press Publish.")),
+    );
+    const done = await turn(FRANK, "Appointments are fine too. Finish.");
+    expect(done.status).toBe(200);
+    expect(done.body.session.status).toBe("finished");
+    expect(done.body.session.finishedAt).toBeTruthy();
+    expect(done.body.session.topics).toEqual({ transfers: "done", messages: "skipped", appointments: "done" });
+    expect(done.body.reply.text).toContain("Publish");
+
+    responders.push(answer(msg("Welcome back!")));
+    const again = await turn(FRANK, "");
+    expect(again.status).toBe(200);
+    expect(again.body.session.status).toBe("active");
+    expect(again.body.session.id).not.toBe(done.body.session.id);
+    expect(again.body.session.turnCount).toBe(1);
+    expect(responders).toHaveLength(0);
+  });
+
   it("stops a conversation at the turn cap without calling the model", async () => {
     for (const text of ["one", "two", "three", "four"]) {
       responders.push(answer(msg(`Got ${text}.`)));
@@ -481,18 +517,59 @@ describe("guided setup interview", () => {
     expect(responders).toHaveLength(0);
   });
 
-  it("resets the conversation and leaves the draft alone", async () => {
+  it("resets the conversation and leaves the draft alone, without handing back the daily allowance", async () => {
+    const sentBefore = await countSetupTurnsSince(jane.id, new Date(0));
+    expect(sentBefore).toBeGreaterThan(0);
+
     const reset = await call("POST", "/business/setup/reset", JANE);
     expect(reset.status).toBe(200);
     expect(reset.body).toEqual({ session: null });
 
-    const left = (await db.query("SELECT id FROM business_setup_sessions WHERE user_id = $1", [jane.id])).rows;
-    expect(left).toHaveLength(0);
+    // Discarded, not deleted: every row finished and hidden, none holding a turn.
+    const left = (
+      await db.query<{ id: string; status: string; discarded_at: string | null; finished_at: string | null; busy_until: string | null }>(
+        "SELECT id, status, discarded_at, finished_at, busy_until FROM business_setup_sessions WHERE user_id = $1",
+        [jane.id],
+      )
+    ).rows;
+    expect(left.length).toBeGreaterThan(0);
+    for (const row of left) {
+      expect(row).toMatchObject({ status: "finished", busy_until: null });
+      expect(row.discarded_at).toBeTruthy();
+      expect(row.finished_at).toBeTruthy();
+    }
 
     const read = await call("GET", "/business/setup", JANE);
     expect(read.body.session).toBeNull();
     expect(read.body.dirty).toBe(true);
     expect(read.body.draft.transfer.scenarios.map((s: { name: string }) => s.name)).toEqual(["Sam", "Front desk"]);
+
+    // What was sent before Start over still counts toward today's cap.
+    expect(await countSetupTurnsSince(jane.id, new Date(0))).toBe(sentBefore);
+
+    // The next message opens a new conversation, not the discarded one.
+    responders.push(answer(msg("Fresh start. Who should billing go to?")));
+    const fresh = await turn(JANE, "Hi again");
+    expect(fresh.status).toBe(200);
+    expect(fresh.body.session.status).toBe("active");
+    expect(fresh.body.session.turnCount).toBe(1);
+    expect(left.map((r) => r.id)).not.toContain(fresh.body.session.id);
+    expect(await countSetupTurnsSince(jane.id, new Date(0))).toBe(sentBefore + 1);
+
+    // At the cap, pressing Start over does not lift it.
+    settingsEnv.setupDailyTurnCap = sentBefore + 1;
+    try {
+      await call("POST", "/business/setup/reset", JANE);
+      const from = attempts.length;
+      const capped = await turn(JANE, "One more");
+      expect(capped.status).toBe(429);
+      expect(capped.body.error).toBe("daily_cap");
+      expect(sent(from)).toHaveLength(0);
+    } finally {
+      settingsEnv.setupDailyTurnCap = TEST_ENV.setupDailyTurnCap;
+    }
+    expect((await call("GET", "/business/setup", JANE)).body.session).toBeNull();
+    expect(responders).toHaveLength(0);
   });
 
   it("retries the opener after it failed, instead of refusing an empty message", async () => {

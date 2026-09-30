@@ -53,6 +53,8 @@ export type SetupAction =
   | { type: "sending"; text: string }
   | { type: "replied"; response: SetupTurnResponse }
   | { type: "failed"; message: string }
+  /** After a failed turn: the server's copy, which may already hold that turn and a draft it wrote. */
+  | { type: "synced"; response: SetupStateResponse; failedText: string | null }
   | { type: "reset_done" }
   | { type: "highlight_cleared" };
 
@@ -92,6 +94,23 @@ export function setupReducer(state: SetupState, action: SetupAction): SetupState
     }
     case "failed":
       return { ...state, pending: null, retryText: state.pending ?? null, error: action.message };
+    case "synced": {
+      // A turn can fail after the server saved it (OpenAI dropped out mid-way: the message, what was
+      // written, and a "say continue" note are all there). Show that, keep the error, and don't hand
+      // the owner back a message the transcript already holds.
+      const r = action.response;
+      const lastUser = r.session?.messages.filter((m) => m.role === "user").at(-1);
+      const recorded = action.failedText !== null && lastUser?.text === action.failedText;
+      return {
+        ...state,
+        available: r.available,
+        unavailableReason: r.unavailableReason ?? null,
+        session: r.session,
+        draft: withDefaults(r.draft),
+        dirty: r.dirty,
+        retryText: recorded ? null : state.retryText,
+      };
+    }
     case "reset_done":
       // The draft stays: resetting ends the conversation, not what the consultant already wrote.
       return { ...state, session: null, pending: null, error: null, retryText: null, highlightIds: [] };

@@ -166,7 +166,7 @@ export const SETUP_TOOLS: SetupFunctionTool[] = [
   ),
   tool(
     "finish_interview",
-    "End the setup once every topic is done or skipped and you have summarised. Pending topics are marked skipped.",
+    "End the setup once every topic is done or skipped, or the owner says they're done. Call it in the same reply as your two-line summary and the Publish reminder. Pending topics are marked skipped.",
     {},
   ),
 ];
@@ -484,7 +484,9 @@ function finishInterview(ctx: ToolContext): ToolOutcome {
   return {
     output: {
       ok: true,
-      next: "Summarise what was set up in two or three lines, remind them nothing is live until they press Publish, and say goodbye.",
+      // One order with the prompt: the summary, the Publish reminder and this call go out in the same
+      // reply. If the summary was already written alongside the call, the turn ends on it.
+      next: "The setup is closed. If you have not already, reply now with a two-line summary of what was set up and a reminder that nothing is live until they press Publish. No question at the end — the chat closes after this reply.",
     },
   };
 }

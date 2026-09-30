@@ -8,6 +8,9 @@ import type { SetupTopic } from "./types.js";
 // When the phone agent learns something new, change the entry here in the same commit. The coverage
 // test composes a call with everything switched on and fails if a tool it carries is not described.
 //
+// These describe the composed call (src/session/compose.ts), which only openai-agent-app's GPT-Live
+// path runs (OPENAI_LIVE_MODEL set); on its Realtime bridge the published scenarios are ignored.
+//
 // Pure, and importing no config or database, like the rest of src/setup's shapes.
 
 export type CapabilityStatus = "supported" | "partial" | "unsupported";

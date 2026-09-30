@@ -10,7 +10,7 @@ import { agentNameOf } from "../session/prompts.js";
 import { createSetupResponse } from "./llm.js";
 import { buildSetupInstructions } from "./prompt.js";
 import { SETUP_TOOLS, executeSetupTool, type ToolContext } from "./tools.js";
-import type { SetupChange, SetupInputItem, SetupMessage, SetupSession } from "./types.js";
+import { SETUP_TOPICS, type SetupChange, type SetupInputItem, type SetupMessage, type SetupSession } from "./types.js";
 
 // One turn of the guided setup interview: the owner's message in, the consultant's reply out, with
 // every tool the model called in between run here, on the server, before the reply is sent. One
@@ -201,6 +201,9 @@ export async function runTurn(userId: string, message: string): Promise<TurnResu
         ? "I've saved those changes. What would you like to do next?"
         : "Sorry, I lost my thread — could you say that again?";
     }
+    // The deterministic end: once no topic is pending the interview is over, whether or not the model
+    // remembered finish_interview. Otherwise the session stays active and the finished panel never shows.
+    if (!ctx.finished && SETUP_TOPICS.every((t) => ctx.topics[t] !== "pending")) ctx.finished = true;
 
     const replyMessage: SetupMessage = {
       role: "assistant",
@@ -243,8 +246,8 @@ export async function runTurn(userId: string, message: string): Promise<TurnResu
         });
         saved = true;
       } catch (saveErr) {
-        // The row can be gone (Reset mid-turn). The OpenAI failure is still what the owner must hear;
-        // `finally` hands the claim back if the row is there.
+        // The row can be gone (the account deleted mid-turn). The OpenAI failure is still what the
+        // owner must hear; `finally` hands the claim back if the row is there.
         console.error("[setup] could not save the interrupted turn:", saveErr);
       }
     }

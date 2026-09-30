@@ -51,9 +51,15 @@ export function GuidedSetupSection({ setup, onOpenSection, onPublish, dirty }: P
     wasPending.current = setup.pending;
   }, [setup.pending]);
 
-  // A failed turn hands its text back to the composer; the person presses Send again.
+  // A failed turn hands its text back to the composer; the person presses Send again. If the resync
+  // after it finds the turn was recorded after all, retryText goes back to null: take the text back
+  // out too (unless the person has already changed it), so the same message isn't sent twice.
+  const lastRetryText = useRef(setup.retryText);
   useEffect(() => {
+    const before = lastRetryText.current;
+    lastRetryText.current = setup.retryText;
     if (setup.retryText) setText(setup.retryText);
+    else if (before) setText((current) => (current === before ? "" : current));
   }, [setup.retryText]);
 
   const busy = setup.pending !== null;
@@ -196,6 +202,7 @@ export function GuidedSetupSection({ setup, onOpenSection, onPublish, dirty }: P
                   aria-label="Your answer"
                   placeholder="Type your answer…"
                   rows={2}
+                  maxLength={4000}
                   disabled={busy || atLimit}
                   value={text}
                   onChange={(e) => setText(e.target.value)}

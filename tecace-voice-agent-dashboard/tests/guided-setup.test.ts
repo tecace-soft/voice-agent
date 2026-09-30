@@ -153,6 +153,79 @@ describe("setupReducer", () => {
     expect(next.error).toBe("Couldn't reset");
   });
 
+  describe("synced (the server's copy after a failed turn)", () => {
+    const failedText = "Put the front desk on 206 555 0177";
+    const savedDraft = { ...emptyCallSettings(), timezone: "America/Chicago" };
+    // What OpenAI dropping out mid-turn leaves: the message, and a note saying what was saved.
+    const recorded = session({
+      turnCount: 2,
+      messages: [
+        ...session().messages,
+        { role: "user", text: failedText, at: "2026-09-29T10:00:30Z" },
+        {
+          role: "assistant",
+          text: 'I saved: Transfer "Front desk". Then I lost the connection — say "continue" and I\'ll carry on.',
+          at: "2026-09-29T10:00:40Z",
+          changes: [transferAdd],
+        },
+      ],
+    });
+    const afterFailure = () => setupReducer(ready({ pending: failedText }), { type: "failed", message: "Timed out" });
+
+    it("replaces the session and draft, keeps the error, and clears a retry the transcript already holds", () => {
+      const response: SetupStateResponse = { session: recorded, draft: savedDraft, dirty: true, available: true };
+      const next = setupReducer(afterFailure(), { type: "synced", response, failedText });
+      expect(next.session).toBe(recorded);
+      expect(next.draft).toEqual(withDefaults(savedDraft));
+      expect(next.dirty).toBe(true);
+      expect(next.available).toBe(true);
+      expect(next.unavailableReason).toBeNull();
+      expect(next.error).toBe("Timed out");
+      expect(next.loading).toBe(false);
+      expect(next.retryText).toBeNull();
+      expect(visibleMessages(next).at(-1)?.text).toContain("lost the connection");
+    });
+
+    it("leaves the retry when the server never got the message", () => {
+      const response: SetupStateResponse = { session: session(), draft: savedDraft, dirty: false, available: true };
+      const next = setupReducer(afterFailure(), { type: "synced", response, failedText });
+      expect(next.retryText).toBe(failedText);
+      expect(next.error).toBe("Timed out");
+      expect(next.session).toEqual(session());
+      expect(next.dirty).toBe(false);
+    });
+
+    it("only counts the last user message as the one that was recorded", () => {
+      // An earlier, identical message doesn't mean this one landed.
+      const older = session({
+        messages: [
+          { role: "user", text: failedText, at: "2026-09-29T09:59:00Z" },
+          { role: "assistant", text: "Done.", at: "2026-09-29T09:59:10Z" },
+          { role: "user", text: "Something else", at: "2026-09-29T09:59:30Z" },
+          { role: "assistant", text: "Ok.", at: "2026-09-29T09:59:40Z" },
+        ],
+      });
+      const response: SetupStateResponse = { session: older, draft: savedDraft, dirty: false, available: true };
+      expect(setupReducer(afterFailure(), { type: "synced", response, failedText }).retryText).toBe(failedText);
+    });
+
+    it("keeps an empty retry (Start again) after a failed opener, and takes the account's availability", () => {
+      const failedStart = setupReducer(ready({ session: null, pending: "" }), { type: "failed", message: "Timed out" });
+      const response = {
+        session: session({ messages: [] }),
+        draft: emptyCallSettings(),
+        dirty: false,
+        available: false,
+        unavailableReason: "no_openai_key",
+      } as SetupStateResponse;
+      const next = setupReducer(failedStart, { type: "synced", response, failedText: "" });
+      expect(next.retryText).toBe("");
+      expect(next.session?.messages).toEqual([]);
+      expect(next.available).toBe(false);
+      expect(next.unavailableReason).toBe("no_openai_key");
+    });
+  });
+
   it("reset_done ends the session but keeps the draft", () => {
     const draft = { ...emptyCallSettings(), timezone: "America/Chicago" };
     const next = setupReducer(ready({ draft, dirty: true, error: "x", retryText: "hi", highlightIds: ["timezone"] }), {

@@ -65,7 +65,7 @@ function plural(n: number, unit: string): string {
   return `${n} ${unit}${n === 1 ? "" : "s"}`;
 }
 
-/** Minutes of notice as people say them: "2 hours", "1 day". 0 is "no" ("At least no notice"). */
+/** Minutes of notice as people say them: "2 hours", "1 day". 0 is "no" — appointmentsCard words that case itself. */
 export function noticeLabel(min: number): string {
   if (min <= 0) return "no";
   if (min % 1440 === 0) return plural(min / 1440, "day");
@@ -130,7 +130,7 @@ export function appointmentsCard(a: AppointmentSettings): CardLine {
     title: "Books appointments",
     detail: [
       `${a.title || "Appointment"} · ${a.durationMinutes} min`,
-      `At least ${noticeLabel(a.minNoticeMinutes)} notice · up to ${a.horizonDays} days ahead`,
+      `${a.minNoticeMinutes > 0 ? `At least ${noticeLabel(a.minNoticeMinutes)} notice` : "No minimum notice"} · up to ${a.horizonDays} days ahead`,
       a.hours.length ? compactHours(a.hours) : "During business hours",
       ...(a.instructions ? [truncate(a.instructions, 90)] : []),
     ],

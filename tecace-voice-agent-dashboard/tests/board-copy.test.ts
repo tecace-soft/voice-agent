@@ -178,6 +178,11 @@ describe("appointmentsCard", () => {
     ]);
   });
 
+  it("says there's no minimum notice rather than 'at least no notice'", () => {
+    const a: AppointmentSettings = { ...defaultAppointments(), enabled: true, minNoticeMinutes: 0, horizonDays: 30 };
+    expect(appointmentsCard(a).detail[1]).toBe("No minimum notice · up to 30 days ahead");
+  });
+
   it("says it isn't booking when it's off", () => {
     expect(appointmentsCard(defaultAppointments())).toEqual({
       key: "appointments",
