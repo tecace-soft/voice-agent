@@ -13,6 +13,13 @@ Format:
 
 ---
 
+## 2026-09-30 17:20 · Michael · dashboard + production env (Appointments: Google connectable, "Not available" when it can't be)
+- Production `transcribe-app-backend` now has `GOOGLE_CLIENT_ID/SECRET` and `CALENDAR_SECRET` (set by hand; staging's values are sensitive/unreadable). No `PUBLIC_BACKEND_URL` needed (the dashboard only uses this backend; the redirect URI is taken from the request). Still no `MICROSOFT_*` on either backend, so Outlook stays unavailable.
+- `settings/sections/appointments/AppointmentsRules.tsx`: `offered(status)` = `status === "ready"`. A provider the backend reports `needs_setup` (no OAuth app) is now tagged **"Not available"** (was "Needs setup") and can't be clicked; `soon` stays "Coming soon". Same at every account stage.
+- `AppointmentsSection.tsx`: a 409 from `POST /business/calendar/oauth/start` (server changed after the page loaded) shows "<provider> isn't available on this dashboard right now." and reloads the tiles. No backend/API change.
+- ⚠ Google must have `https://transcribe-app-backend.vercel.app/calendar/oauth/google/callback` as an authorised redirect URI on the OAuth client, and the backend needs a redeploy to pick up the new env.
+- `scripts/regression/appointments.py` expects Google/Outlook "Not available" against the fake (which has no OAuth app).
+
 ## 2026-09-30 16:30 · Michael · dashboard (Answered calls → Transcripts, chat-style)
 - Sidebar: "Answered calls" left the Settings group and is now "Transcripts" in the Dashboard group (Overview, Transcripts). View id and address are unchanged (`calls`, `#/calls?customer=`), so existing links keep working. Breadcrumb "Dashboard / Transcripts"; the voicemail scope block and Refresh are hidden there, as on Dashboard › Overview.
 - An open call's conversation is now chat bubbles: new `src/components/CallConversation.tsx` renders the demo's `Exchange` (caller right/blue, receptionist left/grey) in a `.tw` island; the legacy `.call-turn*` CSS is removed. Copy that said "Answered calls" (Take a message section, examples) now says Transcripts.

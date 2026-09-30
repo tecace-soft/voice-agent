@@ -35,6 +35,10 @@ export const CHANGELOG: Release[] = [
     title: "A calls overview and chat-style transcripts; voicemail gets its own section",
     items: [
       {
+        kind: "fixed",
+        text: "Appointments: Google Calendar can now be connected. A calendar that can't be connected yet says \"Not available\" instead of \"Needs setup\".",
+      },
+      {
         kind: "improved",
         text: "Answered calls is now Transcripts, under Dashboard next to Overview. Open a call and the conversation reads like a text-message chat — the caller on the right, your receptionist on the left — just like the test call on your demo. Each call sits in its own outlined box, the open one is outlined in blue, and Hide conversation at the bottom closes it.",
       },

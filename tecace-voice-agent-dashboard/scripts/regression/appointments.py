@@ -1,7 +1,8 @@
 """The Business page's Appointments section, opened in a browser.
 
 What this checks: every product the public page names is listed, and only the ones that can be
-connected say so (the rest say "Coming soon" or "Needs setup" and cannot be clicked); connecting
+connected say so (the rest say "Coming soon", or "Not available" when this server has no sign-in app
+for them, and cannot be clicked); connecting
 Apple Calendar with an app-specific password goes through the dialog, a refusal lands in it, and a
 good one shows the connected calendar with its picker and openings; the booking rules save into the
 call-settings draft (never a demo endpoint); and the section stays inside `.tw`.
@@ -68,10 +69,13 @@ def main() -> int:
                         t = tile(name)
                         check(f"{name}: listed and connectable", t.count() == 1 and t.first.is_enabled()
                               and "Connect" in t.first.inner_text())
+                    # Only what the server can connect is clickable. The fake has no Google / Microsoft
+                    # sign-in app (needs_setup), so those two are "Not available".
                     for name in ("Google Calendar", "Microsoft Outlook"):
                         t = tile(name)
-                        check(f"{name}: listed, needs server setup", t.count() == 1 and not t.first.is_enabled()
-                              and "Needs setup" in t.first.inner_text())
+                        check(f"{name}: listed, not available on this server",
+                              t.count() == 1 and not t.first.is_enabled()
+                              and "Not available" in t.first.inner_text(), t.first.inner_text())
                     for name in ("OpenTable", "Resy", "Square Appointments", "HubSpot Meetings"):
                         t = tile(name)
                         check(f"{name}: coming soon, not clickable", t.count() == 1 and not t.first.is_enabled()

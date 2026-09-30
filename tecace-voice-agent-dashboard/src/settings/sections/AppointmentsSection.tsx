@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
+  BackendError,
   checkCalendarOpenings,
   connectCalendar,
   disconnectCalendar,
@@ -101,7 +102,17 @@ function BusinessAppointments({ binding, userId }: { binding: CallSettingsBindin
       const { url } = await startCalendarOAuth(ui.id, window.location.href, userId);
       window.location.assign(url);
     } catch (e) {
-      setBanner({ ok: false, message: toFieldError(e, "Couldn't start the sign-in.").message });
+      // 409 = this server has no sign-in app for that provider (GOOGLE_* / MICROSOFT_* unset). Such a
+      // tile is "Not available" and can't be clicked, so this is only the race of a server changed
+      // after the page loaded: say so, and reload the tiles so it shows as it now is.
+      const needsSetup = e instanceof BackendError && e.status === 409;
+      setBanner({
+        ok: false,
+        message: needsSetup
+          ? `${ui.name} isn't available on this dashboard right now.`
+          : toFieldError(e, "Couldn't start the sign-in.").message,
+      });
+      if (needsSetup) void load();
     }
   }
 
