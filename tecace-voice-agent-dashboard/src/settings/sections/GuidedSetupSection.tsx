@@ -17,7 +17,6 @@ import { EmptyState, FieldMessage, Tag, toFieldError } from "./shared";
 
 type Props = {
   setup: GuidedSetup;
-  businessName: string;
   onOpenSection: (id: SectionId) => void;
   /** The studio's Publish, for the finished state's CTA. */
   onPublish: () => Promise<void>;

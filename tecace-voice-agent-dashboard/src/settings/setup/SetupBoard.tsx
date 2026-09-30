@@ -38,7 +38,8 @@ export function SetupBoard({
   const transfers = draft.transfer.scenarios;
   const messages = draft.messages.scenarios;
   return (
-    <aside aria-label="Settings board" className="flex h-full min-h-0 flex-col">
+    // A div, not an aside: the studio's side panel around it is already the "Settings board" landmark.
+    <div data-board="settings" className="flex h-full min-h-0 flex-col">
       <div className="flex h-11 shrink-0 items-center gap-2 border-b px-4">
         <p className="ta-label-1">Settings board</p>
         {dirty ? (
@@ -117,7 +118,7 @@ export function SetupBoard({
           <p className="ta-caption-2 text-muted-foreground">Tell the consultant to change it.</p>
         </BoardGroup>
       </div>
-    </aside>
+    </div>
   );
 }
 

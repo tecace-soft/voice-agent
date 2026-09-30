@@ -374,7 +374,6 @@ export function BusinessSettings(props: Props) {
       render: () => (
         <GuidedSetupSection
           setup={setup}
-          businessName={businessName}
           onOpenSection={props.onSection}
           onPublish={publish}
           dirty={Boolean(calls?.dirty)}
