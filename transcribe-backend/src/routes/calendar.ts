@@ -36,9 +36,12 @@ function targetFor(user: { id: string; role: string }, requested?: string): stri
 
 const userQuery = t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) });
 
-function refusal(error: unknown): { status: 400 | 401 | 502; body: { error: string; message: string } } {
+// Never 401: that status means the DASHBOARD session is over, and the dashboard signs the person out
+// on it. A calendar whose credentials stopped working (a revoked token, or a CALENDAR_SECRET change
+// that makes the stored ones unreadable) is 409 `calendar_auth` — the connection needs reconnecting.
+function refusal(error: unknown): { status: 400 | 409 | 502; body: { error: string; message: string } } {
   if (error instanceof CalendarError) {
-    const status = error.kind === "input" ? 400 : error.kind === "auth" ? 401 : 502;
+    const status = error.kind === "input" ? 400 : error.kind === "auth" ? 409 : 502;
     return { status, body: { error: `calendar_${error.kind}`, message: error.message } };
   }
   console.error("calendar:", error);
@@ -110,7 +113,8 @@ export const calendar = new Elysia()
             return await connectWithCredentials(target, body.provider, body.credentials ?? {}, timeZone);
           } catch (error) {
             const r = refusal(error);
-            return status(r.status === 401 ? 400 : r.status, r.body);
+            // A key or password the provider refuses while connecting is a wrong input.
+            return status(r.status === 409 ? 400 : r.status, r.body);
           }
         },
         {

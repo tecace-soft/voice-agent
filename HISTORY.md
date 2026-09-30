@@ -13,6 +13,13 @@ Format:
 
 ---
 
+## 2026-09-30 18:10 · Michael · transcribe-backend (calendar errors no longer sign the dashboard out)
+- Bug: opening Business information › Appointments for a business whose calendar credentials no longer work signed the viewer out. `GET /business/calendar/targets` (also `PUT /target`, `POST /availability`) answered **401** for a calendar-side `CalendarError("auth")`, and the dashboard treats every 401 as an expired session. Triggered by setting `CALENDAR_SECRET` on production today (connections sealed under the `AUTH_SECRET` fallback became unreadable) and by any revoked Google/Microsoft token.
+- Fix: `routes/calendar.ts` `refusal()` maps calendar auth failures to **409 `calendar_auth`** ("…Reconnect the calendar."); `/connect` still answers 400 for a key refused while connecting. New test in `calendar.pg.test.ts`; `bun test` 1012/1012.
+- ⚠ Rule for every route the dashboard calls: 401 only for OUR session. A third party refusing its credentials is 409/502 (setup.ts already does this for OpenAI).
+- Also: connections saved before `CALENDAR_SECRET` was set keep working. `env.calendarSecretFallbacks` (= `AUTH_SECRET` when it differs from `CALENDAR_SECRET`) is tried after the current key (`calendar/secrets.ts` `openStored`), and `clientFor` re-seals such a connection under `CALENDAR_SECRET` the first time it's read. No reconnect needed. Tests: `calendar.test.ts` + `calendar.pg.test.ts`; `bun test` 1014/1014.
+- ⚠ Deploy transcribe-backend. Don't change `CALENDAR_SECRET` once set (only the AUTH_SECRET→CALENDAR_SECRET move is bridged), and don't rotate `AUTH_SECRET` until every connection has been read once under the new key.
+
 ## 2026-09-30 17:20 · Michael · dashboard + production env (Appointments: Google connectable, "Not available" when it can't be)
 - Production `transcribe-app-backend` now has `GOOGLE_CLIENT_ID/SECRET` and `CALENDAR_SECRET` (set by hand; staging's values are sensitive/unreadable). No `PUBLIC_BACKEND_URL` needed (the dashboard only uses this backend; the redirect URI is taken from the request). Still no `MICROSOFT_*` on either backend, so Outlook stays unavailable.
 - `settings/sections/appointments/AppointmentsRules.tsx`: `offered(status)` = `status === "ready"`. A provider the backend reports `needs_setup` (no OAuth app) is now tagged **"Not available"** (was "Needs setup") and can't be clicked; `soon` stays "Coming soon". Same at every account stage.

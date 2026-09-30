@@ -36,6 +36,10 @@ export const CHANGELOG: Release[] = [
     items: [
       {
         kind: "fixed",
+        text: "Opening Appointments no longer signs you out when a connected calendar needs attention; it says to reconnect instead. Calendars connected earlier keep working as they are.",
+      },
+      {
+        kind: "fixed",
         text: "Appointments: Google Calendar can now be connected. A calendar that can't be connected yet says \"Not available\" instead of \"Needs setup\".",
       },
       {

@@ -11,7 +11,7 @@ process.env.AUTH_SECRET ??= "test-secret-test-secret-test-secret-0123";
 const { zonedToUtc, zonedDate, spokenTime, zonedIso } = await import("./time.js");
 const { calendarSlots, pickSlots, withinRules, bookingWindows } = await import("./availability.js");
 const { busyFromIcs, elements, caldavClient, eventIcs } = await import("./caldav.js");
-const { seal, open, signState, readState } = await import("./secrets.js");
+const { seal, open, openStored, signState, readState } = await import("./secrets.js");
 const { defaultAppointments, validateCallSettings, readCallSettings, CallSettingsError } = await import(
   "../business/callSettings.js"
 );
@@ -226,6 +226,19 @@ describe("secrets", () => {
     expect(open<{ apiKey: string }>(sealed)).toEqual({ apiKey: "cal_live_123" });
     expect(open(sealed, "another-secret")).toBeNull();
     expect(open(`${sealed.slice(0, -2)}AA`)).toBeNull();
+  });
+
+  // Setting CALENDAR_SECRET where AUTH_SECRET used to stand in for it must not strand what was saved
+  // before: the earlier key still opens it, and says so, so the caller can re-seal under the new one.
+  it("opens credentials sealed under an earlier key, and says they need re-sealing", () => {
+    const old = seal({ apiKey: "cal_live_old" }, "old-key");
+    expect(openStored<{ apiKey: string }>(old, ["new-key", "old-key"])).toEqual({
+      value: { apiKey: "cal_live_old" },
+      stale: true,
+    });
+    const current = seal({ apiKey: "cal_live_new" }, "new-key");
+    expect(openStored(current, ["new-key", "old-key"])).toEqual({ value: { apiKey: "cal_live_new" }, stale: false });
+    expect(openStored(old, ["new-key", "other-key"])).toBeNull();
   });
 
   it("signs the OAuth state, and refuses it tampered or expired", () => {
