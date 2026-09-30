@@ -50,6 +50,8 @@ function startOfTodayIn(zone: string, now = new Date()): Date {
   return new Date(Date.UTC(parts.year!, parts.month! - 1, parts.day!) - offset);
 }
 
+const NOT_FOUND = { error: "not_found", message: "No such account." };
+
 const DEMO_READ_ONLY = {
   error: "demo_read_only",
   message: "The setup assistant opens once your receptionist is being set up.",
@@ -64,7 +66,7 @@ export const setup = new Elysia({ prefix: "/business/setup" })
       if (!user) return status(401, UNAUTHORIZED);
       const target = targetFor(user, query.userId);
       const owner = target === user.id ? user : await findUserById(target);
-      if (!owner) return status(404, { error: "not_found", message: "No such account." });
+      if (!owner) return status(404, NOT_FOUND);
       const [profile, settings, session] = await Promise.all([
         findProfile(target),
         findCallSettings(target),
@@ -96,6 +98,7 @@ export const setup = new Elysia({ prefix: "/business/setup" })
       if (!user) return status(401, UNAUTHORIZED);
       if (user.role !== "admin" && user.status === "demo") return status(403, DEMO_READ_ONLY);
       const target = targetFor(user, query.userId);
+      if (target !== user.id && !(await findUserById(target))) return status(404, NOT_FOUND);
       if (rateLimited(`setup:${target}`, 12)) {
         return status(429, { error: "rate_limited", message: "Too many messages in a row. Wait a minute and try again." });
       }
@@ -115,7 +118,11 @@ export const setup = new Elysia({ prefix: "/business/setup" })
         return await runTurn(target, body.message);
       } catch (err) {
         if (err instanceof SetupTurnError) return status(err.status, { error: err.code, message: err.message });
-        if (err instanceof OpenAIError) return status(err.status, { error: "openai", message: err.message });
+        // OpenAI refusing OUR key is not the owner's sign-in failing: a 401 here would sign them out.
+        if (err instanceof OpenAIError) {
+          const code = err.status === 401 || err.status === 403 ? 502 : err.status;
+          return status(code, { error: "openai", message: err.message });
+        }
         throw err;
       }
     },
@@ -133,6 +140,7 @@ export const setup = new Elysia({ prefix: "/business/setup" })
       if (!user) return status(401, UNAUTHORIZED);
       if (user.role !== "admin" && user.status === "demo") return status(403, DEMO_READ_ONLY);
       const target = targetFor(user, query.userId);
+      if (target !== user.id && !(await findUserById(target))) return status(404, NOT_FOUND);
       await deleteSetupSessions(target);
       return { session: null };
     },

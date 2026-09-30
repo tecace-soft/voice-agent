@@ -88,6 +88,11 @@ function checkTurn(session: sessions.SetupSessionRow, text: string): { isStart: 
 
 export async function runTurn(userId: string, message: string): Promise<TurnResult> {
   const startedAt = Date.now();
+  // Before anything is written: an account with nothing to set up must not be left an empty session.
+  const profileRow = await findProfile(userId);
+  const profile = profileRow?.profile;
+  if (!profileRow || !profile) throw new SetupTurnError("no_profile", 409, "Add your business information first.");
+
   const found =
     (await sessions.findActiveSetupSession(userId)) ??
     (await sessions.createSetupSession(userId, env.setupAssistantModel));
@@ -117,20 +122,22 @@ export async function runTurn(userId: string, message: string): Promise<TurnResu
     const { isStart } = checkTurn(session, text);
     turnCount = session.turnCount + 1;
     userMessage = isStart ? [] : [{ role: "user", text, at: new Date().toISOString() }];
-    items = [
-      ...session.items,
-      { type: "message", role: "user", content: [{ type: "input_text", text: isStart ? OPENER : text }] },
-    ];
+    // A retried opener (the first one failed) is already the last thing in the transcript.
+    const last = session.items.at(-1);
+    const openerPending = isStart && last?.type === "message" && last.role === "user" && last.content[0]?.text === OPENER;
+    items = openerPending
+      ? [...session.items]
+      : [
+          ...session.items,
+          { type: "message", role: "user", content: [{ type: "input_text", text: isStart ? OPENER : text }] },
+        ];
     topics = { ...session.topics };
 
-    const [profileRow, settings, number, calendar] = await Promise.all([
-      findProfile(userId),
+    const [settings, number, calendar] = await Promise.all([
       findCallSettings(userId),
       findNumberForUser(userId),
       bookingTargetFor(userId),
     ]);
-    const profile = profileRow?.profile;
-    if (!profileRow || !profile) throw new SetupTurnError("no_profile", 409, "Add your business information first.");
 
     const ctx: ToolContext = {
       // Loaded fresh on every execution, so the second tool in a turn sees the first one's write.
@@ -226,14 +233,20 @@ export async function runTurn(userId: string, message: string): Promise<TurnResu
             },
           ]
         : [];
-      await sessions.saveSetupTurn(session.id, {
-        items: trimItems(items),
-        messages: [...session.messages, ...userMessage, ...note],
-        topics,
-        turnCount,
-        finished: false,
-      });
-      saved = true;
+      try {
+        await sessions.saveSetupTurn(session.id, {
+          items: trimItems(items),
+          messages: [...session.messages, ...userMessage, ...note],
+          topics,
+          turnCount,
+          finished: false,
+        });
+        saved = true;
+      } catch (saveErr) {
+        // The row can be gone (Reset mid-turn). The OpenAI failure is still what the owner must hear;
+        // `finally` hands the claim back if the row is there.
+        console.error("[setup] could not save the interrupted turn:", saveErr);
+      }
     }
     throw err;
   } finally {

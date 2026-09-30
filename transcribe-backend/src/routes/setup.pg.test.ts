@@ -157,6 +157,7 @@ const BOB = await bearerFor("bob@tecace.com", "user");
 // Their own accounts, so the turn cap and the burst limit are not spent by the other scenarios.
 const CAROL = await bearerFor("carol@tecace.com", "user");
 const DAVE = await bearerFor("dave@tecace.com", "user");
+const ERIN = await bearerFor("erin@tecace.com", "user");
 
 const { env } = await import("../config/env.js");
 const settingsEnv = env as unknown as Record<string, unknown>;
@@ -230,6 +231,7 @@ const jane = (await findUserByEmail("jane@tecace.com"))!;
 const bob = (await findUserByEmail("bob@tecace.com"))!;
 const carol = (await findUserByEmail("carol@tecace.com"))!;
 const dave = (await findUserByEmail("dave@tecace.com"))!;
+const erin = (await findUserByEmail("erin@tecace.com"))!;
 
 async function seedProfile(userId: string, name: string) {
   await saveProfile(
@@ -248,6 +250,7 @@ async function seedProfile(userId: string, name: string) {
 await seedProfile(jane.id, "Jane's Salon");
 await seedProfile(carol.id, "Carol's Cuts");
 await seedProfile(dave.id, "Dave's Barbers");
+await seedProfile(erin.id, "Erin's Nails");
 await assignAgentNumber((await createAgentNumber({ phone: "+12065550100", label: "Jane" })).id, jane.id);
 
 async function call(method: string, path: string, auth: string, payload?: unknown) {
@@ -287,6 +290,13 @@ describe("guided setup interview", () => {
     expect(noProfile.status).toBe(200);
     expect(noProfile.body).toMatchObject({ session: null, available: false, unavailableReason: "no_profile", dirty: false });
     expect(noProfile.body.draft.transfer.scenarios).toEqual([]);
+
+    // A refused turn leaves nothing behind: no empty conversation for GET to show.
+    const refused = await turn(BOB, "hello");
+    expect(refused.status).toBe(409);
+    expect(refused.body.error).toBe("no_profile");
+    const after = await call("GET", "/business/setup", BOB);
+    expect(after.body.session).toBeNull();
 
     settingsEnv.openaiApiKey = undefined;
     try {
@@ -458,6 +468,10 @@ describe("guided setup interview", () => {
       answer(fc("upsert_message_scenario", { name: "Quote request", brief: "Ask what they need and a callback number." }, "call_6")),
       answer(msg("Added a quote request message.")),
     );
+    const nobody = await turn(ADMIN, "hello", "?userId=00000000-0000-4000-8000-000000000000");
+    expect(nobody.status).toBe(404);
+    expect(nobody.body).toEqual({ error: "not_found", message: "No such account." });
+
     const admin = await turn(ADMIN, "Add a message situation for quotes.", `?userId=${jane.id}`);
     expect(admin.status).toBe(200);
     expect(admin.body.reply.changes).toEqual([expect.objectContaining({ kind: "message", op: "add" })]);
@@ -490,9 +504,13 @@ describe("guided setup interview", () => {
     const between = await call("GET", "/business/setup", JANE);
     expect(between.body.session.messages).toEqual([]);
 
+    const from = attempts.length;
     responders.push(answer(msg("Hello again! Let's start with transfers.")));
     const retried = await turn(JANE, "");
     expect(retried.status).toBe(200);
+    const input = sent(from)[0]!.body.input;
+    const openers = input.filter((i: any) => i.type === "message" && i.role === "user" && i.content[0].text.includes("just opened the setup assistant"));
+    expect(openers).toHaveLength(1);
     expect(retried.body.session.messages).toHaveLength(1);
     expect(retried.body.session.messages[0]).toMatchObject({ role: "assistant", text: "Hello again! Let's start with transfers." });
     expect(retried.body.session.turnCount).toBe(2);
@@ -539,7 +557,18 @@ describe("guided setup interview", () => {
     expect(responders).toHaveLength(0);
   });
 
+  it("answers 502, not 401, when OpenAI refuses the server's key", async () => {
+    responders.push(() => Response.json({ error: { message: "Incorrect API key" } }, { status: 401 }));
+    const res = await turn(ERIN, "");
+    // A 401 would read to the dashboard as the owner's sign-in failing, and sign them out.
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({ error: "openai", message: "Incorrect API key" });
+    expect(responders).toHaveLength(0);
+  });
+
   it("throttles a burst of messages", async () => {
+    // Room for every message, so only the burst limit can refuse one.
+    settingsEnv.setupMaxTurns = 50;
     fallback = answer(msg("Sure."));
     try {
       const statuses: { status: number; error?: string }[] = [];
@@ -547,9 +576,11 @@ describe("guided setup interview", () => {
         const res = await turn(DAVE, `message ${i}`);
         statuses.push({ status: res.status, error: res.body.error });
       }
-      expect(statuses).toContainEqual({ status: 429, error: "rate_limited" });
+      expect(statuses.slice(0, 12).map((s) => s.status)).toEqual(Array(12).fill(200));
+      expect(statuses[12]).toEqual({ status: 429, error: "rate_limited" });
     } finally {
       fallback = null;
+      settingsEnv.setupMaxTurns = TEST_ENV.setupMaxTurns;
     }
   });
 
