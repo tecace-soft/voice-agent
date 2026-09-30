@@ -73,7 +73,17 @@ function build(strings: TemplateStringsArray, values: unknown[], counter: { n: n
   return { text, values: out };
 }
 
-const run = async (text: string, values: unknown[]) => (await db.query(text, values)).rows;
+/** Runs once, just before the next query whose text contains `match`: a write landing mid-route. */
+let beforeQuery: { match: string; run: () => Promise<void> } | null = null;
+
+const run = async (text: string, values: unknown[]) => {
+  const hook = beforeQuery;
+  if (hook && text.includes(hook.match)) {
+    beforeQuery = null;
+    await hook.run();
+  }
+  return (await db.query(text, values)).rows;
+};
 
 const makeTag = () => (strings: TemplateStringsArray, ...values: unknown[]) => ({
   [FRAGMENT]: true,
@@ -213,6 +223,8 @@ const { app } = await import("../app.js");
 const { findUserByEmail, setLifecycleById } = await import("../db/users.js");
 const { saveProfile } = await import("../db/businessProfiles.js");
 const { createAgentNumber, assignAgentNumber } = await import("../db/agentNumbers.js");
+const { findActiveSetupSession, saveSetupTurn } = await import("../db/setupSessions.js");
+type SetupMessage = import("../setup/types.js").SetupMessage;
 
 const jane = (await findUserByEmail("jane@tecace.com"))!;
 const bob = (await findUserByEmail("bob@tecace.com"))!;
@@ -467,6 +479,64 @@ describe("guided setup interview", () => {
     expect(read.body.session).toBeNull();
     expect(read.body.dirty).toBe(true);
     expect(read.body.draft.transfer.scenarios.map((s: { name: string }) => s.name)).toEqual(["Sam", "Front desk"]);
+  });
+
+  it("retries the opener after it failed, instead of refusing an empty message", async () => {
+    responders.push(() => Response.json({ error: { message: "boom" } }, { status: 500 }));
+    const failed = await turn(JANE, "");
+    expect(failed.status).toBe(500);
+    expect(failed.body.error).toBe("openai");
+
+    const between = await call("GET", "/business/setup", JANE);
+    expect(between.body.session.messages).toEqual([]);
+
+    responders.push(answer(msg("Hello again! Let's start with transfers.")));
+    const retried = await turn(JANE, "");
+    expect(retried.status).toBe(200);
+    expect(retried.body.session.messages).toHaveLength(1);
+    expect(retried.body.session.messages[0]).toMatchObject({ role: "assistant", text: "Hello again! Let's start with transfers." });
+    expect(retried.body.session.turnCount).toBe(2);
+    expect(responders).toHaveLength(0);
+  });
+
+  it("continues from the session as it stands once the turn is claimed", async () => {
+    const at = new Date().toISOString();
+    const other: SetupMessage[] = [
+      { role: "user", text: "From the other tab", at },
+      { role: "assistant", text: "Other tab's reply", at },
+    ];
+    // Another tab's turn saves (and hands the claim back) after this request read the session and
+    // before it claims the turn.
+    beforeQuery = {
+      match: "make_interval",
+      run: async () => {
+        const row = (await findActiveSetupSession(jane.id))!;
+        await saveSetupTurn(row.id, {
+          items: [...row.items, { type: "message", role: "user", content: [{ type: "input_text", text: "From the other tab" }] }],
+          messages: [...row.messages, ...other],
+          topics: row.topics,
+          turnCount: row.turnCount + 1,
+          finished: false,
+        });
+      },
+    };
+    const from = attempts.length;
+    responders.push(answer(msg("Hi from this tab's reply.")));
+    const res = await turn(JANE, "Hello from this tab");
+    expect(beforeQuery).toBeNull();
+    expect(res.status).toBe(200);
+
+    const input = sent(from)[0]!.body.input;
+    expect(input.some((i: any) => i.type === "message" && i.content[0].text === "From the other tab")).toBe(true);
+
+    const texts = res.body.session.messages.map((m: { text: string }) => m.text);
+    expect(texts.slice(-4)).toEqual(["From the other tab", "Other tab's reply", "Hello from this tab", "Hi from this tab's reply."]);
+    expect(res.body.session.turnCount).toBe(4);
+
+    const row = (await findActiveSetupSession(jane.id))!;
+    expect(row.messages.map((m) => m.text)).toEqual(texts);
+    expect(row.busyUntil).toBeNull();
+    expect(responders).toHaveLength(0);
   });
 
   it("throttles a burst of messages", async () => {

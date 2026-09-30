@@ -36,6 +36,11 @@ export type TurnResult = { session: SetupSession; reply: SetupMessage; draft: Ca
 const MAX_ROUNDS = 8; // model calls per user message
 const CALL_TIMEOUT_MS = 45_000;
 const TURN_BUDGET_MS = 110_000; // research already relies on 180 s invocations; stay well inside
+/** No new model call is started with less than this left of the budget. */
+const MIN_CALL_MS = 5_000;
+// Invariant: CLAIM_TTL_S >= TURN_BUDGET_MS / 1000 + 30. Every model call's timeout is capped to what
+// is left of the budget, so the last one ends by TURN_BUDGET_MS, and the claim outlives the turn with
+// 30 s to spare for the reads and saves around it. Raise the TTL with the budget.
 const CLAIM_TTL_S = 150;
 const MAX_ITEMS = 400;
 const MAX_ITEM_CHARS = 250_000; // transcript trim thresholds
@@ -61,14 +66,15 @@ function trimItems(items: SetupInputItem[]): SetupInputItem[] {
   return out;
 }
 
-export async function runTurn(userId: string, message: string): Promise<TurnResult> {
-  const startedAt = Date.now();
-  const session =
-    (await sessions.findActiveSetupSession(userId)) ??
-    (await sessions.createSetupSession(userId, env.setupAssistantModel));
+const TURN_IN_PROGRESS = "Still working on your last message.";
 
-  const text = message.trim();
-  const isStart = text === "" && session.turnCount === 0;
+/**
+ * Whether this message may be taken on this session, and whether it opens the conversation. "" opens
+ * a conversation with nothing in it yet — including one whose opening turn failed, so asking again
+ * retries the greeting rather than being refused as empty.
+ */
+function checkTurn(session: sessions.SetupSessionRow, text: string): { isStart: boolean } {
+  const isStart = text === "" && session.messages.length === 0;
   if (text === "" && !isStart) throw new SetupTurnError("empty_message", 400, "Type a message.");
   if (session.turnCount + 1 > env.setupMaxTurns) {
     throw new SetupTurnError(
@@ -77,21 +83,46 @@ export async function runTurn(userId: string, message: string): Promise<TurnResu
       `This conversation has reached its limit of ${env.setupMaxTurns} messages. Reset it to start again; everything saved so far stays in your draft.`,
     );
   }
-  if (!(await sessions.claimSetupTurn(session.id, CLAIM_TTL_S))) {
-    throw new SetupTurnError("turn_in_progress", 409, "Still working on your last message.");
+  return { isStart };
+}
+
+export async function runTurn(userId: string, message: string): Promise<TurnResult> {
+  const startedAt = Date.now();
+  const found =
+    (await sessions.findActiveSetupSession(userId)) ??
+    (await sessions.createSetupSession(userId, env.setupAssistantModel));
+
+  const text = message.trim();
+  // Checked before the claim so a refused message never takes the turn, and again on the row read
+  // under the claim below.
+  checkTurn(found, text);
+  if (!(await sessions.claimSetupTurn(found.id, CLAIM_TTL_S))) {
+    throw new SetupTurnError("turn_in_progress", 409, TURN_IN_PROGRESS);
   }
 
-  const turnCount = session.turnCount + 1;
-  const userMessage: SetupMessage[] = isStart ? [] : [{ role: "user", text, at: new Date().toISOString() }];
-  const items: SetupInputItem[] = [
-    ...session.items,
-    { type: "message", role: "user", content: [{ type: "input_text", text: isStart ? OPENER : text }] },
-  ];
+  let session = found;
+  let turnCount = found.turnCount + 1;
+  let userMessage: SetupMessage[] = [];
+  let items: SetupInputItem[] = [];
+  let topics = { ...found.topics };
   const changes: SetupChange[] = [];
-  const topics = { ...session.topics };
   let saved = false;
 
   try {
+    // Re-read under the claim. Another tab's turn can save and hand the claim back between the read
+    // above and this claim; continuing from the older copy would write over that exchange.
+    const fresh = await sessions.findActiveSetupSession(userId);
+    if (!fresh || fresh.id !== found.id) throw new SetupTurnError("turn_in_progress", 409, TURN_IN_PROGRESS);
+    session = fresh;
+    const { isStart } = checkTurn(session, text);
+    turnCount = session.turnCount + 1;
+    userMessage = isStart ? [] : [{ role: "user", text, at: new Date().toISOString() }];
+    items = [
+      ...session.items,
+      { type: "message", role: "user", content: [{ type: "input_text", text: isStart ? OPENER : text }] },
+    ];
+    topics = { ...session.topics };
+
     const [profileRow, settings, number, calendar] = await Promise.all([
       findProfile(userId),
       findCallSettings(userId),
@@ -113,7 +144,9 @@ export async function runTurn(userId: string, message: string): Promise<TurnResu
     };
 
     let reply = "";
-    for (let round = 1; round <= MAX_ROUNDS && Date.now() - startedAt < TURN_BUDGET_MS; round++) {
+    for (let round = 1; round <= MAX_ROUNDS; round++) {
+      const remaining = TURN_BUDGET_MS - (Date.now() - startedAt);
+      if (remaining < MIN_CALL_MS) break;
       // Rebuilt every round, so the snapshot in the instructions reflects the tools just run.
       const current = await ctx.store.load();
       ctx.timeZone = current.draft.timezone ?? env.timezone;
@@ -135,7 +168,7 @@ export async function runTurn(userId: string, message: string): Promise<TurnResu
 
       const res = await createSetupResponse(
         { model: session.model, instructions, input: items, tools: SETUP_TOOLS },
-        CALL_TIMEOUT_MS,
+        Math.min(CALL_TIMEOUT_MS, remaining),
       );
       items.push(...res.items);
       if (res.functionCalls.length === 0) {
