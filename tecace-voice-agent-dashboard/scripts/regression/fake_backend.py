@@ -6,7 +6,13 @@ stored: a POST that would change state answers as if it worked and forgets it, s
 
 That includes the Demo tabs' /demo/* routes, at the bottom of this file: they used to be a second
 fake standing in for voiceagent_promo, and folded in here when the demo records moved into
-transcribe-db behind this API's own admin session."""
+transcribe-db behind this API's own admin session.
+
+A few business routes keep state for the life of the process, each noted where it is defined,
+because the screens read back what they wrote: the call-settings draft (/business/call-settings),
+the guided setup interview (/business/setup, /business/setup/turn, /business/setup/reset — a
+scripted consultant that writes into that same draft), the calendar connection, the agent numbers
+and the account lifecycle."""
 
 from __future__ import annotations
 
@@ -381,6 +387,89 @@ EMPTY_CALL_SETTINGS = {
 }
 CALL_SETTINGS = {"draft": json.loads(json.dumps(EMPTY_CALL_SETTINGS)), "published": None, "publishedAt": None,
                  "dirty": False, "waterfallAllowed": False, "agentNumber": "+14255550100"}
+
+# ---- guided setup (routes/setup.ts): one interview per run, a scripted consultant. Stateful like
+# CALL_SETTINGS, because every turn is read back through it and writes into the same draft.
+SETUP_MAX_TURNS = 30
+SETUP_OPENING = ("Hi — I'll set up how your receptionist handles calls. First, transfers: who should "
+                 "callers be put through to, on what number, and when?")
+SETUP: dict = {"session": None}
+SETUP_TOPICS = ("transfers", "messages", "appointments")
+_WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+_PHONE = re.compile(r"\(?(\d{3})\)?[\s.-]*(\d{3})[\s.-]*(\d{4})")
+
+
+def _setup_session() -> dict:
+    return {"id": "setup-1", "status": "active", "topics": {t: "pending" for t in SETUP_TOPICS},
+            "turnCount": 0, "maxTurns": SETUP_MAX_TURNS, "messages": [], "startedAt": iso(NOW)}
+
+
+def _setup_transfer(message: str) -> tuple[str, str, dict]:
+    """The scripted consultant's answer to the transfers question: one warm transfer, weekdays 9–5,
+    named and numbered from what the owner typed. Returns (name, pretty number, the change)."""
+    named = re.search(r"\b[A-Z][a-z]+", message)
+    name = named.group(0) if named else "Sam"
+    phone = _PHONE.search(message)
+    digits = "".join(phone.groups()) if phone else "2065550100"
+    pretty = f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+    CALL_SETTINGS["draft"]["transfer"]["scenarios"].append({
+        "id": "setup-t1", "enabled": True, "mode": "warm", "name": name,
+        "description": "Billing questions", "numbers": ["+1" + digits],
+        "collectBefore": "The caller's name and the reason for the call", "holdMusic": "classical",
+        "hours": [{"day": d, "open": "09:00", "close": "17:00"} for d in _WEEKDAYS],
+    })
+    # As the PUT handler does it.
+    CALL_SETTINGS["dirty"] = CALL_SETTINGS["draft"] != CALL_SETTINGS["published"]
+    return name, pretty, {"kind": "transfer", "op": "add", "id": "setup-t1",
+                          "label": f'Transfer "{name}" → {pretty}'}
+
+
+def setup_turn(message: str) -> tuple[int, dict]:
+    """POST /business/setup/turn {message}: "" opens the interview, anything else answers the next
+    pending topic. Only the first answer writes to the draft (transfer `setup-t1`)."""
+    session = SETUP["session"]
+    if message == "":
+        if session is not None and session["messages"]:
+            return 400, {"error": "empty_message", "message": "Say something first."}
+        session = SETUP["session"] = _setup_session()
+        reply = {"role": "assistant", "text": SETUP_OPENING, "at": iso(NOW)}
+        session["messages"].append(reply)
+        session["turnCount"] = 1
+    else:
+        if session is None:
+            session = SETUP["session"] = _setup_session()
+        session["messages"].append({"role": "user", "text": message, "at": iso(NOW)})
+        session["turnCount"] += 1
+        topic = next((t for t in SETUP_TOPICS if session["topics"][t] == "pending"), None)
+        changes: list[dict] = []
+        if topic is None:
+            session["status"] = "finished"
+            session["finishedAt"] = iso(NOW)
+            text = "That's everything. Review the board and publish when you're happy."
+        elif message.lower().startswith("skip"):
+            session["topics"][topic] = "skipped"
+            text = "Okay, skipping that. We can come back to it any time."
+        elif topic == "transfers":
+            name, pretty, change = _setup_transfer(message)
+            changes.append(change)
+            session["topics"][topic] = "done"
+            text = (f"Done — {name} takes billing questions on {pretty}, weekdays 9 to 5. Next, messages: "
+                    "when nobody can pick up, what should I ask the caller?")
+        else:
+            session["topics"][topic] = "done"
+            text = "Got it. Anything else, or shall we move on?"
+        reply = {"role": "assistant", "text": text, "at": iso(NOW), **({"changes": changes} if changes else {})}
+        session["messages"].append(reply)
+    return 200, {"session": session, "reply": reply, "draft": CALL_SETTINGS["draft"],
+                 "dirty": CALL_SETTINGS["dirty"]}
+
+
+def setup_state(account: dict) -> dict:
+    """GET /business/setup: the interview (if any) and the draft it writes to. A demo-stage account
+    can't be interviewed — its settings are read-only."""
+    demo = account["status"] == "demo"
+    return {"session": SETUP["session"], "draft": CALL_SETTINGS["draft"], "dirty": CALL_SETTINGS["dirty"],
+            "available": not demo, **({"unavailableReason": "demo_stage"} if demo else {})}
 
 # ---- calendar (routes/calendar.ts): what can be connected, and one connection per run. Apple
 # connects with any Apple ID and the password "good-app-password"; anything else is refused the way
@@ -1777,6 +1866,16 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
         CALL_SETTINGS["publishedAt"] = iso(NOW)
         CALL_SETTINGS["dirty"] = False
         return 200, CALL_SETTINGS
+    # ---- guided setup: the scripted consultant above, writing into the same CALL_SETTINGS draft.
+    if path == "/business/setup" and method == "GET":
+        wanted = (query.get("userId") or [None])[0] if admin else None
+        account = next((u for u in (ADMIN, USER, DEMO_CUSTOMER) if u["id"] == wanted), user)
+        return 200, setup_state(account)
+    if path == "/business/setup/turn" and method == "POST":
+        return setup_turn(str((json.loads(body or b"{}") or {}).get("message", "")))
+    if path == "/business/setup/reset" and method == "POST":
+        SETUP["session"] = None
+        return 200, {"session": None}
     if path == "/business/calendar" and method == "GET":
         return 200, {"providers": CALENDAR_PROVIDERS, "connection": CALENDAR["connection"],
                      "bookings": CALENDAR["bookings"]}

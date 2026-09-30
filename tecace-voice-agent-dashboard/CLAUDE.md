@@ -112,6 +112,10 @@ The header of `src/styles/index.css` explains the layer order and why; read it b
   phone line only ever uses the published copy.
 - The open section is in the URL (`#/business/transfers`, `#/demos/prospects/<id>/faqs`); new
   sections need an id in `SECTION_IDS` (`src/routing.ts`) and an entry in `SECTION_META`.
+- `guided-setup` is a chat over `/business/setup*` (the consultant interview, `setup/` +
+  `sections/GuidedSetupSection.tsx`, with `setup/SetupBoard.tsx` in the side panel); every turn's
+  returned draft is adopted into `BusinessSettings` (`calls` + `latestCalls`) and the turn is chained
+  on the call-settings save queue, so a section save can't overwrite the consultant's write.
 
 ## List screens (tables that grow) — one pattern for all of them
 
@@ -144,9 +148,12 @@ Run all three after any styling change:
 - `python scripts/regression/demos_e2e.py` — walks the Demos section against a fake backend
   (`fake_backend.py`).
 - `python scripts/regression/business_tabs.py` — opens the Business page's receptionist settings
-  (`src/settings/`): the ten-item menu, each section holding the business's data and saving to its
+  (`src/settings/`): the twelve-item menu, each section holding the business's data and saving to its
   own `/business/*` endpoint (never `/demo/`), a transfer saved as a draft, refused by the backend
   under its field, then published, the composed-session preview, and the `.tw` boundary.
+- `python scripts/regression/guided_setup.py` — the Guided setup against the fake's scripted
+  consultant: the Business page's offer, a turn held in flight, the reply on the board (lit, then
+  not), Edit into Transfers with no extra save, the unavailable state, Start over keeping the draft.
 - `python scripts/regression/public_page.py` — opens a demo link (`/c/<id>`) in a browser: the page
   renders the business and not the dashboard, carries none of the operator's fields, the scenarios
   and pricing links navigate, an unknown or unready id is the quiet page, `/` is still the

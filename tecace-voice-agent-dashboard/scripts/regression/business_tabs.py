@@ -95,7 +95,7 @@ with socketserver.TCPServer(("127.0.0.1", {APP_PORT}), H) as httpd:
 
 
 MENU = (
-    "Business information", "Agent profile", "FAQs", "Take a message", "Appointments",
+    "Guided setup", "Business information", "Agent profile", "FAQs", "Take a message", "Appointments",
     "Text a link", "Transfer calls", "Custom training", "Test & improve", "Launch instructions",
     "Call forwarding",
 )
