@@ -13,6 +13,10 @@ Format:
 
 ---
 
+## 2026-09-30 · bottomup32 · docs (customer journey page, 30 Sep edition)
+- `docs/customer-journey.html` (published: https://claude.ai/artifact/DM1JiVC95iN2HZoukLWxoS) now describes 0.0.11. "What changed since 29 Sep" draws guided setup (the consultant writes only the draft), real calls on the composed session (GPT-Live bridge vs Realtime bridge, with a before/now transfer table), the Customers list for hundreds, and the Bland AI audio findings; violet New/Changed tags moved to today's changes in the system map, swimlane, live call, "where it works" table and "Still open".
+- ⚠ The Korean copy (`docs/customer-journey.ko.html`, https://claude.ai/artifact/3eiJvCTMR9XUYtaGDEjEaE) is still the 29 Sep edition.
+
 ## 2026-09-30 · bottomup32 · docs (Bland AI competitor benchmark)
 - New `reports/Bland ai 경쟁사 벤치마크.md` (Korean) with its source notes in `research_notes/Bland ai 경쟁사 벤치마크/`: Bland's call API/V2 Agents vs ours, why their audio is steadier, and the P1 fixes for our choppy audio (reservoir drop on caller transcripts, adaptive lead buffer + Twilio `mark`, Realtime pacing) with `openai-agent-app` file:line references.
 

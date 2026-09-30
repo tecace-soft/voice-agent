@@ -187,14 +187,14 @@ section[id]{scroll-margin-top:16px}
 <div class="wrap">
 <header>
   <div class="topbar">
-    <div class="eyebrow">TecAce Voice Agent · as of 29 Sep 2026 · v0.0.10</div>
+    <div class="eyebrow">TecAce Voice Agent · as of 30 Sep 2026 · v0.0.11</div>
     <div class="lang" aria-label="Language"><span>English</span><a href="https://claude.ai/artifact/3eiJvCTMR9XUYtaGDEjEaE">한국어</a></div>
   </div>
   <h1>Customer journey: demo to live phone line</h1>
   <p class="lede">What the product is, how the pieces fit, everything it can do, and how a business goes from its first demo to an assistant that answers its real phone. Written so someone new to the project can follow it.</p>
   <nav class="toc" aria-label="Contents">
     <a href="#overview">In one minute</a>
-    <a class="hot" href="#changes">What changed since 28 Sep</a>
+    <a class="hot" href="#changes">What changed since 29 Sep</a>
     <a href="#system">The system</a>
     <a href="#features">Everything it does</a>
     <a href="#journey">The journey</a>
@@ -229,11 +229,11 @@ section[id]{scroll-margin-top:16px}
 <!-- ============ 0a2. WHAT CHANGED ============ -->
 <section id="changes">
   <div class="text">
-    <h2>What changed since 28 Sep</h2>
-    <p>Yesterday's page described version 0.0.9. Branch Main-Hans is now at 0.0.10: Hans's Twilio numbers work and four commits from bottomup32. This section draws what moved. Further down, a violet tag marks the same changes inside the full diagrams.</p>
+    <h2>What changed since 29 Sep</h2>
+    <p>Yesterday's page described version 0.0.10. Branch Main-Hans is now at 0.0.11: Michael's routing fixes and real calls on the composed session, the guided setup interview, and a Customers list built for hundreds of businesses. Michael also merged Main-Hans into <code>master</code> on 29 Sep. This section draws what moved; further down, a violet tag marks the same changes inside the full diagrams.</p>
   </div>
   <div class="legend">
-    <span><i class="sw-tag">New</i>was not there on 28 Sep</span>
+    <span><i class="sw-tag">New</i>was not there on 29 Sep</span>
     <span><i class="sw-tag">Changed</i>was there, works differently now</span>
     <span><i class="ln-n"></i>new path in a diagram</span>
   </div>
@@ -241,270 +241,203 @@ section[id]{scroll-margin-top:16px}
   <div class="changes">
     <div class="card c">
       <h3>For the business</h3>
-      <p>What a customer sees in the dashboard.</p>
-      <div class="feat"><b>My receptionist: Overview</b><span class="pill new">New</span><span class="d">A business still in Demo lands here after sign-in: link opens, visitors, calls, minutes, calls per day, what the assistant couldn't answer, the latest calls.</span></div>
-      <div class="feat"><b>My receptionist: Call activity</b><span class="pill new">New</span><span class="d">Every call to the demo as a table: date, length, how the caller felt, what they wanted. A side panel holds the summary and the transcript.</span></div>
-      <div class="feat"><b>Launch instructions</b><span class="pill new">Changed</span><span class="d">One page for every reader. It shows the stage, the assistant's number with Copy, the two ways to forward, how to place a test call, and the next step.</span></div>
-      <div class="feat"><b>Billing page</b><span class="pill new">New</span><span class="d">Reached from Launch instructions. It says “Coming soon”: billing is still set up with us directly.</span></div>
-      <div class="feat"><b>Prompts follow every save</b><span class="pill ok">Fixed</span><span class="d">Custom training kept old prompts after a save elsewhere, and saving them undid the change. Prompts edited by hand now say so, with Rebuild.</span></div>
+      <p>What a customer sees in the dashboard, and on its phone line.</p>
+      <div class="feat"><b>Guided setup</b><span class="pill new">New</span><span class="d">A new first section, “Start here”. An AI consultant asks about transfers, messages and appointments in a chat and fills in the settings as the owner answers. A board beside the chat shows what is set up so far.</span></div>
+      <div class="feat"><b>Business page offers it first</b><span class="pill new">New</span><span class="d">While a business is in Onboarding, the Business page shows “Set up with a guided interview” until it has started one.</span></div>
+      <div class="feat"><b>Real calls follow the dashboard</b><span class="pill new">Changed</span><span class="d">On the GPT-Live phone bridge, a real call now runs on the same composed session as a test call: prompts, Custom training, knowledge, FAQs, greeting, voice, published transfers and message briefs.</span></div>
     </div>
 
     <div class="card a">
       <h3>For the TecAce admin</h3>
       <p>Admin-only screens.</p>
-      <div class="feat"><b>Agent numbers from Twilio</b><span class="pill new">New</span><span class="d">Sync the account's numbers into the list, buy toll-free or local numbers, repair webhooks with Configure, release a number bought here.</span></div>
-      <div class="feat"><b>Go live checklist</b><span class="pill new">Changed</span><span class="d">Assign a number from the pool or buy one inside the checklist. A new check confirms that calls to the number reach the receptionist.</span></div>
-      <div class="feat"><b>Released numbers</b><span class="pill new">New</span><span class="d">They stay listed, with Buy back while Twilio still sells them, and Forget.</span></div>
-      <div class="feat"><b>Activity tab of a demo</b><span class="pill new">Changed</span><span class="d">Calls per day, how callers felt and what to fix, above a call table that separates customer calls from our own tests.</span></div>
+      <div class="feat"><b>Customers, built for hundreds</b><span class="pill new">Changed</span><span class="d">Phase tabs with counts, a category filter, a created date, sorting, full width, and pages sized to the screen (or 25 / 50 / 100). The list never scrolls sideways.</span></div>
+      <div class="feat"><b>A customer's tab is in the address</b><span class="pill ok">Fixed</span><span class="d">Activity, Settings, Sources and Share survive a refresh, Back and Forward, and a shared link.</span></div>
+      <div class="feat"><b>A demo customer's address</b><span class="pill ok">Fixed</span><span class="d">A demo account that opens a view it can't use lands on its own Overview; Changelog opens for everyone.</span></div>
+      <div class="feat"><b>Twilio with an API key</b><span class="pill new">Changed</span><span class="d">The backend signs in to Twilio with an API key or the auth token, and status callbacks default to the production backend address.</span></div>
     </div>
 
     <div class="card n">
       <h3>Behind the screens</h3>
-      <p>Backend, models, and two findings with no code change.</p>
-      <div class="feat"><b>The backend talks to Twilio</b><span class="pill new">New</span><span class="d">A thin fetch client in <code>transcribe-backend/src/twilio/</code>, no SDK. Without credentials the Twilio routes answer <code>409 twilio_not_configured</code> and everything else works.</span></div>
-      <div class="feat"><b>Analysis on a lower-cost model</b><span class="pill new">Changed</span><span class="d">Post-call reviews and research default to <code>gpt-5.6-luna</code>. The live call's tool delegate stays on <code>gpt-5.6-terra</code>.</span></div>
-      <div class="feat"><b>Transfers on a real call</b><span class="pill warn">Finding</span><span class="d">The phone does one fixed transfer. The scenarios in the settings don't reach it yet. See the table below.</span></div>
-      <div class="feat"><b>Prompt editor and real calls</b><span class="pill warn">Finding</span><span class="d">The phone agent builds its own prompt from <code>/business/config</code>. It uses neither the stored prompts nor the composed session.</span></div>
+      <p>Backend, the phone agent, and a report.</p>
+      <div class="feat"><b><code>/business/config</code> carries a session</b><span class="pill new">New</span><span class="d">The phone agent reads a <code>session</code> built by <code>composeSession(channel: "phone")</code> from the published settings. With no structured profile it is <code>null</code> and the old prompt is used.</span></div>
+      <div class="feat"><b>Setup interview API</b><span class="pill new">New</span><span class="d"><code>/business/setup</code>, <code>/turn</code>, <code>/reset</code> and the table <code>business_setup_sessions</code>. It writes only the draft and never publishes.</span></div>
+      <div class="feat"><b>List-screen kit</b><span class="pill new">New</span><span class="d">Sorting, paging and a fit-to-screen page size in one shared file. Every list screen is to be built with it.</span></div>
+      <div class="feat"><b>Why our calls sound choppy</b><span class="pill warn">Finding</span><span class="d">A benchmark against Bland AI traced it to the call bridge, not to Twilio. Report in <code>reports/</code>.</span></div>
     </div>
   </div>
 
-  <!-- ---- Twilio numbers ---- -->
+  <!-- ---- Guided setup ---- -->
   <div class="part">
-    <h3>Twilio numbers, phase 1</h3>
-    <p>Until now an admin typed each number in by hand and set its webhooks in the Twilio console. The backend now holds the Twilio credentials and does both. Violet paths are new.</p>
+    <h3>Guided setup: the consultant writes the draft</h3>
+    <p>Setting up transfers, message briefs and booking rules took a dozen forms. Now the owner can answer questions in a chat instead. Every answer lands in the same draft the forms edit, so nothing reaches callers until the owner tests and publishes.</p>
     <figure>
       <div class="legend">
-        <span><i class="ln-n"></i>New in 0.0.10</span>
+        <span><i class="ln-n"></i>New in 0.0.11</span>
         <span><i class="ln-a"></i>Already there</span>
       </div>
       <p class="hint">Scroll sideways to see the whole drawing →</p>
       <div class="scroll">
-<svg viewBox="0 0 1000 392" width="1000" role="img" aria-label="Life of an agent number. A number enters the pool by being bought from Twilio, synced from the Twilio account, or typed in by hand. From the pool it is assigned to a business and can be un-assigned. It can also be bought straight into an account from the Go live checklist. A number bought here can be released, stays listed, and can be bought back or forgotten. A typed-in number can be deleted.">
+<svg viewBox="0 0 1100 330" width="1100" role="img" aria-label="Guided setup. The owner chats with the AI consultant in Settings, Start here, Guided setup. Each turn goes to POST /business/setup/turn on transcribe-backend, where the consultant, on gpt-5.6-luna, asks about transfers, messages and appointments and writes the answers into the call-settings draft. The settings board beside the chat lights up the cards that changed, and Edit opens the real section. The owner then makes a test call on the draft and publishes; only published settings reach real calls.">
   <defs>
-    <marker id="ahA" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
-    <marker id="ahN" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahn"/></marker>
+    <marker id="ahS" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+    <marker id="ahSn" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahn"/></marker>
   </defs>
+  <rect class="panel" x="200" y="20" width="400" height="160" rx="10"/>
+  <text class="ptitle" x="214" y="43">Dashboard · Settings › Start here</text>
+  <rect class="panel" x="640" y="20" width="440" height="160" rx="10"/>
+  <text class="ptitle" x="654" y="43">transcribe-backend</text>
 
-  <!-- edges -->
-  <path class="arr nw" d="M120 60 V24 H880 V140" marker-end="url(#ahN)"/>
-  <text class="lbl nw" x="500" y="16" text-anchor="middle">Buy from the Go live checklist: bought and assigned in one step</text>
+  <path class="arr" d="M160 102 H218" marker-end="url(#ahS)"/>
+  <text class="lbl" x="189" y="94" text-anchor="middle">answers</text>
+  <path class="arr nw" d="M390 90 H658" marker-end="url(#ahSn)"/>
+  <text class="lbl nw" x="524" y="82" text-anchor="middle">POST /business/setup/turn</text>
+  <path class="arr nw" d="M660 122 H392" marker-end="url(#ahSn)"/>
+  <text class="lbl nw" x="526" y="140" text-anchor="middle">reply + the draft it wrote</text>
+  <path class="arr nw" d="M860 128 V218" marker-end="url(#ahSn)"/>
+  <text class="lbl nw" x="868" y="178">writes only</text>
+  <text class="lbl nw" x="868" y="192">the draft</text>
+  <path class="arr nw" d="M800 244 H602" marker-end="url(#ahSn)"/>
+  <text class="lbl nw" x="701" y="236" text-anchor="middle">same draft</text>
+  <path class="arr" d="M480 244 H402" marker-end="url(#ahS)"/>
+  <path class="arr" d="M280 244 H202" marker-end="url(#ahS)"/>
+  <text class="lbl" x="241" y="236" text-anchor="middle">publish</text>
 
-  <path class="arr nw" d="M220 88 H320"/>
-  <text class="lbl nw" x="270" y="80" text-anchor="middle">Buy</text>
-  <path class="arr nw" d="M220 180 H320"/>
-  <text class="lbl nw" x="270" y="172" text-anchor="middle">Sync from Twilio</text>
-  <path class="arr" d="M220 272 H320"/>
-  <text class="lbl" x="270" y="264" text-anchor="middle">Register by hand</text>
-  <path class="arr" d="M320 88 V272"/>
-  <path class="arr" d="M320 180 H398" marker-end="url(#ahA)"/>
-  <circle class="dot" cx="320" cy="180" r="3"/>
+  <g class="box c"><rect x="20" y="74" width="140" height="56" rx="8"/><text class="bt" x="32" y="97">Business owner</text><text class="bs" x="32" y="114">Onboarding or Live</text></g>
+  <g class="box c"><rect x="220" y="60" width="170" height="84" rx="8"/><text class="bt" x="232" y="83">Chat</text><text class="bs" x="232" y="100">one question at a time</text><text class="bs" x="232" y="116">“skip” moves on</text><text class="bs" x="232" y="132">Start over keeps the draft</text></g>
+  <g class="tag"><rect x="348" y="52" width="34" height="16" rx="8"/><text x="365" y="63.5" text-anchor="middle">New</text></g>
+  <g class="box c"><rect x="402" y="146" width="186" height="26" rx="6"/><text class="bs" x="412" y="163">board: cards that changed light up</text></g>
+  <g class="box b"><rect x="660" y="60" width="400" height="68" rx="8"/><text class="bt" x="674" y="83">Consultant · gpt-5.6-luna</text><text class="bs" x="674" y="100">topics: transfers → messages → appointments, then done</text><text class="bs" x="674" y="116">tells the truth about the phone (capabilities manifest)</text></g>
+  <g class="tag"><rect x="1018" y="52" width="34" height="16" rx="8"/><text x="1035" y="63.5" text-anchor="middle">New</text></g>
 
-  <path class="arr" d="M600 164 H778" marker-end="url(#ahA)"/>
-  <text class="lbl" x="689" y="156" text-anchor="middle">Assign</text>
-  <path class="arr" d="M780 196 H602" marker-end="url(#ahA)"/>
-  <text class="lbl" x="689" y="211" text-anchor="middle">Un-assign</text>
-
-  <path class="arr nw" d="M430 218 V314" marker-end="url(#ahN)"/>
-  <text class="lbl nw" x="422" y="270" text-anchor="end">Release</text>
-  <path class="arr nw" d="M480 316 V220" marker-end="url(#ahN)"/>
-  <text class="lbl nw" x="488" y="270">Buy back</text>
-  <path class="arr" d="M580 218 V292 H880 V314" marker-end="url(#ahA)"/>
-  <text class="lbl" x="730" y="284" text-anchor="middle">Delete: typed-in numbers only</text>
-  <path class="arr nw" d="M600 344 H778" marker-end="url(#ahN)"/>
-  <text class="lbl nw" x="689" y="336" text-anchor="middle">Forget</text>
-
-  <!-- where a number comes from -->
-  <g class="ext"><rect x="20" y="60" width="200" height="56" rx="8"/><text class="bt" x="32" y="83">For sale at Twilio</text><text class="bs" x="32" y="100">toll-free, or local by area code</text></g>
-  <g class="ext"><rect x="20" y="152" width="200" height="56" rx="8"/><text class="bt" x="32" y="175">In our Twilio account</text><text class="bs" x="32" y="192">bought in the Twilio console</text></g>
-  <g class="box n"><rect x="20" y="244" width="200" height="56" rx="8"/><text class="bt" x="32" y="267">Typed in by hand</text><text class="bs" x="32" y="284">works without Twilio credentials</text></g>
-
-  <!-- states -->
-  <g class="box a"><rect x="400" y="142" width="200" height="76" rx="8"/><text class="bt" x="414" y="166">In the pool</text><text class="bs" x="414" y="183">listed, no business yet</text><text class="bs" x="414" y="199">webhook state shown per number</text></g>
-  <g class="box okb"><rect x="780" y="142" width="200" height="76" rx="8"/><text class="bt" x="794" y="166">Assigned to a business</text><text class="bs" x="794" y="183">one number per business</text><text class="bs" x="794" y="199">needed before Go live</text></g>
-  <g class="box n dash"><rect x="400" y="316" width="200" height="56" rx="8"/><text class="bt" x="414" y="339">Released</text><text class="bs" x="414" y="356">given back to Twilio, still listed</text></g>
-  <g class="box n"><rect x="780" y="316" width="200" height="56" rx="8"/><text class="bt" x="794" y="339">Off the list</text><text class="bs" x="794" y="356">row removed from the dashboard</text></g>
+  <g class="db"><rect x="800" y="218" width="260" height="52" rx="6"/><text class="bt" x="812" y="240">Call-settings draft</text><text class="bs" x="812" y="257">the sections edit the same copy</text></g>
+  <g class="box c"><rect x="482" y="218" width="120" height="52" rx="8"/><text class="bt" x="494" y="240">The sections</text><text class="bs" x="494" y="257">Edit on a card</text></g>
+  <g class="box c"><rect x="282" y="218" width="120" height="52" rx="8"/><text class="bt" x="294" y="240">Test call</text><text class="bs" x="294" y="257">runs on the draft</text></g>
+  <g class="box okb"><rect x="20" y="218" width="182" height="52" rx="8"/><text class="bt" x="32" y="240">Published settings</text><text class="bs" x="32" y="257">the only copy callers hear</text></g>
+  <text class="bs" x="20" y="306">Limits: 80 turns a session, 150 a day per account (admins exempt), 12 a minute. Needs OPENAI_API_KEY. A demo account sees it, but it is closed until Approve.</text>
 </svg>
       </div>
-      <figcaption>Release works only on a number that was bought through the dashboard and is not assigned. A number bought in the Twilio console is released there (<code>409 bought_elsewhere</code>): a release can't be undone, and one number was lost that way on staging on 28 Sep. Assigning a number also writes its webhooks.</figcaption>
+      <figcaption>The interview never publishes. It reaches real calls only through the owner's Publish, and only on the GPT-Live phone bridge (see below). The consultant reads <code>src/setup/capabilities.ts</code> to tell customers what the phone can do today, so that file changes in the same commit as any phone-agent capability.</figcaption>
     </figure>
+  </div>
 
+  <!-- ---- Real calls on the composed session ---- -->
+  <div class="part">
+    <h3>Real calls run on the composed session</h3>
+    <p>Yesterday's page listed it as a finding: the phone agent built its own prompt and ignored the dashboard's. Michael changed that on 29 Sep for the GPT-Live bridge. The Realtime bridge is unchanged.</p>
     <figure>
       <p class="hint">Scroll sideways to see the whole drawing →</p>
       <div class="scroll">
-<svg viewBox="0 0 1000 290" width="1000" role="img" aria-label="Webhooks of an agent number. The backend writes three URLs onto the number at Twilio. A ringing call goes to the phone agent on the VPS through the voice URL, or the fallback URL if that fails. After the call Twilio reports to the backend through the status callback, whose receiver arrives in phase 2.">
+<svg viewBox="0 0 1100 300" width="1100" role="img" aria-label="At pickup the phone agent asks GET /business/config for the dialled number. Before 29 Sep the answer held flat facts and the agent built its own rule-book prompt. Now the answer also carries a session composed from the published settings: prompts, tools, voice, greeting, transfers and a return leg. The GPT-Live bridge uses it verbatim and dials a transfer scenario's first number. The Realtime bridge, and a business with no structured profile, still use the rule book.">
   <defs>
-    <marker id="ahB" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
-    <marker id="ahM" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahn"/></marker>
+    <marker id="ahR" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+    <marker id="ahRn" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahn"/></marker>
   </defs>
-  <path class="arr" d="M170 78 H258" marker-end="url(#ahB)"/>
-  <text class="lbl" x="214" y="70" text-anchor="middle">rings</text>
-  <path class="arr nw" d="M480 62 H698" marker-end="url(#ahM)"/>
-  <text class="lbl nw" x="589" y="54" text-anchor="middle">Voice URL: every ringing call</text>
-  <path class="arr nw" d="M480 94 H698" marker-end="url(#ahM)"/>
-  <text class="lbl nw" x="589" y="86" text-anchor="middle">Fallback URL: if the first fails</text>
-  <path class="arr nw" d="M330 214 V118" marker-end="url(#ahM)"/>
-  <text class="lbl nw" x="322" y="162" text-anchor="end">writes the three URLs</text>
-  <text class="lbl nw" x="322" y="176" text-anchor="end">on Buy, Assign, Configure</text>
-  <path class="arr nw d" d="M410 116 V212" marker-end="url(#ahM)"/>
-  <text class="lbl nw" x="418" y="162">Status callback: after the call</text>
-  <text class="lbl nw" x="418" y="176">receiver arrives in phase 2</text>
+  <path class="arr" d="M180 150 H238" marker-end="url(#ahR)"/>
+  <text class="lbl" x="209" y="142" text-anchor="middle">at pickup</text>
+  <path class="arr nw" d="M480 120 H578" marker-end="url(#ahRn)"/>
+  <text class="lbl nw" x="529" y="112" text-anchor="middle">session</text>
+  <path class="arr" d="M480 190 H578" marker-end="url(#ahR)"/>
+  <text class="lbl" x="529" y="182" text-anchor="middle">flat facts</text>
+  <path class="arr nw" d="M820 100 H878" marker-end="url(#ahRn)"/>
+  <path class="arr" d="M820 210 H878" marker-end="url(#ahR)"/>
 
-  <g class="box n"><rect x="20" y="50" width="150" height="56" rx="8"/><text class="bt" x="32" y="73">Caller</text><text class="bs" x="32" y="90">via the business line</text></g>
-  <g class="box a"><rect x="260" y="40" width="220" height="76" rx="8"/><text class="bt" x="274" y="64">Agent number at Twilio</text><text class="bs" x="274" y="81">carries three webhook URLs</text><text class="bs" x="274" y="97">checked against what we want</text></g>
-  <g class="box b"><rect x="700" y="40" width="280" height="76" rx="8"/><text class="bt" x="714" y="64">Phone agent (VPS)</text><text class="bm" x="714" y="82">AGENT_PUBLIC_URL/incoming</text><text class="bm" x="714" y="98">AGENT_PUBLIC_URL/incoming-fallback</text></g>
-  <g class="box b"><rect x="260" y="214" width="220" height="60" rx="8"/><text class="bt" x="274" y="238">transcribe-backend</text><text class="bs" x="274" y="255">holds the Twilio credentials</text></g>
-  <g class="box b dash"><rect x="700" y="214" width="280" height="60" rx="8"/><text class="bm" x="714" y="238">POST /twilio/voice-status</text><text class="bs" x="714" y="255">phase 2: call status, forwarding verdicts</text></g>
-  <path class="arr d" d="M480 244 H698" marker-end="url(#ahB)"/>
-  <text class="lbl" x="589" y="236" text-anchor="middle">route to be built</text>
+  <g class="box b"><rect x="20" y="118" width="160" height="64" rx="8"/><text class="bt" x="32" y="141">Phone agent</text><text class="bs" x="32" y="158">a call to a Live</text><text class="bs" x="32" y="172">business's number</text></g>
+  <g class="box b"><rect x="240" y="96" width="240" height="118" rx="8"/><text class="bm" x="254" y="120">GET /business/config?to=</text><text class="bs" x="254" y="140">flat fields, unchanged</text><text class="bs" x="254" y="158">+ session: live and backend prompts,</text><text class="bs" x="254" y="174">tools, voice, greeting, transfers,</text><text class="bs" x="254" y="190">return leg · from PUBLISHED settings</text></g>
+  <g class="tag"><rect x="428" y="88" width="44" height="16" rx="8"/><text x="450" y="99.5" text-anchor="middle">New</text></g>
+
+  <g class="box okb"><rect x="580" y="60" width="240" height="96" rx="8"/><text class="bt" x="594" y="83">GPT-Live bridge</text><text class="bs" x="594" y="100">OPENAI_LIVE_MODEL set</text><text class="bs" x="594" y="116">uses the session verbatim</text><text class="bs" x="594" y="132">+ its own “This call” block</text></g>
+  <g class="tag"><rect x="758" y="52" width="54" height="16" rx="8"/><text x="785" y="63.5" text-anchor="middle">Changed</text></g>
+  <g class="box n"><rect x="580" y="170" width="240" height="80" rx="8"/><text class="bt" x="594" y="193">Realtime bridge</text><text class="bs" x="594" y="210">OPENAI_LIVE_MODEL unset, or no</text><text class="bs" x="594" y="226">structured profile: the rule book</text></g>
+
+  <g class="box c"><rect x="880" y="40" width="200" height="120" rx="8"/><text class="bt" x="894" y="63">What the caller gets</text><text class="bs" x="894" y="80">the dashboard's prompts,</text><text class="bs" x="894" y="96">Custom training, FAQs,</text><text class="bs" x="894" y="112">greeting, voice, message briefs;</text><text class="bs" x="894" y="128">a transfer rings the scenario's</text><text class="bs" x="894" y="144">first number, cold</text></g>
+  <g class="box n"><rect x="880" y="182" width="200" height="56" rx="8"/><text class="bt" x="894" y="205">What the caller gets</text><text class="bs" x="894" y="222">the Python rule book, as before</text></g>
+  <text class="bs" x="20" y="286">Check a real number: python scripts/checks/verify_composed_session.py --live &lt;number&gt; (openai-agent-app)</text>
 </svg>
       </div>
-      <figcaption>A ringing call goes straight to the phone agent on the VPS. The backend runs on Vercel, where a cold start would be silence on the line, so it never sits on the voice path and only hears about a call after it ends. The status callback URL is already written on every managed number; the route that receives it comes with phase 2.</figcaption>
+      <figcaption>Still not on the phone: warm and waterfall transfers (they dial the first number cold), hold music and “press 1”, and texting a link (<code>send_link</code> is left out; there is no SMS sender). After an unanswered transfer the caller returns on a leg with no transfer tool. Which bridge the VPS runs decides which box applies.</figcaption>
     </figure>
 
     <div class="tbl">
       <table>
-        <thead><tr><th>Webhooks column</th><th>What it means</th><th>What to do</th></tr></thead>
+        <thead><tr><th></th><th>Real phone call on 29 Sep</th><th>Real phone call now, GPT-Live bridge</th></tr></thead>
         <tbody>
-          <tr><td><span class="pill ok">Configured</span></td><td>Twilio has exactly our three URLs.</td><td>Nothing.</td></tr>
-          <tr><td><span class="pill warn">Out of date</span></td><td>A URL differs or is missing. The page says which one.</td><td>Configure, for one number or for all of them.</td></tr>
-          <tr><td><span class="pill bad">Error</span></td><td>Twilio no longer has the number. Sync finds this.</td><td>Check the Twilio account.</td></tr>
-          <tr><td><span class="pill sim">Registered by hand</span></td><td>The number is not in our Twilio account, so there is nothing to check.</td><td>Confirm its webhooks in the Twilio console.</td></tr>
+          <tr><td>Prompt</td><td>The phone agent's own rule book</td><td>The composed session from the published settings</td></tr>
+          <tr><td>Who gets a transfer</td><td>One number, the older <code>transferNumber</code></td><td>The chosen scenario's first number</td></tr>
+          <tr><td>Handover</td><td>Cold, spoken whisper</td><td>Cold, spoken whisper. No key press, no hold music, no waterfall</td></tr>
+          <tr><td>Message briefs</td><td>No</td><td>Yes, as published</td></tr>
+          <tr><td>Text a link</td><td>No</td><td>No</td></tr>
         </tbody>
       </table>
     </div>
-
-    <ol class="phases">
-      <li><span class="pill ok">Phase 1 · done</span><b>Numbers</b><span class="d">Sync, search and buy, webhooks, release, assign at Go live, and the new readiness check.</span></li>
-      <li><span class="pill warn">Phase 2 · next</span><b>Does forwarding work?</b><span class="d">Twilio dials the business line from its own agent number. If the call comes back, forwarding is on. A live account shows “Live · waiting for forwarding” until then. Forwarding never blocks Go live.</span></li>
-      <li><span class="pill sim">Phase 3 · later</span><b>Text messages</b><span class="d">Toll-free numbers first: one verification form per number, in place of a 10DLC brand and campaign for every customer.</span></li>
-    </ol>
   </div>
 
-  <!-- ---- Demo customer ---- -->
+  <!-- ---- Customers list ---- -->
   <div class="part">
-    <h3>What a demo customer sees</h3>
-    <p>A business in Demo had one screen: its settings, read-only. It now has its own menu with Overview, Call activity and Settings. Our own test calls are left out of its numbers.</p>
+    <h3>Customers, built for hundreds</h3>
+    <p>The list is meant to hold hundreds and later thousands of businesses. It had a width cap, scrolled sideways on a laptop, and had no paging. Tested with 1,200 made-up customers: no sideways or downward scroll at 1280, 1600 or 1920 pixels.</p>
     <figure>
       <p class="hint">Scroll sideways to see the whole drawing →</p>
       <div class="scroll">
-<svg viewBox="0 0 1100 320" width="1100" role="img" aria-label="Before and now. On 28 Sep a demo customer had one screen, read-only Settings. On 29 Sep the My receptionist menu has Overview, Call activity and Settings, and Launch instructions inside Settings leads to a Billing page that says coming soon.">
-  <defs>
-    <marker id="ahC" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahn"/></marker>
-  </defs>
-  <rect class="panel" x="20" y="36" width="300" height="264" rx="10"/>
-  <text class="ptitle" x="34" y="60">Before · 28 Sep</text>
-  <rect class="panel" x="350" y="36" width="730" height="264" rx="10"/>
-  <text class="ptitle" x="364" y="60">Now · 29 Sep · My receptionist</text>
-
-  <path class="arr nw" d="M600 234 H678" marker-end="url(#ahC)"/>
-  <text class="lbl nw" x="639" y="226" text-anchor="middle">section</text>
-  <path class="arr nw" d="M860 234 H938" marker-end="url(#ahC)"/>
-  <text class="lbl nw" x="899" y="226" text-anchor="middle">Go to billing</text>
-
-  <g class="box n dash"><rect x="40" y="76" width="260" height="52" rx="8"/><text class="bs" x="52" y="106">no Overview</text></g>
-  <g class="box n dash"><rect x="40" y="142" width="260" height="52" rx="8"/><text class="bs" x="52" y="172">no Call activity</text></g>
-  <g class="box c"><rect x="40" y="208" width="260" height="52" rx="8"/><text class="bt" x="52" y="230">Settings</text><text class="bs" x="52" y="246">read-only, with a Request setup strip</text></g>
-
-  <g class="box c"><rect x="370" y="76" width="230" height="52" rx="8"/><text class="bt" x="382" y="98">Overview</text><text class="bs" x="382" y="114">first screen after sign-in</text></g>
-  <g class="tag"><rect x="558" y="68" width="34" height="16" rx="8"/><text x="575" y="79.5" text-anchor="middle">New</text></g>
-  <text class="bs" x="616" y="98">link opens · people · calls · minutes · average call</text>
-  <text class="bs" x="616" y="114">calls per day (14 days) · what it couldn't answer · recent calls</text>
-
-  <g class="box c"><rect x="370" y="142" width="230" height="52" rx="8"/><text class="bt" x="382" y="164">Call activity</text><text class="bs" x="382" y="180">every call to the demo, as a table</text></g>
-  <g class="tag"><rect x="558" y="134" width="34" height="16" rx="8"/><text x="575" y="145.5" text-anchor="middle">New</text></g>
-  <text class="bs" x="616" y="164">date · length · how the caller felt · what they wanted</text>
-  <text class="bs" x="616" y="180">filter by mood · panel with the summary and the transcript</text>
-
-  <g class="box c"><rect x="370" y="208" width="230" height="52" rx="8"/><text class="bt" x="382" y="230">Settings</text><text class="bs" x="382" y="246">read-only, as before</text></g>
-  <g class="box c"><rect x="680" y="208" width="180" height="52" rx="8"/><text class="bt" x="692" y="230">Launch instructions</text><text class="bs" x="692" y="246">stage, number, next step</text></g>
-  <g class="tag"><rect x="798" y="200" width="54" height="16" rx="8"/><text x="825" y="211.5" text-anchor="middle">Changed</text></g>
-  <g class="box c dash"><rect x="940" y="208" width="120" height="52" rx="8"/><text class="bt" x="952" y="230">Billing</text><text class="bs" x="952" y="246">coming soon</text></g>
-  <g class="tag"><rect x="1018" y="200" width="34" height="16" rx="8"/><text x="1035" y="211.5" text-anchor="middle">New</text></g>
+<svg viewBox="0 0 1100 250" width="1100" role="img" aria-label="The new Customers screen from top to bottom: phase tabs with counts; a toolbar with search, category filter, status filter, sort and follow-ups due; a fixed-layout table with Customer, Contact, Phase, Interest, Status, Live, Activity, Created and actions; and a pagination bar with rows per page and page numbers.">
+  <rect class="panel" x="20" y="16" width="1060" height="218" rx="10"/>
+  <g class="box c"><rect x="36" y="30" width="700" height="32" rx="6"/><text class="bs" x="48" y="51">All · 1200</text><text class="bs" x="140" y="51">Setup requested · 3</text><text class="bs" x="280" y="51">New signups · 5</text><text class="bs" x="400" y="51">Demo · 1150</text><text class="bs" x="500" y="51">Onboarding · 30</text><text class="bs" x="620" y="51">Production · 20</text></g>
+  <g class="tag"><rect x="694" y="22" width="34" height="16" rx="8"/><text x="711" y="33.5" text-anchor="middle">New</text></g>
+  <g class="box c"><rect x="36" y="72" width="1028" height="32" rx="6"/><text class="bs" x="48" y="93">Search name, ID, category or contact</text><text class="bs" x="330" y="93">All categories ▾</text><text class="bs" x="480" y="93">All statuses ▾</text><text class="bs" x="610" y="93">Sort: Interest ↓</text><text class="bs" x="750" y="93">Follow-ups due</text></g>
+  <g class="tag"><rect x="1022" y="64" width="34" height="16" rx="8"/><text x="1039" y="75.5" text-anchor="middle">New</text></g>
+  <g class="box c"><rect x="36" y="114" width="1028" height="70" rx="6"/><text class="bt" x="48" y="134">☐</text><text class="bt" x="76" y="134">Customer</text><text class="bt" x="300" y="134">Contact</text><text class="bt" x="470" y="134">Phase</text><text class="bt" x="560" y="134">Interest ↓</text><text class="bt" x="660" y="134">Status</text><text class="bt" x="750" y="134">Live</text><text class="bt" x="810" y="134">Activity</text><text class="bt" x="960" y="134">Created</text><text class="bt" x="1040" y="134">⋯</text><text class="bs" x="48" y="154">☐</text><text class="bs" x="76" y="154">Harbor Dental</text><text class="bs" x="300" y="154">Dana Reyes</text><text class="bs" x="470" y="154">Demo</text><text class="bs" x="560" y="154">hot</text><text class="bs" x="660" y="154">Ready</text><text class="bs" x="750" y="154">on</text><text class="bs" x="810" y="154">3 calls · 9 min</text><text class="bs" x="960" y="154">Sep 27</text><text class="bs" x="1040" y="154">⋯</text><text class="bs" x="76" y="172">HADE-0001 · Dentist</text><text class="bs" x="300" y="172">dana@harbordental…</text><text class="bs" x="810" y="172">14 opens · 4 people</text></g>
+  <g class="box c"><rect x="36" y="194" width="1028" height="30" rx="6"/><text class="bs" x="48" y="214">1–9 of 1,200 customers</text><text class="bs" x="210" y="214">Fit to screen (9) ▾</text><text class="bs" x="900" y="214">‹   1   2   …   134   ›</text></g>
+  <g class="tag"><rect x="1022" y="186" width="34" height="16" rx="8"/><text x="1039" y="197.5" text-anchor="middle">New</text></g>
 </svg>
       </div>
-      <figcaption>No backend change was needed: <code>GET /demo/customers/:id</code> already answered the owner with calls, events and stats. Billing is open to every account and has no sidebar item. Nothing checks billing yet, so the move from Demo to Onboarding still depends only on the admin's Approve.</figcaption>
+      <figcaption>Paging runs in the browser today; the page size and sort are remembered per viewer. The same kit (<code>src/demos/components/ui/data-table.tsx</code>) and the rules in the dashboard's <code>CLAUDE.md</code> “List screens” are what every list is built from. Past a few thousand rows, the fetch moves to server-side paging and the screen stays as it is.</figcaption>
     </figure>
   </div>
 
-  <!-- ---- Prompts ---- -->
+  <!-- ---- Choppy audio ---- -->
   <div class="part">
-    <h3>Prompts follow every save</h3>
-    <p>A fix in the settings shared by a business and a demo. Before it, a save in one section could be undone from another.</p>
-    <figure>
-      <p class="hint">Scroll sideways to see the whole drawing →</p>
-      <div class="scroll">
-<svg viewBox="0 0 1118 266" width="1118" role="img" aria-label="Before: the owner saves a section, the server rebuilds the prompts, but Custom training still shows the old text, and saving the prompts sends the old text back, which undoes the change and freezes the prompts. Now: after every section save the dashboard reloads the prompts, Custom training is current, and prompts that really were edited by hand carry a note with Rebuild.">
-  <defs>
-    <marker id="ahD" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
-    <marker id="ahE" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ahn"/></marker>
-  </defs>
-  <text class="ptitle" x="20" y="28">Before</text>
-  <path class="arr" d="M210 72 H240" marker-end="url(#ahD)"/>
-  <path class="arr" d="M432 72 H462" marker-end="url(#ahD)"/>
-  <path class="arr" d="M654 72 H684" marker-end="url(#ahD)"/>
-  <path class="arr" d="M876 72 H906" marker-end="url(#ahD)"/>
-  <g class="box c"><rect x="20" y="44" width="190" height="56" rx="8"/><text class="bt" x="32" y="66">Owner saves a section</text><text class="bs" x="32" y="84">info, FAQs or agent profile</text></g>
-  <g class="box b"><rect x="242" y="44" width="190" height="56" rx="8"/><text class="bt" x="254" y="66">Server rebuilds prompts</text><text class="bs" x="254" y="84">from the new profile</text></g>
-  <g class="box n"><rect x="464" y="44" width="190" height="56" rx="8"/><text class="bt" x="476" y="66">Custom training</text><circle class="s-bad" cx="480" cy="80" r="4"/><text class="st-bad" x="489" y="84">still shows the old text</text></g>
-  <g class="box c"><rect x="686" y="44" width="190" height="56" rx="8"/><text class="bt" x="698" y="66">Owner saves prompts</text><text class="bs" x="698" y="84">sends the old text back</text></g>
-  <g class="box n"><rect x="908" y="44" width="190" height="56" rx="8"/><text class="bt" x="920" y="66">Change undone</text><circle class="s-bad" cx="924" cy="80" r="4"/><text class="st-bad" x="933" y="84">frozen as a hand edit</text></g>
-
-  <text class="ptitle" x="20" y="160">Now</text>
-  <path class="arr" d="M210 204 H240" marker-end="url(#ahD)"/>
-  <path class="arr nw" d="M432 204 H462" marker-end="url(#ahE)"/>
-  <path class="arr nw" d="M654 204 H684" marker-end="url(#ahE)"/>
-  <path class="arr nw d" d="M876 204 H906" marker-end="url(#ahE)"/>
-  <g class="box c"><rect x="20" y="176" width="190" height="56" rx="8"/><text class="bt" x="32" y="198">Owner saves a section</text><text class="bs" x="32" y="216">info, FAQs or agent profile</text></g>
-  <g class="box b"><rect x="242" y="176" width="190" height="56" rx="8"/><text class="bt" x="254" y="198">Server rebuilds prompts</text><text class="bs" x="254" y="216">and returns them</text></g>
-  <g class="box okb"><rect x="464" y="176" width="190" height="56" rx="8"/><text class="bt" x="476" y="198">Dashboard reloads them</text><circle class="s-ok" cx="480" cy="212" r="4"/><text class="st-ok" x="489" y="216">on every section save</text></g>
-  <g class="box c"><rect x="686" y="176" width="190" height="56" rx="8"/><text class="bt" x="698" y="198">Custom training is current</text><text class="bs" x="698" y="216">the call preview re-reads</text></g>
-  <g class="box n"><rect x="908" y="176" width="190" height="56" rx="8"/><text class="bt" x="920" y="198">Really edited by hand?</text><text class="bs" x="920" y="216">a note says so, with Rebuild</text></g>
-</svg>
-      </div>
-      <figcaption>Prompts edited by hand are frozen: they stop following the profile, the FAQs and the agent profile until they are rebuilt. Business information, FAQs and Custom training now say so. Unsaved typing in the prompt editor is kept.</figcaption>
-    </figure>
-  </div>
-
-  <!-- ---- Transfer audit ---- -->
-  <div class="part">
-    <h3>Transfers: what the settings promise and what the phone does</h3>
-    <p>An audit on 28 Sep, with no code change. The transfer scenarios in the Calls settings reach in-app and demo calls only. The settings and the simulator mention “press 1”, which the phone does not do.</p>
-    <div class="tbl">
-      <table>
-        <thead><tr><th></th><th>Settings, test calls and demo calls</th><th>Real phone call today</th></tr></thead>
-        <tbody>
-          <tr><td>Who gets the call</td><td>Several people, by scenario, in waterfall order</td><td>One number, the older <code>transferNumber</code></td></tr>
-          <tr><td>Handover</td><td>Cold or warm. Warm has hold music, a whisper, and “press 1” to accept</td><td>One <code>&lt;Dial&gt;</code> with a spoken whisper. No key press, no hold music</td></tr>
-          <tr><td>Hours</td><td>Set per transfer</td><td>None</td></tr>
-          <tr><td>Nobody answers</td><td>The next number in the waterfall</td><td>The caller returns to the assistant</td></tr>
-          <tr><td>Caller ID the staff see</td><td>—</td><td>One global number (<code>MAIN_LINE_NUMBER</code>), not the business's agent number<span class="note">Twilio accepts only an owned or verified number there</span></td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p>Plan for phase 3: serve the composed session to the phone agent, then build the warm transfer on a conference with hold music, whisper, “press 1” and waterfall, then add a live transfer test for production accounts.</p>
-  </div>
-
-  <!-- ---- Models + developers ---- -->
-  <div class="part">
-    <h3>Models and notes for developers</h3>
+    <h3>Why our calls sound choppy</h3>
+    <p>A benchmark against Bland AI (<code>reports/Bland ai 경쟁사 벤치마크.md</code>, in Korean) found the gaps come from our call bridge, not from Twilio. No code changed yet.</p>
     <div class="grid2">
       <div class="card">
-        <h3>Which model does what</h3>
-        <div class="feat"><b>Voice on every call</b><span class="pill sim">Same</span><span class="d">OpenAI Realtime.</span></div>
-        <div class="feat"><b>Tool delegate during a call</b><span class="pill sim">Same</span><span class="d"><code>gpt-5.6-terra</code>, set by <code>OPENAI_BACKEND_MODEL</code>.</span></div>
-        <div class="feat"><b>Post-call review</b><span class="pill new">Was terra</span><span class="d"><code>gpt-5.6-luna</code>, set by <code>CALL_REVIEW_MODEL</code>.</span></div>
-        <div class="feat"><b>Business research</b><span class="pill new">Was terra</span><span class="d"><code>gpt-5.6-luna</code>, set by <code>RESEARCH_OPENAI_MODEL</code>.</span></div>
-        <p class="req">An env value still wins. Staging and production set neither, so both switch on their next deploy.</p>
+        <h3>What the report found</h3>
+        <ul>
+          <li>GPT-Live sends audio in bursts with pauses of up to 576 ms mid-sentence, longer than our 0.5 s start buffer and 0.6 s lead can cover.</li>
+          <li>One caller transcript fragment empties the playback buffer (<code>_caller_started_talking</code>), even when it is not a real interruption.</li>
+          <li>Model audio is dropped during the greeting window, the call nudges its own instructions mid-call, and the bridge runs one uvicorn worker.</li>
+        </ul>
       </div>
       <div class="card">
-        <h3>For developers</h3>
+        <h3>First fixes it proposes (P1)</h3>
         <ul>
-          <li>New env on <code>transcribe-backend</code>: <code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code>, <code>AGENT_PUBLIC_URL</code>, <code>TWILIO_VALIDATE_SIGNATURE</code>, <code>FORWARDING_TEST_TIMEOUT_SECONDS</code>, <code>TWILIO_MESSAGING_SERVICE_SID</code>. Twilio features also need <code>PUBLIC_BACKEND_URL</code>.</li>
-          <li><code>agent_numbers</code> gains the Twilio columns. The schema migrates itself.</li>
-          <li>New views <code>#/my/overview</code>, <code>#/my/calls</code>, <code>#/billing</code>. New shared file <code>src/settings/sections/LaunchGuide.tsx</code>.</li>
-          <li>Regression selectors: the per-call button is “Open call details”, the sheet heading “Call details”. New script <code>numbers_twilio.py</code>.</li>
-          <li>Harness builds now set <code>BACKEND_URL</code> too, so a local <code>.env</code> can't point them at the real backend.</li>
-          <li>Deploy: set the Twilio env on staging first, press Sync from Twilio once, then Configure the live number that was registered by hand.</li>
+          <li>Empty the buffer only on a real barge-in signal.</li>
+          <li>An adaptive lead buffer, with playback tracked through Twilio <code>mark</code> events.</li>
+          <li>Pacing and <code>conversation.item.truncate</code> on the Realtime engine.</li>
+          <li>Worth an A/B on one number: OpenAI's SIP connector, which removes the bridge.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---- Developers ---- -->
+  <div class="part">
+    <h3>Notes for developers</h3>
+    <div class="grid2">
+      <div class="card">
+        <h3>Schema, env, API</h3>
+        <ul>
+          <li>New table <code>business_setup_sessions</code> (with <code>discarded_at</code>: Start over keeps the daily cap). It migrates itself.</li>
+          <li>Optional env: <code>SETUP_ASSISTANT_MODEL</code> (default <code>gpt-5.6-luna</code>), <code>SETUP_MAX_TURNS</code> (80), <code>SETUP_DAILY_TURN_CAP</code> (150).</li>
+          <li>Twilio: <code>TWILIO_API_KEY_SID</code> + <code>TWILIO_API_KEY_SECRET</code> work in place of the auth token for REST. Signature checks (phase 2) still need <code>TWILIO_AUTH_TOKEN</code>. <code>PUBLIC_BACKEND_URL</code> is now only for staging and local.</li>
+          <li><code>GET /business/config</code> gains <code>session</code>; every older field is unchanged. Deploy the backend before or with the phone agent.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Dashboard</h3>
+        <ul>
+          <li>The prospect path is <code>demos/prospects/:id/:tab?</code>; link with <code>demoHref</code> / <code>formatHash</code>, never a hand-written hash.</li>
+          <li>New settings section <code>guided-setup</code>: anything that lists the menu must include it (<code>business_tabs.py</code> now counts 12).</li>
+          <li>New regression script <code>guided_setup.py</code>; <code>fake_backend.py</code> fakes <code>/business/setup*</code>. <code>demos_e2e.py</code> reads Cedar's link as “Cedar Bakery”.</li>
+          <li>List screens: <code>App.tsx</code> <code>WIDE_VIEWS</code> and the data-table kit.</li>
         </ul>
       </div>
     </div>
@@ -518,7 +451,7 @@ section[id]{scroll-margin-top:16px}
     <p>One backend holds everything. The phone agent, the dashboard, the public pages and the voicemail worker all talk to it. Each box is its own app in the repo, with its own README.</p>
   </div>
   <figure>
-    <div class="legend"><span><i class="sw-tag">New</i><i class="sw-tag">Changed</i>since 28 Sep 2026</span></div>
+    <div class="legend"><span><i class="sw-tag">New</i><i class="sw-tag">Changed</i>since 29 Sep 2026</span></div>
     <p class="hint">Scroll sideways to see the whole map →</p>
     <div class="scroll">
 <svg viewBox="0 0 1120 522" width="1120" role="img" aria-label="System map: callers reach a Twilio number and the phone agent, which uses OpenAI Realtime for voice. Business owners and admins use the dashboard, prospects use the public pages. All of them talk to transcribe-backend and its Postgres database. The backend uses the Twilio API for numbers, OpenAI for research and call reviews, business calendars, and email. transcribe-app reads voicemail and writes Google Sheet rows.">
@@ -535,13 +468,13 @@ section[id]{scroll-margin-top:16px}
   <path class="arr" d="M160 75 H218" marker-end="url(#ah0)"/><text class="lbl" x="189" y="67" text-anchor="middle">calls</text>
   <path class="arr" d="M410 75 H468" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="439" y="67" text-anchor="middle">audio</text>
   <path class="arr" d="M700 75 H818" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="759" y="67" text-anchor="middle">live voice</text>
-  <path class="arr" d="M585 112 V176" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="593" y="140">settings, tools,</text><text class="lbl" x="593" y="154">call log</text>
+  <path class="arr nw" d="M585 112 V176" marker-start="url(#ah0n)" marker-end="url(#ah0n)"/><text class="lbl nw" x="593" y="140">composed session,</text><text class="lbl nw" x="593" y="154">tools, call log</text>
   <path class="arr" d="M160 215 H218" marker-end="url(#ah0)"/>
   <path class="arr" d="M160 275 H218" marker-end="url(#ah0)"/>
   <path class="arr" d="M160 355 H218" marker-end="url(#ah0)"/>
   <path class="arr" d="M410 240 H468" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="439" y="232" text-anchor="middle">API</text>
   <path class="arr" d="M410 350 H468" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="439" y="342" text-anchor="middle">public API</text>
-  <path class="arr nw" d="M730 202 H818" marker-end="url(#ah0n)"/><text class="lbl nw" x="774" y="194" text-anchor="middle">buy, configure</text>
+  <path class="arr" d="M730 202 H818" marker-end="url(#ah0)"/><text class="lbl" x="774" y="194" text-anchor="middle">buy, configure</text>
   <path class="arr" d="M730 257 H818" marker-end="url(#ah0)"/><text class="lbl" x="774" y="249" text-anchor="middle">research</text>
   <path class="arr" d="M730 312 H818" marker-start="url(#ah0)" marker-end="url(#ah0)"/><text class="lbl" x="774" y="304" text-anchor="middle">free times, book</text>
   <path class="arr" d="M730 367 H818" marker-end="url(#ah0)"/><text class="lbl" x="774" y="359" text-anchor="middle">codes, links</text>
@@ -570,24 +503,23 @@ section[id]{scroll-margin-top:16px}
   <text class="bs" x="484" y="256">· business profile, call settings</text>
   <text class="bs" x="484" y="272">· demos, research, CRM</text>
   <text class="bs" x="484" y="288">· calls, call reviews, minutes</text>
-  <text class="bs" x="484" y="304">· calendar tools</text>
+  <text class="bs" x="484" y="304">· calendar tools, guided setup</text>
+  <g class="tag"><rect x="682" y="293" width="34" height="16" rx="8"/><text x="699" y="304.5" text-anchor="middle">New</text></g>
   <text class="bs" x="484" y="320">· agent numbers, Twilio webhooks</text>
-  <g class="tag"><rect x="682" y="309" width="34" height="16" rx="8"/><text x="699" y="320.5" text-anchor="middle">New</text></g>
   <g class="db"><rect x="484" y="338" width="232" height="42" rx="6"/><text class="bt" x="496" y="357">Postgres (Neon)</text><text class="bs" x="496" y="372">only the backend touches it</text></g>
   <g class="box b"><rect x="470" y="432" width="260" height="60" rx="8"/><text class="bt" x="484" y="455">Voicemail worker</text><text class="bs" x="484" y="472">transcribe-app · Whisper + Claude</text></g>
 
   <!-- outside -->
   <g class="ext"><rect x="820" y="45" width="280" height="60" rx="8"/><text class="bt" x="834" y="68">OpenAI Realtime</text><text class="bs" x="834" y="85">the voice model on every call</text></g>
   <g class="ext"><rect x="820" y="178" width="280" height="48" rx="8"/><text class="bt" x="834" y="198">Twilio API</text><text class="bs" x="834" y="214">numbers: sync, buy, webhooks, release</text></g>
-  <g class="tag"><rect x="1058" y="170" width="34" height="16" rx="8"/><text x="1075" y="181.5" text-anchor="middle">New</text></g>
-  <g class="ext"><rect x="820" y="233" width="280" height="48" rx="8"/><text class="bt" x="834" y="253">OpenAI</text><text class="bs" x="834" y="269">research and call reviews, in-app test calls</text></g>
+  <g class="ext"><rect x="820" y="233" width="280" height="48" rx="8"/><text class="bt" x="834" y="253">OpenAI</text><text class="bs" x="834" y="269">research, reviews, test calls, guided setup</text></g>
   <g class="tag"><rect x="1038" y="225" width="54" height="16" rx="8"/><text x="1065" y="236.5" text-anchor="middle">Changed</text></g>
   <g class="ext"><rect x="820" y="288" width="280" height="48" rx="8"/><text class="bt" x="834" y="308">Business calendars</text><text class="bs" x="834" y="324">Apple, Google, Outlook, Cal.com, Calendly…</text></g>
   <g class="ext"><rect x="820" y="343" width="280" height="48" rx="8"/><text class="bt" x="834" y="363">Email (SMTP)</text><text class="bs" x="834" y="379">sign-up codes, sign-in links</text></g>
   <g class="ext"><rect x="820" y="437" width="280" height="50" rx="8"/><text class="bt" x="834" y="458">Google Sheets</text><text class="bs" x="834" y="475">voicemails and messages, per business</text></g>
 </svg>
     </div>
-    <figcaption>New since 28 Sep: the backend manages our numbers through the Twilio API, and reviews and research run on <code>gpt-5.6-luna</code>. The older apps in the repo (<code>voice-agent-app</code>, <code>backend-app</code>, <code>form-app</code>, <code>admin-dashboard-app</code>) run the original lead-intake flow. <code>transcribe-dashboard-app</code> is kept only as a baseline for regression checks.</figcaption>
+    <figcaption>New since 29 Sep: at pickup the phone agent can take a composed session from the backend (GPT-Live bridge), and the backend runs the guided setup interview on OpenAI. The older apps in the repo (<code>voice-agent-app</code>, <code>backend-app</code>, <code>form-app</code>, <code>admin-dashboard-app</code>) run the original lead-intake flow. <code>transcribe-dashboard-app</code> is kept only as a baseline for regression checks.</figcaption>
   </figure>
 </section>
 
@@ -595,7 +527,7 @@ section[id]{scroll-margin-top:16px}
 <section id="features">
   <div class="text">
     <h2>Everything it does</h2>
-    <p>Grouped by who uses it. The pill says where it stands on the real phone line or in the product today. A violet pill marks what is new or changed since 28 Sep.</p>
+    <p>Grouped by who uses it. The pill says where it stands on the real phone line or in the product today. A violet pill marks what is new or changed since 29 Sep.</p>
   </div>
   <div class="feats">
     <div class="card">
@@ -603,14 +535,16 @@ section[id]{scroll-margin-top:16px}
       <p>What the assistant can do while it talks.</p>
       <div class="feat"><b>Answers questions</b><span class="pill ok">Live</span><span class="d">Business info, FAQs, and whether the business is open right now.</span></div>
       <div class="feat"><b>Books an appointment</b><span class="pill ok">Live</span><span class="d">Finds free times in the connected calendar and books under the published rules.</span></div>
-      <div class="feat"><b>Transfers to a person</b><span class="pill warn">Test</span><span class="d">Rings the business's number with a whisper. If nobody answers, the caller comes back to the assistant.</span></div>
-      <div class="feat"><b>Takes a message</b><span class="pill warn">Test</span><span class="d">Name, callback number read back, reason, preferred time.</span></div>
+      <div class="feat"><b>Transfers to a person</b><span class="pill warn">Test</span><span class="d">Rings the chosen transfer's first number, cold, with a whisper (GPT-Live bridge). If nobody answers, the caller comes back to the assistant.</span></div>
+      <div class="feat"><b>Takes a message</b><span class="pill warn">Test</span><span class="d">Name, callback number read back, reason, preferred time; the published message briefs on the GPT-Live bridge.</span></div>
       <div class="feat"><b>Texts a link</b><span class="pill bad">Not on phone</span><span class="d">Booking page, menu or form by SMS. Shown in demos only.</span></div>
     </div>
 
     <div class="card">
       <h3>For the business, in the dashboard</h3>
       <p>The settings studio: a menu of sections, the section, and a test console beside it.</p>
+      <div class="sub">Start here</div>
+      <div class="feat"><b>Guided setup</b><span class="pill new">New</span><span class="d">An AI consultant asks about transfers, messages and appointments and fills in the draft. A board shows what is set up. Onboarding and Live only.</span></div>
       <div class="sub">Business</div>
       <div class="feat"><b>Business information</b><span class="d">Name, hours, address, services. Filled in by research, edited by the owner.</span></div>
       <div class="feat"><b>Agent profile</b><span class="d">The assistant's name, voice, language and call sound.</span></div>
@@ -621,27 +555,27 @@ section[id]{scroll-margin-top:16px}
       <div class="feat"><b>Text a link</b><span class="d">Links the assistant may text, and when.</span></div>
       <div class="feat"><b>Appointments</b><span class="d">Connect a calendar; set length, buffer, notice, how far ahead, hours.</span></div>
       <div class="sub">Tuning and go live</div>
-      <div class="feat"><b>Custom training</b><span class="pill new">Changed</span><span class="d">House rules, the prompts themselves, and a preview of the full prompt. Says when prompts were edited by hand, with Rebuild.</span></div>
+      <div class="feat"><b>Custom training</b><span class="d">House rules, the prompts themselves, and a preview of the full prompt. Says when prompts were edited by hand, with Rebuild.</span></div>
       <div class="feat"><b>Test and improve</b><span class="pill blue">30 min/month</span><span class="d">Talk to the assistant in the browser using the draft settings.</span></div>
-      <div class="feat"><b>Launch instructions</b><span class="pill new">Changed</span><span class="d">The stage you are in, the assistant's number, how to test, and the next step.</span></div>
+      <div class="feat"><b>Launch instructions</b><span class="d">The stage you are in, the assistant's number, how to test, and the next step.</span></div>
       <div class="feat"><b>Call forwarding</b><span class="d">Dial codes per carrier, for missed calls or every call.</span></div>
       <div class="sub">Other screens</div>
-      <div class="feat"><b>My receptionist</b><span class="pill new">New</span><span class="d">For a business still in Demo: Overview, Call activity and read-only Settings.</span></div>
+      <div class="feat"><b>My receptionist</b><span class="d">For a business still in Demo: Overview, Call activity and read-only Settings.</span></div>
       <div class="feat"><b>Answered calls</b><span class="d">Every call with its transcript, caller and message.</span></div>
       <div class="feat"><b>Voicemail screens</b><span class="d">Overview, Analytics, Daily activity, All runs, for voicemail transcription.</span></div>
       <div class="feat"><b>Feedback, Changelog</b><span class="d">Send us feedback; see what changed in each version.</span></div>
-      <div class="feat"><b>Billing</b><span class="pill new">New</span><span class="d">A placeholder that says “Coming soon”. Payments in the app come later.</span></div>
+      <div class="feat"><b>Billing</b><span class="d">A placeholder that says “Coming soon”. Payments in the app come later.</span></div>
     </div>
 
     <div class="card">
       <h3>For the TecAce admin</h3>
       <p>Admin-only menus. A customer never sees these.</p>
-      <div class="feat"><b>Demo › Customers</b><span class="d">Add a business, run research, see setup requests, delete a selection.</span></div>
+      <div class="feat"><b>Demo › Customers</b><span class="pill new">Changed</span><span class="d">Phase tabs, category filter, created date, sorting, pages sized to the screen. Add a business, run research, see setup requests, delete a selection.</span></div>
       <div class="feat"><b>Demo › CRM</b><span class="d">Pipeline: new, contacted, interested, won, lost.</span></div>
       <div class="feat"><b>Demo › Overview</b><span class="d">How the demos are doing: views and calls.</span></div>
-      <div class="feat"><b>A customer's page</b><span class="pill new">Changed</span><span class="d">Settings studio with test console, Activity (calls per day, mood, what to fix), Sources, Share (the /c/&lt;id&gt; link).</span></div>
-      <div class="feat"><b>Accounts</b><span class="pill new">Changed</span><span class="d">Stage, Approve or Decline, Go live checklist with Assign or Buy a number, sign-in links, test-call cap.</span></div>
-      <div class="feat"><b>Agent numbers</b><span class="pill new">New</span><span class="d">Sync from Twilio, buy, configure webhooks, release, and assign a number to a business.</span></div>
+      <div class="feat"><b>A customer's page</b><span class="d">Settings studio with test console, Activity (calls per day, mood, what to fix), Sources, Share (the /c/&lt;id&gt; link). The tab is in the address.</span></div>
+      <div class="feat"><b>Accounts</b><span class="d">Stage, Approve or Decline, Go live checklist with Assign or Buy a number, sign-in links, test-call cap.</span></div>
+      <div class="feat"><b>Agent numbers</b><span class="d">Sync from Twilio, buy, configure webhooks, release, and assign a number to a business.</span></div>
       <div class="feat"><b>API keys</b><span class="d">Keys for other systems that read usage. Shown once.</span></div>
       <div class="feat"><b>Per person, Failed runs, All feedback</b><span class="d">Cross-account views for support.</span></div>
       <div class="sub">Before sign-in: for prospects</div>
@@ -664,7 +598,7 @@ section[id]{scroll-margin-top:16px}
       <span><i class="sw" style="border-color:var(--be)"></i>Backend and agents</span>
       <span><i class="ln-g"></i>Gate: someone must act</span>
       <span><i class="ln-a"></i>Hand-off or data</span>
-      <span><i class="sw-tag">New</i><i class="sw-tag">Changed</i>since 28 Sep 2026</span>
+      <span><i class="sw-tag">New</i><i class="sw-tag">Changed</i>since 29 Sep 2026</span>
     </div>
     <p class="hint">Scroll sideways to see all four phases →</p>
     <div class="scroll">
@@ -734,10 +668,10 @@ section[id]{scroll-margin-top:16px}
   <g class="box c"><rect x="452" y="150" width="232" height="46" rx="6"/><text class="bt" x="462" y="169">Sees its settings, read-only</text><text class="bs" x="462" y="185">“Editable after setup”</text></g>
   <g class="box c"><rect x="452" y="206" width="232" height="62" rx="6"/><text class="bt" x="462" y="225">Requests setup</text><text class="bs" x="462" y="241">signs up: name, email, password,</text><text class="bs" x="462" y="256">6-digit email code, optional note</text></g>
   <g class="box c"><rect x="452" y="278" width="232" height="62" rx="6"/><text class="bt" x="462" y="297">Opens My receptionist</text><text class="bs" x="462" y="313">Overview and Call activity</text><text class="bs" x="462" y="328">Launch instructions lead to Billing</text></g>
-  <g class="tag"><rect x="642" y="270" width="34" height="16" rx="8"/><text x="659" y="281.5" text-anchor="middle">New</text></g>
 
   <g class="box c"><rect x="752" y="78" width="232" height="46" rx="6"/><text class="bt" x="762" y="97">Signs in</text><text class="bs" x="762" y="113">link in the approval email</text></g>
-  <g class="box c"><rect x="752" y="134" width="232" height="62" rx="6"/><text class="bt" x="762" y="153">Fills in the settings</text><text class="bs" x="762" y="169">info, agent, FAQs, messages,</text><text class="bs" x="762" y="184">links, transfers, training</text></g>
+  <g class="box c"><rect x="752" y="134" width="232" height="62" rx="6"/><text class="bt" x="762" y="153">Fills in the settings</text><text class="bs" x="762" y="169">Guided setup chat, or the forms:</text><text class="bs" x="762" y="184">info, FAQs, messages, transfers…</text></g>
+  <g class="tag"><rect x="942" y="126" width="34" height="16" rx="8"/><text x="959" y="137.5" text-anchor="middle">New</text></g>
   <g class="box c"><rect x="752" y="206" width="232" height="62" rx="6"/><text class="bt" x="762" y="225">Connects a calendar</text><text class="bs" x="762" y="241">Apple, CalDAV, Cal.com, Calendly,</text><text class="bs" x="762" y="256">Acuity, Google, Outlook</text></g>
   <g class="box c"><rect x="752" y="278" width="232" height="46" rx="6"/><text class="bt" x="762" y="297">Makes test calls in the app</text><text class="bs" x="762" y="313">uses the draft · 30 min a month</text></g>
   <g class="box c"><rect x="752" y="334" width="232" height="46" rx="6"/><text class="bt" x="762" y="353">Publishes</text><text class="bs" x="762" y="369">the phone uses only this copy</text></g>
@@ -748,16 +682,15 @@ section[id]{scroll-margin-top:16px}
 
   <!-- ADMIN -->
   <g class="box a"><rect x="152" y="418" width="232" height="46" rx="6"/><text class="bt" x="162" y="437">Adds a customer</text><text class="bs" x="162" y="453">name, website · research optional</text></g>
-  <g class="box a"><rect x="152" y="474" width="232" height="46" rx="6"/><text class="bt" x="162" y="493">Works the CRM</text><text class="bs" x="162" y="509">new → contacted → interested</text></g>
+  <g class="box a"><rect x="152" y="474" width="232" height="46" rx="6"/><text class="bt" x="162" y="493">Works the CRM</text><text class="bs" x="162" y="509">Customers list: phase tabs, filters</text></g>
+  <g class="tag"><rect x="322" y="466" width="54" height="16" rx="8"/><text x="349" y="477.5" text-anchor="middle">Changed</text></g>
   <g class="box a"><rect x="152" y="530" width="232" height="46" rx="6"/><text class="bt" x="162" y="549">Shares the demo link</text><text class="bs" x="162" y="565">/c/&lt;id&gt; page, no sign-in needed</text></g>
 
   <g class="box a"><rect x="452" y="418" width="232" height="46" rx="6"/><text class="bt" x="462" y="437">Sees the setup request</text><text class="bs" x="462" y="453">Customers › Setup requested</text></g>
   <g class="box a"><rect x="452" y="474" width="232" height="46" rx="6"/><text class="bt" x="462" y="493">Approves or declines</text><text class="bs" x="462" y="509">a decline note goes to the customer</text></g>
   <g class="box a"><rect x="452" y="530" width="232" height="46" rx="6"/><text class="bt" x="462" y="549">Reads the demo's activity</text><text class="bs" x="462" y="565">calls per day, mood, what to fix</text></g>
-  <g class="tag"><rect x="622" y="522" width="54" height="16" rx="8"/><text x="649" y="533.5" text-anchor="middle">Changed</text></g>
 
   <g class="box a"><rect x="752" y="418" width="232" height="46" rx="6"/><text class="bt" x="762" y="437">Assigns or buys a number</text><text class="bs" x="762" y="453">inside the Go live checklist</text></g>
-  <g class="tag"><rect x="922" y="410" width="54" height="16" rx="8"/><text x="949" y="421.5" text-anchor="middle">Changed</text></g>
   <g class="box a"><rect x="752" y="474" width="232" height="46" rx="6"/><text class="bt" x="762" y="493">Checks the Go live list</text><text class="bs" x="762" y="509">Accounts › Stage</text></g>
   <g class="box a"><rect x="752" y="530" width="232" height="46" rx="6"/><text class="bt" x="762" y="549">Goes live</text><text class="bs" x="762" y="565">refused until required items pass</text></g>
 
@@ -771,16 +704,14 @@ section[id]{scroll-margin-top:16px}
   <g class="box b"><rect x="452" y="618" width="232" height="62" rx="6"/><text class="bt" x="462" y="637">Runs the public demo call</text><text class="bs" x="462" y="653">composed prompt + tools</text><text class="bs" x="462" y="668">books on a demo calendar only</text></g>
   <g class="box b"><rect x="452" y="690" width="232" height="46" rx="6"/><text class="bt" x="462" y="709">Creates a demo account</text><text class="bs" x="462" y="725">status demo · request to admin</text></g>
   <g class="box b"><rect x="452" y="746" width="232" height="46" rx="6"/><text class="bt" x="462" y="765">Reviews each demo call</text><text class="bs" x="462" y="781">summary, mood, gaps · gpt-5.6-luna</text></g>
-  <g class="tag"><rect x="622" y="738" width="54" height="16" rx="8"/><text x="649" y="749.5" text-anchor="middle">Changed</text></g>
 
   <g class="box b"><rect x="752" y="618" width="232" height="62" rx="6"/><text class="bt" x="762" y="637">Approve: demo → business</text><text class="bs" x="762" y="653">copies profile, seeds call settings,</text><text class="bs" x="762" y="668">CRM won, emails a sign-in link</text></g>
   <g class="box b"><rect x="752" y="690" width="232" height="46" rx="6"/><text class="bt" x="762" y="709">Keeps the phone line off</text><text class="bs" x="762" y="725">/business/config: not_live_stage</text></g>
   <g class="box b"><rect x="752" y="746" width="232" height="62" rx="6"/><text class="bt" x="762" y="765">Runs the readiness check</text><text class="bs" x="762" y="781">info · published · number · match</text><text class="bs" x="762" y="796">· calls reach the receptionist</text></g>
-  <g class="tag"><rect x="922" y="738" width="54" height="16" rx="8"/><text x="949" y="749.5" text-anchor="middle">Changed</text></g>
   <g class="box b"><rect x="752" y="818" width="232" height="46" rx="6"/><text class="bt" x="762" y="837">Sets the number's webhooks</text><text class="bs" x="762" y="853">on buy, assign and configure</text></g>
-  <g class="tag"><rect x="942" y="810" width="34" height="16" rx="8"/><text x="959" y="821.5" text-anchor="middle">New</text></g>
 
-  <g class="box b"><rect x="1052" y="618" width="232" height="62" rx="6"/><text class="bt" x="1062" y="637">Answers every call</text><text class="bs" x="1062" y="653">phone agent + OpenAI Realtime,</text><text class="bs" x="1062" y="668">reads the published settings</text></g>
+  <g class="box b"><rect x="1052" y="618" width="232" height="62" rx="6"/><text class="bt" x="1062" y="637">Answers every call</text><text class="bs" x="1062" y="653">phone agent + OpenAI,</text><text class="bs" x="1062" y="668">composed from what was published</text></g>
+  <g class="tag"><rect x="1222" y="610" width="54" height="16" rx="8"/><text x="1249" y="621.5" text-anchor="middle">Changed</text></g>
   <g class="box b"><rect x="1052" y="690" width="232" height="46" rx="6"/><text class="bt" x="1062" y="709">Files the call</text><text class="bs" x="1062" y="725">/calls · minutes · Google Sheet</text></g>
 </svg>
     </div>
@@ -826,7 +757,7 @@ section[id]{scroll-margin-top:16px}
     <table>
       <thead><tr><th></th><th>Demo</th><th>Onboarding</th><th>Live</th></tr></thead>
       <tbody>
-        <tr><td>Customer's own screens</td><td>My receptionist: Overview, Call activity, Settings<span class="note"><span class="pill new">New</span></span></td><td>Settings studio and the rest of the dashboard</td><td>Settings studio and the rest of the dashboard</td></tr>
+        <tr><td>Customer's own screens</td><td>My receptionist: Overview, Call activity, Settings</td><td>Settings studio, starting with Guided setup<span class="note"><span class="pill new">New</span></span></td><td>Settings studio and the rest of the dashboard</td></tr>
         <tr><td>Customer edits settings</td><td><span class="pill bad">No, read-only</span></td><td><span class="pill ok">Yes</span></td><td><span class="pill ok">Yes</span></td></tr>
         <tr><td>Test calls</td><td><span class="pill sim">Public demo page only</span></td><td><span class="pill ok">In the app</span><span class="note">Uses the draft, 30 min a month</span></td><td><span class="pill ok">In the app</span></td></tr>
         <tr><td>Publish call settings</td><td><span class="pill bad">No (403)</span></td><td><span class="pill ok">Yes</span></td><td><span class="pill ok">Yes</span></td></tr>
@@ -845,7 +776,7 @@ section[id]{scroll-margin-top:16px}
         <li>Call settings are published</li>
         <li>A phone number is assigned</li>
         <li>Published settings work with that number</li>
-        <li>Calls to the number reach the receptionist <span class="pill new">New</span> <span class="req">(required for a number in our Twilio account; advice only for one registered by hand)</span></li>
+        <li>Calls to the number reach the receptionist <span class="req">(required for a number in our Twilio account; advice only for one registered by hand)</span></li>
         <li>A number to reach the business is on file <span class="req">(warning only, not required)</span></li>
       </ul>
     </div>
@@ -913,12 +844,12 @@ section[id]{scroll-margin-top:16px}
   <g class="box n"><rect x="20" y="200" width="120" height="56" rx="8"/><text class="bt" x="32" y="223">Caller</text><text class="bs" x="32" y="240">rings the business</text></g>
   <g class="box c"><rect x="175" y="200" width="140" height="56" rx="8"/><text class="bt" x="187" y="223">Business phone</text><text class="bs" x="187" y="240">forwards to us</text></g>
   <g class="box a"><rect x="350" y="200" width="140" height="56" rx="8"/><text class="bt" x="362" y="223">Twilio number</text><text class="bs" x="362" y="240">backend sets webhooks</text></g>
-  <g class="tag"><rect x="428" y="192" width="54" height="16" rx="8"/><text x="455" y="203.5" text-anchor="middle">Changed</text></g>
-  <g class="box b"><rect x="525" y="182" width="200" height="92" rx="8"/><text class="bt" x="539" y="206">Phone agent</text><text class="bm" x="539" y="224">openai-agent-app</text><text class="bs" x="539" y="242">call bridge + tools</text><text class="bs" x="539" y="258">scripts/run_server.py</text></g>
+  <g class="box b"><rect x="525" y="182" width="200" height="92" rx="8"/><text class="bt" x="539" y="206">Phone agent</text><text class="bm" x="539" y="224">openai-agent-app</text><text class="bs" x="539" y="242">GPT-Live: composed session</text><text class="bs" x="539" y="258">scripts/run_server.py</text></g>
   <g class="box n"><rect x="525" y="40" width="200" height="56" rx="8"/><text class="bt" x="539" y="63">OpenAI Realtime</text><text class="bs" x="539" y="80">listens and speaks</text></g>
 
   <!-- backend rows -->
-  <g class="box b"><rect x="822" y="76" width="266" height="58" rx="6"/><text class="bm" x="834" y="98">GET /business/config</text><text class="bs" x="834" y="118">at pickup: published settings, booking</text></g>
+  <g class="box b"><rect x="822" y="76" width="266" height="58" rx="6"/><text class="bm" x="834" y="98">GET /business/config</text><text class="bs" x="834" y="118">at pickup: published settings, a session</text></g>
+  <g class="tag"><rect x="1026" y="68" width="54" height="16" rx="8"/><text x="1053" y="79.5" text-anchor="middle">Changed</text></g>
   <g class="box b"><rect x="822" y="142" width="266" height="58" rx="6"/><text class="bm" x="834" y="164">POST …/calendar/agent-tool</text><text class="bs" x="834" y="184">mid-call: free times, book</text></g>
   <g class="box b"><rect x="822" y="208" width="266" height="58" rx="6"/><text class="bm" x="834" y="230">POST /calls</text><text class="bs" x="834" y="250">at hang-up: transcript, message</text></g>
   <g class="box b"><rect x="822" y="274" width="266" height="54" rx="6"/><text class="bm" x="834" y="296">call minutes</text><text class="bs" x="834" y="314">at hang-up: talk time per account</text></g>
@@ -928,13 +859,14 @@ section[id]{scroll-margin-top:16px}
 
   <!-- tools -->
   <g class="box okb"><rect x="20" y="380" width="182" height="62" rx="8"/><text class="bt" x="32" y="399">Book appointment</text><circle class="s-ok" cx="36" cy="411" r="4"/><text class="st-ok" x="45" y="415">Works on the phone</text><text class="bs" x="32" y="432">books via agent-tool</text></g>
-  <g class="box n"><rect x="216" y="380" width="182" height="62" rx="8"/><text class="bt" x="228" y="399">Transfer to staff</text><circle class="s-warn" cx="232" cy="411" r="4"/><text class="st-warn" x="241" y="415">Built, test on a call</text><text class="bs" x="228" y="432">one number only for now</text></g>
+  <g class="box n"><rect x="216" y="380" width="182" height="62" rx="8"/><text class="bt" x="228" y="399">Transfer to staff</text><circle class="s-warn" cx="232" cy="411" r="4"/><text class="st-warn" x="241" y="415">Built, test on a call</text><text class="bs" x="228" y="432">scenario's first number, cold</text></g>
+  <g class="tag"><rect x="336" y="372" width="54" height="16" rx="8"/><text x="363" y="383.5" text-anchor="middle">Changed</text></g>
   <g class="box n"><rect x="412" y="380" width="182" height="62" rx="8"/><text class="bt" x="424" y="399">Take a message</text><circle class="s-warn" cx="428" cy="411" r="4"/><text class="st-warn" x="437" y="415">Built, test on a call</text><text class="bs" x="424" y="432">saved at hang-up (/calls)</text></g>
   <g class="box n dash"><rect x="608" y="380" width="182" height="62" rx="8"/><text class="bt" x="620" y="399">Text a link</text><circle class="s-bad" cx="624" cy="411" r="4"/><text class="st-bad" x="633" y="415">Not built on the phone</text><text class="bs" x="620" y="432">no SMS sender yet</text></g>
   <g class="box n"><rect x="216" y="480" width="182" height="56" rx="8"/><text class="bt" x="228" y="503">Staff phone</text><text class="bs" x="228" y="520">spoken whisper, no key press;</text><text class="bs" x="228" y="533">no answer: back to the agent</text></g>
 </svg>
     </div>
-    <figcaption>Real calls only reach accounts that are Live. The phone agent uses only the published settings, so a customer's unpublished draft never reaches callers. Booking was verified on a real call on 27 Sep 2026. On a transfer the staff see one global caller ID, not the business's own number.</figcaption>
+    <figcaption>Real calls only reach accounts that are Live. The phone agent uses only the published settings, so a customer's unpublished draft (including what Guided setup wrote) never reaches callers. On the GPT-Live bridge it runs the same composed session as a test call; the Realtime bridge still uses its own rule book. Booking was verified on a real call on 27 Sep 2026. On a transfer the staff see one global caller ID, not the business's own number.</figcaption>
   </figure>
 </section>
 
@@ -942,19 +874,20 @@ section[id]{scroll-margin-top:16px}
 <section id="where">
   <div class="text">
     <h2>Which features work where</h2>
-    <p>The same settings drive three kinds of calls. Features reach the in-app test call and the public demo first. The real phone line catches up in phase 3.</p>
+    <p>The same settings drive three kinds of calls. Features reach the in-app test call and the public demo first. Since 29 Sep the real phone line runs the same composed session on the GPT-Live bridge; transfers beyond a cold dial and text messages come later.</p>
   </div>
   <div class="tbl">
     <table>
       <thead><tr><th>Feature</th><th>In-app test call</th><th>Public demo page</th><th>Real phone call</th></tr></thead>
       <tbody>
-        <tr><td>Business info and FAQs</td><td><span class="pill ok">Works</span></td><td><span class="pill ok">Works</span></td><td><span class="pill ok">Works</span><span class="note">from <code>/business/config</code> facts</span></td></tr>
+        <tr><td>Business info and FAQs</td><td><span class="pill ok">Works</span></td><td><span class="pill ok">Works</span></td><td><span class="pill ok">Works</span><span class="note">composed session (GPT-Live), facts otherwise <span class="pill new">Changed</span></span></td></tr>
         <tr><td>Appointments</td><td><span class="pill ok">Books for real</span><span class="note">titled “[Test]”</span></td><td><span class="pill sim">Demo calendar only</span></td><td><span class="pill ok">Works, verified</span><span class="note">published rules only</span></td></tr>
-        <tr><td>Transfer calls</td><td><span class="pill sim">Simulated</span><span class="note">warm, waterfall, hours</span></td><td><span class="pill sim">Shown as Demo</span></td><td><span class="pill warn">Built, not tested</span><span class="note">one number, spoken whisper, no key press</span></td></tr>
-        <tr><td>Take a message</td><td><span class="pill ok">Works</span><span class="note">with message briefs</span></td><td><span class="pill sim">Shown as Demo</span></td><td><span class="pill warn">Built, not tested</span><span class="note">no message briefs yet</span></td></tr>
-        <tr><td>Post-call review<span class="note">summary, mood, what it couldn't answer</span></td><td><span class="pill ok">Works</span></td><td><span class="pill ok">Works</span><span class="note">shown in Call activity <span class="pill new">New</span></span></td><td><span class="pill bad">Not reviewed</span></td></tr>
+        <tr><td>Transfer calls</td><td><span class="pill sim">Simulated</span><span class="note">warm, waterfall, hours</span></td><td><span class="pill sim">Shown as Demo</span></td><td><span class="pill warn">Built, not tested</span><span class="note">scenario's first number, cold; no key press, no waterfall <span class="pill new">Changed</span></span></td></tr>
+        <tr><td>Take a message</td><td><span class="pill ok">Works</span><span class="note">with message briefs</span></td><td><span class="pill sim">Shown as Demo</span></td><td><span class="pill warn">Built, not tested</span><span class="note">with message briefs on GPT-Live <span class="pill new">Changed</span></span></td></tr>
+        <tr><td>Post-call review<span class="note">summary, mood, what it couldn't answer</span></td><td><span class="pill ok">Works</span></td><td><span class="pill ok">Works</span><span class="note">shown in Call activity</span></td><td><span class="pill bad">Not reviewed</span></td></tr>
         <tr><td>Text a link (SMS)</td><td><span class="pill sim">Shown in the console</span></td><td><span class="pill sim">Shown as Demo</span></td><td><span class="pill bad">Not built</span></td></tr>
         <tr><td>Call forwarding</td><td colspan="3">Setup guide for the customer: dial codes per carrier, missed calls or every call, how to test.</td></tr>
+        <tr><td>Guided setup <span class="pill new">New</span></td><td colspan="3">Writes the draft from a chat. It reaches test calls at once, and the phone only after Publish.</td></tr>
         <tr><td>Custom training, Test and improve</td><td colspan="3">Dashboard tools for tuning the prompts. They change the draft, which reaches the phone on publish.</td></tr>
       </tbody>
     </table>
@@ -968,14 +901,16 @@ section[id]{scroll-margin-top:16px}
     <p>Details and test checklists are in <code>TODO.md</code> at the repo root.</p>
   </div>
   <ul class="open">
-    <li><span class="pill bad">Build</span><b>Forwarding test and call status <span class="pill new">New</span></b><span class="d">Twilio phase 2. Today nothing checks that a business really forwarded its line. The three edits to the phone agent must land on the branch the VPS runs.</span></li>
+    <li><span class="pill bad">Build</span><b>Forwarding test and call status</b><span class="d">Twilio phase 2. Today nothing checks that a business really forwarded its line. The three edits to the phone agent must land on the branch the VPS runs.</span></li>
     <li><span class="pill bad">Build</span><b>Text a link on the phone</b><span class="d">Twilio phase 3. The plan is toll-free numbers first, with one verification form per number, consent on the call, and STOP/HELP handling. 10DLC for local numbers is deferred.</span></li>
     <li><span class="pill warn">Test</span><b>Call transfer on a real call</b><span class="d">Answered, not answered (back to the agent), offer vs. promise, no transfer number. Note which caller ID the staff see.</span></li>
     <li><span class="pill warn">Test</span><b>Take a message on a real call</b><span class="d">Dashboard and Google Sheet rows, callback number, message after a failed transfer. There is no push alert to the business yet.</span></li>
-    <li><span class="pill sim">Phase 3</span><b>Composed settings on the phone</b><span class="d">Real calls still use the Python rule book. Serve the composed session to the phone agent, then build the warm transfer on a conference. Business-hours rules and message briefs come with it.</span></li>
-    <li><span class="pill sim">Spec</span><b>One prompt for every call <span class="pill new">New</span></b><span class="d">A demo's prompt editor shows the demo builder's text (5 FAQs, up to 140 characters each), its calls use the session builder, and the phone builds its own prompt. This needs a spec.</span></li>
-    <li><span class="pill sim">Later</span><b>Billing in the app <span class="pill new">New</span></b><span class="d">The Billing page is a placeholder. When payments land, that page is where they go.</span></li>
-    <li><span class="pill sim">Deploy</span><b>Twilio on staging, then production <span class="pill new">New</span></b><span class="d">Set the Twilio env, press Sync from Twilio once, and Configure the live number that was registered by hand. That only adds the status callback; its voice URL stays on the VPS.</span></li>
+    <li><span class="pill warn">Partly done</span><b>Composed settings on the phone <span class="pill new">Changed</span></b><span class="d">Done on the GPT-Live bridge (29 Sep). Left: the Realtime bridge still uses the rule book, and warm and waterfall transfers need a conference with hold music, whisper and “press 1”.</span></li>
+    <li><span class="pill sim">Spec</span><b>One prompt for every call</b><span class="d">Business calls now share the session builder on the GPT-Live bridge. A demo's prompt editor still shows the demo builder's text (5 FAQs, up to 140 characters each). This needs a spec.</span></li>
+    <li><span class="pill bad">Build</span><b>Steadier call audio <span class="pill new">New</span></b><span class="d">The P1 fixes from the Bland AI benchmark: empty the playback buffer only on a real barge-in, an adaptive lead buffer with Twilio <code>mark</code>, pacing on the Realtime engine.</span></li>
+    <li><span class="pill warn">Test</span><b>Guided setup with real owners <span class="pill new">New</span></b><span class="d">Try it on staging with an Onboarding account, then publish and place a real call to confirm the answers reach the phone.</span></li>
+    <li><span class="pill sim">Later</span><b>Billing in the app</b><span class="d">The Billing page is a placeholder. When payments land, that page is where they go.</span></li>
+    <li><span class="pill sim">Deploy</span><b>Twilio on staging, then production</b><span class="d">Set the Twilio env, press Sync from Twilio once, and Configure the live number that was registered by hand. That only adds the status callback; its voice URL stays on the VPS.</span></li>
   </ul>
 </section>
 
@@ -987,8 +922,10 @@ section[id]{scroll-margin-top:16px}
     <div><dt>Phase</dt><dd>Demo → Onboarding → Live. Stored as <code>users.status</code>: <code>demo</code>, <code>pre-production</code>, <code>production</code>.</dd></div>
     <div><dt>Draft and published</dt><dd>Settings edits are a draft. Test calls use the draft; the real phone uses only what was published.</dd></div>
     <div><dt>Call settings</dt><dd>Messages, transfers, links and appointment rules: the Calls group of the settings studio.</dd></div>
-    <div><dt>Composed session</dt><dd>The prompt and tools built from the settings for one call. Used by in-app and demo calls today.</dd></div>
-    <div><dt>Rule book</dt><dd>The phone agent's own Python prompt. Real calls use it until phase 3 moves them to composed sessions.</dd></div>
+    <div><dt>Composed session</dt><dd>The prompt and tools built from the settings for one call. Used by in-app and demo calls, and since 29 Sep by real calls on the GPT-Live bridge.</dd></div>
+    <div><dt>Rule book</dt><dd>The phone agent's own Python prompt. Still used by the Realtime bridge and by a business with no structured profile.</dd></div>
+    <div><dt>GPT-Live bridge, Realtime bridge</dt><dd>The two ways the phone agent can run a call. <code>OPENAI_LIVE_MODEL</code> set picks GPT-Live, which uses the composed session.</dd></div>
+    <div><dt>Guided setup</dt><dd>The AI consultant chat under Settings › Start here. It writes the call-settings draft and never publishes.</dd></div>
     <div><dt>Agent number</dt><dd>The Twilio number assigned to a business. Callers never dial it directly.</dd></div>
     <div><dt>Managed number</dt><dd>A number in our Twilio account, so the backend can check and repair its webhooks. A number registered by hand is not managed.</dd></div>
     <div><dt>Webhooks</dt><dd>The URLs Twilio calls for a number: voice, fallback and status. They decide where a ringing call goes.</dd></div>
@@ -1004,7 +941,7 @@ section[id]{scroll-margin-top:16px}
 </section>
 
 <footer>
-  Also in the same system: outbound lead callbacks (<code>openai-agent-app</code> poller) from the original intake flow. Sources: <code>HISTORY.md</code>, <code>TODO.md</code>, <code>docs/superpowers/specs/2026-09-27-phase-gates-design.md</code>, <code>docs/superpowers/specs/2026-09-28-twilio-numbers-forwarding-design.md</code>, the changelog for 0.0.10, and the code on branch Main-Hans at <code>71754a5</code>.
+  Also in the same system: outbound lead callbacks (<code>openai-agent-app</code> poller) from the original intake flow. Sources: <code>HISTORY.md</code>, <code>TODO.md</code>, <code>docs/superpowers/specs/2026-09-27-phase-gates-design.md</code>, <code>docs/superpowers/specs/2026-09-28-twilio-numbers-forwarding-design.md</code>, <code>reports/Bland ai 경쟁사 벤치마크.md</code>, the changelog for 0.0.11, and the code on branch Main-Hans at <code>e8e6d66</code>.
 </footer>
 </div>
 </body>
