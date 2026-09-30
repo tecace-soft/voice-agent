@@ -16,11 +16,13 @@ import {
   saveHouseRules,
   setWaterfallAllowed,
 } from "../api/backend";
-import type { AgentNumber, BehaviourDefault, BusinessProfile } from "../api/types";
+import type { AgentNumber, BehaviourDefault, BusinessProfile, Readiness } from "../api/types";
 import { accountErrorMessage } from "../auth";
 import type { SectionId } from "../routing";
 import { displayPhone, withDefaults, type CallSettings, type StoredCallSettings } from "./callSettings";
 import { SaveRow, SettingsShell, type Phase, type SettingsSection } from "./SettingsShell";
+import { useAutosave, type AutosaveView } from "./useAutosave";
+import { businessInfoProblem, faqsProblem } from "./sectionChecks";
 import { PublishControl, makeUpdater, type CallSettingsBinding } from "./sections/shared";
 import { TransferCallsSection } from "./sections/TransferCallsSection";
 import { AppointmentsSection } from "./sections/AppointmentsSection";
@@ -28,6 +30,7 @@ import { TextLinkSection } from "./sections/TextLinkSection";
 import { TakeMessageSection } from "./sections/TakeMessageSection";
 import { ForwardingSection } from "./sections/ForwardingSection";
 import { LaunchGuide } from "./sections/LaunchGuide";
+import { RequestGoLive } from "./sections/RequestGoLive";
 import { BusinessTestConsole, BusinessTestSection, useTestCalls } from "./sections/TestSection";
 import {
   AgentProfileSection,
@@ -43,7 +46,12 @@ import {
 //
 // The three call-settings sections save a DRAFT, published from the settings bar; callers keep the
 // published copy until it is pressed, and the test call beside the settings uses the draft.
-// Everything else saves straight through, as before.
+// Business information, Agent profile, FAQs and House rules save themselves a moment after typing
+// stops (useAutosave; Save now does it at once). They have no draft, so the pause, and holding back
+// a section that doesn't pass (a cleared business name), is what keeps half an edit from callers.
+// The prompt editor still saves on its button: saving it freezes the prompts as a hand edit.
+//
+// Mounted once per account (BusinessPage keys it by user id), so a draft never crosses accounts.
 
 type Props = {
   profile: BusinessProfile;
@@ -64,9 +72,19 @@ type Props = {
   phase?: Phase;
   /** A line across the top of the studio: the Go live checklist, a line that isn't answering yet. */
   notice?: ReactNode;
+  /** Onboarding: the Go live checklist and any go-live request (`GET /business/readiness`). */
+  readiness?: Readiness | null;
+  /** The business itself may request go live; an admin looking at its settings may not. */
+  canRequestLive?: boolean;
+  onReadinessChanged?: (next: Readiness) => void;
+  /** After a publish: the page re-reads the checklist ("Call settings are published"). */
+  onPublished?: () => void;
 };
 
-type Saving = "knowledge" | "faqs" | "agent" | "rules" | "prompts" | "rebuild" | null;
+/** The sections that save themselves. */
+type Autosaved = "knowledge" | "faqs" | "agent" | "rules";
+/** The saves still made on a button. */
+type Saving = "prompts" | "rebuild" | null;
 
 const NO_PROMPTS: CustomerPrompts = { live: "", backend: "", greeting: "", edited: false };
 
@@ -94,28 +112,18 @@ export function BusinessSettings(props: Props) {
   const savedPromptsRef = useRef(savedPrompts);
   const [previewVersion, setPreviewVersion] = useState(0);
   const [saving, setSaving] = useState<Saving>(null);
-  const [saved, setSaved] = useState<Saving>(null);
   const [error, setError] = useState<{ where: Saving; message: string } | null>(null);
   const [calls, setCalls] = useState<StoredCallSettings | null>(null);
   const [callsError, setCallsError] = useState<string | null>(null);
   const test = useTestCalls(userId);
 
-  // Drafts start over only when the account changes (an admin switching customer). A save in one
-  // section must not reset the others: each section takes its own saved value back in `run`, and
-  // every other section keeps whatever the person has typed but not saved yet.
-  const accountRef = useRef(profile.userId);
-  useEffect(() => {
-    if (accountRef.current === profile.userId) return;
-    accountRef.current = profile.userId;
-    setKnowledge(profile.profile);
-    setAgent(agentOf(profile));
-    setRules(profile.houseRules ?? "");
-    setPrompts(profile.prompts ?? NO_PROMPTS);
-    savedPromptsRef.current = profile.prompts ?? NO_PROMPTS;
-    setSavedPrompts(savedPromptsRef.current);
-    setSaved(null);
-    setError(null);
-  }, [profile]);
+  // The business profile as last saved from here. Business information and FAQs each send their own
+  // part laid over it, so it must be what the server holds NOW — taken from each save's answer, never
+  // from the page's props, which a slower re-read can bring back older than a save that just landed.
+  const serverProfile = useRef(profile.profile);
+  // Profile saves go one at a time, in order: two sections saving at once would each lay their part
+  // over the same old profile, and the later answer would undo the earlier section.
+  const profileQueue = useRef<Promise<unknown>>(Promise.resolve());
 
   // Call-settings saves are applied to the latest value and made one at a time (see makeUpdater).
   const userIdRef = useRef(userId);
@@ -150,18 +158,13 @@ export function BusinessSettings(props: Props) {
     loadCalls();
   }, [loadCalls]);
 
-  /** What a successful save of each section takes back from the saved row — and nothing else. */
-  function adopt(which: Exclude<Saving, null>, next: BusinessProfile) {
-    if (which === "knowledge") {
-      // Business information: everything but the questions, which keep their own draft.
-      setKnowledge((draft) => (next.profile ? { ...next.profile, faqs: draft?.faqs ?? next.profile.faqs } : draft));
-    } else if (which === "faqs") {
-      setKnowledge((draft) => (draft && next.profile ? { ...draft, faqs: next.profile.faqs } : draft));
-    } else if (which === "agent") {
-      setAgent(agentOf(next));
-    } else if (which === "rules") {
-      setRules(next.houseRules ?? "");
-    }
+  /**
+   * What a save takes back from the saved row. The sections that save themselves keep their own
+   * draft — the person may be typing into it while the save is on its way — so only the prompts
+   * follow.
+   */
+  function adopt(which: Autosaved | Exclude<Saving, null>, next: BusinessProfile) {
+    serverProfile.current = next.profile;
     // Every save answers with the stored prompts, and a knowledge, FAQ or agent save rebuilds them
     // when nobody edited them by hand. The editor follows — unless the person has typed into it
     // and not saved yet. Left showing the old text, "Save prompts" would freeze that old text as a
@@ -181,7 +184,6 @@ export function BusinessSettings(props: Props) {
   ) {
     setSaving(which);
     setError(null);
-    setSaved(null);
     // A save made of two requests reports the first as soon as it lands, so a failure in the second
     // leaves the page showing what really was saved.
     const partial = (next: BusinessProfile) => {
@@ -191,7 +193,6 @@ export function BusinessSettings(props: Props) {
     try {
       const { profile: next } = await action(partial);
       partial(next);
-      setSaved(which);
     } catch (e) {
       setError({ where: which, message: accountErrorMessage(e, failure) });
     } finally {
@@ -199,42 +200,102 @@ export function BusinessSettings(props: Props) {
     }
   }
 
-  const footer = (which: Exclude<Saving, null>, onSave: () => void, note?: string) => (
-    <>
-      {error?.where === which ? (
-        <p className="ta-label-1 text-destructive mt-4" role="alert">
-          {error.message}
-        </p>
-      ) : null}
-      <SaveRow
-        onSave={onSave}
-        saving={saving === which}
-        disabled={saving !== null}
-        saved={saved === which ? "Saved. This is what the assistant now uses." : null}
-        note={note}
-      />
-    </>
-  );
+  /** A self-saving section's save, queued behind any other profile save. Throws on a refusal. */
+  function persist(
+    which: Autosaved,
+    action: (saved: (next: BusinessProfile) => void) => Promise<{ profile: BusinessProfile }>,
+  ): Promise<void> {
+    const step = profileQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        // A save made of two requests reports the first as soon as it lands, so a failure in the
+        // second leaves the page showing what really was saved.
+        const partial = (next: BusinessProfile) => {
+          adopt(which, next);
+          props.onSaved(next);
+        };
+        const { profile: next } = await action(partial);
+        partial(next);
+      });
+    profileQueue.current = step;
+    return step;
+  }
 
-  // Business information and FAQs edit one profile, but each Save sends only its own part, laid over
-  // what is saved — so saving the questions never publishes half-finished business details.
-  const saveKnowledge = (which: "knowledge" | "faqs") => {
-    const saved = profile.profile;
-    if (!knowledge || !saved) return;
-    const body = which === "faqs" ? { ...saved, faqs: knowledge.faqs } : { ...knowledge, faqs: saved.faqs };
-    void run(which, () => saveBusinessKnowledge(body, userId));
-  };
+  // Business information and FAQs edit one profile, but each sends only its own part, laid over what
+  // is saved — so saving the questions never sends half-finished business details, and the reverse.
+  const saveKnowledge = (which: "knowledge" | "faqs") =>
+    persist(which, () => {
+      const saved = serverProfile.current;
+      if (!knowledge || !saved) return Promise.reject(new Error("There's nothing to save yet."));
+      const body = which === "faqs" ? { ...saved, faqs: knowledge.faqs } : { ...knowledge, faqs: saved.faqs };
+      return saveBusinessKnowledge(body, userId);
+    });
 
   const saveAgent = () =>
-    void run(
-      "agent",
-      async (saved) => {
-        saved((await saveAgentIdentity(agent.agentName.trim(), (agent.greeting ?? "").trim(), userId)).profile);
-        // Voice and language live with the prompts, which follow the new name and greeting too.
-        return saveBusinessPrompts({ voice: agent.voice, language: agent.language }, userId);
-      },
-      "The name and greeting may have saved, but the voice and language didn't. Try Save again.",
-    );
+    persist("agent", async (saved) => {
+      saved((await saveAgentIdentity(agent.agentName.trim(), (agent.greeting ?? "").trim(), userId)).profile);
+      // Voice and language live with the prompts, which follow the new name and greeting too.
+      try {
+        return await saveBusinessPrompts({ voice: agent.voice, language: agent.language }, userId);
+      } catch (e) {
+        throw new Error(
+          accountErrorMessage(e, "The name and greeting saved, but the voice and language didn't. Try again."),
+        );
+      }
+    });
+
+  const saveError = (e: unknown) => accountErrorMessage(e, "Couldn't save that. Nothing was changed.");
+  const knowledgeSave = useAutosave({
+    // Everything but the questions, which save on their own.
+    value: knowledge ? { ...knowledge, faqs: null } : null,
+    save: () => saveKnowledge("knowledge"),
+    validate: () => businessInfoProblem(knowledge),
+    errorMessage: saveError,
+  });
+  const faqsSave = useAutosave({
+    value: knowledge?.faqs ?? null,
+    save: () => saveKnowledge("faqs"),
+    validate: () => faqsProblem(knowledge),
+    errorMessage: saveError,
+  });
+  const agentSave = useAutosave({ value: agent, save: saveAgent, errorMessage: saveError });
+  const rulesSave = useAutosave({
+    value: rules,
+    save: () => persist("rules", () => saveHouseRules(rules.trim(), userId)),
+    errorMessage: saveError,
+  });
+
+  // Leaving a section, the tab going to the background, or anything that reloads these settings
+  // saves what is waiting first; closing the tab with something unsaved asks.
+  const autosaves = [knowledgeSave, faqsSave, agentSave, rulesSave];
+  const flushAll = () => Promise.all(autosaves.map((view) => view.flush())).then(() => undefined);
+  const flushRef = useRef(flushAll);
+  flushRef.current = flushAll;
+  const unsaved = autosaves.some((view) => view.dirty || view.status === "saving");
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved]);
+  useEffect(() => {
+    const hidden = () => {
+      if (document.visibilityState === "hidden") void flushRef.current();
+    };
+    document.addEventListener("visibilitychange", hidden);
+    return () => document.removeEventListener("visibilitychange", hidden);
+  }, []);
+  const openSection = (id: SectionId) => {
+    void flushAll();
+    props.onSection(id);
+  };
+
+  const footer = (view: AutosaveView, note?: string) => (
+    <SaveRow state={view} onSave={() => void view.flush()} note={note} />
+  );
 
   const bindingFor = (stored: StoredCallSettings): CallSettingsBinding => ({
     value: stored.draft,
@@ -252,6 +313,7 @@ export function BusinessSettings(props: Props) {
     const draft = withDefaults(updated.draft);
     latestCalls.current = draft;
     setCalls({ ...updated, draft });
+    props.onPublished?.();
   };
 
   const callsSection = (render: (binding: CallSettingsBinding) => ReactNode) => () =>
@@ -308,11 +370,11 @@ export function BusinessSettings(props: Props) {
         </p>
       </div>
       {props.needsReread || props.factsStale ? (
-        <Button onClick={props.onReread} disabled={props.rereading}>
+        <Button onClick={() => void flushAll().finally(props.onReread)} disabled={props.rereading}>
           {props.rereading ? "Reading it again…" : "Read my details again"}
         </Button>
       ) : null}
-      <Button variant="outline" onClick={props.onEditDescription}>
+      <Button variant="outline" onClick={() => void flushAll().finally(props.onEditDescription)}>
         Edit description
       </Button>
     </div>
@@ -328,7 +390,7 @@ export function BusinessSettings(props: Props) {
           profile={knowledge}
           onChange={setKnowledge}
           source={source}
-          footer={footer("knowledge", () => saveKnowledge("knowledge"))}
+          footer={footer(knowledgeSave)}
           promptsFrozen={savedPrompts.edited}
         />
       ),
@@ -340,7 +402,7 @@ export function BusinessSettings(props: Props) {
           value={agent}
           onChange={setAgent}
           businessName={profile.businessName ?? ""}
-          footer={footer("agent", saveAgent)}
+          footer={footer(agentSave)}
         />
       ),
     },
@@ -350,7 +412,7 @@ export function BusinessSettings(props: Props) {
         <FaqsSection
           profile={knowledge}
           onChange={setKnowledge}
-          footer={footer("faqs", () => saveKnowledge("faqs"))}
+          footer={footer(faqsSave)}
           promptsFrozen={savedPrompts.edited}
         />
       ),
@@ -391,15 +453,22 @@ export function BusinessSettings(props: Props) {
           standard={props.standard}
           houseRules={rules}
           onHouseRulesChange={setRules}
-          houseRulesFooter={footer("rules", () => void run("rules", () => saveHouseRules(rules.trim(), userId)))}
+          houseRulesFooter={footer(rulesSave)}
           prompts={prompts}
           onPromptsChange={setPrompts}
           rebuilding={saving === "rebuild"}
           onRebuild={() => void run("rebuild", () => saveBusinessPrompts({ rebuild: true }, userId))}
           promptsFooter={
-            <Button onClick={() => void run("prompts", () => saveBusinessPrompts({ prompts }, userId))} disabled={saving !== null}>
-              {saving === "prompts" ? "Saving" : "Save prompts"}
-            </Button>
+            <>
+              {error ? (
+                <p className="ta-label-1 text-destructive" role="alert">
+                  {error.message}
+                </p>
+              ) : null}
+              <Button onClick={() => void run("prompts", () => saveBusinessPrompts({ prompts }, userId))} disabled={saving !== null}>
+                {saving === "prompts" ? "Saving" : "Save prompts"}
+              </Button>
+            </>
           }
           loadPreview={(which) => getSessionPreview(which, userId)}
           promptsFrozen={savedPrompts.edited}
@@ -417,16 +486,18 @@ export function BusinessSettings(props: Props) {
           agentName={agent.agentName}
           agentNumber={props.number?.phoneE164 ?? null}
           questions={suggestedQuestions({ faqs: knowledge?.faqs ?? [] }, undefined, 3)}
-          checklist={[
-            { done: profile.isLive, label: "Business information is filled in", hint: "At least your name and what you do." },
-            { done: Boolean(props.number), label: "A phone number is assigned to your assistant", hint: "We assign it." },
-            {
-              done: Boolean(calls?.publishedAt) && !calls?.dirty,
-              label: "Transfers, links and messages are published",
-              hint: "Publish from any of those sections.",
-            },
-          ]}
-          onOpenSection={props.onSection}
+          readiness={props.readiness}
+          requestSlot={
+            props.readiness && phase === "onboarding" ? (
+              <RequestGoLive
+                readiness={props.readiness}
+                canRequest={Boolean(props.canRequestLive)}
+                onChanged={(next) => props.onReadinessChanged?.(next)}
+                variant="card"
+              />
+            ) : null
+          }
+          onOpenSection={openSection}
         />
       ),
     },
@@ -444,7 +515,7 @@ export function BusinessSettings(props: Props) {
     <SettingsShell
       sections={sections}
       active={props.section}
-      onSelect={props.onSection}
+      onSelect={openSection}
       phase={phase}
       asideTitle="Test call"
       asideBadge="Uses your draft"
@@ -472,7 +543,7 @@ export function BusinessSettings(props: Props) {
         calls && (PUBLISHED_SECTIONS.includes(current) || calls.dirty) ? (
           <PublishControl dirty={calls.dirty} publishedAt={calls.publishedAt} onPublish={publish} />
         ) : (
-          <span className="ta-caption-1 text-muted-foreground whitespace-nowrap">Each section saves on its own</span>
+          <span className="ta-caption-1 text-muted-foreground whitespace-nowrap">Changes save automatically</span>
         )
       }
     />

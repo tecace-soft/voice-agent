@@ -557,6 +557,72 @@ describe("readiness and Go live", () => {
     expect((await call("POST", `/auth/users/${dana.id}/go-live`, bearer(dana))).status).toBe(403);
   });
 
+  it("splits the list into the customer's part and the admin's", async () => {
+    const own = await call("GET", "/business/readiness", bearer(dana));
+    expect(own.body.customerReady).toBe(false);
+    expect(own.body.request).toBeNull();
+    expect(own.body.declined).toBeNull();
+    const owners = Object.fromEntries(own.body.items.map((item: any) => [item.id, item.owner]));
+    expect(owners.settings_published).toBe("customer");
+    expect(owners.number_assigned).toBe("admin");
+  });
+
+  it("will not take a go-live request until the customer's part is done", async () => {
+    const res = await call("POST", "/business/request-live", bearer(dana), { note: "Monday please" });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("not_ready");
+    expect(res.body.unmet).toEqual(["settings_published"]);
+  });
+
+  it("takes the request once they have published, and keeps the first time they asked", async () => {
+    const { publishCallSettings, saveCallSettingsDraft } = await import("../db/callSettings.js");
+    const { emptyCallSettings } = await import("../business/callSettings.js");
+    await saveCallSettingsDraft(dana.id, emptyCallSettings());
+    await publishCallSettings(dana.id, emptyCallSettings());
+
+    const first = await call("POST", "/business/request-live", bearer(dana), { note: "Monday please" });
+    expect(first.status).toBe(200);
+    expect(first.body.customerReady).toBe(true);
+    expect(first.body.ready).toBe(false);
+    expect(first.body.request.note).toBe("Monday please");
+
+    const again = await call("POST", "/business/request-live", bearer(dana), { note: "Or Tuesday" });
+    expect(again.body.request.requestedAt).toBe(first.body.request.requestedAt);
+    expect(again.body.request.note).toBe("Or Tuesday");
+
+    // The Accounts list and its badge read it off every account.
+    const record = await findUserById(dana.id);
+    const { toPublicUser } = await import("../db/users.js");
+    expect(toPublicUser(record!).liveRequest?.note).toBe("Or Tuesday");
+  });
+
+  it("is the customer's own request: an admin acting for them cannot send it", async () => {
+    const res = await call("POST", `/business/request-live?userId=${dana.id}`, ADMIN, {});
+    expect(res.status).toBe(403);
+  });
+
+  it("an admin can say not yet, once, with a note the customer sees", async () => {
+    expect((await call("POST", `/auth/users/${dana.id}/decline-live`, bearer(dana), {})).status).toBe(403);
+    const res = await call("POST", `/auth/users/${dana.id}/decline-live`, ADMIN, { note: "Transfers first" });
+    expect(res.status).toBe(200);
+    expect(res.body.user.liveRequest).toBeNull();
+
+    const own = await call("GET", "/business/readiness", bearer(dana));
+    expect(own.body.request).toBeNull();
+    expect(own.body.declined.note).toBe("Transfers first");
+
+    const twice = await call("POST", `/auth/users/${dana.id}/decline-live`, ADMIN, {});
+    expect(twice.status).toBe(409);
+    expect(twice.body.error).toBe("no_request");
+  });
+
+  it("asking again clears the not yet", async () => {
+    const res = await call("POST", "/business/request-live", bearer(dana), {});
+    expect(res.status).toBe(200);
+    expect(res.body.declined).toBeNull();
+    expect(res.body.request.note).toBeNull();
+  });
+
   it("keeps an onboarding customer's number off the phone line", async () => {
     const { createAgentNumber, assignAgentNumber } = await import("../db/agentNumbers.js");
     const number = await createAgentNumber({ phone: NUMBER, label: "Harbor" });
@@ -579,12 +645,23 @@ describe("readiness and Go live", () => {
     const harbor = (await call("GET", `/demo/customers/${RICH}`, ADMIN)).body.customer;
     expect(harbor.phase).toBe("production");
     expect(typeof harbor.liveAt).toBe("string");
+    // Going live answers the request.
+    expect(res.body.user.liveRequest).toBeNull();
+    const after = await call("GET", "/business/readiness", bearer(dana));
+    expect(after.body.request).toBeNull();
+    expect(after.body.declined).toBeNull();
 
     expect(await agentConfig()).toMatchObject({ assigned: true });
   });
 
   it("does not go live twice", async () => {
     const res = await call("POST", `/auth/users/${dana.id}/go-live`, ADMIN);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("not_onboarding");
+  });
+
+  it("a live account has nothing left to request", async () => {
+    const res = await call("POST", "/business/request-live", bearer(dana), {});
     expect(res.status).toBe(409);
     expect(res.body.error).toBe("not_onboarding");
   });

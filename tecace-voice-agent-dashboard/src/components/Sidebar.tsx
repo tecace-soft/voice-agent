@@ -139,6 +139,7 @@ export function Sidebar({
   user,
   onSignOut,
   setupRequests = 0,
+  liveRequests = 0,
   onChangePassword,
 }: {
   active: ViewId;
@@ -155,6 +156,8 @@ export function Sidebar({
   onSignOut: () => void;
   /** Setup requests waiting for an admin (Demo › Customers badge). */
   setupRequests?: number;
+  /** Go-live requests waiting for an admin (Accounts badge). */
+  liveRequests?: number;
   onChangePassword?: () => void;
 }) {
   return (
@@ -206,6 +209,9 @@ export function Sidebar({
                 <span className="nav-label">{item.label}</span>
                 {item.id === "failed" && failedCount > 0 && (
                   <span className="nav-count">{failedCount}</span>
+                )}
+                {item.id === "accounts" && liveRequests > 0 && (
+                  <span className="nav-count nav-count-info" title="Go live requests waiting">{liveRequests}</span>
                 )}
                 {item.id === "demoProspects" && setupRequests > 0 && (
                   <span className="nav-count nav-count-info" title="Setup requests waiting">{setupRequests}</span>

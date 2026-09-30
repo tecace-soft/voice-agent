@@ -13,6 +13,12 @@ Format:
 
 ---
 
+## 2026-09-29 11:50 · Hans · transcribe-backend, dashboard (Request go live; business settings autosave)
+- New `users` columns `live_requested_at`, `live_request_note`, `live_declined_at`, `live_decline_note` (additive, self-migrating). New routes: `POST /business/request-live {note?}` (the onboarding business itself; 409 `not_ready` until its own items are ticked, 403 for an admin) and `POST /auth/users/:id/decline-live {note?}` (admin "not yet"). Go live clears the request. Spec: `docs/superpowers/specs/2026-09-29-request-go-live-and-autosave-design.md`.
+- Additive fields: readiness items gain `owner: "customer"|"admin"`; `GET /business/readiness` gains `customerReady`, `request`, `declined`; `PublicUser` (every `/auth/*` user body) gains `liveRequest`. `Readiness`/`ReadinessItem` types moved to `src/api/types.ts` (re-exported from `api/backend.ts`) so the public page's shared settings can use them.
+- Dashboard: onboarding strip + Launch instructions "Your part / Our part" with **Request go live** (`settings/sections/RequestGoLive.tsx`); Accounts badge, row pill, **Not yet** in the stage panel.
+- ⚠ Business information, Agent profile, FAQs and House rules now **autosave** 1.5 s after typing stops (`settings/autosave.ts`, `useAutosave.ts`); the button is "Save now". These have no draft, so a live business's callers get an edit seconds after it's typed (an empty business name, or a question without its answer, is held back). Regression selectors: no more "Save" button in those sections; `business_tabs.py` and `accounts_lifecycle.py` updated, `fake_backend.py` has the new routes/fields.
+
 ## 2026-09-29 11:10 · Michael · transcribe-backend, openai-agent-app (real calls run on the composed session)
 - `GET /business/config?to=` gains `session` (null for a profile without a structured profile): `{live, backend, greetingLine, voice, language, tools, transfers:[{id,name,mode,numbers}], reachable, canBook, returnLeg:{live,backend,tools}}` from new `src/session/phone.ts` → `composeSession(channel:"phone")` on the PUBLISHED call settings. All existing flat fields are unchanged.
 - `composeSession` gains optional `canText` (false = no `send_link`, no links block) and `canTransfer` (false = nobody to reach; used for `returnLeg`, the leg after a transfer nobody answered).

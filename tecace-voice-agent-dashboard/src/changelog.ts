@@ -32,8 +32,21 @@ export const CHANGELOG: Release[] = [
   {
     version: "0.0.11",
     date: "2026-09-29",
-    title: "Links, Back and refresh land where you were",
+    title: "Request go live, settings that save as you type, and links that land where you were",
     items: [
+      {
+        kind: "new",
+        text: "Request go live: once your part of the checklist is done, ask us to switch your line on, with a note if you like. Launch instructions now shows your part and ours, and if we say not yet, you see why and can ask again.",
+      },
+      {
+        kind: "improved",
+        text: "Business information, Agent profile, FAQs and your own instructions save themselves a moment after you stop typing. Save now still saves at once, and a business name left empty isn't saved until you fill it in.",
+      },
+      {
+        kind: "new",
+        text: "Go live requests on Accounts: a count on the menu, a label on the account, and the business's note with Go live or Not yet in its stage panel.",
+        admin: true,
+      },
       {
         kind: "improved",
         text: "Real calls to your number now follow what you set up here, the same as a test call: your prompts and Custom training, knowledge, FAQs, instructions, greeting and voice, plus the transfers and message situations you published. Texting a link is test-call only for now.",

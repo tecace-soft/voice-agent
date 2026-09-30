@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TopbarEnd, useHasTopbar, useStudioChrome } from "../chrome";
+import type { AutosaveView } from "./useAutosave";
 import type { SectionId } from "../routing";
 
 // The receptionist's settings as a studio: a grouped menu, the open section, and the test console
@@ -407,25 +408,44 @@ export function SectionIntro({ children }: { children: ReactNode }) {
   return <p className="ta-body-2 text-muted-foreground mb-6 max-w-[62ch]">{children}</p>;
 }
 
-/** A save row for the sections that save themselves (a business). */
-export function SaveRow({
-  onSave,
-  saving,
-  saved,
-  disabled,
-  note,
-}: {
-  onSave: () => void;
-  saving: boolean;
-  saved?: string | null;
-  disabled?: boolean;
-  note?: string;
-}) {
+/**
+ * The foot of a section that saves itself (a business): where its autosave stands, and Save now —
+ * for whoever doesn't want to wait out the pause, and to retry a save that failed.
+ */
+export function SaveRow({ state, onSave, note }: { state: AutosaveView; onSave: () => void; note?: string }) {
+  const time = state.savedAt
+    ? new Date(state.savedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+    : null;
+  const line =
+    state.status === "saving"
+      ? { text: "Saving…", tone: "text-muted-foreground" }
+      : state.status === "pending"
+        ? { text: "Unsaved changes. Saving in a moment…", tone: "text-muted-foreground" }
+        : state.status === "invalid"
+          ? { text: `Not saved: ${state.message}`, tone: "text-warning" }
+          : state.status === "error"
+            ? { text: `Couldn't save: ${state.message}`, tone: "text-destructive" }
+            : state.status === "saved"
+              ? { text: `Saved at ${time}. This is what the assistant now uses.`, tone: "text-success" }
+              : { text: note ?? "Changes save automatically as you type.", tone: "text-muted-foreground" };
+  const failed = state.status === "error" || state.status === "invalid";
   return (
     <div className="bg-muted/40 mt-6 flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3">
-      <span className="ta-caption-1 text-muted-foreground flex-1">{saved ?? note ?? "Changes here reach callers as soon as you save."}</span>
-      <Button onClick={onSave} disabled={disabled || saving}>
-        {saving ? "Saving" : "Save"}
+      <span
+        className={`ta-caption-1 flex-1 ${line.tone}`}
+        role={failed ? "alert" : "status"}
+        aria-live="polite"
+        data-autosave={state.status}
+      >
+        {line.text}
+      </span>
+      <Button
+        variant={failed ? "default" : "outline"}
+        size="sm"
+        onClick={onSave}
+        disabled={!state.dirty || state.status === "saving"}
+      >
+        {state.status === "error" ? "Retry" : "Save now"}
       </Button>
     </div>
   );

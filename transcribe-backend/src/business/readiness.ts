@@ -24,12 +24,19 @@ export interface ReadinessItem {
   ok: boolean;
   /** A required item blocks Go live; the others are advice. */
   required: boolean;
+  /**
+   * Who ticks it: the customer from their settings, or an admin at Go live (the number, and Twilio
+   * reaching it). The customer may request go live once their own required items are ticked.
+   */
+  owner: "customer" | "admin";
   label: string;
   detail?: string;
 }
 
 export interface Readiness {
   ready: boolean;
+  /** Every required item the customer owns is ticked: they may request go live. */
+  customerReady: boolean;
   items: ReadinessItem[];
 }
 
@@ -68,18 +75,21 @@ export function evaluateReadiness({ profile, agentNumber, settings, number, twil
   const items: ReadinessItem[] = [
     {
       id: "business_info",
+      owner: "customer",
       ok: profile.isLive,
       required: true,
       label: "Business information is filled in",
     },
     {
       id: "settings_published",
+      owner: "customer",
       ok: published !== null,
       required: true,
       label: "Call settings are published",
     },
     {
       id: "number_assigned",
+      owner: "admin",
       ok: agentNumber !== null,
       required: true,
       label: "A phone number is assigned",
@@ -87,6 +97,7 @@ export function evaluateReadiness({ profile, agentNumber, settings, number, twil
     },
     {
       id: "published_matches_number",
+      owner: "admin",
       ok: matches,
       required: true,
       label: "Published settings work with that number",
@@ -96,13 +107,19 @@ export function evaluateReadiness({ profile, agentNumber, settings, number, twil
     ...(agentNumber ? [webhooksItem(number ?? null, Boolean(twilioConfigured))] : []),
     {
       id: "contact_number",
+      owner: "customer",
       ok: contact,
       required: false,
       label: "A number to reach the business is on file",
     },
   ];
 
-  return { ready: items.every((item) => item.ok || !item.required), items };
+  const ticked = (item: ReadinessItem) => item.ok || !item.required;
+  return {
+    ready: items.every(ticked),
+    customerReady: items.filter((item) => item.owner === "customer").every(ticked),
+    items,
+  };
 }
 
 // Does Twilio send this number's calls to the receptionist? Required only when this server can both
@@ -125,6 +142,7 @@ function webhooksItem(
   }
   return {
     id: "webhooks_configured",
+    owner: "admin",
     ok,
     required,
     label: "Calls to the number reach the receptionist",

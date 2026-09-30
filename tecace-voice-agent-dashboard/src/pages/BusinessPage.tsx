@@ -16,6 +16,7 @@ import type {
 import { accountErrorMessage } from "../auth";
 import { TopbarMain } from "../chrome";
 import { BusinessSettings } from "../settings/BusinessSettings";
+import { RequestGoLive } from "../settings/sections/RequestGoLive";
 import type { SectionId } from "../routing";
 import { IconAlert, IconChevronLeft, IconChevronRight, IconPhone } from "../icons";
 import { formatPhone } from "../lib";
@@ -467,26 +468,15 @@ export function BusinessPage({
 
   const statusNotice =
     onboarding && readiness ? (
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-2.5" role="status" aria-label="Go live checklist">
-        <span className="ta-caption-1">
-          {viewing ? "Being set up." : "You're being set up."} The line stays off until everything required is ticked
-          and {viewing ? "you switch it on from Accounts" : "we switch it on"}. Test calls work meanwhile.
-        </span>
-        <ul className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          {readiness.items.map((item) => (
-            <li
-              key={item.id}
-              className={`ta-caption-1 flex items-center gap-1 ${
-                item.ok ? "text-success" : item.required ? "text-destructive" : "text-warning"
-              }`}
-            >
-              <span aria-hidden>{item.ok ? "✓" : item.required ? "✕" : "!"}</span>
-              {item.label}
-              {!item.required && !item.ok ? " (recommended)" : ""}
-            </li>
-          ))}
-        </ul>
-      </div>
+      // Where the business stands on its way to a live line, and its Request go live — the same
+      // component as the foot of Launch instructions, so the two always agree.
+      <RequestGoLive
+        readiness={readiness}
+        canRequest={!isAdmin}
+        onChanged={setReadiness}
+        variant="strip"
+        onOpenChecklist={() => onSection?.("launch")}
+      />
     ) : state === "not-live" ? (
       <p className="bg-destructive/5 ta-caption-1 flex items-center gap-2 px-4 py-2.5" role="status">
         <IconAlert size={14} />
@@ -510,6 +500,9 @@ export function BusinessPage({
     <div className="tw">
       <TopbarMain>{header}</TopbarMain>
       <BusinessSettings
+        // One mount per account: an admin switching customer starts from that customer's settings,
+        // and a change still waiting to save goes to the account it was typed for.
+        key={profile.userId}
         profile={profile}
         number={number}
         standard={standard}
@@ -523,6 +516,10 @@ export function BusinessPage({
         section={section}
         onSection={(next) => onSection?.(next)}
         phase={onboarding ? "onboarding" : undefined}
+        readiness={onboarding ? readiness : null}
+        canRequestLive={!isAdmin}
+        onReadinessChanged={setReadiness}
+        onPublished={() => void load(true)}
         notice={
           welcomeLine || statusNotice ? (
             <>

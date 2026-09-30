@@ -11,7 +11,7 @@ import {
 } from "../db/users.js";
 import { OnboardError, approveOnboarding } from "../business/onboard.js";
 import { readinessFor } from "../db/readiness.js";
-import { markLive } from "../db/onboarding.js";
+import { declineLive, markLive, MAX_ONBOARDING_NOTE } from "../db/onboarding.js";
 
 // Where an account is in its life, and the one-way door between the demo and the product.
 //
@@ -227,4 +227,26 @@ export const lifecycle = new Elysia({ prefix: "/auth/users" })
       return { user: user ? toPublicUser(user) : null, readiness };
     },
     { params: t.Object({ id: t.String() }) },
+  )
+
+  // The admin's "not yet" to a go-live request, with a note the customer reads on their settings.
+  // Go live itself is the yes (it clears the request).
+  .post(
+    "/:id/decline-live",
+    async ({ body, headers, params, status }) => {
+      const caller = await authenticateAdmin(headers.authorization, NEEDS_ADMIN);
+      if ("denied" in caller) return status(caller.denied, caller.body);
+
+      const target = await findUserById(params.id);
+      if (!target) return status(404, { error: "not_found", message: "No such account." });
+      if (!(await declineLive(target.id, body?.note))) {
+        return status(409, { error: "no_request", message: "There's no go-live request to answer." });
+      }
+      const user = await findUserById(target.id);
+      return { user: user ? toPublicUser(user) : null };
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      body: t.Optional(t.Object({ note: t.Optional(t.String({ maxLength: MAX_ONBOARDING_NOTE })) })),
+    },
   );

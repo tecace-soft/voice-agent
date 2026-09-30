@@ -1,5 +1,6 @@
 import type {
   AccountStatus,
+  Readiness,
   AgentNumber,
   AvailableNumber,
   NumberSync,
@@ -262,16 +263,9 @@ export function promoteAccount(id: string): Promise<{ user: AuthUser; profile: u
   return request<{ user: AuthUser; profile: unknown }>("POST", `/auth/users/${id}/promote`, { body: {} });
 }
 
-/** One line of the Go live checklist (transcribe-backend `business/readiness.ts`). */
-export type ReadinessItem = {
-  id: string;
-  ok: boolean;
-  /** A required item blocks Go live; the others are advice. */
-  required: boolean;
-  label: string;
-  detail?: string;
-};
-export type Readiness = { status: AccountStatus; ready: boolean; items: ReadinessItem[] };
+// The Go live checklist's shapes live in ./types, where the public demo page's shared settings
+// screens (Launch instructions) can read them without importing this module.
+export type { Readiness, ReadinessItem } from "./types";
 
 /** Is the line ready to be switched on? Your own, or (admin) another account's by id. */
 export function getReadiness(userId?: string): Promise<Readiness> {
@@ -284,6 +278,19 @@ export function getReadiness(userId?: string): Promise<Readiness> {
  */
 export function goLiveAccount(id: string): Promise<{ user: AuthUser }> {
   return request<{ user: AuthUser }>("POST", `/auth/users/${id}/go-live`, { body: {} });
+}
+
+/**
+ * The business's own "my part is done, switch my line on". Refused (409) until every item it owns is
+ * ticked; answers with the readiness list, request included.
+ */
+export function requestGoLive(note?: string): Promise<Readiness> {
+  return request<Readiness>("POST", "/business/request-live", { body: note ? { note } : {} });
+}
+
+/** Admin: "not yet" to a go-live request, with a note the business sees. */
+export function declineGoLive(id: string, note?: string): Promise<{ user: AuthUser }> {
+  return request<{ user: AuthUser }>("POST", `/auth/users/${id}/decline-live`, { body: note ? { note } : {} });
 }
 
 // ---- feedback ----

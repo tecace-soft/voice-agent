@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { countOpenFeedback, countSetupRequests, countUnseenFailures, getTranscribeStats } from "./api/backend";
+import {
+  countOpenFeedback,
+  countSetupRequests,
+  countUnseenFailures,
+  getTranscribeStats,
+  listAccounts,
+} from "./api/backend";
 import type { AuthUser, MailboxScope, TranscribeStats } from "./api/types";
 import { useAuth } from "./auth";
 import { ChromeContext } from "./chrome";
@@ -196,12 +202,19 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   const [unseenFailures, setUnseenFailures] = useState(0);
   // Setup requests waiting for an answer (Demo › Customers badge). Admins only.
   const [setupRequests, setSetupRequests] = useState(0);
+  // Go-live requests waiting for an answer (Accounts badge). Admins only.
+  const [liveRequests, setLiveRequests] = useState(0);
   const [passwordOpen, setPasswordOpen] = useState(false);
   useEffect(() => {
     if (!isAdmin) return;
     let active = true;
     countSetupRequests()
       .then((n) => active && setSetupRequests(n))
+      .catch(() => {
+        /* a badge is a nicety */
+      });
+    listAccounts()
+      .then((all) => active && setLiveRequests(all.filter((u) => u.status === "pre-production" && u.liveRequest).length))
       .catch(() => {
         /* a badge is a nicety */
       });
@@ -285,6 +298,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
         user={user}
         onSignOut={onSignOut}
         setupRequests={setupRequests}
+        liveRequests={liveRequests}
         onChangePassword={() => setPasswordOpen(true)}
       />
       {passwordOpen ? <ChangePasswordDialog onClose={() => setPasswordOpen(false)} /> : null}
