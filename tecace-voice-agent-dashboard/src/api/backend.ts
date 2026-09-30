@@ -14,6 +14,8 @@ import type {
   DemoBusinessProfile,
   PollerHeartbeat,
   SessionPreview,
+  SetupStateResponse,
+  SetupTurnResponse,
   TestCallsResponse,
   TestUsage,
   TranscribeFailure,
@@ -561,6 +563,21 @@ export function setWaterfallAllowed(userId: string, allowed: boolean): Promise<S
   return request<StoredCallSettings>("PUT", `/business/call-settings/waterfall${asUser(userId)}`, {
     body: { allowed },
   });
+}
+
+// ---- guided setup: the consultant that fills the call-settings draft by interview ----
+
+/** The interview so far, the draft it writes into, and whether this account may use it. */
+export function getSetup(userId?: string): Promise<SetupStateResponse> {
+  return get<SetupStateResponse>(`/business/setup${asUser(userId)}`);
+}
+/** One turn. "" starts a session (the consultant's opening); the answer carries the updated draft. */
+export function sendSetupTurn(message: string, userId?: string): Promise<SetupTurnResponse> {
+  return request<SetupTurnResponse>("POST", `/business/setup/turn${asUser(userId)}`, { body: { message } });
+}
+/** End the interview. The draft keeps whatever the consultant already wrote. */
+export function resetSetup(userId?: string): Promise<{ session: null }> {
+  return request<{ session: null }>("POST", `/business/setup/reset${asUser(userId)}`, { body: {} });
 }
 
 /**

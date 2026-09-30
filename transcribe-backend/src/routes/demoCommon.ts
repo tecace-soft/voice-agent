@@ -42,7 +42,8 @@ const RATE_WINDOW_MS = 60_000;
  */
 const recentByIp = new Map<string, number[]>();
 
-export function rateLimited(key: string): boolean {
+/** `limit` is per minute; a caller with cheaper or chattier requests (the setup chat) passes its own. */
+export function rateLimited(key: string, limit = RATE_LIMIT): boolean {
   const now = Date.now();
   const hits = (recentByIp.get(key) ?? []).filter((at) => now - at < RATE_WINDOW_MS);
   hits.push(now);
@@ -55,7 +56,7 @@ export function rateLimited(key: string): boolean {
     }
   }
 
-  return hits.length > RATE_LIMIT;
+  return hits.length > limit;
 }
 
 /** The promo read this off the `Request`; Elysia has already parsed the headers. */

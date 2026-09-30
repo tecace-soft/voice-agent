@@ -32,8 +32,21 @@ export const CHANGELOG: Release[] = [
   {
     version: "0.0.11",
     date: "2026-09-29",
-    title: "Links, Back and refresh land where you were",
+    title: "Guided setup; links, Back and refresh land where you were",
     items: [
+      {
+        kind: "new",
+        text: "Guided setup: a consultant asks you about transfers, messages and appointments and fills in your settings as you answer. A board beside the chat shows what's set up so far, with Edit links into each section. Everything lands in your draft, so you can try it on a test call and publish when you're happy.",
+      },
+      {
+        kind: "new",
+        text: "While your business is being set up, the Business page offers the guided interview first.",
+      },
+      {
+        kind: "improved",
+        text: "Customers: built for hundreds of customers — phase tabs with counts, a category filter, a created date, sorting by any column, and pages sized to fit the screen (or 25 / 50 / 100 per page). The list uses the full width and never scrolls sideways.",
+        admin: true,
+      },
       {
         kind: "improved",
         text: "Real calls to your number now follow what you set up here, the same as a test call: your prompts and Custom training, knowledge, FAQs, instructions, greeting and voice, plus the transfers and message situations you published. Texting a link is test-call only for now.",

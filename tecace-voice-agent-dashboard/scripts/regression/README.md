@@ -3,7 +3,8 @@
 Three checks over one fake backend. `compare.py` proves a change to this app left the transcribe
 screens exactly as they were, `tw_probe.py` that Tailwind stays inside `.tw`, and `demos_e2e.py`
 that the Demo tabs still work — all three against `fake_backend.py`, which answers every route
-the dashboard calls: sign-in, `/transcribe/*`, `/business/*`, `/calls`, `/usage/*`, `/feedback`,
+the dashboard calls: sign-in, `/transcribe/*`, `/business/*` (including the guided setup's
+`/business/setup*`), `/calls`, `/usage/*`, `/feedback`,
 `/api-keys` and the Demo tabs' `/demo/*` — including the test call's `POST /demo/session` and
 `POST /demo/calls/<callId>`. It is stateless and deterministic: a write answers as if it worked and
 changes nothing, so every run starts from the same records. The one thing it has to compute is the
@@ -288,6 +289,37 @@ gets an "Assign a number" group in its Go live checklist — the pool without th
 "Buy a new number" button — and assigning from it posts `/business/numbers/:id/assign` for that account,
 after which the checklist shows the number, the webhook item, and Go live opens.
 
+## guided_setup.py
+
+    python scripts/regression/guided_setup.py
+
+The Business page's Guided setup (`#/business/guided-setup`): the consultant interview with the
+settings board in the side panel. It walks the "Set up with a guided interview" line on the Business
+page (one `GET /business/setup`, nothing to `/demo/`), the twelve-item menu, the board's empty
+state, Start (`POST /business/setup/turn` with `{"message": ""}`, the opening question, the composer
+focused), a turn held in flight with `page.route` (composer and Send disabled, "The consultant is
+thinking", the optimistic "You" bubble), the reply (its "Added transfer: Sam" chip, the Transfers
+topic done, the board card `transfer:setup-t1` with its number, hours and what it asks first, lit
+for two seconds then not, the "Draft — not published yet" badge, the top bar's Publish enabled), the
+board's Edit opening the real Transfers section showing the same draft with no
+`PUT /business/call-settings` sent, the conversation surviving the trip back, the test console behind
+the board and back, the unavailable state (a fulfilled `available: false / no_openai_key`), Start
+over (`POST /business/setup/reset`, the empty state back, the draft kept, the line offered again)
+and the `.tw` boundary.
+
+Two things are staged:
+
+- **`USER` promoted to pre-production, in-process**, before the fake starts
+  (`fake_backend.USER["status"] = "pre-production"`), so readiness says the account is being set up
+  and the page offers the interview — the line is only shown then.
+- **The scripted consultant** (`fake_backend.setup_turn`, state in `SETUP`): `""` opens with the
+  transfers question; the first answer adds transfer `setup-t1` to `CALL_SETTINGS["draft"]` (named
+  after the first capitalised word, on the number it finds, warm, weekdays 9–5) and marks Transfers
+  done; an answer starting "skip" skips the next topic; any other answer completes it; with no topic
+  left the session finishes. A demo-stage account reads `available: false / demo_stage`.
+
+Ports 8895 (fake backend) and 4186 (static server).
+
 ## Serving the build: MIME types are stated, not asked for
 
 The browser scripts serve their build from Python's `http.server`, which asks the OS for MIME types. A
@@ -305,8 +337,8 @@ differs. Override it for the run:
 
     BACKEND_URL=http://127.0.0.1:8899 python scripts/regression/compare.py
 
-(`demo_customer.py`, `accounts_lifecycle.py`, `business_tabs.py` and `public_page.py` set their own
-`BACKEND_URL` and are not affected.)
+(`demo_customer.py`, `accounts_lifecycle.py`, `business_tabs.py`, `guided_setup.py` and
+`public_page.py` set their own `BACKEND_URL` and are not affected.)
 
 ## appointments.py
 

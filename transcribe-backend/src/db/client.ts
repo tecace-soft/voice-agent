@@ -829,6 +829,35 @@ export async function initDb(): Promise<void> {
     )
   `;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_tokens_hash ON auth_tokens (token_hash)`;
+
+  // The guided setup interview (src/setup): one consultant chat per business at a time. `items` is
+  // the model's own transcript (Responses input items, tool calls included); `messages` is what the
+  // customer saw. Both are kept because the changes shown under a reply are known only when it was
+  // made. Nothing here is a setting — every write lands in business_call_settings.draft — so a row
+  // can be discarded (Reset) without losing anything the phone line will use. CASCADE like the profile.
+  await sql`
+    CREATE TABLE IF NOT EXISTS business_setup_sessions (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status      TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'finished')),
+      model       TEXT NOT NULL,
+      items       JSONB NOT NULL DEFAULT '[]'::jsonb,
+      messages    JSONB NOT NULL DEFAULT '[]'::jsonb,
+      topics      JSONB NOT NULL DEFAULT '{"transfers":"pending","messages":"pending","appointments":"pending"}'::jsonb,
+      turn_count  INTEGER NOT NULL DEFAULT 0,
+      -- A turn in flight. Serverless can't hold a lock across the model call, so the row says until
+      -- when it is taken; a second Send in that window is refused rather than run against the same draft.
+      busy_until  TIMESTAMPTZ,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      finished_at TIMESTAMPTZ
+    )
+  `;
+  // Reset (Start over) hides a conversation instead of deleting it: the daily turn cap counts user
+  // messages from these rows, so deleting them would hand back a fresh allowance.
+  await sql`ALTER TABLE business_setup_sessions ADD COLUMN IF NOT EXISTS discarded_at TIMESTAMPTZ`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS business_setup_sessions_one_active ON business_setup_sessions (user_id) WHERE status = 'active'`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_business_setup_sessions_user ON business_setup_sessions (user_id, created_at DESC)`;
 }
 
 // Ensure the schema is ready before serving requests, at most once per process (cached promise).
@@ -884,6 +913,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT research_started_at FROM signup_requests LIMIT 1`;
     await sql`SELECT 1 FROM auth_tokens LIMIT 1`;
     await sql`SELECT twilio_sid, webhook_state, released_at FROM agent_numbers LIMIT 1`;
+    await sql`SELECT busy_until, discarded_at FROM business_setup_sessions LIMIT 1`;
     const [guard] = await sql`SELECT 1 FROM pg_trigger WHERE tgname = 'demo_customers_code_guard'`;
     if (!guard) throw new Error("customer codes not converted");
     return;

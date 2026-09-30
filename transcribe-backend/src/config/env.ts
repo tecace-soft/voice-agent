@@ -58,11 +58,27 @@ const openaiApiKey = process.env.OPENAI_API_KEY?.trim() || undefined;
 // `src/demo/researchRunner.ts`); an unset or unrecognised value lands on it, and "cli" or
 // "anthropic" is answered with an error naming the branch rather than silently ignored.
 const researchProvider = process.env.RESEARCH_PROVIDER?.trim().toLowerCase() ?? "";
-// The cheaper model by default: research and the post-call review are analysis, not a live call.
-const researchOpenaiModel = process.env.RESEARCH_OPENAI_MODEL?.trim() || "gpt-5.6-luna";
+// The cheaper model by default: research, the post-call review and the setup interview are analysis,
+// not a live call. One constant so they share a default by construction.
+const analysisModelDefault = "gpt-5.6-luna";
+const researchOpenaiModel = process.env.RESEARCH_OPENAI_MODEL?.trim() || analysisModelDefault;
 // How much of the web the search tool reads back: low | medium | high. Anything else is medium,
 // which is the promo's default and what a research run is tuned for.
 const researchSearchContext = process.env.RESEARCH_SEARCH_CONTEXT?.trim().toLowerCase() ?? "";
+
+// The guided setup interview (src/setup): a consultant chat that writes a business's call-settings
+// DRAFT through function tools on the same Responses API, gated by the same OPENAI_API_KEY as test
+// calls and research. With no key, GET /business/setup answers available:false and a turn is refused.
+const setupAssistantModel = process.env.SETUP_ASSISTANT_MODEL?.trim() || analysisModelDefault;
+const setupMaxTurns = Number(process.env.SETUP_MAX_TURNS ?? 80);
+if (!Number.isInteger(setupMaxTurns) || setupMaxTurns < 1 || setupMaxTurns > 1000) {
+  throw new Error("SETUP_MAX_TURNS must be a whole number between 1 and 1000.");
+}
+// Blank falls back to the default, not to 0 — 0 means "no cap", so an empty line must not lift it.
+const setupDailyTurnCap = Number(process.env.SETUP_DAILY_TURN_CAP?.trim() || 150);
+if (!Number.isInteger(setupDailyTurnCap) || setupDailyTurnCap < 0) {
+  throw new Error("SETUP_DAILY_TURN_CAP must be a non-negative whole number.");
+}
 
 const nodeEnv = process.env.NODE_ENV ?? "development";
 
@@ -234,10 +250,13 @@ export const env = {
   openaiBaseUrl: (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, ""),
   openaiLiveModel: process.env.OPENAI_LIVE_MODEL || "gpt-live-1",
   openaiBackendModel: process.env.OPENAI_BACKEND_MODEL || "gpt-5.6-terra",
-  callReviewModel: process.env.CALL_REVIEW_MODEL || "gpt-5.6-luna",
+  callReviewModel: process.env.CALL_REVIEW_MODEL || analysisModelDefault,
   researchProvider,
   researchOpenaiModel,
   researchSearchContext,
+  setupAssistantModel,
+  setupMaxTurns,
+  setupDailyTurnCap,
   // A browser that sends no timezone, or a value that is not one.
   defaultTimezone: process.env.DEFAULT_TIMEZONE || "America/Los_Angeles",
   // Seconds of in-app test calling a business gets per calendar month, unless an admin sets its own.

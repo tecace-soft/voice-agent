@@ -51,6 +51,8 @@ type Props = {
   footer?: ReactNode;
   /** Above the call row: the month's minutes being used up. */
   notice?: ReactNode;
+  /** Told whether a call is under way, so a panel hidden beside this one can say so. */
+  onCallState?: (active: boolean) => void;
 };
 
 type Tab = "call" | "example" | "events";
@@ -70,6 +72,7 @@ export function TestCallPanel({
   example,
   footer,
   notice,
+  onCallState,
 }: Props) {
   const sim = useCallSimulator(settings, businessName, businessPhone, bookingTool);
   const call = useLiveCall(customerId, callSound, {
@@ -103,6 +106,9 @@ export function TestCallPanel({
   const pending = sim.pending;
   const inCall = IN_CALL.has(call.state);
   const busy = call.state === "connecting" || call.state === "ending";
+  useEffect(() => {
+    onCallState?.(inCall || busy);
+  }, [inCall, busy, onCallState]);
   const over = call.state === "ended" || call.state === "error";
   const duration = call.state === "ended" ? call.usageSec || call.elapsedSec : call.elapsedSec;
   const events = sim.events.map(eventLine).filter((line): line is string => Boolean(line));

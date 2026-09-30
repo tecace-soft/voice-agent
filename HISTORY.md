@@ -13,6 +13,35 @@ Format:
 
 ---
 
+## 2026-09-30 09:40 · Michael · workspace (merge Main-Hans into master)
+- Merged Main-Hans @ ed71a8a (guided setup interview, Customers list kit, docs) with master's navigation (`?customer=`), pre-production calls and Agent numbers changes. Conflicts were only the HISTORY.md order and the `routing.test.ts` import line (now imports both `SECTION_IDS` and `nextRoute`).
+- Verified on the merged tree: dashboard typecheck + vitest 366/366, transcribe-backend typecheck + `bun test` 1011/1011, `compare.py` IDENTICAL, all 10 other regression scripts pass (incl. `guided_setup.py`, `numbers_twilio.py`).
+- ⚠ Deploying transcribe-backend creates `business_setup_sessions`; `SETUP_*` env is optional.
+
+## 2026-09-30 · bottomup32 · docs (customer journey page, 30 Sep edition)
+- `docs/customer-journey.html` (published: https://claude.ai/artifact/DM1JiVC95iN2HZoukLWxoS) now describes 0.0.11. "What changed since 29 Sep" draws guided setup (the consultant writes only the draft), real calls on the composed session (GPT-Live bridge vs Realtime bridge, with a before/now transfer table), the Customers list for hundreds, and the Bland AI audio findings; violet New/Changed tags moved to today's changes in the system map, swimlane, live call, "where it works" table and "Still open".
+- ⚠ The Korean copy (`docs/customer-journey.ko.html`, https://claude.ai/artifact/3eiJvCTMR9XUYtaGDEjEaE) is still the 29 Sep edition.
+
+## 2026-09-30 · bottomup32 · docs (Bland AI competitor benchmark)
+- New `reports/Bland ai 경쟁사 벤치마크.md` (Korean) with its source notes in `research_notes/Bland ai 경쟁사 벤치마크/`: Bland's call API/V2 Agents vs ours, why their audio is steadier, and the P1 fixes for our choppy audio (reservoir drop on caller transcripts, adaptive lead buffer + Twilio `mark`, Realtime pacing) with `openai-agent-app` file:line references.
+
+## 2026-09-30 00:08 · Claude · transcribe-backend, dashboard (guided setup: final review fixes)
+- ⚠ DB: `business_setup_sessions` gains `discarded_at`; Reset now soft-discards (status finished + `discarded_at`) instead of deleting, so the daily turn cap survives Start over. `POST /business/setup/reset` still answers `{session:null}`. `SETUP_DAILY_TURN_CAP=` (blank) now means the default 150, not 0 (no cap).
+- Setup turns auto-finish once every topic is done/skipped (the finished panel no longer depends on the model calling `finish_interview`). Failed turns resync the client from `GET /business/setup` (the board and chat show what the server kept; the composer doesn't hand back a message the transcript already holds). Composer capped at 4000 chars like the backend.
+- ⚠ Interview output reaches live calls only when openai-agent-app runs the composed GPT-Live session (`OPENAI_LIVE_MODEL` set); on the Realtime bridge published scenarios are ignored on the phone.
+
+## 2026-09-29 23:46 · Claude · dashboard (Guided setup: consultant interview + live settings board)
+- New settings section `guided-setup` (`#/business/guided-setup`, menu group "Start here"): a text chat with the AI consultant over `GET /business/setup`, `POST /business/setup/turn {message}` and `POST /business/setup/reset` (all with `?userId=` for an admin), and a settings board in the console pane (transfers, messages, appointments, time zone from the draft; cards a turn changed light up for 2 s; Edit opens the real section). Each turn's `draft`/`dirty` is adopted into `BusinessSettings` (`latestCalls` + `calls`) and the turn is chained on the call-settings save queue, so the sections show the same draft and a section save can't overwrite the consultant's write. New: `src/settings/setup/{setupState,boardCopy,useGuidedSetup}.ts`, `setup/SetupBoard.tsx`, `sections/GuidedSetupSection.tsx`; `TestCallPanel` gains optional `onCallState`; `BusinessSettings` gains `onSetupState`; pre-production accounts get a "Set up with a guided interview" line on the Business page until a session exists. Changelog 0.0.11 gains the items (same-day entry).
+- ⚠ `SECTION_IDS` gained `guided-setup` (`SECTION_META` is a `Record<SectionId, …>`); anything that enumerates the menu (`business_tabs.py` `MENU`, now 12) must include it. `DemoSettings`/`PublicSettings` don't render it and the shell filters it out there.
+- ⚠ `fake_backend.py` fakes `/business/setup*` statefully (`SETUP`): the scripted consultant's first answer adds transfer `setup-t1` to `CALL_SETTINGS["draft"]` and marks Transfers done; "skip…" skips the next topic; `available:false / demo_stage` for a demo-status account. New `scripts/regression/guided_setup.py` (promotes `USER` to pre-production in-process for the CTA check).
+- ⚠ Backend contract the client relies on: `reset` leaves the draft untouched (the UI says so), `{message: ""}` starts, `{error, message}` bodies are shown verbatim under the chat.
+
+## 2026-09-29 23:14 · Claude · transcribe-backend (guided setup interview — backend)
+- New `src/setup/` (types, capabilities, llm, tools, prompt, orchestrator) + `src/routes/setup.ts`: `GET /business/setup?userId=` → `{session|null, draft, dirty, available, unavailableReason?: "no_openai_key"|"demo_stage"|"no_profile"}`; `POST /business/setup/turn {message}` (`""` opens) → `{session, reply, draft, dirty}`, errors `{error, message}` with `demo_read_only` 403, `rate_limited` 429 (12/min per account), `no_openai_key` 503, `daily_cap` 429, `empty_message` 400, `turn_cap` 429, `turn_in_progress` 409, `no_profile` 409, `not_found` 404 (admin `?userId=` of no account), `openai` (OpenAI's status, but 401/403 → 502 so the dashboard does not sign the user out); `POST /business/setup/reset` → `{session:null}`. It writes only `business_call_settings.draft`, through `validateCallSettings`, and never publishes.
+- `business/callSettings.ts` exports `newScenarioId()`; `routes/demoCommon.ts` `rateLimited(key, limit?)` takes an optional per-minute limit (default 5 unchanged).
+- ⚠ DB: new table `business_setup_sessions` (self-migrates; probe in `migrateIfNeeded`); Reset deletes an account's rows; user delete cascades.
+- ⚠ Env (optional): `SETUP_ASSISTANT_MODEL` (default `gpt-5.6-luna`), `SETUP_MAX_TURNS` (80), `SETUP_DAILY_TURN_CAP` (150/day, admins exempt); same `OPENAI_API_KEY` gate. ⚠ The consultant tells customers the phone truth from `src/setup/capabilities.ts` (one cold-dialled number per transfer, no keypress accept, no hold music, no waterfall, no SMS, no after-hours mode, booking = new appointments only with a connected calendar) — update the manifest in the same commit as any phone-agent capability change.
+
 ## 2026-09-29 16:40 · Michael · dashboard (Agent numbers: register-by-hand card removed)
 - `src/pages/NumbersPage.tsx`: the "Agent phone numbers" card (intro + "Register a number by hand" form) is gone; numbers come from Twilio sync/buy only. "Sync from Twilio" and the page's setup/error/status messages moved into the Numbers table card's toolbar (`.number-toolbar-actions`; `.number-form` CSS removed).
 - The dashboard no longer calls `registerAgentNumber` / `POST /business/numbers`; the backend route and the client function are untouched. Existing hand-registered rows still show and can still be deleted.
@@ -37,6 +66,11 @@ Format:
 - Dashboard Launch instructions: onboarding copy says calls to the number are answered with what's published (was "Test calls only… line stays off until go live").
 - ⚠ Deploy transcribe-backend (production) for this to take effect; the forwarded calls to +1 425-598-7522 (Hans, pre-production) went neutral because of this gate.
 
+## 2026-09-29 · bottomup32 · dashboard (Customers list for hundreds of rows; list-screen kit)
+- Customers: phase tabs + counts, category filter, created date, sort select + sortable headers, full width (`App.tsx` `WIDE_VIEWS` → `.content-wide`), `table-fixed` so it never scrolls sideways, pages sized to the window (Fit to screen / 25 / 50 / 100).
+- New shared kit `src/demos/components/ui/data-table.tsx`; the pattern is written down in `tecace-voice-agent-dashboard/CLAUDE.md` "List screens" — ⚠ build new list screens with it.
+- Regression: `demos_e2e.py` expects Cedar's link as "Cedar Bakery" (business name fallback, was "Unnamed"). All 9 pass, compare IDENTICAL, vitest 317/317. Changelog 0.0.11 item added.
+
 ## 2026-09-29 11:10 · Michael · transcribe-backend, openai-agent-app (real calls run on the composed session)
 - `GET /business/config?to=` gains `session` (null for a profile without a structured profile): `{live, backend, greetingLine, voice, language, tools, transfers:[{id,name,mode,numbers}], reachable, canBook, returnLeg:{live,backend,tools}}` from new `src/session/phone.ts` → `composeSession(channel:"phone")` on the PUBLISHED call settings. All existing flat fields are unchanged.
 - `composeSession` gains optional `canText` (false = no `send_link`, no links block) and `canTransfer` (false = nobody to reach; used for `returnLeg`, the leg after a transfer nobody answered).
@@ -58,6 +92,11 @@ Format:
 - Demo-stage accounts: the URL is normalised to their own `#/demos/prospects/<businessId>` (replace, not push); the sidebar's Version · Changelog now opens `#/changelog` for them.
 - `ProspectScreen.tsx` (ported) takes `tab`/`onTab`; logged in `src/demos/PORTING.md`. Version 0.0.11.
 - ⚠ Anyone linking to a prospect tab: use `demoHref`/`formatHash` with `tab`, not a hand-written hash.
+
+## 2026-09-29 08:15 · bottomup32 · workspace (customer journey page, 29 Sep edition)
+- [docs/customer-journey.html](docs/customer-journey.html) and [docs/customer-journey.ko.html](docs/customer-journey.ko.html) now describe 0.0.10 (Main-Hans @ 71754a5). New section "What changed since 28 Sep": the life of a Twilio number and its webhooks, a demo customer's screens before and after, prompts following saves, the transfer audit as a table, models, and notes for developers. The system map, swimlane, gates and live-call drawings carry violet New / Changed tags.
+- Published in place, same links: English https://claude.ai/artifact/DM1JiVC95iN2HZoukLWxoS, Korean https://claude.ai/artifact/3eiJvCTMR9XUYtaGDEjEaE.
+- ⚠ Hans: the page states the Twilio phase 2 and 3 plan from `docs/superpowers/specs/2026-09-28-twilio-numbers-forwarding-design.md`. If the plan moved, say so and the page gets corrected.
 
 ## 2026-09-28 22:50 · bottomup32 · dashboard (Activity as a table; regression harness)
 - `demos/components/admin/ActivityTab.tsx` renders calls as a table + "Call details" sheet, with calls-per-day, mood breakdown and "What to fix" above it (operator); the demo customer's Call activity gets the mood bar + table. It now lays out its own cards — `ProspectScreen` / `MyReceptionistScreen` no longer wrap it.

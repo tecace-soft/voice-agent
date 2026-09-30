@@ -54,6 +54,7 @@ const DEFAULT_VIEW: ViewId = "overview";
  */
 export const SECTION_IDS = [
   "business-info",
+  "guided-setup",
   "agent-profile",
   "faqs",
   "take-message",

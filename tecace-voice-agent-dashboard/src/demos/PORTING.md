@@ -1277,3 +1277,7 @@ Spec: `docs/superpowers/specs/2026-09-27-phase-gates-design.md`.
 - `screens/ProspectScreen.tsx`: new `tab` / `onTab` props. With `onTab` (the dashboard) the open tab comes from the route (`#/demos/prospects/<id>/<activity|settings|sources|share>`, or a settings section, which means Settings); without it the promo's local `useState` is kept. Before, the tab was only local state: Back/Forward to a section URL left Activity on screen, and a refresh dropped the tab.
 - `screens/ProspectScreen.tsx`: the header's "Customers" link is `demoHref("demoProspects")` instead of a literal `#/demos/prospects`, so it keeps the mailbox scope like every other ported link.
 - `DemosView.tsx` passes `tab` / `onTab` through.
+
+## Customers list for hundreds of rows (2026-09-29) — dashboard-only
+- `components/admin/CustomerTable.tsx`: phase tabs with counts (All, Setup requested, New signups, Demo, Onboarding, Production) replace the phase select; a category filter (`profile.category`, commonest first); a Sort select; columns regrouped to fit without sideways scroll (Customer = name + ID · category · label, Contact, Phase, Interest, Status, Live, Activity = calls · minutes / opens · people, Created); pages sized to the window. The row link falls back to the business name when there is no profile name (was "Unnamed").
+- New `components/ui/data-table.tsx` (SortableHead, useFitRows, usePaged, TablePagination, useRemembered): the kit every list screen uses — rules in the dashboard CLAUDE.md "List screens".
