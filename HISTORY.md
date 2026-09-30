@@ -13,6 +13,9 @@ Format:
 
 ---
 
+## 2026-09-30 · bottomup32 · docs (Bland AI competitor benchmark)
+- New `reports/Bland ai 경쟁사 벤치마크.md` (Korean) with its source notes in `research_notes/Bland ai 경쟁사 벤치마크/`: Bland's call API/V2 Agents vs ours, why their audio is steadier, and the P1 fixes for our choppy audio (reservoir drop on caller transcripts, adaptive lead buffer + Twilio `mark`, Realtime pacing) with `openai-agent-app` file:line references.
+
 ## 2026-09-30 00:08 · Claude · transcribe-backend, dashboard (guided setup: final review fixes)
 - ⚠ DB: `business_setup_sessions` gains `discarded_at`; Reset now soft-discards (status finished + `discarded_at`) instead of deleting, so the daily turn cap survives Start over. `POST /business/setup/reset` still answers `{session:null}`. `SETUP_DAILY_TURN_CAP=` (blank) now means the default 150, not 0 (no cap).
 - Setup turns auto-finish once every topic is done/skipped (the finished panel no longer depends on the model calling `finish_interview`). Failed turns resync the client from `GET /business/setup` (the board and chat show what the server kept; the composer doesn't hand back a message the transcript already holds). Composer capped at 4000 chars like the backend.
