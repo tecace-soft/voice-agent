@@ -635,7 +635,8 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             forwarded_from = str(params.get("forwarded_from", ""))
             if is_inbound and forwarded_from:
                 state["forward_guard_until"] = time.monotonic() + cfg.forward_announcement_seconds
-                if cfg.forward_accept_inband and cfg.forward_accept_digit.strip():
+                if (cfg.forward_accept_inband and cfg.forward_accept_digit.strip()
+                        and params.get("accept_press") == "1"):
                     log.info("call arrived forwarded from %s — sending the in-band accept digit",
                              forwarded_from)
                     await _accept_forwarded_call(twilio_ws, cfg, state)

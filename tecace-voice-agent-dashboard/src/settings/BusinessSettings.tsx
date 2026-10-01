@@ -15,6 +15,7 @@ import {
   type BusinessResearchInputs,
   saveBusinessPrompts,
   saveCallSettingsDraft,
+  saveForwardAcceptPress,
   saveHouseRules,
   setWaterfallAllowed,
 } from "../api/backend";
@@ -76,7 +77,7 @@ type Props = {
   onSetupState?: (state: { available: boolean; hasSession: boolean }) => void;
 };
 
-type Saving = "knowledge" | "faqs" | "agent" | "rules" | "prompts" | "rebuild" | null;
+type Saving = "knowledge" | "faqs" | "agent" | "rules" | "prompts" | "rebuild" | "forwarding" | null;
 
 const NO_PROMPTS: CustomerPrompts = { live: "", backend: "", greeting: "", edited: false };
 
@@ -97,6 +98,7 @@ export function BusinessSettings(props: Props) {
   const [knowledge, setKnowledge] = useState<DemoBusinessProfile | null>(profile.profile);
   const [agent, setAgent] = useState<AgentFields>(() => agentOf(profile));
   const [rules, setRules] = useState(profile.houseRules ?? "");
+  const [pressToAccept, setPressToAccept] = useState(profile.forwardAcceptPress ?? false);
   const [prompts, setPrompts] = useState<CustomerPrompts>(profile.prompts ?? NO_PROMPTS);
   // What the server holds, so the editor can tell a person's unsaved typing from text a save made
   // stale — and so "edited by hand" means saved that way, not merely typed into.
@@ -125,6 +127,7 @@ export function BusinessSettings(props: Props) {
     setKnowledge(profile.profile);
     setAgent(agentOf(profile));
     setRules(profile.houseRules ?? "");
+    setPressToAccept(profile.forwardAcceptPress ?? false);
     setPrompts(profile.prompts ?? NO_PROMPTS);
     savedPromptsRef.current = profile.prompts ?? NO_PROMPTS;
     setSavedPrompts(savedPromptsRef.current);
@@ -212,6 +215,8 @@ export function BusinessSettings(props: Props) {
       setAgent(agentOf(next));
     } else if (which === "rules") {
       setRules(next.houseRules ?? "");
+    } else if (which === "forwarding") {
+      setPressToAccept(next.forwardAcceptPress ?? false);
     }
     // Every save answers with the stored prompts, and a knowledge, FAQ or agent save rebuilds them
     // when nobody edited them by hand. The editor follows — unless the person has typed into it
@@ -243,8 +248,10 @@ export function BusinessSettings(props: Props) {
       const { profile: next } = await action(partial);
       partial(next);
       setSaved(which);
+      return true;
     } catch (e) {
       setError({ where: which, message: accountErrorMessage(e, failure) });
+      return false;
     } finally {
       setSaving(null);
     }
@@ -542,7 +549,25 @@ export function BusinessSettings(props: Props) {
     {
       id: "forwarding",
       guide: true,
-      render: () => <ForwardingSection agentNumber={props.number?.phoneE164 ?? null} />,
+      render: () => (
+        <ForwardingSection
+          agentNumber={props.number?.phoneE164 ?? null}
+          pressToAccept={{
+            on: pressToAccept,
+            saving: saving === "forwarding",
+            saved: saved === "forwarding",
+            error: error?.where === "forwarding" ? error.message : null,
+            // Saved on the flip: one switch, nothing to review first. Shown at once; a failed save
+            // puts it back.
+            onChange: (on) => {
+              setPressToAccept(on);
+              void run("forwarding", () => saveForwardAcceptPress(on, userId)).then((ok) => {
+                if (!ok) setPressToAccept(!on);
+              });
+            },
+          }}
+        />
+      ),
     },
   ];
 

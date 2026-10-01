@@ -84,6 +84,10 @@ class BusinessConfig:
     # voice, language, tools, transfers, reachable, canBook, returnLeg}. None for a business whose
     # profile predates the structured editor; the hand-built prompt is used then.
     session: dict | None = None
+    # Their forwarding holds the call behind "press 1 to accept" (a landline carrier's answer
+    # confirmation), so a forwarded call needs a keypress before the caller is connected. Off for
+    # everyone else: on a mobile forward the caller is already on the line and would hear the tones.
+    forward_accept_press: bool = False
 
 
 def _usable_session(value: object) -> dict | None:
@@ -180,6 +184,7 @@ async def fetch_business_config(cfg: Config, dialled: str, *, quiet: bool = Fals
         website=str(biz.get("website") or ""),
         facts=str(biz.get("facts") or ""),
         transfer_number=str(biz.get("transferNumber") or ""),
+        forward_accept_press=biz.get("forwardAcceptPress") is True,
         agent_name=str(biz.get("agentName") or ""),
         greeting=str(biz.get("greeting") or ""),
         transfer_topics=str(biz.get("transferTopics") or ""),

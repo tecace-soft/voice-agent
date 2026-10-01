@@ -284,6 +284,11 @@ export interface BusinessProfile {
   /** How this business wants the assistant to behave, in their own words. Null means defaults. */
   houseRules: string | null;
   /**
+   * Their forwarding asks for "press 1 to accept", so the phone agent presses it on forwarded calls.
+   * Optional only so a dashboard deployed ahead of the backend reads it as off.
+   */
+  forwardAcceptPress?: boolean;
+  /**
    * What the Knowledge tab edits — the SAME shape a demo prospect has, so one editor serves both.
    *
    * This is the source of truth: `facts`, `hoursText`, `openHour` and `closeHour` above are
@@ -462,7 +467,12 @@ export type ScenarioTest = {
   updatedAt: string;
   /** False for a built-in one the business's draft no longer supports (booking switched off). */
   applicable: boolean;
+  /** From this scenario's recent measured runs; the average of all recent runs when it has none. */
+  estimate: ScenarioRunEstimate;
 };
+
+/** `basedOnRuns` 0 = this scenario hasn't run yet: the cost is the average of recent runs. */
+export type ScenarioRunEstimate = { costUsd: number; durationSec: number; basedOnRuns: number };
 
 export type ScenarioListResponse = { scenarios: ScenarioTest[]; perRunEstimateUsd: number; runnerConfigured: boolean };
 

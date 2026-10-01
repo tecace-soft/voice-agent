@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Check, Copy, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { displayPhone } from "../callSettings";
 import { SectionIntro } from "../SettingsShell";
 
@@ -97,14 +98,25 @@ function fill(code: string, digits: string) {
   return code.replaceAll("{n}", digits || PLACEHOLDER);
 }
 
+/** The business's "press 1 to accept" switch. Absent on a demo, which has no line to forward. */
+export type PressToAccept = {
+  on: boolean;
+  saving: boolean;
+  saved: boolean;
+  error: string | null;
+  onChange: (on: boolean) => void;
+};
+
 export function ForwardingSection({
   agentNumber,
   notice,
+  pressToAccept,
 }: {
   /** The receptionist's number, once one is assigned; codes show a placeholder until then. */
   agentNumber: string | null;
   /** A line under the number, e.g. why a demo has no number yet. */
   notice?: ReactNode;
+  pressToAccept?: PressToAccept;
 }) {
   const [mode, setMode] = useState<Mode>("missed");
   const [carrierId, setCarrierId] = useState("gsm");
@@ -205,6 +217,30 @@ export function ForwardingSection({
             Your receptionist answers by speaking, not by pressing keys. With answer confirmation on, callers wait
             while the receptionist presses 1 for them, and may hear the key tones.
           </p>
+        ) : null}
+        {/* Shown on a mobile tab only while it is on, so it can still be switched off from there. */}
+        {pressToAccept && (carrier.confirm !== MOBILE_CONFIRM || pressToAccept.on) ? (
+          <div className="mt-4 rounded-xl border p-4">
+            <label className="ta-label-1 flex items-center justify-between gap-4">
+              My phone company still asks to press 1 to accept
+              <Switch
+                checked={pressToAccept.on}
+                disabled={pressToAccept.saving}
+                onCheckedChange={(on) => pressToAccept.onChange(on)}
+              />
+            </label>
+            <p className="ta-caption-1 text-muted-foreground mt-1">
+              Only if you can't turn answer confirmation off. Your receptionist then presses 1 on every forwarded
+              call. Leave it off otherwise — on a line that doesn't ask, callers hear the key tones.
+            </p>
+            {pressToAccept.error ? (
+              <p className="ta-label-1 text-destructive mt-2" role="alert">
+                {pressToAccept.error}
+              </p>
+            ) : pressToAccept.saved ? (
+              <p className="ta-caption-1 text-muted-foreground mt-2">Saved. This applies from the next call.</p>
+            ) : null}
+          </div>
         ) : null}
       </Step>
 

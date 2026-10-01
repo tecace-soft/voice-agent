@@ -361,7 +361,9 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 # The in-band press is kept as a fallback for a carrier that ignores the TwiML
                 # digits, but is OFF by default: on a call that IS already bridged it puts an
                 # audible beep in the real caller's ear.
-                if cfg.forward_accept_inband and cfg.forward_accept_digit.strip():
+                inband = (cfg.forward_accept_inband and cfg.forward_accept_digit.strip()
+                          and params.get("accept_press") == "1")
+                if inband:
                     log.info("call arrived forwarded from %s — sending the in-band accept digit",
                              forwarded_from)
                     await _accept_forwarded_call(twilio_ws, cfg, state)
@@ -370,7 +372,7 @@ async def run_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
                 # press happened before this stream even opened, so on that path there is nothing
                 # to wait for: the guard below still keeps the announcement's tail out of the
                 # model's ears, but it no longer sits the caller in silence first.
-                if cfg.forward_accept_inband:
+                if inband:
                     remaining = state.get("forward_guard_until", 0.0) - time.monotonic()
                     if remaining > 0:
                         await asyncio.sleep(remaining)

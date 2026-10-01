@@ -181,6 +181,27 @@ def _warm_for_call(dialled: str) -> None:
 
 _warming: set[asyncio.Task] = set()
 
+# How long a forwarded call may ring while we ask whether its business wants the accept press. Normally
+# instant — the pickup hold or the warm-up has cached the answer — and it only ever delays ringing.
+_ACCEPT_LOOKUP_SECONDS = 3.0
+
+
+async def _press_to_accept(dialled: str) -> bool:
+    """Does this business's forwarding hold the call behind "press 1 to accept"?
+
+    Set per business in the dashboard's Call forwarding guide. Only a carrier with answer confirmation
+    on (some landlines) needs the press; on a mobile forward the caller is already connected and hears
+    the tones in their ear. Anything we can't tell — no business, a slow or failed lookup — is "no":
+    that call is answered neutrally anyway, and a stray beep is what this exists to stop.
+    """
+    try:
+        business = await asyncio.wait_for(fetch_business_config(cfg, dialled), _ACCEPT_LOOKUP_SECONDS)
+    except asyncio.TimeoutError:
+        log.warning("forwarded call to %s: business lookup took over %.0fs — not pressing to accept",
+                    dialled, _ACCEPT_LOOKUP_SECONDS)
+        return False
+    return bool(business and business.forward_accept_press)
+
 
 async def _hold_for_pickup(dialled: str) -> str:
     """Keep the phone ringing until the greeting is ready — or PICKUP_HOLD_SECONDS, whichever is
@@ -310,9 +331,11 @@ async def incoming(request: Request) -> Response:
 
     response = VoiceResponse()
 
-    # A forwarding carrier answers OUR leg first and plays "press 1 to accept"; the real caller
-    # hears ringing until a digit arrives. Twilio generates that digit here, as real DTMF, BEFORE
-    # the media stream starts.
+    # A forwarding carrier with answer confirmation on answers OUR leg first and plays "press 1 to
+    # accept"; the real caller hears ringing until a digit arrives. Twilio generates that digit here,
+    # as real DTMF, BEFORE the media stream starts — but only for a business that has said its
+    # carrier does this. Every other forward (mobile carriers) is already connected, and the digits
+    # would be loud tones in the caller's ear.
     #
     # We used to synthesise the tones ourselves and push them up the stream. They never registered:
     # our audio has to survive Twilio's outbound media path to reach the carrier's detector, and
@@ -320,10 +343,14 @@ async def incoming(request: Request) -> Response:
     # generating the digits is both more reliable and simpler, and doing it before <Connect> means
     # the announcement is over before the agent is listening at all.
     forwarded_from = fields.get("ForwardedFrom", "")
-    if forwarded_from and cfg.forward_accept_twiml_digits:
+    press = bool(forwarded_from) and await _press_to_accept(dialled)
+    if press and cfg.forward_accept_twiml_digits:
         log.info("forwarded from %s — playing accept digits %r before connecting",
                  forwarded_from, cfg.forward_accept_twiml_digits)
         response.play(digits=cfg.forward_accept_twiml_digits)
+    elif forwarded_from:
+        log.info("forwarded from %s — no accept press (the business's carrier doesn't ask for one)",
+                 forwarded_from)
 
     connect = Connect()
     stream = Stream(url=cfg.stream_url)
@@ -337,6 +364,9 @@ async def incoming(request: Request) -> Response:
     # about it — see the docstring above.) It was previously logged and discarded.
     stream.parameter(name="dialled", value=fields.get("To", ""))
     stream.parameter(name="forwarded_from", value=fields.get("ForwardedFrom", ""))
+    # The same decision for the bridge's in-band fallback press, so it never beeps a call the
+    # business said needs no press.
+    stream.parameter(name="accept_press", value="1" if press else "")
     connect.append(stream)
     response.append(connect)
     pickup.note(call_sid, twiml_at=time.monotonic())

@@ -342,6 +342,7 @@ PROFILE = {
     "businessName": "Sam's Dental", "hoursText": "Mon–Fri 8am–5pm", "openHour": 8, "closeHour": 17,
     "website": "https://samsdental.example", "facts": "- Cleanings\n- Whitening\n- Emergency visits",
     "transferNumber": "+14255550111", "agentName": None, "greeting": None, "houseRules": None,
+    "forwardAcceptPress": False,
     "transferTopics": None, "isLive": True, "extractedAt": iso(NOW - timedelta(days=10)),
     "updatedAt": iso(NOW - timedelta(days=10)),
     # What the Knowledge tab edits: the same shape a demo prospect has, because the tab IS the
@@ -1947,6 +1948,9 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
         sent = json.loads(body or b"{}")
         return 200, {"profile": {**_business(), "agentName": sent.get("agentName") or None,
                                  "greeting": sent.get("greeting") or None}}
+    if path == "/business/forward-accept" and method == "PUT":
+        sent = json.loads(body or b"{}")
+        return 200, {"profile": {**_business(), "forwardAcceptPress": sent.get("forwardAcceptPress") is True}}
     if path == "/business/house-rules" and method == "PUT":
         sent = json.loads(body or b"{}")
         return 200, {"profile": {**_business(), "houseRules": sent.get("houseRules") or None}}

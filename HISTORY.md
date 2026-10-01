@@ -13,6 +13,17 @@ Format:
 
 ---
 
+## 2026-10-01 14:30 · Michael · forwarded calls: per-business "press 1 to accept" (transcribe-backend, openai-agent-app, dashboard)
+- transcribe-backend: new column `business_profiles.forward_accept_press BOOLEAN NOT NULL DEFAULT false` (self-migrating); `BusinessProfile.forwardAcceptPress`; new `PUT /business/forward-accept?userId=` `{forwardAcceptPress: boolean}` → `{profile}` (409 `no_profile`); `GET /business/config` sends `business.forwardAcceptPress`. Test in `src/routes/appointments.e2e.pg.test.ts`.
+- openai-agent-app: `/incoming` plays `FORWARD_ACCEPT_TWIML_DIGITS` on a forwarded call **only when the business has the flag on** (waits ≤3 s for the config lookup; failure/timeout = no press). New stream parameter `accept_press` gates the in-band fallback too. `BusinessConfig.forward_accept_press` (default False).
+- Dashboard: Call forwarding step 3 "Turn off answer confirmation" (per-carrier how-to) + a switch "My phone company still asks to press 1 to accept" (saves on flip; business settings only, not demo). `fake_backend.py` fakes the PUT; `business_tabs.py` checks it.
+- ⚠ Behaviour change: forwarded calls are **no longer pressed by default** (fixes the loud tones on Verizon/mobile forwards). A business whose landline still asks "press 1 to accept" must turn the switch on, or its forwarded callers ring out. Deploy transcribe-backend before/with the agent (`docker compose up -d --build server`).
+
+## 2026-10-01 14:25 · Michael · scenario tests: estimates from measured runs (transcribe-backend, dashboard)
+- `GET /business/scenarios` now returns `estimate: {costUsd, durationSec, basedOnRuns}` on each scenario (its own last 5 measured runs; the average of the last 50 runs overall when it has none, `basedOnRuns: 0`; $0.08 / 60 s only before any run exists), and `perRunEstimateUsd` is that measured overall average instead of a fixed $0.08. New `src/scenarios/estimate.ts`, `db/scenarios.ts` `recentRunCosts`.
+- Dashboard: Run selected and its confirmation add up the ticked scenarios' own estimates; each row shows "About $x and y s per run, from its last n runs".
+- ⚠ Deploy transcribe-backend and the dashboard together (the dashboard reads the new `estimate` field).
+
 ## 2026-10-01 12:25 · Michael · scenario tests (transcribe-backend, openai-agent-app, dashboard)
 - New admin-only **Scenario tests** (Business settings › Tuning): one press of Run selected runs each ticked scenario **once** against the real GPT-Live receptionist with sandbox tools (no real bookings, messages or transfers), grades it (code checks + `gpt-5.6-luna` judge) and stops. Spec/plan: `docs/superpowers/{specs,plans}/2026-10-01-scenario-tests*`.
 - transcribe-backend: tables `scenario_tests`, `scenario_passes`, `scenario_runs` (self-migrating; run status `queued|running|grading|done`); admin routes `/business/scenarios*`, `/business/scenario-passes*`; runner routes `/internal/scenario-passes/:id/next`, `/internal/scenario-runs/:id/{tool,result}` (`x-runner-key`). Errors are `{error: code, message}`. `runDemoAppointmentTool` takes optional `busy`. Tests: `src/scenarios/*.test.ts`, `src/routes/scenarios.pg.test.ts`.

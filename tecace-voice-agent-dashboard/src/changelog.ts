@@ -39,6 +39,10 @@ export const CHANGELOG: Release[] = [
         text: "Call forwarding has a new step: how to turn off answer confirmation (\"press 1 to accept\") for your phone company or phone app, so callers reach your receptionist without waiting or hearing key tones.",
       },
       {
+        kind: "fixed",
+        text: "Callers forwarded from a mobile phone no longer hear loud key tones when your receptionist picks up. If your phone company still asks to press 1 to accept, turn on the switch in Call forwarding and your receptionist presses it for you.",
+      },
+      {
         kind: "new",
         text: "Business information › Fill in from research: we read your website, its FAQ pages and your Google listing again and fill in the form and your FAQs for you. Nothing changes for callers until you check it and press Save, and Undo puts the form back.",
       },

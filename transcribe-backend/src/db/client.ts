@@ -243,6 +243,10 @@ export async function initDb(): Promise<void> {
   // dashboard, in their own words, and appended to the agent's instructions as preferences. Their
   // wishes, not their own rule book: the caller-facing guarantees are not a customer setting.
   await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS house_rules TEXT`;
+  // Whether this business's line, when it forwards to the agent, holds the call behind "press 1 to
+  // accept" (a landline carrier's answer confirmation). Only then does the phone agent press 1: on
+  // any other forwarded call the caller is already connected and would hear the tones.
+  await sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS forward_accept_press BOOLEAN NOT NULL DEFAULT false`;
 
   // The structured profile a customer edits in the Knowledge tab — the same shape the demo
   // prospects use (`demo/types.ts` BusinessProfile), so the dashboard renders both with one editor.
@@ -948,6 +952,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT agent_name, greeting FROM business_profiles LIMIT 1`;
     await sql`SELECT transfer_topics FROM business_profiles LIMIT 1`;
     await sql`SELECT house_rules FROM business_profiles LIMIT 1`;
+    await sql`SELECT forward_accept_press FROM business_profiles LIMIT 1`;
     await sql`SELECT 1 FROM inbound_calls LIMIT 1`;
     await sql`SELECT requested_time, sheet_written_at FROM inbound_calls LIMIT 1`;
     await sql`SELECT 1 FROM agent_call_minutes LIMIT 1`;

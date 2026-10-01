@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ScenarioDefinition, ScenarioPassSummary, ScenarioRun } from "../src/api/types";
-import { estimateLine, expectationLine, passSummaryLine, runTimeline, runnerActivity, verdictLabel } from "../src/settings/scenarios/format";
+import { estimateLine, expectationLine, runEstimateLine, passSummaryLine, runTimeline, runnerActivity, verdictLabel } from "../src/settings/scenarios/format";
 
 // What the Scenario tests section says about a pass and a run. Pure, so it is tested here and the
 // component only lays it out.
@@ -22,8 +22,12 @@ const pass = (over: Partial<ScenarioPassSummary> = {}): ScenarioPassSummary => (
 
 describe("scenario test wording", () => {
   it("estimates before a run", () => {
-    expect(estimateLine(8, 0.08)).toBe("8 scenarios · about 8 min · about $0.64");
-    expect(estimateLine(1, 0.08)).toBe("1 scenario · about 1 min · about $0.08");
+    const run = (costUsd: number, durationSec: number, basedOnRuns = 3) => ({ costUsd, durationSec, basedOnRuns });
+    expect(estimateLine([run(0.11, 45), run(0.13, 70), run(0.05, 20)])).toBe("3 scenarios · about 2 min · about $0.29");
+    expect(estimateLine([run(0.08, 60, 0)])).toBe("1 scenario · about 1 min · about $0.08");
+    expect(runEstimateLine(run(0.112, 45, 4))).toBe("About $0.11 and 45 s per run, from its last 4 runs");
+    expect(runEstimateLine(run(0.1, 52, 1))).toBe("About $0.10 and 52 s per run, from its last run");
+    expect(runEstimateLine(run(0.08, 60, 0))).toBe("About $0.08 per run (not run yet)");
   });
 
   it("sums up a pass", () => {

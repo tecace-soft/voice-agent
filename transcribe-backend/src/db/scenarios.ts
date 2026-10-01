@@ -1,6 +1,7 @@
 import type { CallSettings } from "../business/callSettings.js";
 import type { BusinessProfile, TranscriptEntry } from "../demo/types.js";
 import type { FunctionTool } from "../session/compose.js";
+import type { MeasuredRun } from "../scenarios/estimate.js";
 import type { Failure, SandboxState, Scenario, ScenarioDefinition, Verdict } from "../scenarios/types.js";
 import { sql } from "./client.js";
 import { jsonb } from "./jsonb.js";
@@ -307,6 +308,26 @@ export async function listPasses(userId: string, limit = 20): Promise<PassSummar
     WHERE p.user_id = ${userId} ORDER BY p.created_at DESC LIMIT ${limit}
   `;
   return (rows as Record<string, unknown>[]).map(toSummary);
+}
+
+/**
+ * The measured cost and length of recent finished runs, newest first, across every business: what a
+ * run costs depends on the scenario and the models far more than on whose receptionist it is.
+ * Runs that never started (no cost recorded) are left out.
+ */
+export async function recentRunCosts(limit = 300): Promise<MeasuredRun[]> {
+  const rows = await sql`
+    SELECT scenario_id AS "scenarioId", cost_usd::float8 AS "costUsd", duration_sec AS "durationSec"
+    FROM scenario_runs
+    WHERE status = 'done' AND cost_usd IS NOT NULL AND cost_usd > 0
+    ORDER BY finished_at DESC
+    LIMIT ${limit}
+  `;
+  return (rows as Record<string, unknown>[]).map((r) => ({
+    scenarioId: (r.scenarioId as string | null) ?? null,
+    costUsd: Number(r.costUsd),
+    durationSec: r.durationSec == null ? null : Number(r.durationSec),
+  }));
 }
 
 export async function getPass(id: string, userId: string): Promise<{ pass: PassSummary; runs: RunRow[] } | null> {

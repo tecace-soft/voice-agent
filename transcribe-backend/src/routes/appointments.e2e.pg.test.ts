@@ -753,6 +753,25 @@ describe("8. the phone agent books under the PUBLISHED rules", () => {
     expect((await saveDraft({ ...RULES, title: "Draft only", durationMinutes: 60, bufferMinutes: 0 })).status).toBe(200);
   });
 
+  it("tells the phone agent whether to press 1 on a forwarded call, from the business's own switch", async () => {
+    const press = async () =>
+      (await call("GET", `/business/config?to=${encodeURIComponent(JANE_LINE)}`, null, undefined, { "x-agent-key": AGENT_KEY }))
+        .body.business.forwardAcceptPress;
+    // Off until the business says its carrier asks: a mobile forward is already connected.
+    expect(await press()).toBe(false);
+    const on = await call("PUT", "/business/forward-accept", jane.auth, { forwardAcceptPress: true });
+    expect(on.status).toBe(200);
+    expect(on.body.profile.forwardAcceptPress).toBe(true);
+    expect(await press()).toBe(true);
+    // Another customer naming Jane's account changes their own row, never hers.
+    await call("PUT", `/business/forward-accept?userId=${jane.id}`, bob.auth, { forwardAcceptPress: false });
+    expect(await press()).toBe(true);
+    expect((await call("PUT", "/business/forward-accept", null, { forwardAcceptPress: false })).status).toBe(401);
+    expect((await call("PUT", "/business/forward-accept", jane.auth, { forwardAcceptPress: "yes" })).status).toBe(422);
+    expect((await call("PUT", "/business/forward-accept", jane.auth, { forwardAcceptPress: false })).status).toBe(200);
+    expect(await press()).toBe(false);
+  });
+
   it("answers 404 for a number nobody owns, and 400 for a tool it doesn't have", async () => {
     expect((await agent({ to: SPARE_LINE, name: "check_availability" })).status).toBe(404);
     expect((await agent({ to: "+12065550999", name: "check_availability" })).status).toBe(404);

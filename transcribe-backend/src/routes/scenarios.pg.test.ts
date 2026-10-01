@@ -328,6 +328,20 @@ describe("scenario tests", () => {
     expect(summary.runs[0].sandbox.calls.map((c: { name: string }) => c.name)).toEqual(["book_appointment"]);
   });
 
+  it("estimates from what runs really cost", async () => {
+    const list = (await call("GET", `/business/scenarios${Q}`, asAdmin)).body;
+    const s05 = list.scenarios.find((s: { templateId: string }) => s.templateId === "S05");
+    // Measured: 0.04 from the runner plus the judge's tokens, 30 s.
+    expect(s05.estimate.basedOnRuns).toBe(1);
+    expect(s05.estimate.costUsd).toBeGreaterThan(0.04);
+    expect(s05.estimate.costUsd).toBeLessThan(0.05);
+    expect(s05.estimate.durationSec).toBe(30);
+    // A scenario never run gets the average of recent runs.
+    const s01 = list.scenarios.find((s: { templateId: string }) => s.templateId === "S01");
+    expect(s01.estimate.basedOnRuns).toBe(0);
+    expect(list.perRunEstimateUsd).toBe(s01.estimate.costUsd);
+  });
+
   it("stop cancels what has not started", async () => {
     const list = (await call("GET", `/business/scenarios${Q}`, asAdmin)).body.scenarios;
     const started = await call("POST", `/business/scenario-passes${Q}`, asAdmin, {

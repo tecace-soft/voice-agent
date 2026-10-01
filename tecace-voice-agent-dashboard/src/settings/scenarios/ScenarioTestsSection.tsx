@@ -4,7 +4,15 @@ import { Button } from "@/components/ui/button";
 import type { ScenarioPassDetail, ScenarioRun, ScenarioTest } from "../../api/types";
 import { Exchange } from "@/components/public/Exchange";
 import { SectionIntro } from "../SettingsShell";
-import { estimateLine, expectationLine, passSummaryLine, runTimeline, runnerActivity, verdictLabel } from "./format";
+import {
+  estimateLine,
+  expectationLine,
+  passSummaryLine,
+  runEstimateLine,
+  runTimeline,
+  runnerActivity,
+  verdictLabel,
+} from "./format";
 import { ScenarioEditor } from "./ScenarioEditor";
 import { useScenarioTests } from "./useScenarioTests";
 
@@ -36,7 +44,7 @@ export function ScenarioTestsSection({ userId }: { userId: string }) {
 
   function confirmRun() {
     if (!s.list || !selected.length) return;
-    const estimate = estimateLine(selected.length, s.list.perRunEstimateUsd);
+    const estimate = estimateLine(selected.map((x) => x.estimate));
     if (window.confirm(`Run ${estimate}? Each scenario runs once, then it stops.`)) {
       void s.run(settings, selected.map((x) => x.id));
     }
@@ -83,6 +91,7 @@ export function ScenarioTestsSection({ userId }: { userId: string }) {
               </p>
               <p className="ta-caption-1 text-muted-foreground truncate">“{x.definition.customerLines[0]}”</p>
               <p className="ta-caption-1 text-muted-foreground truncate">{expectationLine(x.definition)}</p>
+              <p className="ta-caption-1 text-muted-foreground">{runEstimateLine(x.estimate)}</p>
               {!x.applicable ? <p className="ta-caption-1 text-muted-foreground">Not available with these settings.</p> : null}
             </div>
             <Button size="sm" variant="ghost" onClick={() => setEditing(x)}>
@@ -131,7 +140,7 @@ export function ScenarioTestsSection({ userId }: { userId: string }) {
       <div className="mb-8 flex flex-wrap items-center gap-2">
         {running ? null : (
           <Button onClick={confirmRun} disabled={s.busy || !selected.length || !s.list?.runnerConfigured}>
-            Run selected{s.list && selected.length ? ` · ${estimateLine(selected.length, s.list.perRunEstimateUsd)}` : ""}
+            Run selected{selected.length ? ` · ${estimateLine(selected.map((x) => x.estimate))}` : ""}
           </Button>
         )}
         <Button variant="outline" onClick={() => setEditing("new")}>

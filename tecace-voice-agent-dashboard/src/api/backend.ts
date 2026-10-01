@@ -480,6 +480,18 @@ export function saveHouseRules(
   );
 }
 
+/** Whether the phone agent presses 1 to accept forwarded calls. Its own endpoint, like the house rules. */
+export function saveForwardAcceptPress(
+  forwardAcceptPress: boolean,
+  userId?: string,
+): Promise<{ profile: BusinessProfile }> {
+  return request<{ profile: BusinessProfile }>(
+    "PUT",
+    `/business/forward-accept${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
+    { body: { forwardAcceptPress } },
+  );
+}
+
 export function saveBusinessProfile(
   sourceText: string,
   transferNumber: string,

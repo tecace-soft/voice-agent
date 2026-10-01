@@ -35,6 +35,8 @@ export interface BusinessProfile {
   transferTopics: string | null;
   /** How this business wants the assistant to behave, in their words. Null means the defaults. */
   houseRules: string | null;
+  /** The forwarding carrier asks for "press 1 to accept", so the phone agent presses it. */
+  forwardAcceptPress: boolean;
   /** True when there's enough here for the agent to answer AS this business rather than neutrally. */
   isLive: boolean;
   /**
@@ -90,6 +92,7 @@ const COLUMNS = sql`
   p.greeting,
   p.transfer_topics AS "transferTopics",
   p.house_rules     AS "houseRules",
+  p.forward_accept_press AS "forwardAcceptPress",
   ${IS_LIVE}      AS "isLive",
   p.profile,
   p.prompts,
@@ -257,6 +260,20 @@ export async function saveHouseRules(
   const rows = await sql`
     UPDATE business_profiles
     SET house_rules = ${houseRules}, updated_at = now()
+    WHERE user_id = ${userId}
+    RETURNING user_id
+  `;
+  return rows.length ? findProfile(userId) : null;
+}
+
+/** Update only whether the phone agent presses 1 on forwarded calls. Null when there is no profile. */
+export async function saveForwardAcceptPress(
+  userId: string,
+  press: boolean,
+): Promise<BusinessProfile | null> {
+  const rows = await sql`
+    UPDATE business_profiles
+    SET forward_accept_press = ${press}, updated_at = now()
     WHERE user_id = ${userId}
     RETURNING user_id
   `;

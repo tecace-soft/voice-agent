@@ -339,6 +339,17 @@ def main() -> int:
                     page.get_by_role("tab", name="Verizon").click()
                     body = page.inner_text("main")
                     check("Forwarding: every call on Verizon", "*724255550100" in body, body[:400])
+                    check("Forwarding: no press-to-accept switch on a mobile tab while it's off",
+                          page.get_by_role("switch").count() == 0)
+                    page.get_by_role("tab", name="Landline").click()
+                    body = page.inner_text("main")
+                    check("Forwarding: landline explains answer confirmation", "press 1 to accept" in body, body[:400])
+                    page.get_by_role("switch", name="My phone company still asks to press 1 to accept").click()
+                    page.wait_for_timeout(300)
+                    puts = [x for x in sent if x[0] == "PUT" and "/business/forward-accept" in x[1]]
+                    check("Forwarding: the switch saves press-to-accept",
+                          len(puts) == 1 and '"forwardAcceptPress":true' in puts[0][2].replace(" ", ""), str(puts))
+                    check("Forwarding: the switch says it saved", "applies from the next call" in page.inner_text("main"))
 
                     check("...and nothing went to a demo endpoint",
                           not any("/demo/" in x[1] for x in sent),

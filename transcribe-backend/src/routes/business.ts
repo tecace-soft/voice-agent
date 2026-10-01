@@ -11,6 +11,7 @@ import {
   hashSource,
   saveProfile,
   saveAgentIdentity,
+  saveForwardAcceptPress,
   saveHouseRules,
   saveStructured,
   saveTypedFields,
@@ -208,6 +209,10 @@ export const business = new Elysia({ prefix: "/business" })
           // null means this customer has nobody to put callers through to, and the agent must not
           // offer to — a transfer it cannot perform is worse than never mentioning one.
           transferNumber: profile.transferNumber,
+          // True only when this business's forwarding holds the call behind "press 1 to accept".
+          // The agent presses 1 on a forwarded call only then; otherwise the caller is already
+          // connected and would hear the tones.
+          forwardAcceptPress: profile.forwardAcceptPress,
           booking,
         },
         session,
@@ -537,6 +542,29 @@ export const business = new Elysia({ prefix: "/business" })
     {
       query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }),
       body: t.Object({ houseRules: t.Optional(t.String({ maxLength: 4000 })) }),
+    },
+  )
+
+  // Whether the agent presses 1 on forwarded calls — a switch in the Call forwarding guide, so its
+  // own endpoint. A setting of the line, not of what the assistant says: nothing else is touched.
+  .put(
+    "/forward-accept",
+    async ({ body, headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      const target = profileTargetFor(user, query.userId);
+      const profile = await saveForwardAcceptPress(target, body.forwardAcceptPress);
+      if (!profile) {
+        return status(409, {
+          error: "no_profile",
+          message: "Add your business information first — until then the assistant answers neutrally.",
+        });
+      }
+      return { profile };
+    },
+    {
+      query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }),
+      body: t.Object({ forwardAcceptPress: t.Boolean() }),
     },
   )
 

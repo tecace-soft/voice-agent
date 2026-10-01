@@ -1,12 +1,32 @@
-import type { ScenarioDefinition, ScenarioPassStatus, ScenarioPassSummary, ScenarioRun, ScenarioToolCall } from "../../api/types";
+import type {
+  ScenarioDefinition,
+  ScenarioPassStatus,
+  ScenarioPassSummary,
+  ScenarioRun,
+  ScenarioRunEstimate,
+  ScenarioToolCall,
+} from "../../api/types";
 
 // What the Scenario tests section says. Pure, so tests/scenario-format.test.ts can pin it.
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** Shown on the Run selected confirmation: one run is about a minute. */
-export function estimateLine(count: number, perRunUsd: number): string {
-  return `${plural(count, "scenario", "scenarios")} · about ${count} min · about $${(count * perRunUsd).toFixed(2)}`;
+/**
+ * Shown on Run selected and its confirmation: the ticked scenarios' estimates added up. Each comes
+ * from what that scenario's recent runs really cost (the backend's `estimate`), so it tracks the
+ * real bill rather than a fixed guess.
+ */
+export function estimateLine(estimates: ScenarioRunEstimate[]): string {
+  const usd = estimates.reduce((sum, e) => sum + e.costUsd, 0);
+  const minutes = Math.max(1, Math.round(estimates.reduce((sum, e) => sum + e.durationSec, 0) / 60));
+  return `${plural(estimates.length, "scenario", "scenarios")} · about ${minutes} min · about $${usd.toFixed(2)}`;
+}
+
+/** Under a scenario: what one run of it costs, and what that's based on. */
+export function runEstimateLine(e: ScenarioRunEstimate): string {
+  if (!e.basedOnRuns) return `About $${e.costUsd.toFixed(2)} per run (not run yet)`;
+  const from = e.basedOnRuns === 1 ? "its last run" : `its last ${e.basedOnRuns} runs`;
+  return `About $${e.costUsd.toFixed(2)} and ${e.durationSec} s per run, from ${from}`;
 }
 
 export function passSummaryLine(p: ScenarioPassSummary, when: string): string {

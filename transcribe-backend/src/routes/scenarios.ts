@@ -21,12 +21,14 @@ import {
   insertScenario,
   listPasses,
   listScenarios,
+  recentRunCosts,
   saveSandbox,
   STALE_PASS_MS,
   touchPass,
   updateScenario,
 } from "../db/scenarios.js";
 import type { TranscriptEntry } from "../demo/types.js";
+import { runEstimates } from "../scenarios/estimate.js";
 import { gradeRun } from "../scenarios/grade.js";
 import { businessFacts } from "../scenarios/judge.js";
 import { notifyRunner } from "../scenarios/runnerClient.js";
@@ -52,8 +54,6 @@ import { fromBusinessRow } from "../session/records.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** What one run is estimated to cost, shown before Run selected. Measured costs replace it after. */
-export const SCENARIO_RUN_ESTIMATE_USD = 0.08;
 export const RUN_LIMITS = { maxSeconds: 90, maxTurns: 8 } as const;
 
 /** The sandbox stands in for the calendar, so the composer is told one is connected. */
@@ -140,12 +140,15 @@ export const scenarios = new Elysia()
       if (!record) return status(409, NO_BUSINESS);
       const ctx = contextFor(record, stored.draft);
       const list = await withTemplates(who.target, ctx);
+      // Shown before Run selected: what these scenarios really cost on their recent runs.
+      const estimates = runEstimates(await recentRunCosts(), list.map((s) => s.id));
       return {
         scenarios: list.map((s) => ({
           ...s,
           applicable: s.templateId ? (templateById(s.templateId)?.applies(ctx) ?? false) : true,
+          estimate: estimates.byScenario[s.id]!,
         })),
-        perRunEstimateUsd: SCENARIO_RUN_ESTIMATE_USD,
+        perRunEstimateUsd: estimates.overall.costUsd,
         runnerConfigured: Boolean(env.scenarioRunnerUrl && env.scenarioRunnerKey),
       };
     },
