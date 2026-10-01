@@ -16,6 +16,7 @@ import {
   talkTime,
 } from "@/lib/receptionistStats";
 import { demoHref } from "@/routes";
+import { AgentServiceStatus } from "../../components/AgentServiceStatus";
 import { listAccounts, listCallMinutes, listInboundCalls } from "../../api/backend";
 import type { AuthUser, CallMinutes, InboundCall } from "../../api/types";
 import { accountErrorMessage } from "../../auth";
@@ -146,6 +147,8 @@ export function ReceptionistOverviewScreen({
           </div>
         }
       />
+
+      {isAdmin && <AgentServiceStatus />}
 
       {error ? (
         <div className="bg-destructive/10 ta-label-1 text-destructive rounded-lg p-3">{error}</div>

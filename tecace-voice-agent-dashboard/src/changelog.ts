@@ -35,6 +35,11 @@ export const CHANGELOG: Release[] = [
     title: "Refill your details from research; your prompts up front",
     items: [
       {
+        kind: "new",
+        text: "Dashboard overview shows whether the voice agent's call server, outbound poller and scenario runner are running.",
+        admin: true,
+      },
+      {
         kind: "improved",
         text: "Call forwarding has a new step: how to turn off answer confirmation (\"press 1 to accept\") for your phone company or phone app, so callers reach your receptionist without waiting or hearing key tones.",
       },

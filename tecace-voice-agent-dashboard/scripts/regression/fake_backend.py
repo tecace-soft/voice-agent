@@ -1794,6 +1794,19 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
         return 200, {"cleared": 1}
     if path == "/transcribe/heartbeats":
         return 200, {"pollers": HEARTBEATS, "offline": 0}
+    if path == "/agent/heartbeats":
+        if not admin:
+            return 403, {"error": "forbidden", "message": "Admins only."}
+        def _svc(key, label, **kw):
+            return {"service": key, "label": label, "state": "online", "lastSeenAt": iso(NOW - timedelta(seconds=20)),
+                    "secondsSinceSeen": 20, "intervalSeconds": 60, "ok": True, "detail": None, "startedAt": None,
+                    "uptimeSeconds": 10800, "host": "vps-1", "metrics": None, **kw}
+        return 200, {"services": [
+            _svc("server", "Call server", metrics={"activeCalls": 0}),
+            _svc("poller", "Outbound poller",
+                 metrics={"wakes": 12, "lastWakeAt": iso(datetime.now(timezone.utc) - timedelta(minutes=3))}),
+            _svc("scenarios", "Scenario runner", metrics={"activePass": None}),
+        ]}
     if path == "/feedback/mine":
         return 200, {"feedback": [f for f in FEEDBACK if f["userId"] == user["id"]]}
     if path == "/feedback/open-count":

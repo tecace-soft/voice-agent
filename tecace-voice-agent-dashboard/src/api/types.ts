@@ -195,6 +195,28 @@ export interface PollerHeartbeat {
   secondsSinceSeen: number;
 }
 
+// One of openai-agent-app's three processes, as `GET /agent/heartbeats` (admin) reports it. Always
+// three entries, in order: server, poller, scenarios. `state` is derived by the backend from the
+// process's own reported interval; `never` means it has not reported at all.
+export interface AgentServiceStatus {
+  service: "server" | "poller" | "scenarios";
+  label: string;
+  state: "online" | "erroring" | "offline" | "never";
+  lastSeenAt: string | null;
+  secondsSinceSeen: number | null;
+  intervalSeconds: number | null;
+  ok: boolean | null;
+  detail: string | null;
+  startedAt: string | null;
+  uptimeSeconds: number | null;
+  host: string | null;
+  metrics: Record<string, number | string | boolean | null> | null;
+}
+
+export interface AgentServicesResponse {
+  services: AgentServiceStatus[];
+}
+
 // A phone number the voice agent answers, and who it belongs to. `userId` null = registered but
 // unassigned; the agent answers such a call neutrally rather than guessing whose business it is.
 //

@@ -13,6 +13,12 @@ Format:
 
 ---
 
+## 2026-10-01 14:37 · Michael · voice agent service heartbeats (transcribe-backend, openai-agent-app, dashboard)
+- transcribe-backend: new `POST /agent/heartbeat` (header `x-agent-key` = `AGENT_CONFIG_KEY`; body `{ service: server|poller|scenarios, intervalSeconds, ok, detail?, startedAt, host?, metrics? }`) and admin-only `GET /agent/heartbeats` returning `{ services }` (always 3 entries; state online/erroring/offline/never; stale after max(interval×2.5, 120 s)). New table `service_heartbeats` (one UPSERTed row per service, self-migrating). Test: `src/routes/agentStatus.pg.test.ts`.
+- openai-agent-app: new `src/openai_agent/heartbeat.py`; the call server (`telephony/server.py` lifespan, plus an active-call counter), the poller (`run_poller.py`, daemon thread) and the scenario runner each post every 60 s. A failed post is logged once and never affects calls. Optional env `HEARTBEAT_SECONDS` (default 60). Check: `scripts/checks/verify_heartbeat.py`.
+- Dashboard: admin-only "Voice agent services" panel on Dashboard › Overview (`components/AgentServiceStatus.tsx`, `agentServices.ts`) reads `GET /agent/heartbeats`; `fake_backend.py` serves that route.
+- ⚠ Deploy: transcribe-backend first, then on the VPS rebuild all three agent containers (`docker compose up -d --build server poller scenarios`, a moment when no call is live — rebuilding `server` drops calls in progress). They already share `.env`, so `BUSINESS_CONFIG_URL` and `AGENT_CONFIG_KEY` reach every process.
+
 ## 2026-10-01 14:30 · Michael · forwarded calls: per-business "press 1 to accept" (transcribe-backend, openai-agent-app, dashboard)
 - transcribe-backend: new column `business_profiles.forward_accept_press BOOLEAN NOT NULL DEFAULT false` (self-migrating); `BusinessProfile.forwardAcceptPress`; new `PUT /business/forward-accept?userId=` `{forwardAcceptPress: boolean}` → `{profile}` (409 `no_profile`); `GET /business/config` sends `business.forwardAcceptPress`. Test in `src/routes/appointments.e2e.pg.test.ts`.
 - openai-agent-app: `/incoming` plays `FORWARD_ACCEPT_TWIML_DIGITS` on a forwarded call **only when the business has the flag on** (waits ≤3 s for the config lookup; failure/timeout = no press). New stream parameter `accept_press` gates the in-band fallback too. `BusinessConfig.forward_accept_press` (default False).

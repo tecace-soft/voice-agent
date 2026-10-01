@@ -7,13 +7,16 @@ backend refuses a second pass before it gets here, so this is only the belt to i
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hmac
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 
 from ..config import Config
+from ..heartbeat import heartbeat_loop
 from .backend_client import BackendClient
 from .run_one import run_scenario
 from .settings import RunnerSettings
@@ -39,8 +42,29 @@ async def drive_pass(cfg: Config, rs: RunnerSettings, pass_id: str) -> None:
 
 
 def build_app(cfg: Config, rs: RunnerSettings) -> FastAPI:
-    app = FastAPI()
     state: dict = {"active": None, "tasks": set()}
+
+    def heartbeat_status() -> tuple[bool, str, dict]:
+        metrics = {"activePass": state["active"]}
+        if not rs.enabled:
+            # Switched off on purpose by an admin: not a fault.
+            return True, "", {**metrics, "enabled": False}
+        gaps = rs.missing()
+        if gaps:
+            return False, "missing settings: " + ", ".join(gaps), metrics
+        return True, "", metrics
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        beat = asyncio.create_task(heartbeat_loop(cfg, "scenarios", heartbeat_status))
+        try:
+            yield
+        finally:
+            beat.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await beat
+
+    app = FastAPI(lifespan=lifespan)
 
     @app.get("/scenarios/health")
     async def health() -> dict:

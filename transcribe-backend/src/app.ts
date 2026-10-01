@@ -18,6 +18,7 @@ import { calls } from "./routes/calls.js";
 import { transcribe } from "./routes/transcribe.js";
 import { usage } from "./routes/usage.js";
 import { apiKeys } from "./routes/apiKeys.js";
+import { agentStatus } from "./routes/agentStatus.js";
 import { demo } from "./routes/demo.js";
 import { demoPublic } from "./routes/demoPublic.js";
 
@@ -75,6 +76,8 @@ export const app = new Elysia()
   .use(calendar)
   .use(calls)
   .use(usage)
+  // Heartbeats from the openai-agent-app processes (agent key) and the admin view of them.
+  .use(agentStatus)
   .use(apiKeys)
   .use(demo)
   // Last, and NOT behind the admin guard: the prospect's side of a demo link. Its own file says why

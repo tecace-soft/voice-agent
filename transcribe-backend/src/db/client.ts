@@ -921,6 +921,20 @@ export async function initDb(): Promise<void> {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_scenario_runs_pass ON scenario_runs (pass_id, position)`;
+  // One row per openai-agent-app process (server / poller / scenarios), UPSERTed on every heartbeat.
+  // Liveness is derived at read time from interval_seconds, never stored.
+  await sql`
+    CREATE TABLE IF NOT EXISTS service_heartbeats (
+      service          TEXT PRIMARY KEY,
+      last_seen_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+      interval_seconds INTEGER NOT NULL DEFAULT 60,
+      ok               BOOLEAN NOT NULL DEFAULT true,
+      detail           TEXT,
+      started_at       TIMESTAMPTZ,
+      host             TEXT,
+      metrics          JSONB
+    )
+  `;
 }
 
 // Ensure the schema is ready before serving requests, at most once per process (cached promise).
@@ -981,6 +995,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM scenario_tests LIMIT 1`;
     await sql`SELECT 1 FROM scenario_passes LIMIT 1`;
     await sql`SELECT 1 FROM scenario_runs LIMIT 1`;
+    await sql`SELECT 1 FROM service_heartbeats LIMIT 1`;
     const [guard] = await sql`SELECT 1 FROM pg_trigger WHERE tgname = 'demo_customers_code_guard'`;
     if (!guard) throw new Error("customer codes not converted");
     return;

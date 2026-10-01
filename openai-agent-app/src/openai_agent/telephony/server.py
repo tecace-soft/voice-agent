@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import datetime
 import hmac
 import logging
 import os
@@ -50,6 +51,7 @@ from twilio.rest import Client
 from twilio.twiml.voice_response import Connect, Stream, VoiceResponse
 
 from ..config import Config
+from ..heartbeat import heartbeat_loop
 from ..realtime import amd
 from ..realtime.bridge import run_bridge
 from ..realtime import greeting_audio
@@ -75,14 +77,37 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 cfg = Config.load()
+
+# Open /media-stream handlers, and the last error one died with, for the heartbeat's status.
+_active_calls = 0
+_last_call_error = ""
+_last_call_error_at = ""
+
+
+def _heartbeat_status() -> tuple[bool, str, dict]:
+    metrics: dict = {"activeCalls": _active_calls}
+    if _last_call_error:
+        metrics["lastCallError"] = _last_call_error[:100]
+        metrics["lastCallErrorAt"] = _last_call_error_at
+    # No OPENAI_LIVE_MODEL is a valid engine choice (the Realtime bridge), so only a missing key
+    # makes this process unable to answer a call.
+    if not cfg.openai_api_key:
+        return False, "OPENAI_API_KEY is not set", metrics
+    return True, "", metrics
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
+    beat = asyncio.create_task(heartbeat_loop(cfg, "server", _heartbeat_status))
     # Render every number's greeting before anyone calls it — see _keep_greetings_warm.
     warmer = asyncio.create_task(_keep_greetings_warm())
     try:
         yield
     finally:
         warmer.cancel()
+        beat.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await beat
         # Wait for the cancellation to land, so shutdown does not end with a "Task was destroyed
         # but it is pending" warning for the warm-up loop.
         with contextlib.suppress(asyncio.CancelledError):
@@ -469,8 +494,17 @@ async def media_stream(websocket: WebSocket, secret: str = "") -> None:
         log.warning("rejected a media-stream connection with a missing or wrong path secret")
         await websocket.close(code=1008)
         return
-    # OPENAI_LIVE_MODEL set = GPT-Live; blank = the Realtime bridge, untouched.
-    if cfg.openai_live_model:
-        await run_live_bridge(websocket, cfg)
-    else:
-        await run_bridge(websocket, cfg)
+    global _active_calls, _last_call_error, _last_call_error_at
+    _active_calls += 1
+    try:
+        # OPENAI_LIVE_MODEL set = GPT-Live; blank = the Realtime bridge, untouched.
+        if cfg.openai_live_model:
+            await run_live_bridge(websocket, cfg)
+        else:
+            await run_bridge(websocket, cfg)
+    except Exception as exc:  # noqa: BLE001 — recorded for the heartbeat, then raised as before
+        _last_call_error = f"{type(exc).__name__}: {exc}"
+        _last_call_error_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        raise
+    finally:
+        _active_calls -= 1

@@ -1,6 +1,8 @@
 import type {
   AccountStatus,
   AgentNumber,
+  AgentServiceStatus,
+  AgentServicesResponse,
   AvailableNumber,
   NumberSync,
   NumberWebhooks,
@@ -382,6 +384,12 @@ export function listPollers(
   return get<{ pollers: PollerHeartbeat[]; offline: number }>(
     `/transcribe/heartbeats${mailboxQuery(mailbox)}`,
   );
+}
+
+// ---- the voice agent's own processes (admin) ----
+
+export function listAgentServices(): Promise<AgentServiceStatus[]> {
+  return get<AgentServicesResponse>("/agent/heartbeats").then((r) => r.services);
 }
 
 // ---- the voice agent's phone numbers (admin) ----
