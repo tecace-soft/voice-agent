@@ -11,6 +11,8 @@ import {
   publishCallSettings,
   saveAgentIdentity,
   saveBusinessKnowledge,
+  researchBusinessProfile,
+  type BusinessResearchInputs,
   saveBusinessPrompts,
   saveCallSettingsDraft,
   saveHouseRules,
@@ -30,6 +32,8 @@ import { ForwardingSection } from "./sections/ForwardingSection";
 import { LaunchGuide } from "./sections/LaunchGuide";
 import { BusinessTestConsole, BusinessTestSection, useTestCalls } from "./sections/TestSection";
 import { GuidedSetupSection } from "./sections/GuidedSetupSection";
+import { ResearchFillCard, type ResearchOutcome } from "./sections/ResearchFillCard";
+import { mergeResearch } from "./researchMerge";
 import { SetupBoard } from "./setup/SetupBoard";
 import { useGuidedSetup } from "./setup/useGuidedSetup";
 import {
@@ -104,6 +108,11 @@ export function BusinessSettings(props: Props) {
   const [calls, setCalls] = useState<StoredCallSettings | null>(null);
   const [callsError, setCallsError] = useState<string | null>(null);
   const test = useTestCalls(userId);
+  // "Fill in from research" (Business information). The form before the run is kept for Undo.
+  const [researching, setResearching] = useState(false);
+  const [researchError, setResearchError] = useState<string | null>(null);
+  const [researchOutcome, setResearchOutcome] = useState<ResearchOutcome | null>(null);
+  const beforeResearch = useRef<DemoBusinessProfile | null>(null);
 
   // Drafts start over only when the account changes (an admin switching customer). A save in one
   // section must not reset the others: each section takes its own saved value back in `run`, and
@@ -120,6 +129,8 @@ export function BusinessSettings(props: Props) {
     setSavedPrompts(savedPromptsRef.current);
     setSaved(null);
     setError(null);
+    setResearchOutcome(null);
+    setResearchError(null);
   }, [profile]);
 
   // Call-settings saves are applied to the latest value and made one at a time (see makeUpdater).
@@ -264,6 +275,28 @@ export function BusinessSettings(props: Props) {
     void run(which, () => saveBusinessKnowledge(body, userId));
   };
 
+  // Research fills the form; it saves nothing. The business checks what changed and presses Save.
+  const runResearch = async (inputs: BusinessResearchInputs) => {
+    setResearching(true);
+    setResearchError(null);
+    setResearchOutcome(null);
+    try {
+      const result = await researchBusinessProfile(inputs, userId);
+      beforeResearch.current = knowledge;
+      const merged = mergeResearch(knowledge, result.profile);
+      setKnowledge(merged.profile);
+      setResearchOutcome({ ...merged, sources: result.sources });
+    } catch (e) {
+      setResearchError(accountErrorMessage(e, "The research didn't finish. Nothing in the form was changed."));
+    } finally {
+      setResearching(false);
+    }
+  };
+  const undoResearch = () => {
+    setKnowledge(beforeResearch.current);
+    setResearchOutcome(null);
+  };
+
   const saveAgent = () =>
     void run(
       "agent",
@@ -368,8 +401,26 @@ export function BusinessSettings(props: Props) {
         <BusinessInfoSection
           profile={knowledge}
           onChange={setKnowledge}
-          source={source}
-          footer={footer("knowledge", () => saveKnowledge("knowledge"))}
+          source={
+            <>
+              {source}
+              {knowledge ? (
+                <ResearchFillCard
+                  defaults={{ businessName, websiteUrl: knowledge.website ?? profile.website ?? "" }}
+                  running={researching}
+                  error={researchError}
+                  outcome={researchOutcome}
+                  onRun={(inputs) => void runResearch(inputs)}
+                  onUndo={undoResearch}
+                  onOpenFaqs={() => props.onSection("faqs")}
+                />
+              ) : null}
+            </>
+          }
+          footer={footer("knowledge", () => {
+            setResearchOutcome(null);
+            saveKnowledge("knowledge");
+          })}
           promptsFrozen={savedPrompts.edited}
         />
       ),

@@ -647,6 +647,8 @@ def _ago(**delta: float) -> str:
 # The business account's stored prompts, for the length of a run. A knowledge save rebuilds them
 # unless they were edited by hand; "Save prompts" with changed text freezes them; rebuild unfreezes.
 BUSINESS_STATE: dict = {"profile": PROFILE["profile"], "prompts": dict(PROFILE["prompts"])}
+# What each POST /business/research was asked, for the scripts to check.
+RESEARCH_ASKED: list = []
 
 
 def _business_prompts(profile: dict) -> dict:
@@ -1816,6 +1818,22 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
     # The two tabs' saves. Stored for the length of a run, as the real routes store them: every
     # business answer carries the saved profile and prompts, and the page must show the prompts a
     # save rebuilt (resolveSessionPrompts).
+    # Stands in for POST /business/research (routes/business.ts): the research run's profile, SAVED
+    # NOWHERE — the dashboard lays it over the form and the business saves it. The category and the
+    # parking policy change, the address comes back empty (so it must be kept), and two FAQs come
+    # back: one the business already has (worded differently), one new.
+    if path == "/business/research" and method == "POST":
+        sent = json.loads(body or b"{}")
+        RESEARCH_ASKED.append(sent)
+        current = BUSINESS_STATE["profile"]
+        return 200, {
+            "businessName": sent.get("businessName") or current.get("name", ""),
+            "profile": {**current, "category": "Family dentist", "address": "",
+                        "policies": {**current.get("policies", {}), "parking": "Free lot behind the building"},
+                        "faqs": [{"q": "do you take new patients", "a": "Yes, every weekday."},
+                                 {"q": "Is there parking?", "a": "Free lot behind the building."}]},
+            "sources": [{"url": "https://samsdental.example/faq", "title": "Sam's Dental FAQ"}],
+        }
     if path == "/business/knowledge" and method == "PUT":
         sent = json.loads(body or b"{}")
         if not isinstance(sent.get("profile"), dict):

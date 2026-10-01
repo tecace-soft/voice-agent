@@ -508,6 +508,23 @@ export function saveBusinessKnowledge(
   );
 }
 
+/** What to research: blank fields fall back to the business's stored name and website. */
+export type BusinessResearchInputs = { businessName?: string; websiteUrl?: string; mapsUrl?: string; notes?: string };
+
+/**
+ * Research the business again (its site, FAQ pages, Maps listing) — `POST /business/research`. Saves
+ * nothing: the answer is the profile the run found, for the form to show and the business to save.
+ * Takes a minute or two; a real paid web search, limited to one a minute per account.
+ */
+export function researchBusinessProfile(
+  inputs: BusinessResearchInputs,
+  userId?: string,
+): Promise<{ profile: DemoBusinessProfile; sources: { url: string; title: string }[]; businessName: string }> {
+  return request("POST", `/business/research${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`, {
+    body: inputs,
+  });
+}
+
 /**
  * Save the Prompt tab.
  *

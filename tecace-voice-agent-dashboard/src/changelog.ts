@@ -32,11 +32,19 @@ export const CHANGELOG: Release[] = [
   {
     version: "0.0.13",
     date: "2026-10-01",
-    title: "Your prompts, up front in Custom training",
+    title: "Refill your details from research; your prompts up front",
     items: [
+      {
+        kind: "new",
+        text: "Business information › Fill in from research: we read your website, its FAQ pages and your Google listing again and fill in the form and your FAQs for you. Nothing changes for callers until you check it and press Save, and Undo puts the form back.",
+      },
       {
         kind: "improved",
         text: "Custom training opens with your receptionist's prompts, already open. They're built from Business information, Agent profile and FAQs and rebuilt whenever you save those. Before, they were behind an \"Advanced: prompts\" button at the bottom of the page, easy to miss.",
+      },
+      {
+        kind: "improved",
+        text: "When we research your business, we now copy the FAQs already on your website and Google listing into your FAQs, in the order you published them, so you don't have to type them in again.",
       },
     ],
   },

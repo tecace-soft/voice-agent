@@ -13,6 +13,16 @@ Format:
 
 ---
 
+## 2026-10-01 11:30 · Michael · transcribe-backend + dashboard (Business information: Fill in from research)
+- New `POST /business/research?userId=` `{businessName?, websiteUrl?, mapsUrl?, notes?}` (blank = the stored name/website) → `{profile, sources, businessName}`. Runs the demo's `researchBusiness` inside the request (≤300 s), normalised with `normalizeProfile`, and **saves nothing**. Refusals: 403 `demo_read_only` (demo-stage account), 409 `no_profile`, 503 `no_openai_key`, 400 `no_name`, 429 `rate_limited` (1 run/min per account), 502 `research_failed` (never 401). Test: `src/routes/businessResearch.pg.test.ts`.
+- Dashboard: `settings/sections/ResearchFillCard.tsx` on Business information; `settings/researchMerge.ts` lays the result over the form (filled fields replace, empty ones keep the business's value, policies per key; FAQs appended after the business's own, duplicates skipped, capped at 20). Undo restores the form; the business's own Save writes it (FAQs saved on the FAQs page). `api/backend.ts` `researchBusinessProfile`. Tests: `tests/research-merge.test.ts`, new `scripts/regression/research_fill.py`; `fake_backend.py` fakes `/business/research` (records `RESEARCH_ASKED`).
+- ⚠ Each run is a paid OpenAI web search (same `OPENAI_API_KEY`). Deploy transcribe-backend with the dashboard.
+
+## 2026-10-01 10:05 · Michael · transcribe-backend (research gathers the business's own FAQs)
+- `src/demo/research.ts` (used by an operator's research run and by `/start` sign-up): the briefing now reads the site's FAQ/help pages and asks first for the business's **published** FAQs (FAQ page, FAQ sections on booking/service pages, Google Business Profile Q&A), copied in full and in order, then "other common questions" they don't cover. The JSON step keeps every FAQ, published first. Before, it only wrote likely questions for "a business like this".
+- Three prompt lines differ from the promo's `lib/research.ts`, listed by number in `src/demo/PORTING.md` (`parity.test.ts` holds it to that); new `src/demo/research.test.ts`. `bun test` 1016/1016. No API or schema change.
+- ⚠ Only new research runs pick this up: re-run research (or Re-research) on a demo to fill its FAQs. Copying a demo to a business still keeps the first 20 FAQs (`profileShape.ts` `MAX_FAQS`).
+
 ## 2026-10-01 09:20 · Michael · dashboard (Custom training: prompts first and always open)
 - `src/settings/sections/ProfileSections.tsx` `CustomTrainingSection` (shared by the business page and a demo's Settings): the "Advanced: prompts" toggle is gone. A **Prompts** section (Voice / Backend / Greeting, Rebuild from settings, Save prompts, "What a call is told" preview) is now the first thing under the intro, open; standard rules and Your own instructions follow. Reason: on a business the toggle sat below ten standard rules and the instructions box, below the fold, and read as missing.
 - No API change: the prompts already follow saves of Business information / FAQs (`PUT /business/knowledge`) and Agent profile (`PUT /business/prompts` after identity) unless edited by hand.

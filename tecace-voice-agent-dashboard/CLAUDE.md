@@ -176,6 +176,10 @@ Run all three after any styling change:
   calls read from `/calls` + `/usage/minutes`, no Demo-only cards, a customer's own business with no
   picker, an admin's Every business (Business column) and picking one into `?customer=`; the
   landing on sign-in; and Transcripts (`#/calls`) — an open call as chat bubbles, caller right.
+- `python scripts/regression/research_fill.py` — Business information › Fill in from research: the
+  card with the name and website filled in, `POST /business/research` with what was typed and no save
+  by itself, the results laid over the form (an empty result keeps the business's own value), FAQs
+  added after the business's own without duplicates, Undo, and Save through `PUT /business/knowledge`.
 - `python scripts/regression/numbers_twilio.py` — the Agent numbers page against Twilio (faked): sync,
   the Type and Webhooks columns, Configure, the Buy card (kind, area code, search, buy with a request
   id), Release by typing the number back, un-assign; then the Accounts Go live checklist assigning a
