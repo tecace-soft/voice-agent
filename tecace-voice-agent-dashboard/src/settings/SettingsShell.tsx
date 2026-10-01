@@ -15,6 +15,7 @@ import {
   Smartphone,
   Smile,
   CircleHelp,
+  ListChecks,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,6 +58,7 @@ export const SECTION_META: Record<SectionId, { label: string; icon: typeof Build
   transfers: { label: "Transfer calls", icon: PhoneForwarded },
   "custom-training": { label: "Custom training", icon: FolderOpen },
   test: { label: "Test & improve", icon: FlaskConical },
+  "scenario-tests": { label: "Scenario tests", icon: ListChecks },
   launch: { label: "Launch instructions", icon: Rocket },
   forwarding: { label: "Call forwarding", icon: PhoneIncoming },
 };
@@ -66,7 +68,7 @@ export const SECTION_GROUPS: { label: string; ids: SectionId[] }[] = [
   { label: "Start here", ids: ["guided-setup"] },
   { label: "Business", ids: ["business-info", "agent-profile", "faqs"] },
   { label: "Calls", ids: ["take-message", "transfers", "text-link", "appointments"] },
-  { label: "Tuning", ids: ["custom-training", "test"] },
+  { label: "Tuning", ids: ["custom-training", "test", "scenario-tests"] },
   { label: "Go live", ids: ["launch", "forwarding"] },
 ];
 

@@ -35,6 +35,10 @@ export const CHANGELOG: Release[] = [
     title: "Refill your details from research; your prompts up front",
     items: [
       {
+        kind: "improved",
+        text: "Call forwarding has a new step: how to turn off answer confirmation (\"press 1 to accept\") for your phone company or phone app, so callers reach your receptionist without waiting or hearing key tones.",
+      },
+      {
         kind: "new",
         text: "Business information › Fill in from research: we read your website, its FAQ pages and your Google listing again and fill in the form and your FAQs for you. Nothing changes for callers until you check it and press Save, and Undo puts the form back.",
       },
@@ -45,6 +49,11 @@ export const CHANGELOG: Release[] = [
       {
         kind: "improved",
         text: "When we research your business, we now copy the FAQs already on your website and Google listing into your FAQs, in the order you published them, so you don't have to type them in again.",
+      },
+      {
+        kind: "new",
+        text: "Scenario tests: run written test calls against a business's receptionist, once per press, and see each conversation, the tools it used, and why it passed or failed.",
+        admin: true,
       },
     ],
   },

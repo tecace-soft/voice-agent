@@ -438,3 +438,68 @@ export type SetupSession = { id: string; status: "active" | "finished"; topics: 
 export type SetupUnavailableReason = "no_openai_key" | "demo_stage" | "no_profile";
 export interface SetupStateResponse { session: SetupSession | null; draft: CallSettings; dirty: boolean; available: boolean; unavailableReason?: SetupUnavailableReason }
 export interface SetupTurnResponse { session: SetupSession; reply: SetupMessage; draft: CallSettings; dirty: boolean }
+
+// ---- scenario tests (admin only; transcribe-backend src/routes/scenarios.ts) ----
+
+export type ScenarioDefinition = {
+  customerLines: string[];
+  language: "ko" | "en";
+  world: { fullSlots?: string[]; failTool?: string; transferAnswer?: "accepted" | "declined" | "no_answer" };
+  expect: {
+    tools?: { name: string; args?: Record<string, string>; times?: number }[];
+    forbidden?: string[];
+    final?: { bookings?: number; messages?: number };
+    judge?: string[];
+  };
+};
+
+export type ScenarioTest = {
+  id: string;
+  templateId: string | null;
+  title: string;
+  definition: ScenarioDefinition;
+  position: number;
+  updatedAt: string;
+  /** False for a built-in one the business's draft no longer supports (booking switched off). */
+  applicable: boolean;
+};
+
+export type ScenarioListResponse = { scenarios: ScenarioTest[]; perRunEstimateUsd: number; runnerConfigured: boolean };
+
+export type ScenarioPassStatus = "running" | "completed" | "cancelled" | "interrupted";
+
+export type ScenarioPassSummary = {
+  id: string;
+  settingsKind: "draft" | "published";
+  status: ScenarioPassStatus;
+  createdAt: string;
+  finishedAt: string | null;
+  runs: number;
+  done: number;
+  passed: number;
+  failed: number;
+  errors: number;
+  costUsd: number;
+};
+
+export type ScenarioToolCall = { name: string; args: Record<string, unknown>; ok: boolean; output: Record<string, unknown>; at: string };
+export type ScenarioFailure = { kind: "code" | "judge"; text: string; evidence?: string };
+export type ScenarioTranscriptEntry = { id: string; speaker: "caller" | "receptionist"; text: string; startMs: number; endMs: number };
+
+export type ScenarioRun = {
+  id: string;
+  position: number;
+  title: string;
+  scenario: ScenarioDefinition | null;
+  status: "queued" | "running" | "grading" | "done";
+  verdict: "pass" | "fail" | "run_error" | null;
+  failures: ScenarioFailure[];
+  errorReason: string | null;
+  transcript: ScenarioTranscriptEntry[];
+  sandbox: { calls: ScenarioToolCall[]; bookings: { start: string; name: string }[]; messages: Record<string, unknown>[] };
+  durationSec: number | null;
+  costUsd: number | null;
+  startedAt: string | null;
+};
+
+export type ScenarioPassDetail = { pass: ScenarioPassSummary; runs: ScenarioRun[] };

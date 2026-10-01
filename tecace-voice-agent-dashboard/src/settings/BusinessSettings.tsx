@@ -43,6 +43,7 @@ import {
   FaqsSection,
   type AgentFields,
 } from "./sections/ProfileSections";
+import { ScenarioTestsSection } from "./scenarios/ScenarioTestsSection";
 
 // A real business's receptionist settings: the shared shell, with every section saving to its own
 // endpoint — the same split the old cards and tabs had, because a business's settings are stored
@@ -512,6 +513,10 @@ export function BusinessSettings(props: Props) {
       ),
     },
     { id: "test", render: () => <BusinessTestSection test={test} /> },
+    // Admin only: the menu only lists sections that are in this array (SettingsShell filters by it).
+    ...(props.isAdmin && userId
+      ? [{ id: "scenario-tests" as const, render: () => <ScenarioTestsSection key={userId} userId={userId} /> }]
+      : []),
     {
       id: "launch",
       render: () => (

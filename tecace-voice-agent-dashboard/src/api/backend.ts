@@ -13,6 +13,11 @@ import type {
   CustomerPrompts,
   DemoBusinessProfile,
   PollerHeartbeat,
+  ScenarioDefinition,
+  ScenarioListResponse,
+  ScenarioPassDetail,
+  ScenarioPassSummary,
+  ScenarioTest,
   SessionPreview,
   SetupStateResponse,
   SetupTurnResponse,
@@ -625,6 +630,52 @@ export function getSessionPreview(
 ): Promise<SessionPreview> {
   const q = new URLSearchParams({ settings: which, ...(userId ? { userId } : {}) });
   return get<SessionPreview>(`/business/session-preview?${q.toString()}`);
+}
+
+// ---- scenario tests (admin only) ----
+
+export function listScenarioTests(userId: string): Promise<ScenarioListResponse> {
+  return get<ScenarioListResponse>(`/business/scenarios${asUser(userId)}`);
+}
+
+/** Add (id null) or edit a scenario. A bad definition comes back as a 400 with a message to show. */
+export function saveScenarioTest(
+  userId: string,
+  id: string | null,
+  body: { title: string; definition: ScenarioDefinition },
+): Promise<{ scenario: ScenarioTest }> {
+  return id
+    ? request<{ scenario: ScenarioTest }>("PUT", `/business/scenarios/${id}${asUser(userId)}`, { body })
+    : request<{ scenario: ScenarioTest }>("POST", `/business/scenarios${asUser(userId)}`, { body });
+}
+
+export function deleteScenarioTest(userId: string, id: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>("DELETE", `/business/scenarios/${id}${asUser(userId)}`);
+}
+
+export function resetScenarioTest(userId: string, id: string): Promise<{ scenario: ScenarioTest }> {
+  return request<{ scenario: ScenarioTest }>("POST", `/business/scenarios/${id}/reset${asUser(userId)}`, { body: {} });
+}
+
+/** One press of Run selected: each scenario once, then it stops. */
+export function startScenarioPass(
+  userId: string,
+  settings: "draft" | "published",
+  scenarioIds: string[],
+): Promise<{ passId: string }> {
+  return request<{ passId: string }>("POST", `/business/scenario-passes${asUser(userId)}`, { body: { settings, scenarioIds } });
+}
+
+export async function listScenarioPasses(userId: string): Promise<ScenarioPassSummary[]> {
+  return (await get<{ passes: ScenarioPassSummary[] }>(`/business/scenario-passes${asUser(userId)}`)).passes;
+}
+
+export function getScenarioPass(userId: string, id: string): Promise<ScenarioPassDetail> {
+  return get<ScenarioPassDetail>(`/business/scenario-passes/${id}${asUser(userId)}`);
+}
+
+export function stopScenarioPass(userId: string, id: string): Promise<ScenarioPassDetail> {
+  return request<ScenarioPassDetail>("POST", `/business/scenario-passes/${id}/stop${asUser(userId)}`, { body: {} });
 }
 
 // ---- calls the agent answered ----

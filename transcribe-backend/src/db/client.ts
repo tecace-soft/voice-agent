@@ -858,6 +858,65 @@ export async function initDb(): Promise<void> {
   await sql`ALTER TABLE business_setup_sessions ADD COLUMN IF NOT EXISTS discarded_at TIMESTAMPTZ`;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS business_setup_sessions_one_active ON business_setup_sessions (user_id) WHERE status = 'active'`;
   await sql`CREATE INDEX IF NOT EXISTS idx_business_setup_sessions_user ON business_setup_sessions (user_id, created_at DESC)`;
+  // Scenario tests (docs/superpowers/specs/2026-10-01-scenario-tests-design.md). The scenarios a
+  // business is tested with; one row per built-in template at most, plus any an admin adds.
+  await sql`
+    CREATE TABLE IF NOT EXISTS scenario_tests (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      template_id TEXT,
+      title       TEXT NOT NULL,
+      definition  JSONB NOT NULL,
+      position    INTEGER NOT NULL DEFAULT 0,
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS scenario_tests_one_template
+      ON scenario_tests (user_id, template_id) WHERE template_id IS NOT NULL
+  `;
+  // One press of Run selected. The settings and the composed session are copied in, so editing
+  // either while it runs cannot change what is being tested. "interrupted" is not stored: it is a
+  // running pass nobody has touched for five minutes, decided when it is read.
+  await sql`
+    CREATE TABLE IF NOT EXISTS scenario_passes (
+      id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_by        UUID REFERENCES users(id) ON DELETE SET NULL,
+      settings_kind     TEXT NOT NULL CHECK (settings_kind IN ('draft','published')),
+      status            TEXT NOT NULL CHECK (status IN ('running','completed','cancelled')),
+      time_zone         TEXT NOT NULL,
+      settings_snapshot JSONB NOT NULL,
+      session_snapshot  JSONB NOT NULL,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+      finished_at       TIMESTAMPTZ
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_scenario_passes_user ON scenario_passes (user_id, created_at DESC)`;
+  // Each scenario in a pass, run once. `scenario_snapshot` is the definition with its times filled
+  // in; null (and the run already done, as a run error) when they could not be.
+  await sql`
+    CREATE TABLE IF NOT EXISTS scenario_runs (
+      id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      pass_id           UUID NOT NULL REFERENCES scenario_passes(id) ON DELETE CASCADE,
+      scenario_id       UUID REFERENCES scenario_tests(id) ON DELETE SET NULL,
+      position          INTEGER NOT NULL,
+      title             TEXT NOT NULL,
+      scenario_snapshot JSONB,
+      status            TEXT NOT NULL CHECK (status IN ('queued','running','grading','done')),
+      verdict           TEXT CHECK (verdict IS NULL OR verdict IN ('pass','fail','run_error')),
+      failures          JSONB NOT NULL DEFAULT '[]'::jsonb,
+      error_reason      TEXT,
+      transcript        JSONB NOT NULL DEFAULT '[]'::jsonb,
+      sandbox_state     JSONB NOT NULL DEFAULT '{"calls":[],"bookings":[],"messages":[]}'::jsonb,
+      duration_sec      INTEGER,
+      cost_usd          NUMERIC(10,4),
+      started_at        TIMESTAMPTZ,
+      finished_at       TIMESTAMPTZ
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_scenario_runs_pass ON scenario_runs (pass_id, position)`;
 }
 
 // Ensure the schema is ready before serving requests, at most once per process (cached promise).
@@ -914,6 +973,9 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM auth_tokens LIMIT 1`;
     await sql`SELECT twilio_sid, webhook_state, released_at FROM agent_numbers LIMIT 1`;
     await sql`SELECT busy_until, discarded_at FROM business_setup_sessions LIMIT 1`;
+    await sql`SELECT 1 FROM scenario_tests LIMIT 1`;
+    await sql`SELECT 1 FROM scenario_passes LIMIT 1`;
+    await sql`SELECT 1 FROM scenario_runs LIMIT 1`;
     const [guard] = await sql`SELECT 1 FROM pg_trigger WHERE tgname = 'demo_customers_code_guard'`;
     if (!guard) throw new Error("customer codes not converted");
     return;

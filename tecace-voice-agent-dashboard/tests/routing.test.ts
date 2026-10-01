@@ -70,6 +70,7 @@ describe("settings sections", () => {
 
   it("opens the guided setup section", () => {
     expect(SECTION_IDS).toContain("guided-setup");
+    expect(SECTION_IDS).toContain("scenario-tests");
     const route = parseHash("#/business/guided-setup");
     expect(route).toEqual({ view: "business", mailbox: undefined, section: "guided-setup" });
     expect(formatHash(route)).toBe("#/business/guided-setup");

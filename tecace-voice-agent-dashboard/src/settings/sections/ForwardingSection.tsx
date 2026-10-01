@@ -27,7 +27,12 @@ type Carrier = {
   off: Code[];
   /** What to do instead of (or as well as) dialling a code. */
   note?: string;
+  /** How to turn off answer confirmation ("press 1 to accept") for this kind of line. */
+  confirm: string;
 };
+
+const MOBILE_CONFIRM =
+  "Mobile forwarding passes the call straight on and never asks for a key, so there's nothing to turn off.";
 
 const GSM: Carrier = {
   id: "gsm",
@@ -44,6 +49,7 @@ const GSM: Carrier = {
     { label: "Turn off all forwarding", code: "##002#" },
   ],
   note: "To change how long your phone rings before the receptionist picks up, dial **61*{n}**20# instead — any of 5, 10, 15, 20, 25 or 30 seconds.",
+  confirm: MOBILE_CONFIRM,
 };
 
 const CARRIERS: Carrier[] = [
@@ -59,6 +65,7 @@ const CARRIERS: Carrier[] = [
     all: [{ label: "Every call", code: "*72{n}" }],
     off: [{ label: "Turn off all forwarding", code: "*73" }],
     note: "Verizon can't turn off one rule on its own: *73 turns off all of them.",
+    confirm: MOBILE_CONFIRM,
   },
   {
     id: "landline",
@@ -68,6 +75,8 @@ const CARRIERS: Carrier[] = [
     all: [{ label: "Every call", code: "*72{n}" }],
     off: [{ label: "Turn off all forwarding", code: "*73" }],
     note: "Forwarding only missed calls depends on your plan — ask your phone company to forward when busy or unanswered to your receptionist's number, or look for it in their online account.",
+    confirm:
+      "Some phone companies play \"This is a forwarded call, press 1 to accept\" before passing the call on. Call your phone company and ask them to turn off answer confirmation (also called call screening or forwarded call announcement) for calls forwarded to {n}. Some let you switch it off yourself in the call forwarding settings of their online account.",
   },
   {
     id: "voip",
@@ -77,6 +86,8 @@ const CARRIERS: Carrier[] = [
     all: [],
     off: [],
     note: "These don't use dial codes. In the app's admin settings, open the call handling or forwarding rules for your business number and add your receptionist's number — as the step after your team's phones ring for missed calls, or as the first step for every call.",
+    confirm:
+      "Open the forwarding rule you added for {n} and turn off any setting that makes the person answering press a key first. It may be called answer confirmation, call screening, announce caller or \"press 1 to accept\". In Google Voice it's Settings › Calls › Screen calls; in RingCentral it's \"Prompt me to press 1 before connecting the call\" on the forwarding number.",
   },
 ];
 
@@ -187,7 +198,17 @@ export function ForwardingSection({
         ) : null}
       </Step>
 
-      <Step n={3} title="Check it works" last>
+      <Step n={3} title="Turn off answer confirmation">
+        <p className="ta-body-2">{fill(carrier.confirm, digits)}</p>
+        {carrier.confirm !== MOBILE_CONFIRM ? (
+          <p className="ta-caption-1 text-muted-foreground mt-3">
+            Your receptionist answers by speaking, not by pressing keys. With answer confirmation on, callers wait
+            while the receptionist presses 1 for them, and may hear the key tones.
+          </p>
+        ) : null}
+      </Step>
+
+      <Step n={4} title="Check it works" last>
         <ul className="ta-body-2 list-disc space-y-2 pl-5">
           <li>
             From a different phone, call your business number.
@@ -198,6 +219,10 @@ export function ForwardingSection({
             Voicemail answered instead? On an iPhone, turn off Live Voicemail (Settings › Apps › Phone). On
             Android, turn off Call Screen. Otherwise shorten the ring time above, so forwarding happens before
             voicemail.
+          </li>
+          <li>
+            Hear "This is a forwarded call, press 1 to accept" or a beep before the receptionist speaks? Answer
+            confirmation is still on — see step 3.
           </li>
           <li>A code didn't take? Codes vary by plan — your phone company can turn forwarding on for you.</li>
         </ul>

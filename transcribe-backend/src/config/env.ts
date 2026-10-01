@@ -253,6 +253,12 @@ export const env = {
   openaiLiveModel: process.env.OPENAI_LIVE_MODEL || "gpt-live-1",
   openaiBackendModel: process.env.OPENAI_BACKEND_MODEL || "gpt-5.6-terra",
   callReviewModel: process.env.CALL_REVIEW_MODEL || analysisModelDefault,
+  // Scenario tests (docs/superpowers/specs/2026-10-01-scenario-tests-design.md): where the runner in
+  // openai-agent-app listens, the key both sides send, and the model that grades a run. With the URL
+  // or the key unset, the Scenario tests section says the runner isn't set up and refuses to start.
+  scenarioRunnerUrl: (process.env.SCENARIO_RUNNER_URL ?? "").trim().replace(/\/$/, ""),
+  scenarioRunnerKey: process.env.SCENARIO_RUNNER_KEY?.trim() ?? "",
+  scenarioJudgeModel: process.env.SCENARIO_JUDGE_MODEL?.trim() || analysisModelDefault,
   researchProvider,
   researchOpenaiModel,
   researchSearchContext,
