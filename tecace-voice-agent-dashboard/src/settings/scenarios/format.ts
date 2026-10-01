@@ -25,6 +25,23 @@ export function passSummaryLine(p: ScenarioPassSummary, when: string): string {
   return parts.join(" · ");
 }
 
+/**
+ * What the runner is doing right now, for the panel shown while a pass runs. `runs` is null when
+ * the running pass isn't the one open on screen: then only the count is known.
+ */
+export function runnerActivity(
+  pass: Pick<ScenarioPassSummary, "done" | "runs">,
+  runs: Pick<ScenarioRun, "status" | "title">[] | null,
+): { line: string; percent: number } {
+  const percent = pass.runs ? Math.round((pass.done / pass.runs) * 100) : 0;
+  if (!runs) return { line: `${pass.done} of ${plural(pass.runs, "scenario", "scenarios")} done`, percent };
+  const index = runs.findIndex((r) => r.status === "running" || r.status === "grading");
+  if (index < 0) return { line: "Starting the next scenario…", percent };
+  const current = runs[index]!;
+  const doing = current.status === "grading" ? "grading the call" : "on the call";
+  return { line: `Scenario ${index + 1} of ${runs.length} · ${current.title} · ${doing}`, percent };
+}
+
 export function verdictLabel(run: Pick<ScenarioRun, "status" | "verdict">, passStatus: ScenarioPassStatus): string {
   if (run.status === "done") return run.verdict === "pass" ? "Passed" : run.verdict === "fail" ? "Failed" : "Run error";
   if (run.status === "grading") return "Grading";

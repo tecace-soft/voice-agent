@@ -1,9 +1,10 @@
 import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ScenarioPassDetail, ScenarioRun, ScenarioTest } from "../../api/types";
 import { Exchange } from "@/components/public/Exchange";
 import { SectionIntro } from "../SettingsShell";
-import { estimateLine, expectationLine, passSummaryLine, runTimeline, verdictLabel } from "./format";
+import { estimateLine, expectationLine, passSummaryLine, runTimeline, runnerActivity, verdictLabel } from "./format";
 import { ScenarioEditor } from "./ScenarioEditor";
 import { useScenarioTests } from "./useScenarioTests";
 
@@ -119,17 +120,16 @@ export function ScenarioTestsSection({ userId }: { userId: string }) {
         />
       ) : null}
 
+      {running ? (
+        <RunnerStatus
+          activity={runnerActivity(running, s.open?.pass.id === running.id ? s.open.runs : null)}
+          stopping={s.busy}
+          onStop={() => void s.stop()}
+        />
+      ) : null}
+
       <div className="mb-8 flex flex-wrap items-center gap-2">
-        {running ? (
-          <>
-            <Button disabled>
-              Running {running.done}/{running.runs}…
-            </Button>
-            <Button variant="outline" onClick={() => void s.stop()} disabled={s.busy}>
-              Stop
-            </Button>
-          </>
-        ) : (
+        {running ? null : (
           <Button onClick={confirmRun} disabled={s.busy || !selected.length || !s.list?.runnerConfigured}>
             Run selected{s.list && selected.length ? ` · ${estimateLine(selected.length, s.list.perRunEstimateUsd)}` : ""}
           </Button>
@@ -163,6 +163,28 @@ export function ScenarioTestsSection({ userId }: { userId: string }) {
   );
 }
 
+/** Shown while the runner works through a pass: a spinning ring, what it's on, and how far along. */
+function RunnerStatus(props: { activity: { line: string; percent: number }; stopping: boolean; onStop: () => void }) {
+  return (
+    <div className="border-primary/30 bg-primary/5 mb-4 flex items-center gap-4 rounded-xl border p-4" role="status" aria-live="polite">
+      <Loader2 className="text-primary size-8 shrink-0 motion-safe:animate-spin" aria-hidden />
+      <div className="min-w-0 flex-1">
+        <p className="ta-label-1">Test runner is active</p>
+        <p className="ta-caption-1 text-muted-foreground truncate">{props.activity.line}</p>
+        <div className="bg-muted mt-2 h-1.5 overflow-hidden rounded-full">
+          <div
+            className="bg-primary h-full rounded-full transition-[width] duration-150 ease-out"
+            style={{ width: `${props.activity.percent}%` }}
+          />
+        </div>
+      </div>
+      <Button variant="outline" onClick={props.onStop} disabled={props.stopping}>
+        Stop
+      </Button>
+    </div>
+  );
+}
+
 function PassResult({ detail }: { detail: ScenarioPassDetail }) {
   const [openRun, setOpenRun] = useState<string | null>(null);
   return (
@@ -173,7 +195,12 @@ function PassResult({ detail }: { detail: ScenarioPassDetail }) {
         {detail.runs.map((run) => (
           <li key={run.id} className="p-3">
             <button type="button" aria-expanded={openRun === run.id} className="flex w-full items-center gap-3 text-left" onClick={() => setOpenRun(openRun === run.id ? null : run.id)}>
-              <span className={`ta-label-1 w-24 ${run.verdict === "pass" ? "text-primary" : run.verdict === "fail" ? "text-destructive" : ""}`}>
+              <span
+                className={`ta-label-1 flex w-28 items-center gap-1.5 ${run.verdict === "pass" ? "text-primary" : run.verdict === "fail" ? "text-destructive" : ""}`}
+              >
+                {detail.pass.status === "running" && (run.status === "running" || run.status === "grading") ? (
+                  <Loader2 className="text-primary size-4 shrink-0 motion-safe:animate-spin" aria-hidden />
+                ) : null}
                 {verdictLabel(run, detail.pass.status)}
               </span>
               <span className="ta-body-2 flex-1">{run.title}</span>

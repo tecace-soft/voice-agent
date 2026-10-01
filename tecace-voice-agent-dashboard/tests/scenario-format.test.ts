@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ScenarioDefinition, ScenarioPassSummary, ScenarioRun } from "../src/api/types";
-import { estimateLine, expectationLine, passSummaryLine, runTimeline, verdictLabel } from "../src/settings/scenarios/format";
+import { estimateLine, expectationLine, passSummaryLine, runTimeline, runnerActivity, verdictLabel } from "../src/settings/scenarios/format";
 
 // What the Scenario tests section says about a pass and a run. Pure, so it is tested here and the
 // component only lays it out.
@@ -84,5 +84,26 @@ describe("expectationLine", () => {
   });
   it("says judge checks only when nothing is declared", () => {
     expect(expectationLine(def({}))).toBe("Judge checks only");
+  });
+});
+
+describe("runner activity", () => {
+  const runs = (statuses: ScenarioRun["status"][]) =>
+    statuses.map((status, i) => ({ status, title: `S${i + 1}` })) as Pick<ScenarioRun, "status" | "title">[];
+
+  it("says which scenario is on the call, and how far along the pass is", () => {
+    expect(runnerActivity({ done: 1, runs: 3 }, runs(["done", "running", "queued"]))).toEqual({
+      line: "Scenario 2 of 3 · S2 · on the call",
+      percent: 33,
+    });
+  });
+
+  it("says when a call is being graded", () => {
+    expect(runnerActivity({ done: 0, runs: 2 }, runs(["grading", "queued"])).line).toBe("Scenario 1 of 2 · S1 · grading the call");
+  });
+
+  it("is starting up before the first scenario is picked up, or without run details", () => {
+    expect(runnerActivity({ done: 0, runs: 2 }, runs(["queued", "queued"])).line).toBe("Starting the next scenario…");
+    expect(runnerActivity({ done: 0, runs: 4 }, null)).toEqual({ line: "0 of 4 scenarios done", percent: 0 });
   });
 });
