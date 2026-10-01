@@ -266,15 +266,22 @@ def main() -> int:
                     check("Text a link: the empty state says what to do", "No link scenarios yet" in body)
                     check("Text a link: the consent text is previewed", "Reply YES" in body and "STOP" in body)
 
-                    # ---- Custom training: instructions, and the prompts behind Advanced
+                    # ---- Custom training: the prompts first and open, then the rules and instructions.
+                    # (They used to sit behind "Advanced: prompts" at the foot of the page, below the
+                    # fold on a business, and read as missing.)
                     open_section("Custom training")
                     check("Custom training: your own instructions are editable",
                           page.get_by_label("Your own instructions", exact=True).count() == 1)
-                    page.get_by_role("button", name="Advanced: prompts").click()
-                    page.wait_for_timeout(300)
+                    check("Custom training: no Advanced toggle to find first",
+                          page.get_by_role("button", name="Advanced: prompts").count() == 0)
                     for label in ("Voice prompt", "Backend prompt"):
-                        check(f"Custom training: the {label} box is there",
+                        check(f"Custom training: the {label} box is there, open",
                               page.get_by_label(label, exact=True).count() == 1)
+                    prompts_top = page.get_by_role("heading", name="Prompts", exact=True).bounding_box()
+                    rules_top = page.get_by_text("On every call, as standard").bounding_box()
+                    check("Custom training: the Prompts section comes before the standard rules",
+                          prompts_top is not None and rules_top is not None and prompts_top["y"] < rules_top["y"],
+                          f"{prompts_top} {rules_top}")
                     page.get_by_role("button", name="Show", exact=True).click()
                     page.wait_for_timeout(700)
                     check("Custom training: the preview reads the composed session",

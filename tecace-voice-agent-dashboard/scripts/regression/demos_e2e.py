@@ -929,9 +929,8 @@ def run() -> int:
                     check("business info: no 'A week on the book' mock-up any more",
                           main_tw.get_by_role("heading", name="A week on the book").count() == 0)
 
-                    # Prompt: in Custom training, behind Advanced
+                    # Prompt: in Custom training, its first section, open
                     open_setting("Custom training")
-                    main_tw.get_by_role("button", name="Advanced: prompts").click()
                     greeting = main_tw.get_by_label("Greeting", exact=True)
                     greeting.wait_for()
                     check("prompt: the three prompts are shown",

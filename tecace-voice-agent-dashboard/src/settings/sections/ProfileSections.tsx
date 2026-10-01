@@ -248,12 +248,11 @@ export function CustomTrainingSection({
   /** Bumped after every save that changes what a call is told; an open preview re-reads. */
   previewVersion?: number;
 }) {
-  const [advanced, setAdvanced] = useState(false);
   return (
     <div>
       <SectionIntro>
-        How the assistant behaves on your calls. The standard rules below apply to every call and can't be
-        switched off; add your own instructions on top of them.
+        How the assistant behaves on your calls: the prompts built from your settings, the standard rules
+        every call follows, and your own instructions on top.
       </SectionIntro>
 
       {promptsFrozen ? (
@@ -268,6 +267,44 @@ export function CustomTrainingSection({
           profile. Changes made there don't reach calls until you rebuild them.
         </FrozenPromptsNote>
       ) : null}
+
+      {/* First and always open. It used to sit behind an "Advanced: prompts" toggle at the foot of the
+          page, which on a business — ten standard rules and the instructions box above it — was below
+          the fold, so the prompts read as missing. */}
+      <section className="mb-8 rounded-xl border p-4" aria-labelledby="prompts-heading">
+        <h3 id="prompts-heading" className="ta-headline-2">
+          Prompts
+        </h3>
+        <p className="ta-caption-1 text-muted-foreground mt-1 mb-4 max-w-2xl">
+          Built from Business information, Agent profile and FAQs, and rebuilt whenever you save those. Edit
+          them only if you need to: once edited they stop following your settings until you rebuild. The
+          rules and your transfers, links and message scenarios are added at call time — see the preview.
+        </p>
+        <PromptEditor
+          sections={["prompts"]}
+          showCallSound={false}
+          agentName=""
+          voice=""
+          prompts={prompts}
+          onAgentNameChange={() => undefined}
+          onVoiceChange={() => undefined}
+          onLanguageChange={() => undefined}
+          onPromptsChange={onPromptsChange}
+          onRegenerate={onRebuild}
+          regenerating={rebuilding}
+        />
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <Button variant="outline" onClick={onRebuild} disabled={rebuilding}>
+            {rebuilding ? "Rebuilding" : "Rebuild from settings"}
+          </Button>
+          {promptsFooter}
+        </div>
+        {loadPreview ? (
+          <div className="mt-6">
+            <SessionPreviewPanel load={loadPreview} tabs={previewTabs} version={previewVersion} />
+          </div>
+        ) : null}
+      </section>
 
       {standard.length ? (
         <div className="mb-6 rounded-xl border p-4">
@@ -320,41 +357,6 @@ export function CustomTrainingSection({
           {houseRulesFooter}
         </div>
       ) : null}
-
-      <div className="mt-8 border-t pt-6">
-        <Button variant="outline" onClick={() => setAdvanced(!advanced)}>
-          {advanced ? "Hide advanced" : "Advanced: prompts"}
-        </Button>
-        {advanced ? (
-          <div className="mt-4 space-y-6">
-            <p className="ta-caption-1 text-muted-foreground max-w-2xl">
-              The persona and knowledge prompts are generated from your settings. Edit them only if you need
-              to; once edited they stop following your settings until you rebuild. The rules and your
-              transfers, links and message scenarios are added at call time — see the preview.
-            </p>
-            <PromptEditor
-              sections={["prompts"]}
-              showCallSound={false}
-              agentName=""
-              voice=""
-              prompts={prompts}
-              onAgentNameChange={() => undefined}
-              onVoiceChange={() => undefined}
-              onLanguageChange={() => undefined}
-              onPromptsChange={onPromptsChange}
-              onRegenerate={onRebuild}
-              regenerating={rebuilding}
-            />
-            <div className="flex flex-wrap items-center gap-3">
-              <Button variant="outline" onClick={onRebuild} disabled={rebuilding}>
-                {rebuilding ? "Rebuilding" : "Rebuild from settings"}
-              </Button>
-              {promptsFooter}
-            </div>
-            {loadPreview ? <SessionPreviewPanel load={loadPreview} tabs={previewTabs} version={previewVersion} /> : null}
-          </div>
-        ) : null}
-      </div>
     </div>
   );
 }

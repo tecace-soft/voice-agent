@@ -13,6 +13,11 @@ Format:
 
 ---
 
+## 2026-10-01 09:20 · Michael · dashboard (Custom training: prompts first and always open)
+- `src/settings/sections/ProfileSections.tsx` `CustomTrainingSection` (shared by the business page and a demo's Settings): the "Advanced: prompts" toggle is gone. A **Prompts** section (Voice / Backend / Greeting, Rebuild from settings, Save prompts, "What a call is told" preview) is now the first thing under the intro, open; standard rules and Your own instructions follow. Reason: on a business the toggle sat below ten standard rules and the instructions box, below the fold, and read as missing.
+- No API change: the prompts already follow saves of Business information / FAQs (`PUT /business/knowledge`) and Agent profile (`PUT /business/prompts` after identity) unless edited by hand.
+- `business_tabs.py` / `demos_e2e.py` no longer click "Advanced: prompts"; `business_tabs.py` checks there is no toggle and that Prompts sits above the standard rules. Changelog 0.0.13 (package version bumped).
+
 ## 2026-09-30 18:10 · Michael · transcribe-backend (calendar errors no longer sign the dashboard out)
 - Bug: opening Business information › Appointments for a business whose calendar credentials no longer work signed the viewer out. `GET /business/calendar/targets` (also `PUT /target`, `POST /availability`) answered **401** for a calendar-side `CalendarError("auth")`, and the dashboard treats every 401 as an expired session. Triggered by setting `CALENDAR_SECRET` on production today (connections sealed under the `AUTH_SECRET` fallback became unreadable) and by any revoked Google/Microsoft token.
 - Fix: `routes/calendar.ts` `refusal()` maps calendar auth failures to **409 `calendar_auth`** ("…Reconnect the calendar."); `/connect` still answers 400 for a key refused while connecting. New test in `calendar.pg.test.ts`; `bun test` 1012/1012.

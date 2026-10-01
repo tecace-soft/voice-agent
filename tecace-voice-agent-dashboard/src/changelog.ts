@@ -30,6 +30,17 @@ export type Release = {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.0.13",
+    date: "2026-10-01",
+    title: "Your prompts, up front in Custom training",
+    items: [
+      {
+        kind: "improved",
+        text: "Custom training opens with your receptionist's prompts, already open. They're built from Business information, Agent profile and FAQs and rebuilt whenever you save those. Before, they were behind an \"Advanced: prompts\" button at the bottom of the page, easy to miss.",
+      },
+    ],
+  },
+  {
     version: "0.0.12",
     date: "2026-09-30",
     title: "A calls overview and chat-style transcripts; voicemail gets its own section",
