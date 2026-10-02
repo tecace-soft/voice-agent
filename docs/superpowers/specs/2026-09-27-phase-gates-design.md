@@ -1,5 +1,8 @@
 # Phase gates: demo → onboarding → production — design
 
+> **Superseded in part, 2026-10-02.** The customer's gate changed: `POST /demo/customers/:id/request-onboarding` now takes a plan and a (mock) card and runs the admin's approval itself, so a customer who asks is in `pre-production` at once — no admin Approve for customer-started setups. Approve/Decline remain for admin-started ones. Billing (`/billing`) and the trial rule (14 days from `live_at`, nothing charged before) live in `transcribe-backend/src/db/billing.ts`. See HISTORY.md for the date.
+
+
 **Date:** 2026-09-27
 **Projects:** `transcribe-backend/`, `tecace-voice-agent-dashboard/`
 **Follows:** the customer lifecycle v2 work (CUST ids, `phase`, self-onboarding; HISTORY 2026-09-25) and

@@ -63,9 +63,9 @@ const NAV = [
 
 // The customer's nav, by lifecycle stage. One short list: a business owner has one receptionist.
 const CUSTOMER_NAV = {
-  demo: [{ items: [["home", "Home", "home", "demo-home.html"], ["calls", "Calls", "chat", "calls.html"], ["receptionist", "Receptionist", "target", "receptionist.html"]] }],
-  onboarding: [{ items: [["home", "Home", "home", "onboarding-home.html"], ["calls", "Calls", "chat", "calls.html"], ["receptionist", "Receptionist", "target", "receptionist.html"], ["phone", "Phone line", "phone", "phone-line.html"]] }],
-  live: [{ items: [["home", "Home", "home", "live-home.html"], ["calls", "Calls", "chat", "calls.html"], ["receptionist", "Receptionist", "target", "receptionist.html"], ["phone", "Phone line", "phone", "phone-line.html"]] }],
+  demo: [{ items: [["home", "Home", "home", "demo-home.html"], ["calls", "Calls", "chat", "calls.html"], ["receptionist", "Receptionist", "target", "receptionist.html"], ["billing", "Billing", "key", "billing.html"]] }],
+  onboarding: [{ items: [["home", "Home", "home", "onboarding-home.html"], ["calls", "Calls", "chat", "calls.html"], ["receptionist", "Receptionist", "target", "receptionist.html"], ["phone", "Phone line", "phone", "phone-line.html"], ["billing", "Billing", "key", "billing.html"]] }],
+  live: [{ items: [["home", "Home", "home", "live-home.html"], ["calls", "Calls", "chat", "calls.html"], ["receptionist", "Receptionist", "target", "receptionist.html"], ["phone", "Phone line", "phone", "phone-line.html"], ["billing", "Billing", "key", "billing.html"]] }],
 };
 
 function sidebar(active, variant) {

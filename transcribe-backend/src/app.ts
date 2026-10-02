@@ -17,6 +17,7 @@ import { calendar } from "./routes/calendar.js";
 import { calls } from "./routes/calls.js";
 import { transcribe } from "./routes/transcribe.js";
 import { usage } from "./routes/usage.js";
+import { billing } from "./routes/billing.js";
 import { apiKeys } from "./routes/apiKeys.js";
 import { agentStatus } from "./routes/agentStatus.js";
 import { demo } from "./routes/demo.js";
@@ -76,6 +77,7 @@ export const app = new Elysia()
   .use(calendar)
   .use(calls)
   .use(usage)
+  .use(billing)
   // Heartbeats from the openai-agent-app processes (agent key) and the admin view of them.
   .use(agentStatus)
   .use(apiKeys)

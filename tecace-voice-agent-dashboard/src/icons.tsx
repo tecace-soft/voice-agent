@@ -276,6 +276,13 @@ export const IconPhone = (p: IconProps) => (
   </Icon>
 );
 
+export const IconCard = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="2" y="5" width="20" height="14" rx="2" />
+    <path d="M2 10h20M6 15h4" />
+  </Icon>
+);
+
 export const IconPresentation = (p: IconProps) => (
   <Icon {...p}>
     <path d="M2 3h20" />

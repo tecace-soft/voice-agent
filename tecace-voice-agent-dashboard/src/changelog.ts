@@ -30,6 +30,34 @@ export type Release = {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.0.15",
+    date: "2026-10-02",
+    title: "Set up your receptionist yourself: pick a plan, add a card, start",
+    items: [
+      {
+        kind: "new",
+        text: "Request setup no longer waits for us. Pick a plan, add a card and your receptionist is yours to change and test straight away. Nothing is charged until your line is live; your 14-day free trial starts that day.",
+      },
+      {
+        kind: "new",
+        text: "Billing, in the sidebar: your plan, the card on file, when the free trial ends and the first bill comes. Payments are in test mode for now: cards are checked but never charged.",
+      },
+      {
+        kind: "improved",
+        text: "A new home page for each stage. While you're being set up: a checklist of what's left, what we do for you, and your phone line. Once you're live: calls answered, bookings made, messages waiting for you, callers put through, and who needs a reply.",
+      },
+      {
+        kind: "improved",
+        text: "The demo home leads with calling your receptionist and asking for setup, and leaves out our own link-tracking numbers.",
+      },
+      {
+        kind: "improved",
+        text: "Approve and Decline on a prospect are only needed for setups you start yourself; a customer's own request moves them to onboarding without you.",
+        admin: true,
+      },
+    ],
+  },
+  {
     version: "0.0.14",
     date: "2026-10-02",
     title: "A clearer sign-up, demo and pricing page",
