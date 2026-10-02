@@ -61,6 +61,19 @@ Format:
 - `.gitignore`: `.claude/` → `.claude/*` + `!.claude/skills/`, so repo skills are committed while `settings.local.json` etc. stay ignored.
 - ⚠ Not for the dashboards: they keep following `tecace-dashboard-ui` (brand blue #116DFF, Pretendard + Poppins, lucide allowed). Taste's defaults (avoid Inter/lucide, zero em-dashes, etc.) conflict with it, and the skill description says so.
 
+## 2026-10-02 11:00 · Michael · dashboard (Transfer calls: edit the old in-use number)
+- `settings/sections/TransferCallsSection.tsx`: the "In use on calls" row (old `transfer_number`) now opens the transfer editor on click, prefilled, so Type/When/etc. can be changed without adding a new number. Saving prepends the edited copy to the draft transfers (same as **Add to transfers**); calls switch to it on publish. Not clickable once adopted, when read-only, or at the scenario limit.
+- Shared `ScenarioRow` (`settings/sections/shared.tsx`) now ends every row with an "Edit ⌄" / "Close ⌃" cue and a pointer cursor (Transfer calls, Take a message, Text a link). New export `ROW_CUE_WIDTH`: column heads and unclickable rows reserve that width so columns line up.
+- `TransferEditor` takes an optional `description`. `business_tabs.py` checks the editor opens. Changelog 0.0.14. No API change.
+
+## 2026-10-02 10:27 · Michael · dashboard (Call forwarding guide: Verizon codes)
+- `settings/sections/ForwardingSection.tsx`: Verizon (mobile) missed calls is now `*71{n}` (busy + no answer, one code; confirmed on a real Verizon Wireless phone, test book C14/E6). The old `*90`/`*92` were Fios/landline codes; they moved to the Landline tab with `*91`/`*93` to turn them off. Dropped "US Cellular" from the Verizon tab (now T-Mobile, test book C12).
+- Same file: the "Missed calls / Every call" radio step is gone; each carrier tab now lists both ways (missed calls, recommended, and every call) with an explanation, and `Code` has an optional `detail` line (used for Verizon `*71`/`*72`). Steps renumbered 1–3. `business_tabs.py` updated (no radio click; checks `*71` + `*72` on Verizon). Changelog 0.0.14. No API change.
+
+## 2026-10-02 09:00 · Michael · dashboard (Transfer calls: the old `transferNumber` shown while calls use it)
+- Bug: a business with the pre-scenario `business_profiles.transfer_number` (e.g. TecAce Test) saw "No transfers yet" on Transfer calls while real calls still went to that number. The page showed the old number only when the call-settings **draft** had no transfers; the phone (`composeSession`) uses it while nothing has been **published** (and always for a profile without a structured `profile`, which gets the agent's older prompt).
+- `settings/callSettings.ts`: new `oldTransferInUse(profile, stored)` (same rule as the backend) and `oldTransferScenario()` (mirror of backend `legacyScenario`). `TransferCallsSection` takes `inUse` and lists it as an "In use on calls" row with **Add to transfers** (copies it into the draft; it stops being used once published). Tests: `tests/old-transfer.test.ts`, `business_tabs.py`. Changelog 0.0.14. No API change.
+- ⚠ If `compose.ts`'s legacy rule (`neverPublished && no scenarios`) or `legacyScenario` changes, change `oldTransferInUse`/`oldTransferScenario` with it.
 
 ## 2026-10-01 14:37 · Michael · voice agent service heartbeats (transcribe-backend, openai-agent-app, dashboard)
 - transcribe-backend: new `POST /agent/heartbeat` (header `x-agent-key` = `AGENT_CONFIG_KEY`; body `{ service: server|poller|scenarios, intervalSeconds, ok, detail?, startedAt, host?, metrics? }`) and admin-only `GET /agent/heartbeats` returning `{ services }` (always 3 entries; state online/erroring/offline/never; stale after max(interval×2.5, 120 s)). New table `service_heartbeats` (one UPSERTed row per service, self-migrating). Test: `src/routes/agentStatus.pg.test.ts`.

@@ -80,7 +80,7 @@ export const CHANGELOG: Release[] = [
   {
     version: "0.0.14",
     date: "2026-10-02",
-    title: "A clearer sign-up, demo and pricing page",
+    title: "A clearer sign-up page, and your earlier transfer number where calls use it",
     items: [
       {
         kind: "improved",
@@ -93,6 +93,26 @@ export const CHANGELOG: Release[] = [
       {
         kind: "improved",
         text: "The pricing page you reach from a demo has the same look, with the business's name at the top and a clear way back to the demo.",
+      },
+      {
+        kind: "improved",
+        text: "Your earlier transfer number can be edited: click it to change its type or when it can be used, without adding a new number. Saving adds it to your transfers with your changes.",
+      },
+      {
+        kind: "improved",
+        text: "Rows under Transfer calls, Take a message and Text a link show \"Edit\" so it's clear you can click them to change them.",
+      },
+      {
+        kind: "fixed",
+        text: "Transfer calls lists the transfer number you set up before transfer scenarios for as long as calls still use it, instead of \"No transfers yet\". Add it to your transfers in one click; it stays in use until you publish.",
+      },
+      {
+        kind: "fixed",
+        text: "Call forwarding shows the right missed-call code for Verizon mobile phones (*71). The busy and no-answer codes it showed before (*90, *92) are for landlines and are now under Landline.",
+      },
+      {
+        kind: "improved",
+        text: "Call forwarding shows both ways to forward for your phone company at once, missed calls and every call, each with what it does, instead of making you pick one first.",
       },
     ],
   },
