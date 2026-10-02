@@ -61,9 +61,6 @@ import {
   requestOnboarding,
 } from "../db/onboarding.js";
 import { OnboardError, approveOnboarding } from "../business/onboard.js";
-import { CardError, checkCard, isPlanId } from "../billing/plans.js";
-import { billingView, findBilling, savePaymentMethod, savePlan } from "../db/billing.js";
-import { cardBody } from "./billing.js";
 import { decideRequest, listOpen } from "../db/signupRequests.js";
 import { openSetupRequests } from "../db/setupRequests.js";
 import {
@@ -728,17 +725,11 @@ export const demo = new Elysia({ prefix: "/demo" })
   )
 
   /**
-   * The customer's "set this up for me", from their own dashboard: pick a plan, put a card on file,
-   * and the account moves to onboarding there and then.
+   * The customer's "set this up for me", from their own demo page.
    *
-   * Not a promo route. It used to only ask, and an admin answered with `/onboard`; now the request
-   * IS the approval, gated by billing instead of by a person. The same `approveOnboarding` the
-   * admin's door runs (the copy, pre-production, the deal won, the "you can edit now" email), so an
-   * account arrives in onboarding the same way whoever opened the door. Nothing is charged: the
-   * card is a mock until ax-billing is wired in, and the first bill is `TRIAL_DAYS` after Go live.
-   *
-   * 409 `billing_required` without a plan and a card, 422 `bad_card` / `unknown_plan` for a card or
-   * plan that doesn't pass, 409 once the account is past the demo, 422 when the demo is too thin.
+   * Not a promo route. The customer's side of the hand-off to onboarding: it only asks. An admin
+   * answers with `/onboard` (approve) or `/decline-request`. Asking again keeps the first time they
+   * asked and takes the newest note. 409 once the account is past the demo.
    */
   .post(
     "/customers/:id/request-onboarding",
@@ -753,63 +744,23 @@ export const demo = new Elysia({ prefix: "/demo" })
         if (!account) {
           return status(409, { error: "Link an account to this customer first." });
         }
-        if (account.status !== "demo") {
-          return status(409, { error: "This customer is already past the demo." });
-        }
-
-        // Billing first. Either can be sent with the request or have been saved from the Billing
-        // page earlier; both must be on file before anything moves.
-        if (body?.plan !== undefined) {
-          if (!isPlanId(body.plan)) {
-            return status(422, { error: "Pick one of the three plans.", code: "unknown_plan" });
-          }
-          await savePlan(account.id, body.plan);
-        }
-        if (body?.payment) {
-          let card;
-          try {
-            card = checkCard(body.payment);
-          } catch (error) {
-            if (error instanceof CardError) {
-              return status(422, { error: error.message, code: "bad_card", field: error.field });
-            }
-            throw error;
-          }
-          if (!(await savePaymentMethod(account.id, card))) {
-            return status(409, { error: "Choose a plan before adding a card.", code: "no_plan" });
-          }
-        }
-        const billingAccount = await findBilling(account.id);
-        if (!billingAccount?.paymentMethod) {
-          return status(409, {
-            error: "Choose a plan and add a card to start setup.",
-            code: "billing_required",
-          });
-        }
-
-        // Kept for the record (the request and its note), then answered at once.
         if (!(await requestOnboarding(account.id, body?.note))) {
           return status(409, { error: "This customer is already past the demo." });
         }
-        const approved = await approveOnboarding({ demoId: params.id, adminId: account.id });
-        return {
-          customer: withLifecycle(approved.customer, await lifecycleByDemo(params.id)),
-          user: toPublicUser(approved.user),
-          billing: billingView(billingAccount, approved.user.liveAt),
-        };
+        const [customer, lifecycle] = await Promise.all([
+          getCustomer(params.id),
+          lifecycleByDemo(params.id),
+        ]);
+        if (!customer) return status(404, NO_SUCH_CUSTOMER);
+        return { customer: withLifecycle(customer, lifecycle) };
       } catch (error) {
-        if (error instanceof OnboardError) return status(error.status, { error: error.message, code: error.code });
         return status(500, jsonError(error));
       }
     },
     {
       params: t.Object({ id: t.String({ maxLength: 64 }) }),
       body: t.Optional(
-        t.Object({
-          note: t.Optional(t.String({ maxLength: MAX_ONBOARDING_NOTE })),
-          plan: t.Optional(t.String({ maxLength: 20 })),
-          payment: t.Optional(cardBody),
-        }),
+        t.Object({ note: t.Optional(t.String({ maxLength: MAX_ONBOARDING_NOTE })) }),
       ),
     },
   )

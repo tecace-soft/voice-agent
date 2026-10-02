@@ -14,8 +14,7 @@ import { AccountsPage } from "./pages/AccountsPage";
 import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AllFeedbackPage } from "./pages/AllFeedbackPage";
-import { BillingScreen } from "./billing/BillingScreen";
-import { CustomerHome } from "./home/CustomerHome";
+import { BillingPage } from "./pages/BillingPage";
 import { ChangelogPage } from "./pages/ChangelogPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { FailuresPage } from "./pages/FailuresPage";
@@ -39,6 +38,13 @@ import { DashboardSkeleton } from "./ui";
 // An invite or reset link the page was opened with (#/welcome?token=… / #/reset?token=…), read once
 // at load and taken out of the address bar before the router sees it.
 const LINK_AT_LOAD = typeof window === "undefined" ? null : takeLinkFromHash();
+// Which view the address asks for, before the router normalises it. Read when the dashboard mounts
+// (each sign-in), so a customer who asked for nothing in particular lands on their own page even
+// when someone else signed out of this tab first.
+function askedView(): string {
+  return window.location.hash.replace(/^#\/?/, "").split(/[/?]/)[0] ?? "";
+}
+
 // The previous account's view and scope are not the next one's: signing out empties the address, so
 // whoever signs in next starts on their own default page rather than on an admin's customer or an
 // admin-only view.
@@ -156,6 +162,8 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
     { view: routeView, mailbox: routeMailbox, id: routeRecordId, section: routeSection, tab: routeTab, customer: routeCustomer },
     navigate,
   ] = useRoute();
+  // What this account's address asked for when it signed in (see `askedView`).
+  const [askedAtMount] = useState(askedView);
   // Open by default on a desktop-width screen; on narrow screens the rail is an overlay, so it
   // starts closed and the header's toggle brings it in.
   const [navOpen, setNavOpen] = useState(() => window.innerWidth >= 900);
@@ -252,6 +260,15 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
       active = false;
     };
   }, [isAdmin, routeView]);
+  // A customer who has just been approved lands on their own business information, not on the
+  // Dashboard › Overview everyone else lands on: their receptionist isn't answering calls yet, so
+  // there is nothing on it. Only when nothing else was asked for in the address.
+  useEffect(() => {
+    if (!isAdmin && user.status === "pre-production" && askedAtMount === "") {
+      navigate({ view: "business", section: "business-info" }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (!isAdmin) return; // the endpoint is admin-only; asking as a user is a guaranteed 403
     let active = true;
@@ -428,12 +445,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             ))}
           {view === "dashboard" && (
             <DemosGate>
-              {/* A customer being set up, or live, gets their Home; everyone else the calls overview. */}
-              {!isAdmin && (user.status === "pre-production" || user.status === "production") ? (
-                <CustomerHome user={user} />
-              ) : (
-                <ReceptionistOverviewScreen isAdmin={isAdmin} customer={customer} onCustomer={setCustomer} />
-              )}
+              <ReceptionistOverviewScreen isAdmin={isAdmin} customer={customer} onCustomer={setCustomer} />
             </DemosGate>
           )}
           {view === "calls" && (
@@ -465,11 +477,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             ))}
           {view === "feedback" && <FeedbackPage />}
           {view === "changelog" && <ChangelogPage isAdmin={isAdmin} />}
-          {view === "billing" && (
-            <DemosGate>
-              <BillingScreen user={user} />
-            </DemosGate>
-          )}
+          {view === "billing" && <BillingPage />}
           {view === "allFeedback" &&
             (isAdmin ? (
               <AllFeedbackPage onCountChange={setOpenFeedback} />

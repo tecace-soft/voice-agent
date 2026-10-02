@@ -44,49 +44,6 @@ export interface AuthUser {
   /** Where the account came from: an admin, a claim from a demo page, or sign-up at /start. */
   signupSource?: "admin" | "claim" | "start";
   emailVerified?: boolean;
-  /** When the line was switched on (production). The free trial counts from here. */
-  liveAt?: string | null;
-}
-
-// ---- billing (GET/PUT /billing) ----
-//
-// The plan the customer chose and the card on file. The card is a MOCK until ax-billing (Stripe) is
-// behind the form: the backend keeps only what a receipt prints. Nothing is charged before the line
-// is live; the trial is `trialDays` from that day and the first bill is `billingFrom`.
-
-export type PlanId = "solo" | "standard" | "business";
-
-export type BillingStatus = "none" | "not_live" | "trial" | "active";
-
-export interface PaymentMethod {
-  brand: string;
-  last4: string;
-  expMonth: number;
-  expYear: number;
-  name: string | null;
-}
-
-export interface Billing {
-  plan: PlanId | null;
-  paymentMethod: PaymentMethod | null;
-  /** "test" until a real processor is behind the form. */
-  paymentMode: string;
-  status: BillingStatus;
-  trialDays: number;
-  liveAt: string | null;
-  /** The last day of the trial. */
-  trialEndsAt: string | null;
-  /** The first day that is billed. */
-  billingFrom: string | null;
-}
-
-/** What the card form sends. The number and the code never come back. */
-export interface CardInput {
-  number: string;
-  expMonth: number;
-  expYear: number;
-  cvc: string;
-  name?: string;
 }
 
 // One mailbox the transcribe-app has reported for — GET /transcribe/mailboxes (admins only).

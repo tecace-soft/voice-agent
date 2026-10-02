@@ -63,39 +63,6 @@ export function receptionistKpis(calls: InboundCall[]): ReceptionistKpis {
   };
 }
 
-/**
- * What callers got, counted by outcome, for the customer's Home: every call answered, the bookings,
- * the ones that left something for the business (a message, or a call back asked for), and the
- * ones put through to a person. `outcome` is what the phone agent marks at the end of a call
- * (openai-agent-app: booked, message, callback, transferred, transfer_failed, voicemail,
- * caller_hung_up); `callbackRequested` is set alongside, so a call counts as a message once.
- */
-export interface OutcomeKpis {
-  answered: number;
-  booked: number;
-  messages: number;
-  transferred: number;
-}
-
-const MESSAGE_OUTCOMES = new Set(["message", "callback"]);
-
-export const leftSomething = (call: InboundCall): boolean =>
-  call.callbackRequested || (call.outcome !== null && MESSAGE_OUTCOMES.has(call.outcome));
-
-export function outcomeKpis(calls: InboundCall[]): OutcomeKpis {
-  return {
-    answered: calls.length,
-    booked: calls.filter((call) => call.outcome === "booked").length,
-    messages: calls.filter(leftSomething).length,
-    transferred: calls.filter((call) => call.outcome === "transferred").length,
-  };
-}
-
-/** The calls that left something for the business, newest first. */
-export function needsReply(calls: InboundCall[]): InboundCall[] {
-  return calls.filter(leftSomething).sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
-}
-
 /** This month's and last month's talk time, summed over the rows given (one business, or all). */
 export function talkTime(rows: CallMinutes[]): { current: number; previous: number } {
   return {

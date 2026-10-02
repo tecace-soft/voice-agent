@@ -750,25 +750,6 @@ export async function initDb(): Promise<void> {
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_declined_at TIMESTAMPTZ`;
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_decline_note TEXT`;
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS live_at TIMESTAMPTZ`;
-  // Billing, as the dashboard shows it: the plan the customer chose and the card on file. One row
-  // per account, written when they request setup (`/demo/customers/:id/request-onboarding`) or from
-  // the Billing page. The card is a MOCK until ax-billing (Stripe) is wired in: only what a receipt
-  // would print is kept — brand, last four, expiry — never the number or the CVC. Nothing here is
-  // charged; the trial starts at `users.live_at`, and `TRIAL_DAYS` after that is the first bill.
-  await sql`
-    CREATE TABLE IF NOT EXISTS billing_accounts (
-      user_id            UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-      plan               TEXT NOT NULL CHECK (plan IN ('solo', 'standard', 'business')),
-      payment_brand      TEXT,
-      payment_last4      TEXT,
-      payment_exp_month  INTEGER,
-      payment_exp_year   INTEGER,
-      payment_name       TEXT,
-      payment_mode       TEXT NOT NULL DEFAULT 'test',
-      created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-      updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
-    )
-  `;
   // Accounts that were already answering calls before the stages existed: a number, and business
   // details the agent can speak from. They are in production in all but name, so they are named
   // so, once — `live_at` is what makes it once, so an admin who later moves one back is not undone

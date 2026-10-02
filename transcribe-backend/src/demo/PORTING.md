@@ -853,6 +853,3 @@ All dashboard-only; the promo had no accounts.
 ## Customers: research optional, safer delete (2026-09-27) — not a promo port
 - `POST /demo/customers` takes `research` (boolean, default true). `false` saves the record at `status: "ready"` with no run and no `researchedAt`; the run is `POST /demo/customers/:id/research` as before.
 - `DELETE /demo/customers/:id` answers 409 `{error, code: "has_account"}` when an account past the demo (pre-production / production / unassigned) is linked. A linked `demo` account is unlinked (and its request cleared) in the same transaction, and open `signup_requests` for the demo are declined.
-
-## Self-serve onboarding and billing (2026-10-02) — not a promo port
-- `routes/demo.ts` `POST /customers/:id/request-onboarding`: with `plan` and `payment` (or both already on file) it calls `business/onboard.ts` `approveOnboarding` with the customer's own id as the approver and answers `{ customer, user, billing }`; 409 `billing_required` otherwise. New `billing/plans.ts` (plan ids, `TRIAL_DAYS`, the mock card check), `db/billing.ts`, `routes/billing.ts`, table `billing_accounts` in `db/client.ts`. `PublicUser` gained `liveAt`.

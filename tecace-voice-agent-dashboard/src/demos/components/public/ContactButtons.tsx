@@ -14,7 +14,6 @@ export function ContactButtons({
   mailto,
   customerId,
   pricing = true,
-  talk = true,
   className,
 }: {
   mailto: string;
@@ -22,21 +21,17 @@ export function ContactButtons({
   customerId?: string;
   /** False on the pricing page itself. */
   pricing?: boolean;
-  /** False where "Talk to us" is already on the page and a primary button sits beside these. */
-  talk?: boolean;
   className?: string;
 }) {
   return (
     <div className={`flex flex-wrap gap-2 ${className ?? ""}`}>
-      {talk ? (
-        <Button
-          nativeButton={false}
-          render={<a href={CONTACT_URL} target="_blank" rel="noreferrer" />}
-        >
-          Talk to us
-          <ArrowUpRight className="size-4" />
-        </Button>
-      ) : null}
+      <Button
+        nativeButton={false}
+        render={<a href={CONTACT_URL} target="_blank" rel="noreferrer" />}
+      >
+        Talk to us
+        <ArrowUpRight className="size-4" />
+      </Button>
       {pricing ? (
         <Button
           variant="outline"

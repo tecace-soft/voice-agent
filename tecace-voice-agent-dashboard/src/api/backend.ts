@@ -1,9 +1,6 @@
 import type {
   AccountStatus,
   AgentNumber,
-  Billing,
-  CardInput,
-  PlanId,
   AgentServiceStatus,
   AgentServicesResponse,
   AvailableNumber,
@@ -298,27 +295,6 @@ export function goLiveAccount(id: string): Promise<{ user: AuthUser }> {
   return request<{ user: AuthUser }>("POST", `/auth/users/${id}/go-live`, { body: {} });
 }
 
-const asUser = (userId?: string) => (userId ? `?userId=${encodeURIComponent(userId)}` : "");
-
-// ---- billing ----
-
-/** The plan, the (mock) card and where the first bill stands. Your own, or (admin) another's by id. */
-export function getBilling(userId?: string): Promise<{ billing: Billing; plans: PlanId[] }> {
-  return get<{ billing: Billing; plans: PlanId[] }>(`/billing${asUser(userId)}`);
-}
-
-export function setBillingPlan(plan: PlanId, userId?: string): Promise<{ billing: Billing }> {
-  return request<{ billing: Billing }>("PUT", `/billing/plan${asUser(userId)}`, { body: { plan } });
-}
-
-/**
- * Put a card on file. 422 `bad_card` names the field that failed (`number`, `expiry`, `cvc`);
- * `accountErrorMessage` shows the backend's own sentence.
- */
-export function setPaymentMethod(card: CardInput, userId?: string): Promise<{ billing: Billing }> {
-  return request<{ billing: Billing }>("PUT", `/billing/payment-method${asUser(userId)}`, { body: card });
-}
-
 // ---- feedback ----
 
 // Send a note. The backend takes the author from the session, so there's nothing to pass but the
@@ -607,6 +583,7 @@ export function saveAgentIdentity(
 
 // ---- call settings: transfers, text-a-link, message scenarios ----
 
+const asUser = (userId?: string) => (userId ? `?userId=${encodeURIComponent(userId)}` : "");
 
 /** The draft the settings screens edit, the published copy callers get, and whether they differ. */
 export function getCallSettings(userId?: string): Promise<StoredCallSettings> {

@@ -91,18 +91,16 @@ export function DemoCall({ state, name, agentName, capabilities, questions, allo
     <section aria-labelledby="hero-title" className="flex flex-col gap-8">
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_32rem] lg:gap-10">
         <div className="flex flex-col gap-5">
-          <div className="flex flex-col gap-4">
-            <span className="ta-caption-1 bg-primary/10 text-primary w-fit rounded-full px-3 py-1 font-semibold">
-              Built from {name}'s public information
-            </span>
-            <h1 id="hero-title" className="ta-display-2 text-balance lg:text-[48px]! lg:leading-[60px]!">
+          <div className="flex flex-col gap-2.5">
+            <p className="ta-caption-1 text-muted-foreground">AI receptionist · built from {name}'s public information</p>
+            <h1 id="hero-title" className="ta-title-1 text-balance">
               Call {name}'s new <span className="text-primary">receptionist</span>
             </h1>
             <p className="ta-body-1-reading text-muted-foreground max-w-[56ch]">{lede}</p>
           </div>
 
           {exhausted ? (
-            <div className="border-primary/30 bg-primary/5 flex flex-col gap-3 rounded-[16px] border p-5">
+            <div className="border-primary/30 bg-primary/5 flex flex-col gap-3 rounded-2xl border p-5">
               <p className="ta-label-1 font-semibold!">
                 {call.usageSec ? `That is the ${minutes} minutes this demo comes with.` : `This demo's ${minutes} minutes have been used.`}
               </p>
@@ -118,7 +116,7 @@ export function DemoCall({ state, name, agentName, capabilities, questions, allo
               </div>
             </div>
           ) : (
-            <div ref={callRef} className="flex flex-col gap-3.5 rounded-[16px] border p-5">
+            <div ref={callRef} className="flex flex-col gap-3.5 rounded-2xl border p-5">
               <div className="flex flex-wrap items-center gap-4">
                 <VoiceOrb state={call.state} meters={call.meters} size={64} />
                 <div className="min-w-0 flex-1">
@@ -221,13 +219,13 @@ export function DemoCall({ state, name, agentName, capabilities, questions, allo
               <BookingCard key={`b${i}`} booking={b} audience="prospect" />
             ))}
             {sim.transferLog.length && !sim.pending ? (
-              <div className="flex flex-col gap-1.5 rounded-[16px] border p-3.5">
+              <div className="flex flex-col gap-1.5 rounded-2xl border p-3.5">
                 <p className="ta-label-1 font-semibold!">Transfer</p>
                 <p className="ta-caption-1 text-muted-foreground">{sim.transferLog.join(" → ")}</p>
               </div>
             ) : null}
             {live ? (
-              <div className="ta-caption-1 text-muted-foreground flex min-h-28 items-center justify-center rounded-[16px] border border-dashed p-4 text-center">
+              <div className="ta-caption-1 text-muted-foreground flex min-h-28 items-center justify-center rounded-2xl border border-dashed p-4 text-center">
                 Transfers, texts, bookings and messages show up here as they happen.
               </div>
             ) : null}
@@ -236,7 +234,7 @@ export function DemoCall({ state, name, agentName, capabilities, questions, allo
       ) : null}
 
       {ended && summary.length ? (
-        <div className="border-primary/30 bg-primary/5 grid gap-5 rounded-[16px] border p-5 md:grid-cols-[1fr_auto] md:items-center md:p-6">
+        <div className="border-primary/30 bg-primary/5 grid gap-5 rounded-2xl border p-5 md:grid-cols-[1fr_auto] md:items-center md:p-6">
           <div className="flex flex-col gap-3">
             <p className="ta-headline-1">That was {agentName}. Every call like this, answered for {name}.</p>
             <ul className="flex flex-col gap-2" aria-label="What happened on the call">
@@ -297,7 +295,7 @@ function TrySaying({ cards, done }: { cards: TryCard[]; done: Set<string> }) {
           return (
             <li
               key={card.say}
-              className={`relative flex flex-col gap-2 rounded-[16px] border p-4 transition-colors duration-150 ${ticked ? "border-primary/30 bg-primary/5" : ""}`}
+              className={`relative flex flex-col gap-2 rounded-2xl border p-4 transition-colors duration-150 ${ticked ? "border-primary/30 bg-primary/5" : ""}`}
             >
               <span
                 className={`absolute top-3 right-3 grid size-5.5 place-items-center rounded-full border-[1.5px] ${ticked ? "bg-primary border-primary text-white" : "border-border"}`}

@@ -30,70 +30,10 @@ export type Release = {
 
 export const CHANGELOG: Release[] = [
   {
-    version: "0.0.15",
-    date: "2026-10-02",
-    title: "Set up your receptionist yourself: pick a plan, add a card, start",
-    items: [
-      {
-        kind: "new",
-        text: "Request setup no longer waits for us. Pick a plan, add a card and your receptionist is yours to change and test straight away. Nothing is charged until your line is live; your 14-day free trial starts that day.",
-      },
-      {
-        kind: "new",
-        text: "Billing, in the sidebar: your plan, the card on file, when the free trial ends and the first bill comes. Payments are in test mode for now: cards are checked but never charged.",
-      },
-      {
-        kind: "improved",
-        text: "A new home page for each stage. While you're being set up: a checklist of what's left, what we do for you, and your phone line. Once you're live: calls answered, bookings made, messages waiting for you, callers put through, and who needs a reply.",
-      },
-      {
-        kind: "improved",
-        text: "The demo home leads with calling your receptionist and asking for setup, and leaves out our own link-tracking numbers.",
-      },
-      {
-        kind: "improved",
-        text: "Your earlier transfer number can be edited: click it to change its type or when it can be used, without adding a new number. Saving adds it to your transfers with your changes.",
-      },
-      {
-        kind: "improved",
-        text: "Rows under Transfer calls, Take a message and Text a link show \"Edit\" so it's clear you can click them to change them.",
-      },
-      {
-        kind: "fixed",
-        text: "Transfer calls lists the transfer number you set up before transfer scenarios for as long as calls still use it, instead of \"No transfers yet\". Add it to your transfers in one click; it stays in use until you publish.",
-      },
-      {
-        kind: "fixed",
-        text: "Call forwarding shows the right missed-call code for Verizon mobile phones (*71). The busy and no-answer codes it showed before (*90, *92) are for landlines and are now under Landline.",
-      },
-      {
-        kind: "improved",
-        text: "Call forwarding shows both ways to forward for your phone company at once, missed calls and every call, each with what it does, instead of making you pick one first.",
-      },
-      {
-        kind: "improved",
-        text: "Approve and Decline on a prospect are only needed for setups you start yourself; a customer's own request moves them to onboarding without you.",
-        admin: true,
-      },
-    ],
-  },
-  {
     version: "0.0.14",
     date: "2026-10-02",
-    title: "A clearer sign-up page, and your earlier transfer number where calls use it",
+    title: "Your earlier transfer number, shown where calls use it",
     items: [
-      {
-        kind: "improved",
-        text: "The sign-up page (/start) has a new layout: the form sits beside how it works, each field shows an example, you can show the password you typed, and the free trial length is stated up front.",
-      },
-      {
-        kind: "improved",
-        text: "Demo pages (the link we send a business) match the new sign-up page: a larger headline, one clear Request setup button and a footer with how to reach us.",
-      },
-      {
-        kind: "improved",
-        text: "The pricing page you reach from a demo has the same look, with the business's name at the top and a clear way back to the demo.",
-      },
       {
         kind: "improved",
         text: "Your earlier transfer number can be edited: click it to change its type or when it can be used, without adding a new number. Saving adds it to your transfers with your changes.",
