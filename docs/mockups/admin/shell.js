@@ -61,8 +61,20 @@ const NAV = [
   },
 ];
 
-function sidebar(active) {
-  const groups = NAV.map((g) => {
+// The customer's nav, by lifecycle stage. One short list: a business owner has one receptionist.
+const CUSTOMER_NAV = {
+  demo: [{ items: [["home", "Home", "home", "demo-home.html"], ["calls", "Calls", "chat", "calls.html"], ["receptionist", "Receptionist", "target", "receptionist.html"]] }],
+  onboarding: [{ items: [["home", "Home", "home", "onboarding-home.html"], ["calls", "Calls", "chat", "calls.html"], ["receptionist", "Receptionist", "target", "receptionist.html"], ["phone", "Phone line", "phone", "phone-line.html"]] }],
+  live: [{ items: [["home", "Home", "home", "live-home.html"], ["calls", "Calls", "chat", "calls.html"], ["receptionist", "Receptionist", "target", "receptionist.html"], ["phone", "Phone line", "phone", "phone-line.html"]] }],
+};
+
+function sidebar(active, variant) {
+  const nav = variant ? CUSTOMER_NAV[variant] : NAV;
+  const stageBadge = variant ? `<p class="cap" style="margin:4px 16px 8px"><span class="badge ${variant === "live" ? "green" : "blue"}">${{ demo: "Demo", onboarding: "Being set up", live: "Live" }[variant]}</span></p>` : "";
+  const me = variant
+    ? `<div class="me"><span class="avatar">DR</span><div class="col" style="gap:0;min-width:0"><span>Dana Reed</span><span class="cap">Harbor Dental</span></div><span class="spacer"></span><button class="btn ghost sm icon" title="Account, help, sign out">${icon("more")}</button></div>`
+    : `<div class="me"><span class="avatar">AA</span><div class="col" style="gap:0;min-width:0"><span>Ada Admin</span><a class="cap" href="#">Version 0.0.14 · Changelog</a></div><span class="spacer"></span><button class="btn ghost sm icon" title="Account">${icon("more")}</button></div>`;
+  const groups = nav.map((g) => {
     const items = g.items
       .map(([id, label, ic, href, count, warn]) => {
         const c = count ? `<span class="count${warn ? " warn" : ""}">${count}</span>` : "";
@@ -74,13 +86,9 @@ function sidebar(active) {
   return `
     <aside class="side">
       <div class="brand"><span class="orb"></span>TecAce <span class="cap" style="font-weight:500">Voice agent</span></div>
+      ${stageBadge}
       <nav>${groups}</nav>
-      <div class="me">
-        <span class="avatar">AA</span>
-        <div class="col" style="gap:0;min-width:0"><span>Ada Admin</span><a class="cap" href="#">Version 0.0.14 · Changelog</a></div>
-        <span class="spacer"></span>
-        <button class="btn ghost sm icon" title="Account">${icon("more")}</button>
-      </div>
+      ${me}
     </aside>`;
 }
 
@@ -90,11 +98,11 @@ function topbar(crumbs, right) {
 }
 
 /** Called by each page: mounts the shell around #page and wires the interactions. */
-window.mount = ({ active, crumbs, right, wide, notes }) => {
+window.mount = ({ active, crumbs, right, wide, notes, variant }) => {
   const page = document.getElementById("page");
   const app = document.createElement("div");
   app.className = "app";
-  app.innerHTML = sidebar(active) + `<div class="right">${topbar(crumbs, right)}<main class="main${wide ? " wide" : ""}"></main></div>`;
+  app.innerHTML = sidebar(active, variant) + `<div class="right">${topbar(crumbs, right)}<main class="main${wide ? " wide" : ""}"></main></div>`;
   app.querySelector("main").append(...page.childNodes);
   page.replaceWith(app);
   // <i data-i="copy"></i> in the page markup becomes that icon.

@@ -13,6 +13,10 @@ Format:
 
 ---
 
+## 2026-10-02 · johnson · customer dashboard mockups + journey index (docs only)
+- `docs/mockups/index.html` is now the entry: the demo → setup request → onboarding → live journey with what the customer sees and what the admin does at each step, linking both mockup sets. `docs/mockups/customer/` adds the customer side (Home per stage, Calls, Receptionist, Phone line); `admin/shell.js` gained a customer nav variant.
+- Proposes for customers: one Home per stage (demo: call it + request setup; onboarding: a 6-step checklist that marks our steps; live: line status + messages), a 3–4 item sidebar with no Voicemail/Transcribe leftovers, customer wording, and three new features that need backend (message done-state, per-call feedback, pause the line). Nothing decided, no app code changed.
+
 ## 2026-10-02 · johnson · admin redesign mockups (docs only)
 - New static mockups in `docs/mockups/admin/` (open `index.html`; no build, fake data). Proposal for the whole admin, deepest on the Demo section: Customers + CRM merged into "Prospects" (table/board), one prospect page with a lifecycle stepper and next-step card, CRM and link controls on it, autosave instead of four save paths; Accounts split into Customers (go live in a drawer) and Team; Voicemail's six nav items as one tabbed page.
 - Design notes in the mockups are in Korean. No app code changed; nothing here is decided yet.
