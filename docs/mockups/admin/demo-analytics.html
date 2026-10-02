@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Demo analytics (mockup)</title>
+<link rel="stylesheet" href="mockup.css" />
+<script src="shell.js"></script>
+</head>
+<body>
+<div id="page">
+  <div class="page-h">
+    <div class="col"><h1 class="h1">Demo analytics</h1><span class="sub">How prospects use their demo links, and where deals stand.</span></div>
+    <span class="spacer"></span>
+    <label class="row cap"><span class="switch" data-switch></span>Include my test calls</label>
+    <select class="select"><option>Last 30 days</option><option>Last 7 days</option><option>Last 90 days</option></select>
+    <span class="pin">1</span>
+  </div>
+
+  <div class="grid g4">
+    <div class="card stat"><span class="cap">Links opened</span><span class="big tabular">31</span><span class="cap">by 9 of 12 prospects</span></div>
+    <div class="card stat"><span class="cap">Prospects who called</span><span class="big tabular">5</span><span class="cap">42% of those who opened</span></div>
+    <div class="card stat"><span class="cap">Demo calls</span><span class="big tabular">14</span><span class="cap">38 minutes in total</span></div>
+    <div class="card stat"><span class="cap">Open deals</span><span class="big tabular">10</span><span class="cap">1 asked for setup, 1 follow-up overdue</span></div>
+  </div>
+  <span class="pin">2</span>
+
+  <div class="grid g21">
+    <div class="card"><div class="card-h"><h2 class="h3">Demo calls per day</h2></div><div class="card-b" id="c1"></div></div>
+    <div class="card"><div class="card-h"><h2 class="h3">From link to deal</h2><span class="pin">3</span></div>
+      <div class="card-b col" style="gap:14px">
+        <div class="col" style="gap:4px"><div class="row"><span>Researched</span><span class="spacer"></span><span class="tabular">12</span></div><div class="bar"><i style="width:100%"></i></div></div>
+        <div class="col" style="gap:4px"><div class="row"><span>Opened the link</span><span class="spacer"></span><span class="tabular">9</span></div><div class="bar"><i style="width:75%"></i></div></div>
+        <div class="col" style="gap:4px"><div class="row"><span>Called the demo</span><span class="spacer"></span><span class="tabular">5</span></div><div class="bar"><i style="width:42%"></i></div></div>
+        <div class="col" style="gap:4px"><div class="row"><span>Asked for setup</span><span class="spacer"></span><span class="tabular">2</span></div><div class="bar"><i style="width:17%"></i></div></div>
+        <div class="col" style="gap:4px"><div class="row"><span>Live</span><span class="spacer"></span><span class="tabular">1</span></div><div class="bar"><i style="width:8%"></i></div></div>
+      </div></div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card">
+      <div class="card-h"><h2 class="h3">Most active prospects</h2><span class="spacer"></span><a class="cap" href="prospects.html">All prospects</a></div>
+      <table class="t"><colgroup><col><col style="width:22%"><col style="width:22%"><col style="width:18%"></colgroup>
+        <thead><tr><th>Prospect</th><th>Calls</th><th>Minutes</th><th>Heat</th></tr></thead>
+        <tbody>
+          <tr><td><a href="prospect.html">Northside Auto</a></td><td class="tabular">6</td><td class="tabular">21</td><td><span class="badge red">Hot</span></td></tr>
+          <tr><td><a href="prospect.html">Harbor Dental</a></td><td class="tabular">3</td><td class="tabular">9</td><td><span class="badge red">Hot</span></td></tr>
+          <tr><td><a href="prospect.html">Olive Tree Café</a></td><td class="tabular">2</td><td class="tabular">5</td><td><span class="badge amber">Warm</span></td></tr>
+        </tbody></table>
+    </div>
+    <div class="card">
+      <div class="card-h"><h2 class="h3">Latest activity</h2><span class="spacer"></span><select class="select" style="height:30px"><option>Everything</option><option>Calls</option><option>Link opens</option><option>Notes</option></select><span class="pin">4</span></div>
+      <div class="card-b col" style="gap:12px">
+        <a class="row" href="prospect.html"><i data-i="phone"></i><div class="col" style="gap:0"><span>Harbor Dental called</span><span class="cap">4:00 · Happy · 2 things to fix</span></div><span class="spacer"></span><span class="cap">2h</span></a>
+        <a class="row" href="prospect.html"><i data-i="ext"></i><div class="col" style="gap:0"><span>Harbor Dental opened the link</span><span class="cap">from a new device</span></div><span class="spacer"></span><span class="cap">3h</span></a>
+        <a class="row" href="prospect.html"><i data-i="chat"></i><div class="col" style="gap:0"><span>Note on Cedar Bakery</span><span class="cap">Left a voicemail with the owner.</span></div><span class="spacer"></span><span class="cap">5h</span></a>
+        <a class="row" href="prospect.html"><i data-i="check"></i><div class="col" style="gap:0"><span>Northside Auto approved</span><span class="cap">moved to onboarding</span></div><span class="spacer"></span><span class="cap">1d</span></a>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+mount({
+  active: "demo-analytics", crumbs: ["Sales", "Demo analytics"],
+  notes: [
+    "기간과 테스트 포함 여부는 페이지 오른쪽 위 한 곳에서만 고릅니다.",
+    "Demo Overview의 4개 카드와 CRM의 4개 카드를 한 줄로 합쳤습니다. CRM 화면은 Prospects의 보드 보기로 옮겼습니다.",
+    "새 제안: 링크 열람 → 통화 → 셋업 요청 → 라이브까지의 퍼널. 지금 데이터(opens, calls, phase)만으로 계산할 수 있을 것 같지만 확인이 필요합니다.",
+    "CRM의 Activity 피드를 이리로 옮기고 종류 필터를 붙였습니다. 각 줄을 누르면 해당 prospect 상세로 갑니다(지금은 CRM 서랍이 열림).",
+  ],
+});
+document.getElementById("c1").innerHTML = areaChart([0,1,0,2,1,0,0,3,1,0,2,1,0,3], ["9/19","","9/21","","9/23","","9/25","","9/27","","9/29","","10/1",""]);
+</script>
+</body>
+</html>

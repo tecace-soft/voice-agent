@@ -13,6 +13,10 @@ Format:
 
 ---
 
+## 2026-10-02 · johnson · admin redesign mockups (docs only)
+- New static mockups in `docs/mockups/admin/` (open `index.html`; no build, fake data). Proposal for the whole admin, deepest on the Demo section: Customers + CRM merged into "Prospects" (table/board), one prospect page with a lifecycle stepper and next-step card, CRM and link controls on it, autosave instead of four save paths; Accounts split into Customers (go live in a drawer) and Team; Voicemail's six nav items as one tabbed page.
+- Design notes in the mockups are in Korean. No app code changed; nothing here is decided yet.
+
 ## 2026-10-02 · johnson · public demo page (/c/<id>) restyled to match /start (dashboard)
 - `PublicDemoScreen.tsx`, `src/public/DemoCall.tsx`: pill eyebrow, 48px headline, radius-16 cards, full-width footer (disclaimer + privacy note + Contact us). Logged in `src/demos/PORTING.md`.
 - `components/public/ContactButtons.tsx` (shared with the pricing page): new optional `talk` prop, default `true`, so other callers are unchanged.
