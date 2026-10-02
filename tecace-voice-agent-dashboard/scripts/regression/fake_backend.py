@@ -953,8 +953,83 @@ def _lifecycle(demo_id: str) -> dict:
             "liveAt": account.get("liveAt") if account else None}
 
 
+# ---- Billing: routes/billing.ts + db/billing.ts ------------------------------------------------
+#
+# One row per account: the plan and the MOCK card (brand, last four, expiry — never the number).
+# Nothing is charged before the line is live; the trial is TRIAL_DAYS from `liveAt` and the first
+# bill the day after it ends. Kept for the run, like the lifecycle.
+TRIAL_DAYS = 14
+PLAN_IDS = ("solo", "standard", "business")
+BILLING: dict[str, dict] = {}
+
+
+def _luhn(digits: str) -> bool:
+    total, double = 0, False
+    for ch in reversed(digits):
+        d = int(ch)
+        if double:
+            d = d * 2 - 9 if d * 2 > 9 else d * 2
+        total += d
+        double = not double
+    return total % 10 == 0
+
+
+def _check_card(card: dict) -> tuple[dict | None, dict | None]:
+    """billing/plans.ts checkCard: the stored card, or the refusal (field + message)."""
+    digits = str(card.get("number", "")).replace(" ", "").replace("-", "")
+    if not (12 <= len(digits) <= 19 and digits.isdigit() and _luhn(digits)):
+        return None, {"field": "number", "message": "That card number doesn't look right."}
+    month, year = int(card.get("expMonth") or 0), int(card.get("expYear") or 0)
+    year = year + 2000 if year < 100 else year
+    if not (1 <= month <= 12) or year < NOW.year or (year == NOW.year and month < NOW.month):
+        return None, {"field": "expiry", "message": "That expiry date has passed."}
+    brand = "visa" if digits.startswith("4") else "mastercard" if digits[:2] in ("51", "52", "53", "54", "55") else "card"
+    cvc = str(card.get("cvc", ""))
+    if not (cvc.isdigit() and len(cvc) == 3):
+        return None, {"field": "cvc", "message": "The security code is 3 digits (4 on American Express)."}
+    return {"brand": brand, "last4": digits[-4:], "expMonth": month, "expYear": year,
+            "name": (card.get("name") or "").strip() or None}, None
+
+
+def _billing_view(account: dict) -> dict:
+    row = BILLING.get(account["id"])
+    live = account.get("liveAt")
+    live_dt = datetime.fromisoformat(live.replace("Z", "+00:00")) if live else None
+    trial_end = live_dt + timedelta(days=TRIAL_DAYS) if live_dt else None
+    status = "none" if not row else "not_live" if not live_dt else "trial" if NOW < trial_end else "active"
+    return {"plan": row["plan"] if row else None, "paymentMethod": row.get("paymentMethod") if row else None,
+            "paymentMode": "test", "status": status, "trialDays": TRIAL_DAYS,
+            "liveAt": iso(live_dt) if live_dt else None,
+            "trialEndsAt": iso(trial_end - timedelta(days=1)) if trial_end else None,
+            "billingFrom": iso(trial_end) if trial_end else None}
+
+
+def billing_route(method: str, path: str, query: dict, user: dict, body: bytes):
+    wanted = (query.get("userId") or [None])[0] if user["role"] == "admin" else None
+    account = next((u for u in (ADMIN, USER, DEMO_CUSTOMER) if u["id"] == wanted), user)
+    data = json.loads(body or b"{}") if body else {}
+    if path == "/billing" and method == "GET":
+        return 200, {"billing": _billing_view(account), "plans": list(PLAN_IDS)}
+    if path == "/billing/plan" and method == "PUT":
+        if data.get("plan") not in PLAN_IDS:
+            return 422, {"error": "unknown_plan", "message": "Pick one of the three plans."}
+        BILLING.setdefault(account["id"], {})["plan"] = data["plan"]
+        return 200, {"billing": _billing_view(account)}
+    if path == "/billing/payment-method" and method == "PUT":
+        card, refused = _check_card(data)
+        if refused:
+            return 422, {"error": "bad_card", **refused}
+        if account["id"] not in BILLING:
+            return 409, {"error": "no_plan", "message": "Choose a plan before adding a card."}
+        BILLING[account["id"]]["paymentMethod"] = card
+        return 200, {"billing": _billing_view(account)}
+    return 404, {"message": f"No fake for {method} {path}"}
+
+
 def demo_request_route(wanted: str, caller: dict, body: bytes):
-    """POST /demo/customers/<id>/request-onboarding: the demo customer asks to be set up."""
+    """POST /demo/customers/<id>/request-onboarding: the demo customer asks to be set up, and —
+    with a plan and a card on file — moves to onboarding there and then (the same move as the
+    admin's Approve, `demo_onboard_route`). 409 `billing_required` without them."""
     match = _demo_customer(wanted)
     if match is None:
         return 404, DEMO_NOT_FOUND
@@ -963,12 +1038,26 @@ def demo_request_route(wanted: str, caller: dict, body: bytes):
         return 409, {"error": "Link an account to this customer first."}
     if account["status"] != "demo":
         return 409, {"error": "This customer is already past the demo."}
-    note = ((_demo_json(body) or {}).get("note") or "").strip() or None
-    previous = account.get("request")
-    account["request"] = {"requestedAt": previous["requestedAt"] if previous else iso(NOW),
-                          "note": note}
-    account["declined"] = None
-    return 200, {"customer": {**_bare(match), **_lifecycle(wanted)}}
+    sent = _demo_json(body) or {}
+    if "plan" in sent:
+        if sent["plan"] not in PLAN_IDS:
+            return 422, {"error": "Pick one of the three plans.", "code": "unknown_plan"}
+        BILLING.setdefault(account["id"], {})["plan"] = sent["plan"]
+    if sent.get("payment"):
+        card, refused = _check_card(sent["payment"])
+        if refused:
+            return 422, {"error": refused["message"], "code": "bad_card", "field": refused["field"]}
+        if account["id"] not in BILLING:
+            return 409, {"error": "Choose a plan before adding a card.", "code": "no_plan"}
+        BILLING[account["id"]]["paymentMethod"] = card
+    if not BILLING.get(account["id"], {}).get("paymentMethod"):
+        return 409, {"error": "Choose a plan and add a card to start setup.", "code": "billing_required"}
+    note = (sent.get("note") or "").strip() or None
+    account["request"] = {"requestedAt": iso(NOW), "note": note}
+    status, answer = demo_onboard_route(wanted, caller)
+    if status != 200:
+        return status, answer
+    return 200, {"customer": answer["customer"], "user": account, "billing": _billing_view(account)}
 
 
 def demo_decline_route(wanted: str, body: bytes):
@@ -1816,6 +1905,8 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
         return 200, {"open": 1}
     if path == "/feedback" and method == "GET":
         return 200, {"feedback": FEEDBACK, "open": 1}
+    if path == "/billing" or path.startswith("/billing/"):
+        return billing_route(method, path, query, user, body)
     if path == "/business/readiness" and method == "GET":
         wanted = (query.get("userId") or [None])[0] if admin else None
         account = next((u for u in (ADMIN, USER, DEMO_CUSTOMER) if u["id"] == wanted), user)

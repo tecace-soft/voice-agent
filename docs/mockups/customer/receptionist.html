@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Receptionist (customer mockup)</title>
+<link rel="stylesheet" href="../admin/mockup.css" />
+<script src="../admin/shell.js"></script>
+</head>
+<body>
+<div id="page">
+  <div class="page-h">
+    <div class="col"><h1 class="h1">Alex, your receptionist</h1><span class="sub">What it knows and how it handles calls. Change anything, try it with a test call, then publish.</span></div>
+    <span class="spacer"></span>
+    <div class="row cap">Mockup: <div class="seg" data-view="st"><button data-seg="demo">Demo (read only)</button><button class="on" data-seg="edit">Being set up / live</button></div></div>
+  </div>
+
+  <div class="card row" data-view-of="st" data-view-name="edit" style="padding:12px 16px;border-color:var(--primary-line);background:var(--primary-soft)">
+    <span class="h3" style="font-size:14px">2 changes not published yet</span>
+    <span class="cap">Transfer hours, and a new FAQ. Callers keep hearing the published version until you publish.</span>
+    <span class="spacer"></span><button class="btn ghost sm">See changes</button><button class="btn primary sm">Publish</button><span class="pin">1</span>
+  </div>
+  <div class="card row" data-view-of="st" data-view-name="demo" hidden style="padding:12px 16px">
+    <i data-i="lock"></i><span><b style="font-weight:600">A preview.</b> Everything here is yours to change once setup starts.</span><span class="spacer"></span><button class="btn primary sm">Request setup</button>
+  </div>
+
+  <div class="card studio">
+    <nav class="snav">
+      <p>About the business</p><a class="on" href="#">Business information</a><a href="#">Questions callers ask <span class="cap">12</span></a>
+      <p>On a call</p><a href="#">Put callers through <span class="badge blue" style="height:18px">Changed</span></a><a href="#">Take a message</a><a href="#">Book appointments</a><a href="#">Text a link</a>
+      <p>Alex</p><a href="#">Name, voice and greeting</a>
+      <p style="margin-top:20px"><a class="cap" href="#" style="padding:0;color:var(--faint)">Advanced: custom instructions</a></p>
+      <span class="pin" style="margin:12px 8px 0">2</span>
+    </nav>
+    <div class="smain">
+      <div class="row"><div class="col" style="gap:2px"><h2 class="h2">Business information</h2><span class="sub">Alex answers from this. If something is missing, it tells callers it doesn't know.</span></div><span class="spacer"></span><span class="saved"><i data-i="check"></i>Saved</span></div>
+      <div class="grid g2">
+        <div class="field"><label>Business name</label><input class="input" value="Harbor Dental" /></div>
+        <div class="field"><label>Phone</label><input class="input" value="+1 207 555 0142" /></div>
+        <div class="field" style="grid-column:span 2"><label>Address</label><input class="input" value="12 Wharf St, Portland, ME" /></div>
+      </div>
+      <div class="col" style="gap:8px">
+        <div class="row"><h3 class="h3">Hours</h3><span class="spacer"></span><button class="btn sm"><i data-i="plus"></i>Add hours</button></div>
+        <div class="card" style="border-radius:12px"><table class="t"><tbody>
+          <tr><td style="height:44px">Monday to Friday</td><td class="tabular">8:00 to 17:00</td><td style="width:40px"><button class="btn ghost sm icon"><i data-i="more"></i></button></td></tr>
+          <tr><td style="height:44px">Saturday and Sunday</td><td class="sub">Closed</td><td><button class="btn ghost sm icon"><i data-i="more"></i></button></td></tr>
+        </tbody></table></div>
+      </div>
+      <div class="col" style="gap:8px">
+        <div class="row"><h3 class="h3">Services</h3><span class="cap">6</span><span class="spacer"></span><button class="btn sm"><i data-i="plus"></i>Add a service</button></div>
+        <div class="row wrap"><span class="badge" style="height:28px">Cleaning · $120</span><span class="badge" style="height:28px">Whitening · $350</span><span class="badge" style="height:28px">Implants · ask</span><span class="badge" style="height:28px">Check-up · $80</span><span class="badge" style="height:28px">Fillings</span><span class="badge" style="height:28px">Emergency visit</span></div>
+        <span class="pin">3</span>
+      </div>
+      <details class="card" style="padding:14px 16px"><summary class="h3" style="cursor:pointer">Parking, payment, cancellations</summary></details>
+    </div>
+    <div class="scon">
+      <div class="row"><h3 class="h3">Test call</h3><span class="spacer"></span><span class="badge blue">Uses your unpublished changes</span></div>
+      <div class="row card" style="padding:12px;border-radius:12px"><span class="orb"></span><div class="col" style="gap:0"><span>Alex · Harbor Dental</span><span class="cap">Ready to call</span></div><span class="spacer"></span><button class="btn primary sm">Call</button></div>
+      <div class="empty" style="flex:1;justify-content:center">Call, then talk as a caller would. Try asking for a person, or for directions.</div>
+      <span class="cap">29 of 30 test minutes left this month. Test bookings go to your calendar as “[Test]”.</span>
+      <span class="pin">4</span>
+    </div>
+  </div>
+</div>
+<script>
+mount({
+  variant: "live", active: "receptionist", crumbs: ["Receptionist"], wide: true,
+  notes: [
+    "게시(Publish) 배너는 스튜디오 바로 위, 무엇이 바뀌었는지와 함께. 지금은 상단 바 오른쪽 끝에 'Each section saves on its own' 또는 Publish가 섹션에 따라 보였다 안 보였다 합니다. 'See changes'와 초안 버리기는 새 제안입니다(지금은 초안을 되돌릴 방법이 없음). 저장 줄 문구 '저장하면 바로 손님에게 반영됩니다'가 회선이 꺼진 온보딩 중에도 그대로 보이는 문제도 이 배너 하나로 정리됩니다.",
+    "메뉴를 고객 말로 다시 묶었습니다. 13개 섹션(Guided setup, Custom training, Test & improve, Scenario tests, Launch instructions, Call forwarding 포함)을 7개로. Launch instructions·Call forwarding은 'Phone line' 페이지로, Guided setup은 Home의 제안으로, Test & improve는 오른쪽 콘솔로, Custom training은 '고급'으로 접었습니다. 그룹 라벨 대문자(BUSINESS, CALLS)도 sentence case로.",
+    "폼 밀도를 낮췄습니다. 요일 7줄 × 3칸 대신 묶인 시간 한 줄, 서비스는 칩으로. Rating 같은 고객이 쓸 일 없는 칸은 뺍니다.",
+    "테스트 콘솔에 남은 테스트 시간과 '게시 전 변경을 쓴다'는 점을 명시합니다. 데모 단계에서는 이 자리에 'Open my demo page'와 예시 통화가 옵니다(지금과 같음).",
+  ],
+});
+</script>
+</body>
+</html>

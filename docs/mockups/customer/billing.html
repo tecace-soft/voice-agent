@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Billing (customer mockup)</title>
+<link rel="stylesheet" href="../admin/mockup.css" />
+<script src="../admin/shell.js"></script>
+</head>
+<body>
+<div id="page">
+  <div class="page-h">
+    <div class="col"><h1 class="h1">Billing</h1><span class="sub">Your plan, the card on file, and when the first bill comes.</span></div>
+    <span class="spacer"></span>
+    <div class="row cap">Mockup: <div class="seg" data-view="bs"><button class="on" data-seg="not_live">Being set up</button><button data-seg="trial">Live, on trial</button></div></div>
+  </div>
+
+  <div class="grid g12" style="align-items:start">
+    <div class="col" style="gap:16px">
+      <div class="card">
+        <div class="card-h"><h2 class="h3">Your plan</h2><span class="spacer"></span><a class="cap" href="#" style="color:var(--primary)">Pricing and plans</a><span class="pin">1</span></div>
+        <div class="card-b col" style="gap:14px">
+          <div class="grid g3" style="gap:10px">
+            <div class="card" style="padding:14px;border-radius:12px"><b>Solo</b><div class="h3 tabular" style="margin-top:4px">$99 <span class="cap">/month</span></div><span class="cap">500 minutes, about 250 calls</span></div>
+            <div class="card" style="padding:14px;border-radius:12px;border-color:var(--primary);background:var(--primary-soft)"><div class="row"><b>Standard</b><span class="spacer"></span><span class="badge blue">Current</span></div><div class="h3 tabular" style="margin-top:4px">$199 <span class="cap">/month</span></div><span class="cap">1,000 minutes, about 500 calls</span></div>
+            <div class="card" style="padding:14px;border-radius:12px"><b>Business</b><div class="h3 tabular" style="margin-top:4px">$299 <span class="cap">/month</span></div><span class="cap">2,000 minutes, about 1,000 calls</span></div>
+          </div>
+          <div data-view-of="bs" data-view-name="trial" hidden class="col" style="gap:4px">
+            <div class="row cap"><span>Minutes this month</span><span class="spacer"></span><span class="tabular">412 of 1,000</span></div>
+            <div class="bar"><i style="width:41%"></i></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2 class="h3">When you pay</h2><span class="spacer"></span><span class="pin">2</span></div>
+        <div class="card-b col" style="gap:10px">
+          <p style="margin:0" data-view-of="bs" data-view-name="not_live">Nothing is charged until your line is live. Your 14-day free trial starts that day.</p>
+          <p style="margin:0" data-view-of="bs" data-view-name="trial" hidden>Free trial until October 19, 2026. The first bill is on October 20, 2026.</p>
+          <dl class="kv" style="grid-template-columns:140px minmax(0,1fr)">
+            <dt>Line went live</dt><dd><span data-view-of="bs" data-view-name="not_live">Not yet</span><span data-view-of="bs" data-view-name="trial" hidden>October 6, 2026</span></dd>
+            <dt>Free trial</dt><dd><span data-view-of="bs" data-view-name="not_live">14 days from the day your line goes live</span><span data-view-of="bs" data-view-name="trial" hidden>14 days, until October 19, 2026</span></dd>
+            <dt>First bill</dt><dd><span data-view-of="bs" data-view-name="not_live">After the trial</span><span data-view-of="bs" data-view-name="trial" hidden>October 20, 2026</span></dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2 class="h3">Payment method</h2><span class="spacer"></span><span class="badge amber">Test mode</span><span class="pin">3</span></div>
+      <div class="card-b col" style="gap:12px">
+        <div class="row card" style="padding:12px;border-radius:12px"><span class="badge blue" style="width:40px;height:40px;border-radius:10px"><i data-i="key"></i></span><div class="col" style="gap:0"><span>Visa •••• 4242</span><span class="cap">Expires 12/31 · Dana Reed</span></div></div>
+        <button class="btn" data-open="dlg-card">Change card</button>
+        <span class="cap">Payments aren't switched on yet. The card is checked but never charged, and only its last four digits are kept.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="scrim" id="scrim" data-close></div>
+  <div class="dialog" id="dlg-card">
+    <div class="dh"><h2 class="h2">Card on file</h2><p class="sub" style="margin:4px 0 0">Used from the first bill on. Nothing is charged before then.</p></div>
+    <div class="db">
+      <div class="card" style="padding:10px 12px;border-radius:10px;background:var(--warning-soft);border-color:transparent"><span class="cap" style="color:var(--warning)"><b>Test mode.</b> Use a test card such as 4242 4242 4242 4242.</span></div>
+      <div class="field"><label>Card number</label><input class="input mono" placeholder="4242 4242 4242 4242" /></div>
+      <div class="grid g2"><div class="field"><label>Expiry</label><input class="input mono" placeholder="MM/YY" /></div><div class="field"><label>Security code</label><input class="input mono" placeholder="123" /></div></div>
+      <div class="field"><label>Name on card</label><input class="input" /></div>
+    </div>
+    <div class="df"><button class="btn ghost" data-close>Cancel</button><button class="btn primary" data-close>Save card</button></div>
+  </div>
+</div>
+<script>
+mount({
+  variant: "onboarding", active: "billing", crumbs: ["Billing"],
+  notes: [
+    "플랜 3개를 가격 페이지와 같은 숫자로 보여 주고, 여기서 바로 바꿉니다. 라이브 뒤에는 이번 달 사용 분을 플랜의 포함 분 대비로 표시합니다.",
+    "돈 규칙은 한 문장: 라이브 전에는 과금 없음, 체험 2주는 라이브 되는 날부터, 첫 청구는 체험 다음 날. 날짜는 백엔드가 계산해 내려줍니다(GET /billing).",
+    "카드는 지금 테스트 모드입니다(ax-billing/Stripe 연결 전). 입력은 카드 폼처럼 검사하지만 저장은 브랜드·끝 4자리·만료만. 같은 폼을 Request setup 대화상자의 2단계가 씁니다.",
+  ],
+});
+</script>
+</body>
+</html>

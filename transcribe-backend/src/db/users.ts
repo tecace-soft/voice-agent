@@ -54,6 +54,8 @@ export interface UserRecord {
   emailVerifiedAt: string | null;
   /** Email a summary after each call the receptionist answers (Business settings › Call emails). */
   emailCallSummaries: boolean;
+  /** When the line was switched on (production). The trial counts from here. */
+  liveAt: string | null;
 }
 
 /**
@@ -73,6 +75,7 @@ export interface PublicUser {
   lastLoginAt: string | null;
   signupSource: SignupSource;
   emailVerified: boolean;
+  liveAt: string | null;
 }
 
 export const toPublicUser = (u: UserRecord): PublicUser => ({
@@ -85,6 +88,7 @@ export const toPublicUser = (u: UserRecord): PublicUser => ({
   lastLoginAt: u.lastLoginAt,
   signupSource: u.signupSource ?? "admin",
   emailVerified: Boolean(u.emailVerifiedAt),
+  liveAt: u.liveAt ?? null,
 });
 
 // Emails are stored lower-cased so sign-in is case-insensitive without needing the citext extension.
@@ -103,7 +107,8 @@ const COLUMNS = sql`
   last_login_at  AS "lastLoginAt",
   signup_source  AS "signupSource",
   email_verified_at AS "emailVerifiedAt",
-  email_call_summaries AS "emailCallSummaries"
+  email_call_summaries AS "emailCallSummaries",
+  live_at        AS "liveAt"
 `;
 
 export async function findUserByEmail(email: string): Promise<UserRecord | null> {

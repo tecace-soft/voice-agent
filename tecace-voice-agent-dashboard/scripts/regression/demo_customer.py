@@ -132,19 +132,22 @@ def main() -> int:
                     rail = page.get_by_role("navigation", name="Dashboard sections")
                     labels = [b.inner_text().strip() for b in rail.get_by_role("button").all()]
                     check("the rail offers their receptionist and nothing else",
-                          [l for l in labels if l and "Sign out" not in l and "Changelog" not in l] == ["Overview", "Call activity", "Settings"],
+                          [l for l in labels if l and "Sign out" not in l and "Changelog" not in l] == ["Overview", "Call activity", "Settings", "Billing"],
                           str(labels))
                     for gone in ("All runs", "Business information", "Accounts",
                                  "Answered calls", "Transcripts", "Customers", "CRM", "Send feedback"):
                         check(f"...no {gone!r} in the rail", gone not in labels, str(labels))
 
-                    # ---- their Overview (the landing): how the demo has been used
+                    # ---- their Overview (the landing): call it, ask for it, see what it missed
                     main = page.inner_text("main")
-                    check("they land on their Overview", page.locator("main h1").first.inner_text().strip() == "Overview",
-                          main[:200])
-                    check("...with the demo's numbers and calls per day",
-                          "Link opens" in main and "Calls per day" in main and "Recent calls" in main, main[:400])
+                    check("they land on their Home, titled with their business",
+                          page.locator("main h1").first.inner_text().strip() == "Harbor Dental", main[:200])
+                    check("...with a Call button to their demo page",
+                          page.locator(f"main a[href$='/c/{OWN_ID}']").count() == 1, main[:400])
+                    check("...the way to ask for setup, and their calls",
+                          "Request setup" in main and "Your calls" in main, main[:400])
                     check("...and what it couldn't answer", "No price list for implants" in main, main[:400])
+                    check("...without the operator's link-opens numbers", "Link opens" not in main, main[:400])
 
                     # ---- Call activity: their calls, read-only, our tests left out
                     rail.get_by_role("button", name="Call activity").click()
@@ -237,8 +240,9 @@ def main() -> int:
                           not [a for a in asked if a.startswith("PATCH ")],
                           str([a for a in asked if a.startswith("PATCH ")]))
 
-                    # ---- their way out of the demo: they ASK to be set up (phase gates). An admin
-                    # approves; until then they stay in the demo (last — it changes the account).
+                    # ---- their way out of the demo: Request setup asks for a plan and a card, and moves
+                    # the account itself (customer_home.py walks the whole flow). Here: it is offered,
+                    # and backing out leaves the demo untouched.
                     page.goto(f"{base}/", wait_until="networkidle")
                     page.wait_for_timeout(700)
                     body = page.inner_text("body")
@@ -250,17 +254,13 @@ def main() -> int:
                     page.get_by_role("button", name="Request setup").click()
                     dialog = page.get_by_role("dialog")
                     dialog.wait_for()
-                    dialog.get_by_label("Anything we should know? (optional)").fill("Start next month")
-                    dialog.get_by_role("button", name="Send request").click()
-                    page.wait_for_timeout(900)
-                    requests = [a for a in asked
-                                if a.startswith("POST ") and a.endswith(f"/demo/customers/{OWN_ID}/request-onboarding")]
-                    check("sending asks the backend at /request-onboarding", len(requests) == 1,
-                          str([a for a in asked if a.startswith("POST ")]))
-                    check("...and never tries to onboard itself",
-                          not [a for a in asked if a.endswith("/onboard")])
-                    after = page.inner_text("body")
-                    check("the card then says the request is in", "Setup requested" in after, after[:300])
+                    check("Request setup starts with the plan", "Choose a plan" in dialog.inner_text()
+                          and dialog.get_by_role("radio").count() == 3, dialog.inner_text()[:200])
+                    dialog.get_by_role("button", name="Cancel").click()
+                    page.wait_for_timeout(500)
+                    check("backing out sends nothing",
+                          not [a for a in asked if a.startswith("POST ") and a.endswith("/request-onboarding")]
+                          and not [a for a in asked if a.endswith("/onboard")])
                     labels = [b.inner_text().strip() for b in rail.get_by_role("button").all()]
                     check("...and they are still in the demo-only view", "Settings" in labels and "Accounts" not in labels,
                           str(labels))

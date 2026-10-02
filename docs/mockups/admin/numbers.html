@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Phone numbers (mockup)</title>
+<link rel="stylesheet" href="mockup.css" />
+<script src="shell.js"></script>
+</head>
+<body>
+<div id="page">
+  <div class="page-h">
+    <div class="col"><h1 class="h1">Phone numbers</h1><span class="sub">Numbers the receptionists answer on, from Twilio.</span></div>
+    <span class="spacer"></span>
+    <button class="btn"><i data-i="refresh"></i>Sync from Twilio</button>
+    <button class="btn primary" data-open="dlg-buy"><i data-i="plus"></i>Buy a number</button><span class="pin">1</span>
+  </div>
+
+  <div class="card row" style="padding:12px 16px;border-color:var(--warning);background:var(--warning-soft)">
+    <span class="badge amber">!</span><span>1 number has out-of-date webhooks, so calls to it may not reach the receptionist.</span><span class="spacer"></span><button class="btn sm">Fix it</button><span class="pin">2</span>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><div class="seg"><button class="on" data-seg="a">All<span class="n">4</span></button><button data-seg="u">Unassigned<span class="n">1</span></button><button data-seg="r">Released<span class="n">2</span></button></div><span class="pin">3</span></div>
+    <table class="t"><colgroup><col style="width:20%"><col style="width:12%"><col style="width:16%"><col style="width:22%"><col style="width:16%"><col><col style="width:48px"></colgroup>
+      <thead><tr><th>Number</th><th>Type</th><th>Label</th><th>Answers as</th><th>Webhooks</th><th>Added</th><th></th></tr></thead>
+      <tbody>
+        <tr><td class="mono">+1 833 555 0100</td><td>Toll-free</td><td>Sam's main line</td><td><select class="select" style="height:32px;width:100%"><option>Sam's Dental</option></select></td><td><span class="badge green">OK</span></td><td class="cap">Aug 28</td><td><button class="btn ghost sm icon" data-menu="m1"><i data-i="more"></i></button></td></tr>
+        <tr><td class="mono">+1 833 555 0177</td><td>Toll-free</td><td class="sub">None</td><td><select class="select" style="height:32px;width:100%"><option>Not assigned</option><option>Northside Auto</option></select></td><td><span class="badge green">OK</span></td><td class="cap">Sep 30</td><td><button class="btn ghost sm icon"><i data-i="more"></i></button></td></tr>
+        <tr><td class="mono">+1 617 555 0190</td><td>Local</td><td>Demo line</td><td><select class="select" style="height:32px;width:100%"><option>Demo calls</option></select></td><td><span class="badge amber">Out of date</span></td><td class="cap">Sep 2</td><td><div class="menu-wrap"><button class="btn ghost sm icon" data-menu="m3"><i data-i="more"></i></button><div class="menu" id="m3"><button>Configure webhooks</button><hr/><button class="danger">Release…</button></div></div></td></tr>
+      </tbody></table>
+  </div>
+
+  <div class="scrim" id="scrim" data-close></div>
+  <div class="dialog" id="dlg-buy">
+    <div class="dh"><h2 class="h2">Buy a number</h2></div>
+    <div class="db">
+      <div class="seg"><button class="on" data-seg="t">Toll-free (recommended)</button><button data-seg="l">Local</button></div>
+      <div class="grid g2"><div class="field"><label>Area code</label><input class="input" placeholder="Any" /></div><div class="field"><label>Label</label><input class="input" placeholder="e.g. Northside main line" /></div></div>
+      <div class="field"><label>Assign to</label><select class="select"><option>Leave unassigned</option><option>Northside Auto</option></select></div>
+      <div class="card" style="border-radius:12px"><table class="t"><tbody>
+        <tr><td class="mono" style="height:44px">+1 833 555 0182</td><td style="width:90px"><button class="btn sm">Buy</button></td></tr>
+        <tr><td class="mono" style="height:44px">+1 833 555 0193</td><td><button class="btn sm">Buy</button></td></tr></tbody></table></div>
+    </div>
+    <div class="df"><button class="btn ghost" data-close>Close</button></div>
+  </div>
+</div>
+<script>
+mount({
+  active: "numbers", crumbs: ["Customers", "Phone numbers"],
+  notes: [
+    "번호 목록이 먼저, 구매는 대화상자로. 지금은 구매 카드가 목록 위에 커다랗게 있습니다. 구매하면서 바로 배정할 수 있게 'Assign to'를 넣었습니다(Customers 서랍의 'Buy a new number…'도 같은 대화상자를 엽니다).",
+    "웹훅 문제는 목록 위 경고 한 줄과 고치기 버튼으로. 문제가 없으면 안 보입니다.",
+    "해제한 번호(지금은 맨 아래 접힌 영역)를 탭으로 옮겼습니다. 행 동작은 ⋯ 메뉴(웹훅 설정, 해제)로.",
+  ],
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Business settings (mockup)</title>
+<link rel="stylesheet" href="mockup.css" />
+<script src="shell.js"></script>
+</head>
+<body>
+<div id="page">
+  <section class="col" style="gap:8px">
+    <a class="cap row" href="customers.html"><i data-i="back"></i>Customers</a>
+    <div class="page-h" style="align-items:center">
+      <div class="col" style="gap:2px"><div class="row"><h1 class="h1">Northside Auto</h1><span class="badge blue">Onboarding</span></div><span class="cap">Business settings · what the receptionist knows and does</span></div>
+      <span class="spacer"></span>
+    </div>
+  </section>
+
+  <div class="card row" style="padding:12px 16px;border-color:var(--primary-line);background:var(--primary-soft)">
+    <span class="h3" style="font-size:14px">2 call changes not live yet</span>
+    <span class="cap">Transfer calls: 1 new, Text a link: 1 edited. Callers keep the published version until you publish.</span>
+    <span class="spacer"></span><button class="btn ghost sm">Discard</button><button class="btn primary sm">Publish</button><span class="pin">1</span>
+  </div>
+
+  <div class="card studio">
+    <nav class="snav">
+      <p>Business</p><a href="#">Business information</a><a href="#">Agent profile</a><a href="#">FAQs <span class="cap">8</span></a>
+      <p>Calls</p><a href="#">Take a message</a><a class="on" href="#">Transfer calls <span class="badge blue" style="height:18px">Draft</span></a><a href="#">Text a link <span class="badge blue" style="height:18px">Draft</span></a><a href="#">Appointments</a>
+      <p>Advanced</p><a href="#">Custom training</a><a href="#">Scenario tests</a>
+      <p>Going live</p><a href="#">Launch guide</a><a href="#">Call forwarding</a>
+    </nav>
+    <div class="smain">
+      <div class="row"><div class="col" style="gap:2px"><h2 class="h2">Transfer calls</h2><span class="sub">When the receptionist puts a caller through, and to whom.</span></div><span class="spacer"></span><button class="btn"><i data-i="plus"></i>Add a transfer</button></div>
+      <div class="card" style="border-radius:12px">
+        <table class="t"><colgroup><col><col style="width:16%"><col style="width:22%"><col style="width:18%"><col style="width:60px"></colgroup>
+          <thead><tr><th>Name</th><th>Type</th><th>Rings</th><th>When</th><th>On</th></tr></thead>
+          <tbody>
+            <tr><td><div class="cell2"><span>Service desk</span><span class="cap">Car is ready, repair questions</span></div></td><td><span class="badge">Warm</span></td><td class="mono">+1 617 555 0144</td><td class="cap">Weekdays 8 to 17</td><td><span class="switch on" data-switch></span></td></tr>
+            <tr><td><div class="cell2"><span>Owner <span class="badge blue">New</span></span><span class="cap">Complaints, billing disputes</span></div></td><td><span class="badge">Cold</span></td><td class="mono">+1 617 555 0101</td><td class="cap">Any time</td><td><span class="switch on" data-switch></span></td></tr>
+          </tbody></table>
+      </div>
+      <span class="cap">Click a row to edit it in place. Business information, profile and FAQs save as you type; call settings wait for Publish so callers never hear a half-made change.</span>
+      <span class="pin">2</span>
+    </div>
+    <div class="scon">
+      <div class="row"><h3 class="h3">Test call</h3><span class="spacer"></span><span class="badge blue">Uses your draft</span></div>
+      <div class="row card" style="padding:12px;border-radius:12px"><span class="orb"></span><div class="col" style="gap:0"><span>Alex · Northside Auto</span><span class="cap">Ready to call</span></div><span class="spacer"></span><button class="btn primary sm">Call</button></div>
+      <div class="empty" style="flex:1;justify-content:center">Ask to speak to the service desk to try the new transfer.</div>
+    </div>
+  </div>
+</div>
+<script>
+mount({
+  active: "customers", crumbs: ["Customers", "Northside Auto", "Business settings"], wide: true,
+  notes: [
+    "게시(Publish)는 섹션 위 한 줄 배너에 무엇이 바뀌었는지와 함께 둡니다. 지금은 상단 바 오른쪽 끝에 있어 필드와 멀고, 섹션에 따라 보였다 안 보였다 합니다.",
+    "저장 규칙을 한 문장으로 정리: 업체 정보·프로필·FAQ는 입력하는 대로 저장, 통화 설정(메시지·전환·링크·예약)은 Publish까지 초안. 예약 규칙의 따로 있던 'Save booking rules' 버튼은 이 규칙에 맞춰 없앱니다.",
+  ],
+});
+</script>
+</body>
+</html>

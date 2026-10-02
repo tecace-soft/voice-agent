@@ -5,6 +5,8 @@ import {
   callsInWindow,
   inboundCallsPerDay,
   outcomeBadge,
+  needsReply,
+  outcomeKpis,
   receptionistKpis,
   talkTime,
 } from "../src/demos/lib/receptionistStats";
@@ -108,5 +110,26 @@ describe("Dashboard › Overview route", () => {
     expect(formatHash({ view: "dashboard", mailbox: undefined, customer: "sam@tecace.com" })).toBe(
       "#/dashboard?customer=sam%40tecace.com",
     );
+  });
+});
+
+describe("outcomeKpis and needsReply (the customer's Home)", () => {
+  const calls = [
+    call({ id: "a", outcome: "booked", startedAt: "2026-09-30T10:00:00Z" }),
+    call({ id: "b", outcome: "transferred", startedAt: "2026-09-30T11:00:00Z" }),
+    call({ id: "c", outcome: "message", request: "Bill question", startedAt: "2026-09-29T10:00:00Z" }),
+    // Asked for a call back and marked so: counted once, not twice.
+    call({ id: "d", outcome: "callback", callbackRequested: true, startedAt: "2026-10-01T09:00:00Z" }),
+    call({ id: "e", outcome: null, callbackRequested: true, startedAt: "2026-09-28T09:00:00Z" }),
+    call({ id: "f", outcome: "caller_hung_up", startedAt: "2026-09-27T09:00:00Z" }),
+  ];
+
+  it("counts every answered call, the bookings, what was left for the business, and transfers", () => {
+    expect(outcomeKpis(calls)).toEqual({ answered: 6, booked: 1, messages: 3, transferred: 1 });
+    expect(outcomeKpis([])).toEqual({ answered: 0, booked: 0, messages: 0, transferred: 0 });
+  });
+
+  it("lists what needs a reply, newest first", () => {
+    expect(needsReply(calls).map((c) => c.id)).toEqual(["d", "c", "e"]);
   });
 });
