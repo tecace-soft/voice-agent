@@ -32,7 +32,7 @@ export const CHANGELOG: Release[] = [
   {
     version: "0.0.14",
     date: "2026-10-02",
-    title: "A clearer sign-up page and demo page",
+    title: "A clearer sign-up, demo and pricing page",
     items: [
       {
         kind: "improved",
@@ -41,6 +41,10 @@ export const CHANGELOG: Release[] = [
       {
         kind: "improved",
         text: "Demo pages (the link we send a business) match the new sign-up page: a larger headline, one clear Request setup button and a footer with how to reach us.",
+      },
+      {
+        kind: "improved",
+        text: "The pricing page you reach from a demo has the same look, with the business's name at the top and a clear way back to the demo.",
       },
     ],
   },

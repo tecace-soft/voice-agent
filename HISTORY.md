@@ -16,7 +16,8 @@ Format:
 ## 2026-10-02 · johnson · public demo page (/c/<id>) restyled to match /start (dashboard)
 - `PublicDemoScreen.tsx`, `src/public/DemoCall.tsx`: pill eyebrow, 48px headline, radius-16 cards, full-width footer (disclaimer + privacy note + Contact us). Logged in `src/demos/PORTING.md`.
 - `components/public/ContactButtons.tsx` (shared with the pricing page): new optional `talk` prop, default `true`, so other callers are unchanged.
-- `public_page.py` passes (34 checks). The pricing sub-page (`/c/<id>/pricing`) is not restyled yet.
+- `public_page.py` passes (34 checks).
+- Same day: the pricing sub-page (`/c/<id>/pricing`, `components/public/Pricing.tsx` + `PlanEstimator.tsx`) restyled the same way (header bar, pill + 48px headline, radius-16 outlined boxes, full-width footer, em-dashes removed). Logged in `PORTING.md`.
 
 ## 2026-10-02 · johnson · /start sign-up page redesign (dashboard)
 - `src/start/StartApp.tsx` re-laid out (hero, step cards, form beside them, footer); `src/signup/SignupForm.tsx` `Field` gained `icon` / `aside`, a password Show toggle (both modes), and icons + examples in `start` mode only. Selectors/labels used by `signup.py` and `public_page.py` unchanged; both pass.

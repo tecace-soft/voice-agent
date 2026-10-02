@@ -1,6 +1,5 @@
 import { useId, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   PLANS,
   callsFor,
@@ -23,13 +22,13 @@ export function PlanEstimator() {
   const best = cheapestPlan(minutes);
 
   return (
-    <Card className="rounded-xl border shadow-none">
-      <CardContent className="space-y-6 p-4 md:p-6">
+    <div className="rounded-[16px] border">
+      <div className="space-y-6 p-5 md:p-6">
         <div className="space-y-2">
           <h2 className="ta-heading-2">Which plan fits your phone?</h2>
           <p className="ta-body-2-reading text-muted-foreground">
             Drag to the minutes your calls add up to in a month. Not sure? Count
-            the calls you get and double it — a typical call runs about two minutes.
+            the calls you get and double it. A typical call runs about two minutes.
           </p>
         </div>
 
@@ -91,7 +90,7 @@ export function PlanEstimator() {
             deal. Ask us for a quote.
           </p>
         ) : null}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
