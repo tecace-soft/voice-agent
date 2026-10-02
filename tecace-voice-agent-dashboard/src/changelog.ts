@@ -32,11 +32,15 @@ export const CHANGELOG: Release[] = [
   {
     version: "0.0.14",
     date: "2026-10-02",
-    title: "A clearer sign-up page",
+    title: "A clearer sign-up page and demo page",
     items: [
       {
         kind: "improved",
         text: "The sign-up page (/start) has a new layout: the form sits beside how it works, each field shows an example, you can show the password you typed, and the free trial length is stated up front.",
+      },
+      {
+        kind: "improved",
+        text: "Demo pages (the link we send a business) match the new sign-up page: a larger headline, one clear Request setup button and a footer with how to reach us.",
       },
     ],
   },

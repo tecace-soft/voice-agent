@@ -5,7 +5,6 @@ import { Logo } from "@/components/public/Logo";
 import { LanguageNote } from "@/components/public/LanguageNote";
 import { StickyCall } from "@/components/public/StickyCall";
 import { SourcesPanel } from "@/components/research/SourcesPanel";
-import { Card, CardContent } from "@/components/ui/card";
 import { VersionBadge } from "@/components/VersionBadge";
 import { useInView } from "@/hooks/useInView";
 import { publicFetch } from "@/publicApi";
@@ -158,7 +157,7 @@ export function PublicDemoScreen({
         scenarios and its teaser card are gone (the scenarios page redirects here).
       */}
       <header className="border-b">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 md:px-6">
+        <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-3 px-4 md:px-6">
           <Logo className="h-6" />
           <span className="bg-border hidden h-5 w-px sm:block" aria-hidden />
           <span className="ta-label-1 hidden truncate font-semibold! sm:inline">{name}</span>
@@ -182,7 +181,7 @@ export function PublicDemoScreen({
         </div>
       </header>
 
-      <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-12 px-4 py-8 md:px-6 md:py-10">
+      <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-12 px-4 py-10 md:px-6 lg:py-12">
         <DemoCall
           state={demoCall}
           name={name}
@@ -214,16 +213,16 @@ export function PublicDemoScreen({
           */}
           <section aria-labelledby="setup-title" className="flex flex-col gap-5 border-t pt-8">
             <div className="flex flex-col gap-2">
-              <h2 id="setup-title" className="ta-headline-1">
+              <h2 id="setup-title" className="ta-heading-1">
                 How {agentName} is set up
               </h2>
               <p className="ta-body-2-reading text-muted-foreground max-w-[68ch]">
                 Everything {agentName} runs on: what it knows about {name}, how it answers, who it puts callers through
-                to, what it texts and how it books. We built it from public sources — once it's set up for you, all of it
+                to, what it texts and how it books. We built it from public sources. Once it's set up for you, all of it
                 is yours to change and test before your line goes live.
               </p>
             </div>
-            <Suspense fallback={<div className="bg-muted/40 h-[560px] animate-pulse rounded-2xl border" aria-busy="true" />}>
+            <Suspense fallback={<div className="bg-muted/40 h-[560px] animate-pulse rounded-[16px] border" aria-busy="true" />}>
               <PublicSettings
                 customerId={customerId}
                 businessName={name}
@@ -265,7 +264,7 @@ export function PublicDemoScreen({
               />
             </Suspense>
             {sources.length ? (
-              <details className="group rounded-2xl border">
+              <details className="group rounded-[16px] border">
                 <summary className="ta-label-1 flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 font-semibold!">
                   Where this came from
                   <span className="ta-caption-1 text-muted-foreground font-medium">{sources.length} public sources</span>
@@ -277,32 +276,42 @@ export function PublicDemoScreen({
             ) : null}
           </section>
 
-          <Card className="rounded-xl border shadow-none">
-            <CardContent className="flex flex-col items-center gap-3 p-4 text-center md:p-6">
-              <p className="ta-headline-2">Want this answering your real calls?</p>
+          {/* Outlined like /start's cards: the kit's Card draws a ring, so it is a plain box here. */}
+          <div className="bg-primary/5 border-primary/30 rounded-[16px] border">
+            <div className="flex flex-col items-center gap-3 p-5 text-center md:p-8">
+              <p className="ta-heading-1">Want this answering your real calls?</p>
               <p className="ta-body-2-reading text-muted-foreground max-w-[60ch]">
                 Same receptionist, your number, your hours, your booking rules. Request setup and, once we've approved it,
                 everything above is yours to edit and test. We switch your line on when you're ready.
               </p>
               <div className="flex flex-wrap items-center justify-center gap-2">
                 <RequestSetupButton setup={setup} onOpen={openRequest} size="lg" className="h-11 px-6" />
-                <ContactButtons mailto={mailto} customerId={customerId} />
+                <ContactButtons mailto={mailto} customerId={customerId} talk={false} />
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
+        </div>
+      </main>
 
-          <footer className="flex flex-col items-center gap-1 pb-4">
-            <p className="ta-caption-1 text-muted-foreground text-center">
-              A TecAce demo. The business shown here has not endorsed it.
-            </p>
-            <p className="ta-caption-2 text-muted-foreground max-w-md text-center">
+      {/* Full width with a hairline, like /start's. */}
+      <footer className="border-t">
+        <div className="ta-caption-1 text-muted-foreground mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-6 md:flex-row md:items-start md:justify-between md:gap-8 md:px-6">
+          <div className="flex flex-col gap-1">
+            <p>A TecAce demo. The business shown here has not endorsed it.</p>
+            <p className="ta-caption-2 max-w-md">
               So we can see how the demo went, this page counts visits and keeps
               what was said on the call. Nothing is shared outside TecAce.
             </p>
+          </div>
+          <div className="flex items-center gap-6">
+            <a className="hover:text-foreground transition-colors" href={CONTACT_URL} target="_blank" rel="noreferrer">
+              Contact us
+            </a>
+            <span>© {new Date().getFullYear()} TecAce</span>
             <VersionBadge />
-          </footer>
+          </div>
         </div>
-      </main>
+      </footer>
       <RequestSetupDialog
         open={requestOpen}
         onOpenChange={setRequestOpen}
