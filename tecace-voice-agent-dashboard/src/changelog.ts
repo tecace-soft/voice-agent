@@ -35,6 +35,10 @@ export const CHANGELOG: Release[] = [
     title: "Your earlier transfer number, shown where calls use it",
     items: [
       {
+        kind: "improved",
+        text: "Your earlier transfer number can be edited: click it to change its type or when it can be used, without adding a new number. Saving adds it to your transfers with your changes.",
+      },
+      {
         kind: "fixed",
         text: "Transfer calls lists the transfer number you set up before transfer scenarios for as long as calls still use it, instead of \"No transfers yet\". Add it to your transfers in one click; it stays in use until you publish.",
       },

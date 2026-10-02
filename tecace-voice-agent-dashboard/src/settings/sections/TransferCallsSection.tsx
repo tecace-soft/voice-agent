@@ -54,6 +54,9 @@ import {
 // scenarios that are switched on and open when the call starts, so a scenario outside its hours is
 // one it cannot offer — the phone agent and the in-app test call are told the same.
 
+/** `editing.index` while the old in-use number is open in the editor. */
+const IN_USE = -2;
+
 const MODE_TONE: Record<TransferMode, "blue" | "amber" | "green"> = { cold: "blue", warm: "amber", waterfall: "green" };
 
 function blankScenario(): TransferScenario {
@@ -137,19 +140,30 @@ export function TransferCallsSection({
       setRowError(toFieldError(e, "Couldn't add that.").message);
     }
   }
+  // The old number can be edited in place (its type, hours, ...); saving adds that version to the
+  // transfers, on top like `adopt`, since the old number itself lives on the business profile.
+  const inUseEditable = Boolean(inUse && !readOnly && !inUseAdopted && !full);
+  const editingInUse = editing?.index === IN_USE;
   const editor = editing ? (
     <TransferEditor
       key={editing.scenario.id}
       initial={editing.scenario}
       isNew={editing.index === -1}
-      index={editing.index === -1 ? scenarios.length : editing.index}
+      index={editing.index === -1 ? scenarios.length : editingInUse ? 0 : editing.index}
+      description={
+        editingInUse
+          ? "Saving adds it to your transfers with these changes. Calls use it once you publish."
+          : undefined
+      }
       waterfallAllowed={binding.waterfallAllowed}
       onCancel={() => setEditing(null)}
       onSave={async (scenario) => {
         await change((list) =>
-          list.some((s) => s.id === scenario.id)
-            ? list.map((s) => (s.id === scenario.id ? scenario : s))
-            : [...list, scenario],
+          editingInUse
+            ? [scenario, ...list]
+            : list.some((s) => s.id === scenario.id)
+              ? list.map((s) => (s.id === scenario.id ? scenario : s))
+              : [...list, scenario],
         );
         setEditing(null);
       }}
@@ -205,7 +219,18 @@ export function TransferCallsSection({
           </div>
           <ul className="divide-y">
             {inUse ? (
-              <InUseRow scenario={inUse} onAdopt={readOnly || inUseAdopted || full ? undefined : () => void adopt()} />
+              <InUseRow
+                scenario={inUse}
+                onAdopt={inUseEditable ? () => void adopt() : undefined}
+                open={editingInUse}
+                onToggle={
+                  inUseEditable
+                    ? () => setEditing(editingInUse ? null : { scenario: { ...inUse, id: newId() }, index: IN_USE })
+                    : undefined
+                }
+              >
+                {editor}
+              </InUseRow>
             ) : null}
             {editing?.index === -1 ? <li>{editor}</li> : null}
             {rows.map((scenario, index) => {
@@ -334,36 +359,78 @@ export function TransferCallsSection({
 }
 
 /**
- * The older single transfer number, as the phone uses it. Not editable here — it lives on the
- * business profile — but it can be copied into the transfers, which replace it once published.
+ * The older single transfer number, as the phone uses it. It lives on the business profile, so
+ * editing it (`onToggle` opens the editor) or "Add to transfers" copies it into the transfers,
+ * which replace it once published. Without `onToggle` it is a plain, unclickable row.
  */
-function InUseRow({ scenario, onAdopt }: { scenario: TransferScenario; onAdopt?: () => void }) {
+function InUseRow({
+  scenario,
+  onAdopt,
+  open = false,
+  onToggle,
+  children,
+}: {
+  scenario: TransferScenario;
+  onAdopt?: () => void;
+  open?: boolean;
+  onToggle?: () => void;
+  children?: ReactNode;
+}) {
   const number = scenario.numbers[0] ?? "";
+  const main = (
+    <span className="flex items-center gap-2">
+      <span className="ta-label-1 truncate font-semibold!">{scenario.name}</span>
+      <Tag tone="blue">In use on calls</Tag>
+    </span>
+  );
+  const caption = (
+    <span className="ta-caption-1 text-muted-foreground block truncate">
+      Your earlier transfer number. <span className="@2xl:hidden">{displayPhone(number)}</span>
+    </span>
+  );
+  const meta = (
+    <>
+      <span className="w-[76px]">
+        <Tag tone={MODE_TONE[scenario.mode]}>{MODE_LABEL[scenario.mode]}</Tag>
+      </span>
+      <span className="w-32 truncate font-mono text-[12px]">{displayPhone(number)}</span>
+      <span className="text-muted-foreground w-36 truncate text-[12px]">{hoursSummary(scenario.hours)}</span>
+    </>
+  );
+  const adopt = onAdopt ? (
+    <Button variant="outline" size="sm" onClick={onAdopt}>
+      Add to transfers
+    </Button>
+  ) : null;
+  if (onToggle) {
+    return (
+      <ScenarioRow
+        open={open}
+        onToggle={onToggle}
+        label={`Edit ${scenario.name}`}
+        main={
+          <>
+            {main}
+            {caption}
+          </>
+        }
+        meta={meta}
+        actions={adopt}
+      >
+        {children}
+      </ScenarioRow>
+    );
+  }
   return (
     <li data-row className="flex items-center gap-2 pr-3">
       <div className="flex min-w-0 flex-1 items-center gap-4 py-2.5 pl-4">
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span className="ta-label-1 truncate font-semibold!">{scenario.name}</span>
-            <Tag tone="blue">In use on calls</Tag>
-          </span>
-          <span className="ta-caption-1 text-muted-foreground block truncate">
-            Your earlier transfer number. <span className="@2xl:hidden">{displayPhone(number)}</span>
-          </span>
+          {main}
+          {caption}
         </span>
-        <span className="hidden shrink-0 items-center gap-4 @2xl:flex">
-          <span className="w-[76px]">
-            <Tag tone={MODE_TONE[scenario.mode]}>{MODE_LABEL[scenario.mode]}</Tag>
-          </span>
-          <span className="w-32 truncate font-mono text-[12px]">{displayPhone(number)}</span>
-          <span className="text-muted-foreground w-36 truncate text-[12px]">{hoursSummary(scenario.hours)}</span>
-        </span>
+        <span className="hidden shrink-0 items-center gap-4 @2xl:flex">{meta}</span>
       </div>
-      {onAdopt ? (
-        <Button variant="outline" size="sm" onClick={onAdopt}>
-          Add to transfers
-        </Button>
-      ) : null}
+      {adopt}
     </li>
   );
 }
@@ -372,6 +439,7 @@ function TransferEditor({
   initial,
   isNew,
   index,
+  description = "Who callers can be put through to, and when.",
   waterfallAllowed,
   onCancel,
   onSave,
@@ -380,6 +448,7 @@ function TransferEditor({
   /** Not in the list yet: an empty form, or one started from an example. */
   isNew: boolean;
   index: number;
+  description?: string;
   waterfallAllowed: boolean;
   onCancel: () => void;
   onSave: (scenario: TransferScenario) => Promise<void>;
@@ -426,7 +495,7 @@ function TransferEditor({
   }
 
   return (
-    <InlineEditor title={isNew ? "Add a transfer" : `Edit ${initial.name}`} description="Who callers can be put through to, and when." onCancel={onCancel}>
+    <InlineEditor title={isNew ? "Add a transfer" : `Edit ${initial.name}`} description={description} onCancel={onCancel}>
 
         <div className="space-y-5">
           <div className="space-y-1.5">

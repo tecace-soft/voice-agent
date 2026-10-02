@@ -13,6 +13,10 @@ Format:
 
 ---
 
+## 2026-10-02 11:00 · Michael · dashboard (Transfer calls: edit the old in-use number)
+- `settings/sections/TransferCallsSection.tsx`: the "In use on calls" row (old `transfer_number`) now opens the transfer editor on click, prefilled, so Type/When/etc. can be changed without adding a new number. Saving prepends the edited copy to the draft transfers (same as **Add to transfers**); calls switch to it on publish. Not clickable once adopted, when read-only, or at the scenario limit.
+- `TransferEditor` takes an optional `description`. `business_tabs.py` checks the editor opens. Changelog 0.0.14. No API change.
+
 ## 2026-10-02 10:27 · Michael · dashboard (Call forwarding guide: Verizon codes)
 - `settings/sections/ForwardingSection.tsx`: Verizon (mobile) missed calls is now `*71{n}` (busy + no answer, one code; confirmed on a real Verizon Wireless phone, test book C14/E6). The old `*90`/`*92` were Fios/landline codes; they moved to the Landline tab with `*91`/`*93` to turn them off. Dropped "US Cellular" from the Verizon tab (now T-Mobile, test book C12).
 - Same file: the "Missed calls / Every call" radio step is gone; each carrier tab now lists both ways (missed calls, recommended, and every call) with an explanation, and `Code` has an optional `detail` line (used for Verizon `*71`/`*72`). Steps renumbered 1–3. `business_tabs.py` updated (no radio click; checks `*71` + `*72` on Verizon). Changelog 0.0.14. No API change.

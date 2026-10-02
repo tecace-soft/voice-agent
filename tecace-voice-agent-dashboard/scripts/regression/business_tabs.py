@@ -238,6 +238,15 @@ def main() -> int:
                           body[:400])
                     check("Transfers: nothing to publish yet",
                           page.get_by_role("button", name="Publish").is_disabled())
+                    # The old number opens in the editor, so its type and hours can be changed in place.
+                    page.get_by_role("button", name="Edit Someone on the team").click()
+                    page.wait_for_timeout(300)
+                    old_editor = page.get_by_role("group", name="Edit Someone on the team")
+                    check("Transfers: the old number opens in the editor",
+                          old_editor.count() == 1 and old_editor.get_by_role("tab", name="Warm").count() == 1
+                          and old_editor.get_by_role("button", name="Set hours").count() == 1)
+                    old_editor.get_by_role("button", name="Cancel").click()
+                    page.wait_for_timeout(200)
                     page.get_by_role("button", name="Add a transfer").first.click()
                     page.wait_for_timeout(300)
                     # The form opens in place, at the top of the list, rather than in a dialog.
