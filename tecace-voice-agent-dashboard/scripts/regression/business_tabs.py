@@ -96,8 +96,8 @@ with socketserver.TCPServer(("127.0.0.1", {APP_PORT}), H) as httpd:
 
 MENU = (
     "Guided setup", "Business information", "Agent profile", "FAQs", "Take a message", "Appointments",
-    "Text a link", "Transfer calls", "Custom training", "Test & improve", "Launch instructions",
-    "Call forwarding",
+    "Text a link", "Transfer calls", "Call emails", "Custom training", "Test & improve",
+    "Launch instructions", "Call forwarding",
 )
 
 
@@ -370,6 +370,18 @@ def main() -> int:
                     check("Forwarding: the switch saves press-to-accept",
                           len(puts) == 1 and '"forwardAcceptPress":true' in puts[0][2].replace(" ", ""), str(puts))
                     check("Forwarding: the switch says it saved", "applies from the next call" in page.inner_text("main"))
+
+                    # ---- Call emails
+                    open_section("Call emails")
+                    page.get_by_text("Sent to owner@harbordental.test").wait_for()
+                    body = page.inner_text("main")
+                    check("Call emails: says where they go", "Sent to owner@harbordental.test" in body, body[:400])
+                    page.get_by_role("switch", name="Email me a summary after each call").click()
+                    page.get_by_text("applies from the next call").wait_for()
+                    puts = [x for x in sent if x[0] == "PUT" and "/business/call-emails" in x[1]]
+                    check("Call emails: the switch saves",
+                          len(puts) == 1 and '"enabled":true' in puts[0][2].replace(" ", ""), str(puts))
+                    check("Call emails: the switch says it saved", "applies from the next call" in page.inner_text("main"))
 
                     check("...and nothing went to a demo endpoint",
                           not any("/demo/" in x[1] for x in sent),

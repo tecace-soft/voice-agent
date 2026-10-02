@@ -1,7 +1,7 @@
 import { env } from "../config/env.js";
 
-// Transactional email: sign-up codes, password resets, sign-in links, "you can edit now", and the
-// admin's new-request notice.
+// Transactional email: sign-up codes, password resets, sign-in links, "you can edit now", the
+// admin's new-request notice, and the summary after each call (when the account switched it on).
 //
 // BEST EFFORT, like backend-app's `email/client.ts`: a send that fails is logged and answered
 // `false`, and the caller's own flow carries on. A customer approved while the mail server was down
@@ -60,14 +60,14 @@ const send: Send = async (mail) => {
   await realSend(mail);
 };
 
-export async function sendMail(mail: Mail): Promise<boolean> {
+export async function sendMail(mail: Mail, opts: { timeoutMs?: number } = {}): Promise<boolean> {
   if (!mailConfigured() || !mail.to) return false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
       send(mail),
       new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error("timed out")), SEND_TIMEOUT_MS);
+        timer = setTimeout(() => reject(new Error("timed out")), opts.timeoutMs ?? SEND_TIMEOUT_MS);
       }),
     ]);
     return true;
@@ -173,6 +173,53 @@ export function adminNoticeMail(input: {
       `Name: ${input.name}\nEmail: ${input.email}${input.verified ? " (verified)" : " (not verified)"}\n` +
       (input.note ? `Note: ${input.note}\n` : "") +
       (open ? `\nReview it: ${open}` : "") +
+      SIGN,
+  };
+}
+
+/** What the summary email reads from a stored call (`InboundCall` has all of these). */
+export interface CallSummaryFields {
+  caller: string | null;
+  callerName: string | null;
+  callbackNumber: string | null;
+  callbackRequested: boolean;
+  request: string | null;
+  requestedTime: string | null;
+  outcome: string | null;
+  durationSeconds: number | null;
+  summary: string | null;
+}
+
+/** "2:05" for 125 seconds. */
+function minutesSeconds(total: number): string {
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+/**
+ * The summary after a call: the facts the receptionist captured and its own summary, with a link to
+ * the full conversation in the dashboard. The transcript itself is not in the email.
+ */
+export function callSummaryMail(to: string, call: CallSummaryFields): Mail {
+  const who =
+    (call.callerName || call.caller || "").replace(/\s+/g, " ").trim().slice(0, 60) || "an unknown caller";
+  const fields: [string, string | null][] = [
+    ["Caller", [call.callerName, call.caller].filter(Boolean).join(" · ") || null],
+    ["Callback number", call.callbackNumber],
+    ["Callback requested", call.callbackRequested ? "yes" : null],
+    ["Request", call.request],
+    ["Requested time", call.requestedTime],
+    ["Outcome", call.outcome?.replace(/_/g, " ") ?? null],
+    ["Duration", call.durationSeconds == null ? null : minutesSeconds(call.durationSeconds)],
+  ];
+  const lines = fields.filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`);
+  const open = dashboardLink("/#/calls");
+  return {
+    to,
+    subject: `New call from ${who}`,
+    text:
+      (lines.length ? `${lines.join("\n")}\n\n` : "") +
+      (call.summary ? `${call.summary}\n\n` : "") +
+      (open ? `View the full transcript: ${open}` : "The full transcript is under Transcripts in your dashboard.") +
       SIGN,
   };
 }

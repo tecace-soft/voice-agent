@@ -148,7 +148,7 @@ Run all three after any styling change:
 - `python scripts/regression/demos_e2e.py` — walks the Demos section against a fake backend
   (`fake_backend.py`).
 - `python scripts/regression/business_tabs.py` — opens the Business page's receptionist settings
-  (`src/settings/`): the twelve-item menu, each section holding the business's data and saving to its
+  (`src/settings/`): the thirteen-item menu, each section holding the business's data and saving to its
   own `/business/*` endpoint (never `/demo/`), a transfer saved as a draft, refused by the backend
   under its field, then published, the composed-session preview, and the `.tw` boundary.
 - `python scripts/regression/guided_setup.py` — the Guided setup against the fake's scripted

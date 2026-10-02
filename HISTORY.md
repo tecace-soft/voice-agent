@@ -13,6 +13,12 @@ Format:
 
 ---
 
+## 2026-10-02 14:38 · Michael · transcribe-backend + dashboard (call summary emails)
+- New column `users.email_call_summaries BOOLEAN NOT NULL DEFAULT false` (self-migrates); new routes `GET`/`PUT /business/call-emails` (`{enabled}` → `{enabled, email}`, admin `?userId=`).
+- `POST /calls` now emails the owner a summary + dashboard link when that switch is on. It awaits the send (5 s cap, because Vercel can stop un-awaited work); the 201 and body are unchanged and a mail failure never fails the call. `sendMail` takes an optional `{timeoutMs}`.
+- Dashboard: new settings section `call-emails` (Calls group, business only). `fake_backend.py`, `business_tabs.py` and `guided_setup.py` (menu is now 13 items) updated. Changelog 0.0.14.
+- ⚠ Production: emails only go out with `SMTP_*` and `DASHBOARD_URL` set on transcribe-backend.
+
 ## 2026-10-02 11:27 · Michael · repo (master rolled back to 9db5c22)
 - Today's merge of `Main-Hans` into master (14644f4, then PR #2 d0b33ea) had an unseen problem. This commit sits on top of d0b33ea and restores every file to 9db5c22, so a normal `git pull` on master gets you the fixed state.
 - The Main-Hans work is still on `origin/Main-Hans` (77bcb2e).

@@ -500,6 +500,22 @@ export function saveForwardAcceptPress(
   );
 }
 
+/** Whether the account gets a summary email after each call, and the address it goes to. */
+export type CallEmails = { enabled: boolean; email: string };
+
+export function getCallEmails(userId?: string): Promise<CallEmails> {
+  return get<CallEmails>(`/business/call-emails${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`);
+}
+
+/** Switch the summary emails on or off. Its own endpoint: a setting of the account, not the profile. */
+export function saveCallEmails(enabled: boolean, userId?: string): Promise<CallEmails> {
+  return request<CallEmails>(
+    "PUT",
+    `/business/call-emails${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
+    { body: { enabled } },
+  );
+}
+
 export function saveBusinessProfile(
   sourceText: string,
   transferNumber: string,

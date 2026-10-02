@@ -777,6 +777,11 @@ export async function initDb(): Promise<void> {
       CHECK (signup_source IN ('admin', 'claim', 'start'))
   `;
 
+  // Email the account a summary after each call the receptionist answers. Off until they switch it
+  // on (Business settings › Call emails). On the account, not the business profile: it goes to
+  // their inbox, and it must work before any business information has been saved.
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_call_summaries BOOLEAN NOT NULL DEFAULT false`;
+
   // A sign-up before it is an account: what the person typed, the password already hashed, and the
   // code sent to prove the email. The `users` row is written only once the code is right (or, on a
   // deployment with no email, when an admin approves the request), so a stranger typing someone

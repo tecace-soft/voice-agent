@@ -9,7 +9,10 @@ import {
   listInboundCalls,
   listUnassignedInboundCalls,
   markSheetWritten,
+  type InboundCall,
 } from "../db/inboundCalls.js";
+import { findUserById } from "../db/users.js";
+import { callSummaryMail, sendMail } from "../email/mailer.js";
 
 // Calls the voice agent answered, and the conversations it had.
 //
@@ -32,6 +35,10 @@ export const calls = new Elysia({ prefix: "/calls" })
         return status(401, { error: "unauthorized" });
       }
       const call = await insertInboundCall(body);
+      // The call is stored first and the 201 doesn't depend on the email. We still wait for it,
+      // because a serverless function can be stopped once it has answered; the agent posts after the
+      // call has ended, so nobody is waiting on the phone.
+      await emailCallSummary(call);
       return status(201, { call });
     },
     {
@@ -121,3 +128,23 @@ export const calls = new Elysia({ prefix: "/calls" })
     },
     { params: t.Object({ id: t.String({ maxLength: 64 }) }) },
   );
+
+// Bounds the wait so the insert plus the send stays under the agent's 10s HTTP timeout.
+const SUMMARY_SEND_TIMEOUT_MS = 5_000;
+
+/**
+ * Email the call's owner its summary, if they switched that on (Business settings › Call emails).
+ * Best effort and never throws: a call to a number nobody owns, an account that didn't ask, or a
+ * mail server that is down all just mean no email.
+ */
+export async function emailCallSummary(call: InboundCall): Promise<boolean> {
+  try {
+    if (!call.userId) return false;
+    const owner = await findUserById(call.userId);
+    if (!owner?.emailCallSummaries) return false;
+    return await sendMail(callSummaryMail(owner.email, call), { timeoutMs: SUMMARY_SEND_TIMEOUT_MS });
+  } catch (err) {
+    console.warn(`[calls] summary email for call ${call.id} failed: ${(err as Error).message}`);
+    return false;
+  }
+}

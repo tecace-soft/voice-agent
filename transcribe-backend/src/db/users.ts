@@ -52,6 +52,8 @@ export interface UserRecord {
   signupSource: SignupSource;
   /** When a sign-up code proved the email. Null for accounts an admin made. */
   emailVerifiedAt: string | null;
+  /** Email a summary after each call the receptionist answers (Business settings › Call emails). */
+  emailCallSummaries: boolean;
 }
 
 /**
@@ -100,7 +102,8 @@ const COLUMNS = sql`
   created_at     AS "createdAt",
   last_login_at  AS "lastLoginAt",
   signup_source  AS "signupSource",
-  email_verified_at AS "emailVerifiedAt"
+  email_verified_at AS "emailVerifiedAt",
+  email_call_summaries AS "emailCallSummaries"
 `;
 
 export async function findUserByEmail(email: string): Promise<UserRecord | null> {
@@ -123,6 +126,16 @@ const isUserId = (id: string): boolean =>
 export async function findUserById(id: string): Promise<UserRecord | null> {
   if (!isUserId(id)) return null;
   const [row] = await sql`SELECT ${COLUMNS} FROM users WHERE id = ${id}`;
+  return (row as UserRecord | undefined) ?? null;
+}
+
+/** Switch the call summary emails on or off. Null when there is no such account. */
+export async function setEmailCallSummaries(id: string, enabled: boolean): Promise<UserRecord | null> {
+  if (!isUserId(id)) return null;
+  const [row] = await sql`
+    UPDATE users SET email_call_summaries = ${enabled} WHERE id = ${id}
+    RETURNING ${COLUMNS}
+  `;
   return (row as UserRecord | undefined) ?? null;
 }
 

@@ -75,6 +75,13 @@ describe("settings sections", () => {
     expect(route).toEqual({ view: "business", mailbox: undefined, section: "guided-setup" });
     expect(formatHash(route)).toBe("#/business/guided-setup");
   });
+
+  it("opens the Call emails section", () => {
+    expect(SECTION_IDS).toContain("call-emails");
+    const route = parseHash("#/business/call-emails");
+    expect(route).toEqual({ view: "business", mailbox: undefined, section: "call-emails" });
+    expect(formatHash(route)).toBe("#/business/call-emails");
+  });
 });
 
 describe("prospect tabs", () => {

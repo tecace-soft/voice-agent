@@ -37,6 +37,7 @@ import { AppointmentsSection } from "./sections/AppointmentsSection";
 import { TextLinkSection } from "./sections/TextLinkSection";
 import { TakeMessageSection } from "./sections/TakeMessageSection";
 import { ForwardingSection } from "./sections/ForwardingSection";
+import { CallEmailsSection } from "./sections/CallEmailsSection";
 import { LaunchGuide } from "./sections/LaunchGuide";
 import { BusinessTestConsole, BusinessTestSection, useTestCalls } from "./sections/TestSection";
 import { GuidedSetupSection } from "./sections/GuidedSetupSection";
@@ -490,6 +491,10 @@ export function BusinessSettings(props: Props) {
     {
       id: "appointments",
       render: callsSection((binding) => <AppointmentsSection binding={binding} userId={userId} />),
+    },
+    {
+      id: "call-emails",
+      render: () => <CallEmailsSection key={userId} userId={userId} />,
     },
     {
       id: "text-link",

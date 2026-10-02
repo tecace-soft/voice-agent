@@ -488,6 +488,9 @@ CALENDAR_TARGETS = [{"id": "https://caldav.icloud.com/1/calendars/home/", "name"
                     {"id": "https://caldav.icloud.com/1/calendars/work/", "name": "Work"}]
 CALENDAR = {"connection": None, "bookings": []}
 
+# Business settings › Call emails: the one switch, and the address it goes to.
+CALL_EMAILS = {"enabled": False, "email": "owner@harbordental.test"}
+
 CALLS = [
     {"id": "c-1", "userId": "u-sam", "dialled": "+14255550100", "caller": "+15551234567",
      "callerName": "Jordan Lee", "callbackNumber": "+15551234567", "request": "Book a cleaning",
@@ -1964,6 +1967,11 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
     if path == "/business/forward-accept" and method == "PUT":
         sent = json.loads(body or b"{}")
         return 200, {"profile": {**_business(), "forwardAcceptPress": sent.get("forwardAcceptPress") is True}}
+    if path == "/business/call-emails":
+        if method == "PUT":
+            sent = json.loads(body or b"{}")
+            CALL_EMAILS["enabled"] = sent.get("enabled") is True
+        return 200, dict(CALL_EMAILS)
     if path == "/business/house-rules" and method == "PUT":
         sent = json.loads(body or b"{}")
         return 200, {"profile": {**_business(), "houseRules": sent.get("houseRules") or None}}

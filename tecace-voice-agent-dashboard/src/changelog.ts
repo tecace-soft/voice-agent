@@ -35,6 +35,10 @@ export const CHANGELOG: Release[] = [
     title: "Your earlier transfer number, shown where calls use it",
     items: [
       {
+        kind: "new",
+        text: "Get a summary of each call by email: turn it on under Business settings › Call emails. It goes to the email you sign in with.",
+      },
+      {
         kind: "improved",
         text: "Your earlier transfer number can be edited: click it to change its type or when it can be used, without adding a new number. Saving adds it to your transfers with your changes.",
       },

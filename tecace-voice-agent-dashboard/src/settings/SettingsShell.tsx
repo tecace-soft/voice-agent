@@ -16,6 +16,7 @@ import {
   Smile,
   CircleHelp,
   ListChecks,
+  Mail,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -56,6 +57,7 @@ export const SECTION_META: Record<SectionId, { label: string; icon: typeof Build
   appointments: { label: "Appointments", icon: CalendarDays },
   "text-link": { label: "Text a link", icon: Smartphone },
   transfers: { label: "Transfer calls", icon: PhoneForwarded },
+  "call-emails": { label: "Call emails", icon: Mail },
   "custom-training": { label: "Custom training", icon: FolderOpen },
   test: { label: "Test & improve", icon: FlaskConical },
   "scenario-tests": { label: "Scenario tests", icon: ListChecks },
@@ -67,7 +69,7 @@ export const SECTION_META: Record<SectionId, { label: string; icon: typeof Build
 export const SECTION_GROUPS: { label: string; ids: SectionId[] }[] = [
   { label: "Start here", ids: ["guided-setup"] },
   { label: "Business", ids: ["business-info", "agent-profile", "faqs"] },
-  { label: "Calls", ids: ["take-message", "transfers", "text-link", "appointments"] },
+  { label: "Calls", ids: ["take-message", "transfers", "text-link", "appointments", "call-emails"] },
   { label: "Tuning", ids: ["custom-training", "test", "scenario-tests"] },
   { label: "Go live", ids: ["launch", "forwarding"] },
 ];

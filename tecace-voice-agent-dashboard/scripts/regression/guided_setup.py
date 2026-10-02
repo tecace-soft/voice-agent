@@ -41,7 +41,7 @@ BACKEND_PORT = 8895
 APP_PORT = 4186
 BACKEND = f"http://127.0.0.1:{BACKEND_PORT}"
 ANSWER = "Sam takes billing questions on (206) 555-0100, weekdays 9 to 5"
-MENU_ITEMS = 12
+MENU_ITEMS = 13
 
 
 class Checks:

@@ -65,6 +65,7 @@ export const SECTION_IDS = [
   "appointments",
   "text-link",
   "transfers",
+  "call-emails",
   "custom-training",
   "test",
   "scenario-tests",

@@ -3,7 +3,7 @@ import { DEFAULT_BEHAVIOUR } from "./behaviourDefaults.js";
 import { MAX_HOUSE_RULES, MAX_TRANSFER_TOPICS, resolveIdentity, spokenLine } from "./identityFields.js";
 import { authenticate, authenticateAdmin, UNAUTHORIZED } from "../auth/guard.js";
 import { env } from "../config/env.js";
-import { findUserById } from "../db/users.js";
+import { findUserById, setEmailCallSummaries } from "../db/users.js";
 import {
   currentHash,
   findLiveProfileByPhone,
@@ -565,6 +565,34 @@ export const business = new Elysia({ prefix: "/business" })
     {
       query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }),
       body: t.Object({ forwardAcceptPress: t.Boolean() }),
+    },
+  )
+
+  // Whether the account is emailed a summary after each call. A setting of the account — it goes to
+  // their inbox — so unlike the switches above it works before any business information exists.
+  .get(
+    "/call-emails",
+    async ({ headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      const owner = await findUserById(profileTargetFor(user, query.userId));
+      if (!owner) return status(404, { error: "not_found", message: "No such account." });
+      return { enabled: owner.emailCallSummaries, email: owner.email };
+    },
+    { query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }) },
+  )
+  .put(
+    "/call-emails",
+    async ({ body, headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      const owner = await setEmailCallSummaries(profileTargetFor(user, query.userId), body.enabled);
+      if (!owner) return status(404, { error: "not_found", message: "No such account." });
+      return { enabled: owner.emailCallSummaries, email: owner.email };
+    },
+    {
+      query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }),
+      body: t.Object({ enabled: t.Boolean() }),
     },
   )
 
