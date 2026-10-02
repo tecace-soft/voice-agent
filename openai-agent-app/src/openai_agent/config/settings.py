@@ -49,6 +49,18 @@ class Config:
     # rather than ~2.5s in. Same voice, so there is no seam. PRERENDERED_GREETING=false disables it.
     openai_tts_model: str
     prerendered_greeting: bool
+    # How long /incoming may wait for the business lookup and the rendered greeting before it
+    # answers. Twilio keeps the caller hearing RINGING until our TwiML arrives, so time spent here
+    # is ringing rather than an answered line with nobody on it — the phone's version of the
+    # dashboard test call's ringtone. 0 = answer at once, as before.
+    pickup_hold_seconds: float
+    # Where rendered greetings are kept, so a deploy or restart does not send every business's
+    # next call back to the model's ~2.5s cold greeting. A Docker volume in production. An
+    # unwritable directory degrades to memory only.
+    greeting_cache_dir: str
+    # Seconds between passes that render every Twilio number's greeting before anyone calls it.
+    # The pass also picks up a greeting changed in the dashboard. 0 = once at startup only.
+    greeting_warm_interval: float
     openai_transcribe_model: str
     # ---- OpenAI GPT-Live ----
     # Set (e.g. "gpt-live-1") to run every call on GPT-Live instead of Realtime; blank = Realtime,
@@ -167,6 +179,11 @@ class Config:
             # PRERENDERED_GREETING=false hands the opening back to the model.
             prerendered_greeting=_optional("PRERENDERED_GREETING", "true").lower()
             not in ("false", "0", "no"),
+            # Capped at 8s: Twilio gives a voice webhook 15s to answer, after which it sends the
+            # call to the fallback handler. A typo like 20 would otherwise do that to every call.
+            pickup_hold_seconds=min(8.0, max(0.0, float(_optional("PICKUP_HOLD_SECONDS", "3.0")))),
+            greeting_cache_dir=_optional("GREETING_CACHE_DIR", "/data/greetings"),
+            greeting_warm_interval=max(0.0, float(_optional("GREETING_WARM_INTERVAL", "600"))),
             # Transcribes the CALLER only (the agent's own words come back with its audio).
             # whisper-1 is markedly worse on 8kHz phone audio, which is all we ever feed it.
             # Set OPENAI_TRANSCRIBE_MODEL=whisper-1 to go back if this model ever misbehaves.

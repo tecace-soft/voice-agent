@@ -67,7 +67,7 @@ const STAGES: Stage[] = [
   {
     id: "onboarding",
     label: "Onboarding",
-    can: ["Change every setting", "Test calls in the app, with your draft", "Publish what callers will get"],
+    can: ["Change every setting", "Test calls in the app, with your draft", "Call your number to check what you published"],
     next: "Moves on when you request go live and we switch your line on",
   },
   {
@@ -242,8 +242,8 @@ function Banner({ phase, name, number }: { phase: Phase; name: string; number: s
         </span>
       ) : (
         <span>
-          <b className="font-semibold">Test calls only.</b> Your line stays off until go live. Test from the app in the
-          meantime.
+          <b className="font-semibold">Testing.</b> {number ? `Calls to ${displayPhone(number)}` : "Once you have your number, calls to it"}{" "}
+          are answered with what you've published, so you can check it before go live.
         </span>
       )}
     </p>
@@ -322,7 +322,7 @@ function testLine(props: Props, name: string): string {
     return `Call ${name}'s number from any phone to hear what your callers hear; it's a real call and counts toward your minutes. To try a change before callers get it, use Test & improve: it calls with your draft.`;
   }
   if (props.phase === "onboarding") {
-    return `Your phone line stays off until go live. Call ${name} from the browser in Test & improve: test calls use your draft, so you can try a change before you publish it. Test minutes are limited each month.`;
+    return `Call ${name}'s number, or forward your line to it, to hear what you've published: it's a real call and counts toward your minutes. To try a change before you publish it, use Test & improve: it calls with your draft.`;
   }
   if (props.audience === "operator") {
     return "Use the Test call panel beside these settings. It calls this demo with its current settings, and nothing is dialled; there's nothing to publish on a demo.";

@@ -294,7 +294,7 @@ export function MessageExchange({ scenario }: { scenario?: MessageScenario }) {
             ? "Thanks, Sam. [asks what the brief says] I'll pass that on, and someone will get back to you."
             : "Thanks, Sam. I'll pass that on, and someone will get back to you.",
         },
-        { who: "note", text: "The message appears under Answered calls with the caller's name, number and reason." },
+        { who: "note", text: "The message appears under Transcripts with the caller's name, number and reason." },
       ]}
     />
   );

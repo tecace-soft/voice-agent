@@ -146,6 +146,38 @@ export type StoredCallSettings = {
   agentNumber: string | null;
 };
 
+/**
+ * The single transfer number from before transfer scenarios, when real calls still dial it — else
+ * null. The same rule the phone follows: transcribe-backend's `composeSession` uses it while the
+ * business has never published call settings, and a profile from before the structured editor gets
+ * the agent's older prompt, which dials it whatever is published. The draft plays no part, so a
+ * transfer saved but not yet published does not replace it.
+ */
+export function oldTransferInUse(
+  profile: { transferNumber: string | null; profile: unknown },
+  stored: Pick<StoredCallSettings, "published">,
+): string | null {
+  if (!profile.transferNumber) return null;
+  if (!profile.profile) return profile.transferNumber;
+  return stored.published === null ? profile.transferNumber : null;
+}
+
+/** The old number as the scenario calls are given — transcribe-backend's `legacyScenario`. */
+export function oldTransferScenario(number: string, topics?: string | null): TransferScenario {
+  const extra = topics?.trim() ? ` Also: ${topics.trim()}` : "";
+  return {
+    id: "team",
+    enabled: true,
+    mode: "cold",
+    name: "Someone on the team",
+    description: `The caller asks for a person, or wants to book, change or cancel an appointment.${extra}`,
+    numbers: [number],
+    collectBefore: "",
+    holdMusic: "classical",
+    hours: [],
+  };
+}
+
 /** "(206) 555-0134" for display; anything else as it is. */
 export function displayPhone(e164: string): string {
   const digits = e164.replace(/\D/g, "");

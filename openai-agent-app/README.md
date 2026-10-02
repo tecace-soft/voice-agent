@@ -128,6 +128,35 @@ caller ──▶ client's public number ──▶ (carrier forward) ──▶ ou
                                      nobody answered? ──▶ /after-transfer ──▶ back to the agent
 ```
 
+### Picking up fast
+
+The first thing a caller hears is a greeting rendered ahead of time (`PRERENDERED_GREETING`), not
+the model — GPT-Live needs ~2.5s from a cold session to its first word. To make that greeting
+ready on every call.
+
+This applies to the GPT-Live engine (`OPENAI_LIVE_MODEL` set) with `PRERENDERED_GREETING` on. On the
+Realtime engine, or with `PRERENDERED_GREETING=false`, nothing plays a rendered greeting first, so the
+ring hold is skipped (the call is answered at once; the background warm-up still runs) and the
+`pickup:` line below is logged by the GPT-Live bridge only.
+
+- `/incoming` keeps the phone **ringing** for up to `PICKUP_HOLD_SECONDS` (default 3, capped at 8
+  because Twilio gives the webhook 15s) while it looks up the business and waits for its greeting,
+  then answers. Ringing, not an answered silent line — the phone's version of the dashboard test
+  call's ringtone.
+- Rendered greetings are kept on disk (`GREETING_CACHE_DIR`, a Docker volume), so a deploy keeps them.
+- At startup and every `GREETING_WARM_INTERVAL` seconds the server renders the greeting of every
+  number on the Twilio account (logs `greeting warm-up: N business greeting(s) ready, M number(s) failed`). "failed" counts lookups or renders that raised; an unreachable backend or an
+  unassigned number is not counted, it just shows up as fewer greetings ready.
+
+Every inbound call logs one line, e.g.
+`pickup: greeting=disk held=memory hold=150ms answer->stream=600ms stream->first audio=10ms ...`.
+`greeting=` is where the opening came from: `memory` / `disk` (cached), `waited` (rendered while
+the phone rang), `miss` (not ready, so the model greeted — slow), `model` (this call has no
+pre-rendered opening: an unassigned number, or a caller back from a failed transfer) or `off` (`PRERENDERED_GREETING=false`). `held=` is what the ring-hold found:
+`memory` / `disk` / `waited` (greeting ready), `miss` (held the full time, no greeting), `timeout`
+(business lookup ran out of time), `none` (number belongs to no business) or `error` (the hold
+failed; the call is answered normally). Read `held` to see why a call was `greeting=miss`.
+
 ### Why the transfer works the way it does
 
 `<Connect>` is **terminal TwiML** — ending the media stream ends the *call*. There is no way to

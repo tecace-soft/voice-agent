@@ -16,6 +16,7 @@ import threading
 import uvicorn
 
 from openai_agent.config import Config
+from openai_agent.heartbeat import start_heartbeat_thread
 from openai_agent.telephony.notify_server import build_app
 from openai_agent.telephony.poller import LeadPoller
 
@@ -43,6 +44,18 @@ def main() -> int:
     # to do, and this way Ctrl+C on the server ends the process rather than hanging on the thread.
     loop = threading.Thread(target=poller.run, name="lead-poll-loop", daemon=True)
     loop.start()
+
+    def status() -> tuple[bool, str, dict]:
+        stats = poller.stats()
+        metrics = {"wakes": stats["wakes"], "lastWakeAt": stats["last_wake_at"]}
+        gaps = cfg.missing_for_outbound()
+        if gaps:
+            return False, "missing settings: " + ", ".join(gaps), metrics
+        if not loop.is_alive():
+            return False, "the lead poll loop has stopped", metrics
+        return True, "", metrics
+
+    start_heartbeat_thread(cfg, "poller", status)
 
     print("Lead poller running - dialing one lead at a time, oldest first.")
     print(f"  notifications : POST http://0.0.0.0:{cfg.poller_port}/poller/lead-due")

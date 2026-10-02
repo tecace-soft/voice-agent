@@ -20,6 +20,16 @@ import { FieldMessage, toFieldError, type CallSettingsBinding } from "../shared"
 /** `CalendarProviderStatus` in `api/backend.ts`, repeated so this file needs nothing from it. */
 export type ProviderStatus = "ready" | "needs_setup" | "soon";
 
+/**
+ * Whether a business can connect this one right now: only when the server says `ready`. Offering a
+ * tile the server would refuse is a dead end, so anything else is shown but not clickable —
+ * `needs_setup` (built, but this server has no Google / Microsoft sign-in app) as "Not available",
+ * `soon` (no connection built yet) as "Coming soon". Any account stage gets the same answer.
+ */
+export function offered(status: ProviderStatus): boolean {
+  return status === "ready";
+}
+
 const LENGTHS = [15, 20, 30, 45, 60, 90, 120];
 const GAPS = [0, 5, 10, 15, 30];
 const NOTICE: { value: number; label: string }[] = [
@@ -51,7 +61,7 @@ function StatusTag({
   preview: boolean;
 }) {
   if (connected) return <span className="ta-caption-2 bg-primary/10 text-primary rounded-full px-2 py-0.5">Connected</span>;
-  if (status === "ready") {
+  if (offered(status)) {
     return preview ? (
       <span className="ta-caption-2 bg-primary/10 text-primary rounded-full px-2 py-0.5">Available</span>
     ) : (
@@ -59,7 +69,7 @@ function StatusTag({
     );
   }
   if (status === "needs_setup") {
-    return <span className="ta-caption-2 bg-muted text-muted-foreground rounded-full px-2 py-0.5">Needs setup</span>;
+    return <span className="ta-caption-2 bg-muted text-muted-foreground rounded-full px-2 py-0.5">Not available</span>;
   }
   return <span className="ta-caption-2 bg-muted text-muted-foreground rounded-full px-2 py-0.5">Coming soon</span>;
 }
@@ -101,7 +111,7 @@ export function ProviderGallery({
                 {PROVIDERS_UI.filter((p) => p.group === group.id).map((ui) => {
                   const status = statusOf(ui.id);
                   const connected = ui.id === connectedId;
-                  const usable = status === "ready" && !disabled && !connected;
+                  const usable = offered(status) && !disabled && !connected;
                   return (
                     <button
                       key={ui.id}
@@ -110,7 +120,7 @@ export function ProviderGallery({
                       onClick={() => onConnect(ui)}
                       title={
                         status === "needs_setup"
-                          ? "This server has no sign-in set up for it yet. Your TecAce admin can add it."
+                          ? "Not available on this dashboard yet. Until it is, the assistant takes these bookings as messages."
                           : status === "soon"
                             ? "Not connectable yet. Until it is, the assistant takes these bookings as messages."
                             : undefined

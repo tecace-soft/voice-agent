@@ -161,8 +161,10 @@ const seedAdminName = process.env.SEED_ADMIN_NAME?.trim() || seedAdminEmail.spli
 //
 // CALENDAR_SECRET encrypts the stored credentials (AES-256-GCM). Falls back to AUTH_SECRET; in
 // development with neither it is derived from DATABASE_URL, so a restart can still read what was
-// saved. Changing it makes every stored connection unreadable — they then show as needing a
-// reconnect, nothing worse.
+// saved. Setting CALENDAR_SECRET where AUTH_SECRET stood in for it keeps what was saved before:
+// `calendarSecretFallbacks` still opens those, and each is re-sealed under the new key when read
+// (calendar/service.ts). Changing CALENDAR_SECRET itself makes stored connections unreadable — they
+// then show as needing a reconnect, nothing worse.
 function resolveCalendarSecret(): string {
   const configured = process.env.CALENDAR_SECRET?.trim() || process.env.AUTH_SECRET?.trim();
   if (configured) return configured;
@@ -251,6 +253,12 @@ export const env = {
   openaiLiveModel: process.env.OPENAI_LIVE_MODEL || "gpt-live-1",
   openaiBackendModel: process.env.OPENAI_BACKEND_MODEL || "gpt-5.6-terra",
   callReviewModel: process.env.CALL_REVIEW_MODEL || analysisModelDefault,
+  // Scenario tests (docs/superpowers/specs/2026-10-01-scenario-tests-design.md): where the runner in
+  // openai-agent-app listens, the key both sides send, and the model that grades a run. With the URL
+  // or the key unset, the Scenario tests section says the runner isn't set up and refuses to start.
+  scenarioRunnerUrl: (process.env.SCENARIO_RUNNER_URL ?? "").trim().replace(/\/$/, ""),
+  scenarioRunnerKey: process.env.SCENARIO_RUNNER_KEY?.trim() ?? "",
+  scenarioJudgeModel: process.env.SCENARIO_JUDGE_MODEL?.trim() || analysisModelDefault,
   researchProvider,
   researchOpenaiModel,
   researchSearchContext,
@@ -271,6 +279,10 @@ export const env = {
   seedAdminPassword,
   seedAdminName,
   calendarSecret: resolveCalendarSecret(),
+  /** Earlier keys that may have sealed stored calendar credentials: AUTH_SECRET, once CALENDAR_SECRET differs. */
+  calendarSecretFallbacks: [process.env.AUTH_SECRET?.trim() ?? ""].filter(
+    (secret) => secret && secret !== resolveCalendarSecret(),
+  ),
   // This backend's own public origin, for OAuth redirect URIs. Unset = taken from the request.
   publicBackendUrl: (process.env.PUBLIC_BACKEND_URL ?? "").trim().replace(/\/$/, ""),
   googleClientId: process.env.GOOGLE_CLIENT_ID?.trim() ?? "",

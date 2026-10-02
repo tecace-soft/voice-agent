@@ -118,9 +118,10 @@ export function BusinessPage({
   // its header and live state brought up to date, and swapping the whole page for "Loading…" would
   // unmount the settings screen and throw away every other section's unsaved edits.
   const load = useCallback((quiet = false) => {
-    // An admin who hasn't picked anyone yet has nothing to load.
+    // An admin who hasn't picked anyone yet has nothing to load. One who has, but whose accounts
+    // list hasn't arrived, stays loading until it does and `targetId` is known.
     if (isAdmin && !targetId) {
-      setLoading(false);
+      if (!scope) setLoading(false);
       return;
     }
     if (!quiet) setLoading(true);
@@ -139,7 +140,7 @@ export function BusinessPage({
     getReadiness(targetId)
       .then(setReadiness)
       .catch(() => setReadiness(null));
-  }, [isAdmin, targetId]);
+  }, [isAdmin, targetId, scope]);
 
   useEffect(() => {
     load();
@@ -167,7 +168,7 @@ export function BusinessPage({
       );
       setProfile(saved);
       setFactsStale(false);
-      load();
+      load(true); // quiet: the Loading screen would unmount the settings and drop unsaved edits
     } catch (e) {
       setSaveError(accountErrorMessage(e, "Couldn't re-read your details. Nothing was changed."));
     } finally {
@@ -203,6 +204,7 @@ export function BusinessPage({
 
   // An admin with nobody selected: choose a customer. Shown instead of the profile, not above it,
   // because there is no profile to show until they pick — and an admin's own would always be empty.
+  if (isAdmin && scope && customers === null) return <p className="muted ta-body-2">Loading…</p>;
   if (isAdmin && !viewing) {
     return (
       <div className="view">

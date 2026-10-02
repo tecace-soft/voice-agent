@@ -26,7 +26,7 @@ import type { BookingTarget } from "../session/appointments.js";
 import { googleAccount, googleClient } from "./google.js";
 import { microsoftAccount, microsoftClient } from "./microsoft.js";
 import type { OAuthProvider, OAuthTokens } from "./oauth.js";
-import { open, seal } from "./secrets.js";
+import { openStored, seal } from "./secrets.js";
 import { spokenTime, zonedIso } from "./time.js";
 import { CalendarError, type CalendarClient, type ProviderId, type Target } from "./types.js";
 
@@ -83,9 +83,16 @@ function build(provider: ProviderId, creds: Credentials, timeZone: string, save:
 /** The live client for a stored connection. Refreshed tokens are written back as they arrive. */
 export function clientFor(row: ConnectionRow, timeZone: string): CalendarClient {
   if (!isProvider(row.provider)) throw new CalendarError("input", "This calendar isn't supported any more.");
-  const creds = open<Credentials>(row.secret);
-  if (!creds) throw new CalendarError("auth", "This connection can't be read any more. Reconnect the calendar.");
-  return build(row.provider, creds, timeZone, (next) => updateSecret(row.userId, seal(next)));
+  const stored = openStored<Credentials>(row.secret);
+  if (!stored) throw new CalendarError("auth", "This connection can't be read any more. Reconnect the calendar.");
+  // Saved under an earlier key (before CALENDAR_SECRET was set): move it to the current one now, so
+  // the fallback is only ever needed once per connection.
+  if (stored.stale) {
+    void updateSecret(row.userId, seal(stored.value)).catch((error) =>
+      console.warn(`calendar: couldn't re-seal a connection under the current key: ${(error as Error).message}`),
+    );
+  }
+  return build(row.provider, stored.value, timeZone, (next) => updateSecret(row.userId, seal(next)));
 }
 
 function required(value: unknown, message: string): string {

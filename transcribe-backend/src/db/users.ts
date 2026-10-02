@@ -55,6 +55,8 @@ export interface UserRecord {
   /** An onboarding customer's open go-live request (`requestLive`), null when there is none. */
   liveRequestedAt: string | Date | null;
   liveRequestNote: string | null;
+  /** When the line was switched on (production). The trial counts from here. */
+  liveAt: string | null;
 }
 
 /**
@@ -76,6 +78,7 @@ export interface PublicUser {
   emailVerified: boolean;
   /** Asked for their line to be switched on and not answered yet (Accounts badge and pill). */
   liveRequest: { requestedAt: string; note: string | null } | null;
+  liveAt: string | null;
 }
 
 export const toPublicUser = (u: UserRecord): PublicUser => ({
@@ -91,6 +94,7 @@ export const toPublicUser = (u: UserRecord): PublicUser => ({
   liveRequest: u.liveRequestedAt
     ? { requestedAt: new Date(u.liveRequestedAt).toISOString(), note: u.liveRequestNote ?? null }
     : null,
+  liveAt: u.liveAt ?? null,
 });
 
 // Emails are stored lower-cased so sign-in is case-insensitive without needing the citext extension.
@@ -110,7 +114,8 @@ const COLUMNS = sql`
   signup_source  AS "signupSource",
   email_verified_at AS "emailVerifiedAt",
   live_requested_at AS "liveRequestedAt",
-  live_request_note AS "liveRequestNote"
+  live_request_note AS "liveRequestNote",
+  live_at       AS "liveAt"
 `;
 
 export async function findUserByEmail(email: string): Promise<UserRecord | null> {

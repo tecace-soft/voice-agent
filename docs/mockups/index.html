@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dashboard redesign mockups</title>
+<link rel="stylesheet" href="admin/mockup.css" />
+<style>
+  .wrapx { max-width: 1180px; margin: 0 auto; padding: 40px 24px 80px; display: flex; flex-direction: column; gap: 28px; }
+  .journey { display: grid; grid-template-columns: 140px repeat(4, minmax(0, 1fr)); gap: 0; }
+  .journey > div { padding: 14px 16px; border-bottom: 1px solid var(--line-soft); border-left: 1px solid var(--line-soft); min-height: 56px; }
+  .journey > div:nth-child(5n+1) { border-left: 0; background: #fbfbfc; font-weight: 600; color: var(--muted); font-size: 13px; }
+  .journey .hd { font-weight: 700; background: #fbfbfc; }
+  .journey .hd .cap { font-weight: 500; }
+  .journey a.link { color: var(--primary); font-weight: 600; }
+  .journey ul { margin: 6px 0 0; padding-left: 16px; }
+  .journey li { margin: 2px 0; }
+  .gate { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--warning); }
+  table.t td { height: auto; padding: 12px; vertical-align: top; }
+</style>
+</head>
+<body>
+<div class="wrapx">
+  <header class="col" style="gap:6px">
+    <span class="badge blue" style="width:fit-content">Mockup · 2026-10-02 · 개발 전 검토용</span>
+    <h1 class="h1" style="font-size:32px;line-height:40px">Admin + 고객 대시보드 재설계 목업</h1>
+    <p class="sub" style="margin:0;max-width:76ch">한 업체가 데모에서 라이브까지 가는 동안 <b>고객이 보는 화면</b>과 <b>관리자가 보는 화면</b>을 나란히 놓았습니다. 아래 표의 링크가 각 단계의 목업입니다. 정적 HTML이고 데이터는 가짜입니다. 페이지 오른쪽 아래 검은 패널이 변경 메모(한국어), 주황 번호가 그 위치입니다.</p>
+    <div class="row" style="margin-top:8px"><a class="btn" href="admin/index.html">Admin 목업 목차와 원칙</a><a class="btn" href="../customer-journey.html">기존 여정 문서</a><span class="cap">고객용은 아래 표에서 바로 엽니다</span></div>
+  </header>
+
+  <section class="card" style="overflow:hidden">
+    <div class="card-h"><h2 class="h2">여정 한눈에</h2><span class="cap">가로: 단계 · 세로: 누가 보는가 · <span class="gate">● 게이트</span> = 누군가 행동해야 다음 단계로</span></div>
+    <div class="journey">
+      <div class="hd"></div>
+      <div class="hd">1 · 데모 <span class="cap">계정 없음 → status demo</span></div>
+      <div class="hd">2 · 셋업 요청 <span class="cap">플랜 + 카드 → 바로 pre-production</span></div>
+      <div class="hd">3 · 온보딩 <span class="cap">status pre-production</span></div>
+      <div class="hd">4 · 라이브 <span class="cap">status production</span></div>
+
+      <div>고객이 보는 것</div>
+      <div><a class="link" href="https://ax-voiceagent.tecace.com/start" target="_blank" rel="noreferrer">/start</a> 또는 이메일 링크 /c/&lt;id&gt; (둘 다 이미 재설계되어 배포 브랜치에 있음)<ul><li>브라우저에서 전화해 보기</li><li>가입하면 → <a class="link" href="customer/demo-home.html">Home (demo)</a></li></ul></div>
+      <div><a class="link" href="customer/demo-home.html">Home (demo)</a>의 Request setup 카드 → 플랜 선택 → 카드(테스트 모드) → 확인<ul><li>확인 즉시 온보딩. 관리자 승인 없음</li><li>과금 없음: 체험 2주는 라이브 되는 날부터</li><li><a class="link" href="customer/billing.html">Billing</a>에서 플랜·카드 변경</li></ul><span class="gate">● 고객: 플랜 + 카드</span></div>
+      <div><a class="link" href="customer/onboarding-home.html">Home (being set up)</a>: 6단계 체크리스트<ul><li><a class="link" href="customer/receptionist.html">Receptionist</a> 편집 + 테스트 콜 + Publish</li><li><a class="link" href="customer/phone-line.html">Phone line</a>: 아직 꺼짐</li></ul><span class="gate">● 고객: Publish</span></div>
+      <div><a class="link" href="customer/live-home.html">Home (live)</a>: 회선 상태, 받은 전화·예약·메시지<ul><li><a class="link" href="customer/calls.html">Calls</a>: 통화·메시지·예약</li><li><a class="link" href="customer/phone-line.html">Phone line</a>: 착신 전환, 요금</li></ul></div>
+
+      <div>관리자가 하는 것</div>
+      <div><a class="link" href="admin/prospects.html">Prospects</a>에서 New prospect → 리서치<ul><li><a class="link" href="admin/prospect.html">Prospect 상세</a>: 링크 공유, 이메일, 데모 시간</li><li><a class="link" href="admin/demo-analytics.html">Demo analytics</a>로 반응 확인</li></ul></div>
+      <div><a class="link" href="admin/prospect.html">Prospect 상세</a>: 요청과 함께 온보딩으로 넘어간 것을 봄<ul><li>Approve / Decline은 관리자가 직접 시작하는 셋업에만</li><li>Prospects 보드에서 'Won'으로 이동</li></ul><span class="cap">게이트 없음 (2026-10-02 결정)</span></div>
+      <div><a class="link" href="admin/customers.html">Customers</a> 서랍<ul><li>Go live 체크리스트 확인</li><li><a class="link" href="admin/numbers.html">Phone numbers</a>에서 번호 배정</li></ul><span class="gate">● 관리자: Go live</span></div>
+      <div><a class="link" href="admin/overview.html">Overview</a>·<a class="link" href="admin/transcripts.html">Transcripts</a>로 모든 업체 보기<ul><li><a class="link" href="admin/business.html">Business settings</a>로 대신 수정</li><li>Customers에서 회선 끄기</li></ul></div>
+
+      <div>백엔드</div>
+      <div class="cap">리서치 → 프롬프트 생성 → 데모 세션(브라우저)</div>
+      <div class="cap">계정 생성, 데모를 업체로 복사, 초대 메일</div>
+      <div class="cap">초안 vs 게시본, 테스트 콜(앱), 캘린더 연결</div>
+      <div class="cap">Twilio 번호 → 전화 에이전트, 통화 기록·리뷰</div>
+    </div>
+  </section>
+
+  <section class="grid g2">
+    <div class="card pad col" style="gap:10px">
+      <h2 class="h2">고객 화면에서 바뀐 것</h2>
+      <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px">
+        <li><b>단계마다 다른 Home.</b> 데모는 '전화해 보기 + Request setup', 온보딩은 체크리스트, 라이브는 회선 상태와 오늘의 메시지. 지금은 데모 고객은 영업 지표(Link opens, People)를 보고, 온보딩 고객은 로그인 즉시 설정 폼 위에 알림 띠 3개를 봅니다.</li>
+        <li><b>사이드바 3~4개.</b> Home, Calls, Receptionist, Phone line. 지금은 음성 에이전트 고객에게도 Voicemail 4개 항목이 보이고, 브랜드가 'TecAce Transcribe', 꼬리말이 'Last run'입니다.</li>
+        <li><b>고객 말로.</b> '게시된 설정이 그 번호와 동작', '모든 에이전트 통화', Happy/Mixed 기분 라벨, 'from Accounts' 같은 운영 문구를 뺐습니다.</li>
+        <li><b>고객이 할 수 없는 일은 '우리가 합니다'로.</b> 번호 배정과 Go live는 관리자 몫이라 체크리스트에서 점선 단계로 구분합니다.</li>
+        <li><b>죽은 컨트롤 제거.</b> 데모 계정에서는 아무 일도 안 하는 상단 'Refresh', 항상 'No runs yet'인 'Last run', 'Showing &lt;이름&gt;' 블록, '실행(run)'을 언급하는 피드백 힌트처럼 음성사서함 앱에서 온 것들을 고객 화면에서 뺍니다.</li>
+        <li><b>구현됨 (2026-10-02):</b> 단계별 Home, 셀프 온보딩(플랜 + 카드, 테스트 모드), Billing 메뉴, 라이브 Home의 네 지표. Voicemail 메뉴는 레거시로 유지하기로 함.</li>
+        <li><b>새 제안 3개:</b> 메시지 '처리 완료' 표시, 통화별 '잘 됐다/아니다' 피드백, 회선 일시 중지. 모두 백엔드가 필요합니다.</li>
+      </ol>
+    </div>
+    <div class="card pad col" style="gap:10px">
+      <h2 class="h2">Admin과 고객 화면의 관계</h2>
+      <table class="t"><thead><tr><th>같은 데이터</th><th>고객에게</th><th>관리자에게</th></tr></thead><tbody>
+        <tr><td>설정 스튜디오</td><td>Receptionist (7개 메뉴, 고객 말)</td><td>Prospect › Receptionist, Business settings (전체 섹션)</td></tr>
+        <tr><td>통화 기록</td><td>Calls (결과별 필터)</td><td>Transcripts (모든 업체), Prospect › Calls (리뷰·테스트 표시)</td></tr>
+        <tr><td>고칠 점</td><td>Worth a look (고치는 링크)</td><td>What to fix (FAQ 추가, 시간 편집)</td></tr>
+        <tr><td>회선</td><td>Phone line (전환 안내, 요금)</td><td>Customers 서랍 (번호 배정, Go live), Phone numbers</td></tr>
+        <tr><td>셋업 진행</td><td>Home 체크리스트 (내 일 / 우리 일)</td><td>Prospect stepper, Customers의 Go live 진행률</td></tr>
+      </tbody></table>
+      <span class="cap">같은 컴포넌트를 두 역할이 공유하되, 메뉴·문구·동작 범위만 다르게 가는 방향입니다.</span>
+    </div>
+  </section>
+
+  <section class="card pad col" style="gap:8px">
+    <h2 class="h2">확인이 필요한 것</h2>
+    <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px">
+      <li>고객 사이드바에서 Voicemail을 빼도 되는지. transcribe 앱(음성사서함) 고객과 음성 에이전트 고객이 같은 계정 체계를 쓴다면, 메일함이 있는 계정에만 보이게 하는 조건이 필요합니다.</li>
+      <li>'받은 전화 / 예약 / 메시지 / 연결' 네 지표는 통화 결과(outcome) 데이터로 계산할 수 있어 보이지만 확인이 필요합니다.</li>
+      <li>데모 단계 고객의 Receptionist 미리보기를 요약 카드로 줄이는 것이 영업상 맞는지(지금은 전체 설정을 읽기 전용으로 보여 줌).</li>
+      <li>Admin 쪽 확인 사항은 <a href="admin/index.html" style="color:var(--primary)">Admin 목차</a>에 있습니다.</li>
+    </ol>
+  </section>
+</div>
+</body>
+</html>

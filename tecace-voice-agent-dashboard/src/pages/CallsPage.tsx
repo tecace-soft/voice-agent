@@ -7,7 +7,7 @@ import { CallList } from "../components/CallList";
 import { TalkTimeCards } from "../components/TalkTime";
 import { IconChevronLeft, IconPhone, IconUsers } from "../icons";
 
-// Answered calls and talk time — always ONE business at a time, like the rest of the dashboard.
+// Transcripts (the view id and address are still `calls`) and talk time — always ONE business at a time, like the rest of the dashboard.
 //
 //   a customer                  -> their own business: talk time, then their calls
 //   an admin, one business      -> that business, the same page the customer sees
@@ -44,7 +44,9 @@ export function CallsPage({
 
   const viewing = customers.find((c) => c.email === scope) ?? null;
   if (!viewing) return <CallBoards customers={customers} scope={scope} onScope={onScope} />;
-  return <BusinessCalls viewing={viewing} customers={customers} scope={scope} onScope={onScope} />;
+  // Keyed by the business, so switching never shows (or lets a slow response leave) the previous
+  // one's calls under the new name.
+  return <BusinessCalls key={viewing.id} viewing={viewing} customers={customers} scope={scope} onScope={onScope} />;
 }
 
 // Who to show, for an admin. "Every business" opens the per-business panels.
@@ -137,7 +139,7 @@ function BusinessCalls({
             All businesses
           </button>
           <span className="ta-label-1">
-            Showing <strong>{viewing.name}</strong>'s calls and talk time
+            Showing <strong>{viewing.name}</strong>'s transcripts and talk time
           </span>
           <span className="ta-caption-2 muted">{viewing.email}</span>
         </div>
@@ -154,10 +156,10 @@ function BusinessCalls({
         <div className="card-toolbar">
           <div>
             <div className="card-title ta-headline-2">
-              {viewing ? `${viewing.name}'s calls` : "Calls the assistant answered"}
+              {viewing ? `${viewing.name}'s transcripts` : "Transcripts"}
             </div>
             <div className="card-sub ta-caption-1">
-              Someone rang and the assistant picked up. Open a call to read what was said.
+              Every call your receptionist answered. Open one to read the conversation.
             </div>
           </div>
           {viewing && <BusinessPicker customers={customers} scope={scope} onScope={onScope} />}
@@ -210,10 +212,10 @@ function CallBoards({
       <section className="card">
         <div className="card-toolbar">
           <div>
-            <div className="card-title ta-headline-2">Calls and talk time, by business</div>
+            <div className="card-title ta-headline-2">Transcripts and talk time, by business</div>
             <div className="card-sub ta-caption-1">
               {businesses} {businesses === 1 ? "business" : "businesses"}, busiest this month first.
-              Open one to see its talk time and the calls it answered — or pick a business to view
+              Open one to see its talk time and its transcripts — or pick a business to view
               it on its own.
             </div>
           </div>

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Admin redesign mockups</title>
+<link rel="stylesheet" href="mockup.css" />
+<style>
+  body { background: var(--canvas); }
+  .wrapx { max-width: 1080px; margin: 0 auto; padding: 40px 24px 80px; display: flex; flex-direction: column; gap: 28px; }
+  table.t td { height: auto; padding: 12px; vertical-align: top; }
+  ol.p { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+</style>
+</head>
+<body>
+<div class="wrapx">
+  <header class="col" style="gap:6px">
+    <span class="badge blue" style="width:fit-content">Mockup · 2026-10-02 · 개발 전 검토용</span>
+    <a class="cap" href="../index.html" style="color:var(--primary)">← 전체 목차 (고객 화면 + 여정)</a>
+    <h1 class="h1" style="font-size:32px;line-height:40px">Admin 화면 재설계 목업</h1>
+    <p class="sub" style="margin:0;max-width:72ch">tecace-voice-agent-dashboard의 admin 화면 전체를 다시 정리한 정적 목업입니다. Demo(Prospect) 쪽을 가장 깊게 다뤘습니다. 각 페이지 오른쪽 아래의 검은 패널이 변경 메모이고, 화면의 주황 번호와 짝을 이룹니다. 데이터는 전부 가짜이며 백엔드와 연결되어 있지 않습니다.</p>
+  </header>
+
+  <section class="card pad col" style="gap:12px">
+    <h2 class="h2">정리 원칙</h2>
+    <ol class="p">
+      <li><b>같은 동작은 한 곳에만.</b> 지금은 리서치 재실행 3곳, 데모 시간 추가 3곳, 데모 페이지 열기 5곳, 저장 방식 4가지입니다. 목업에서는 동작마다 자리를 하나로 정했습니다. (Taste Skill: No duplicate CTA intent)</li>
+      <li><b>동작은 그 데이터 옆에.</b> 링크 스위치·시간은 링크 카드에, 승인·거절은 요청 내용 옆에, Go live는 체크리스트 아래에 둡니다.</li>
+      <li><b>저장 규칙 한 줄.</b> 입력하는 대로 저장하고, 실제 손님에게 나가는 통화 설정만 Publish로 게시합니다. 데모는 실제 회선이 없어 바로 저장합니다.</li>
+      <li><b>무엇을 해야 하는지 먼저.</b> 목록의 'Needs you' 탭과 'Next step' 열, 상세 페이지의 단계 표시(stepper)와 다음 단계 카드.</li>
+      <li><b>브랜드 규칙은 유지.</b> #116DFF 하나, Pretendard, 본문 500, 16px 외곽선 카드, sentence case(대문자 그룹 라벨 제거), em-dash 없음. 한 가지만 제안으로 바꿨습니다: 보조 글씨 색을 더 진하게 해서 대비 4.5:1을 넘깁니다(지금 약 3.7:1).</li>
+    </ol>
+  </section>
+
+  <section class="col" style="gap:12px">
+    <h2 class="h2">페이지</h2>
+    <div class="grid g3 idx">
+      <a class="card" href="prospect.html"><span class="badge amber" style="width:fit-content">핵심</span><b>Prospect 상세</b><span class="cap">탭 5개(Overview, Calls, Receptionist, Research, Outreach email). 링크·딜·연락처를 오른쪽 레일에 모음.</span></a>
+      <a class="card" href="prospects.html"><span class="badge amber" style="width:fit-content">핵심</span><b>Prospects</b><span class="cap">Customers 목록 + CRM 보드 통합. 'Needs you' 탭, Next step 열.</span></a>
+      <a class="card" href="demo-analytics.html"><b>Demo analytics</b><span class="cap">Demo Overview + CRM 지표·활동 피드.</span></a>
+      <a class="card" href="overview.html"><b>Overview</b><span class="cap">업체 선택기 통일, 서비스 상태 한 줄.</span></a>
+      <a class="card" href="transcripts.html"><b>Transcripts</b><span class="cap">목록·상세 분할 보기.</span></a>
+      <a class="card" href="customers.html"><b>Customers</b><span class="cap">Accounts의 고객 부분 + Go live 체크리스트를 서랍 하나로.</span></a>
+      <a class="card" href="business.html"><b>Business settings</b><span class="cap">게시 배너를 필드 가까이, 저장 규칙 정리.</span></a>
+      <a class="card" href="numbers.html"><b>Phone numbers</b><span class="cap">목록 먼저, 구매는 대화상자.</span></a>
+      <a class="card" href="voicemail.html"><b>Voicemail</b><span class="cap">사이드바 6개 항목을 탭 5개 한 페이지로.</span></a>
+      <a class="card" href="feedback.html"><b>Feedback</b><span class="cap">받은 피드백만. 보내기는 계정 메뉴로.</span></a>
+      <a class="card" href="team.html"><b>Team and API keys</b><span class="cap">관리자 계정과 API 키를 한 페이지 두 탭으로.</span></a>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><h2 class="h2">사이드바: 지금 → 제안</h2></div>
+    <table class="t"><colgroup><col style="width:40%"><col style="width:30%"><col></colgroup>
+      <thead><tr><th>지금 (19개 항목)</th><th>제안 (10개 항목)</th><th>이유</th></tr></thead>
+      <tbody>
+        <tr><td>Dashboard › Overview, Transcripts</td><td>Overview, Transcripts</td><td>그대로</td></tr>
+        <tr><td>Demo › Overview, Customers, CRM</td><td>Sales › Prospects, Demo analytics</td><td>목록과 CRM 보드는 같은 데이터. 'Customers'가 실제 고객과 헷갈림</td></tr>
+        <tr><td>Settings › Business information, Agent numbers, Accounts</td><td>Customers › Customers, Phone numbers</td><td>업체 설정은 고객 서랍에서 진입. 관리자 계정은 Team으로</td></tr>
+        <tr><td>Voicemail › 6개</td><td>Voicemail (탭 5개)</td><td>별도 앱의 지표라 한 항목으로 접음</td></tr>
+        <tr><td>Feedback › Send, All · Settings › API keys</td><td>Admin › Feedback, Team and API keys</td><td>자주 안 쓰는 관리 기능을 아래로</td></tr>
+      </tbody></table>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><h2 class="h2">Prospect 상세: 흩어진 동작의 새 자리</h2></div>
+    <table class="t"><colgroup><col style="width:24%"><col style="width:38%"><col></colgroup>
+      <thead><tr><th>동작</th><th>지금 있는 곳</th><th>목업에서</th></tr></thead>
+      <tbody>
+        <tr><td>리서치 실행/재실행</td><td>⋯ 메뉴, 'Not researched' 배너, Sources 탭</td><td>Research 탭 한 곳. 다음 단계 카드가 그리로 안내</td></tr>
+        <tr><td>데모 시간 추가</td><td>헤더 드롭다운, Share 탭, 목록 행 메뉴</td><td>Overview의 Demo link 카드</td></tr>
+        <tr><td>데모 페이지 열기</td><td>⋯ 메뉴, Share 탭, 행 메뉴, 예시 콜 패널, Launch guide</td><td>헤더 버튼 하나</td></tr>
+        <tr><td>링크 켜기/끄기</td><td>헤더 스위치(다른 탭 편집까지 저장), 목록 Live 열</td><td>Demo link 카드 스위치, 그것만 저장</td></tr>
+        <tr><td>저장</td><td>헤더 Save, 상단 Save, 'Save booking rules', 즉시 저장</td><td>모두 자동 저장, 상태 표시 한 곳</td></tr>
+        <tr><td>승인/거절/온보딩 시작</td><td>모든 탭 위 알림 띠</td><td>Overview 다음 단계 카드</td></tr>
+        <tr><td>딜 단계·후속 연락·메모</td><td>CRM 화면 서랍에서만</td><td>Overview의 Deal 카드</td></tr>
+        <tr><td>Go live</td><td>Accounts 페이지(다른 화면)</td><td>Customers 서랍. Prospect에서는 링크로 안내</td></tr>
+      </tbody></table>
+  </section>
+
+  <section class="card pad col" style="gap:8px">
+    <h2 class="h2">확인이 필요한 것</h2>
+    <ol class="p">
+      <li>사이드바 재편은 라우트(`#/demos/...`, `#/accounts`)와 회귀 스크립트에 영향이 큽니다. 이름만 바꾸고 URL은 유지하는 단계적 방법도 있습니다.</li>
+      <li>Demo analytics의 퍼널, Prospects의 'Needs you' 탭은 지금 데이터로 계산 가능해 보이지만 백엔드 확인이 필요합니다.</li>
+      <li>데모의 Receptionist 탭 자동 저장은 지금 '한 번에 PATCH' 구조와 다릅니다. 필드 단위 저장 API가 필요할 수 있습니다.</li>
+      <li>Taste Skill은 원래 대시보드용이 아니라서, 정리 원칙만 가져오고 시각 규칙은 TecAce 브랜드를 따랐습니다.</li>
+    </ol>
+  </section>
+</div>
+</body>
+</html>

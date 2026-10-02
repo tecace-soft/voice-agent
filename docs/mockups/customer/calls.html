@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Calls (customer mockup)</title>
+<link rel="stylesheet" href="../admin/mockup.css" />
+<script src="../admin/shell.js"></script>
+<style>
+  .split { display: grid; grid-template-columns: 400px minmax(0, 1fr); min-height: 640px; }
+  .list a { display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); }
+  .list a.on { background: var(--primary-soft); }
+  .bubble { max-width: 72%; padding: 10px 14px; border-radius: 16px; background: var(--fill); }
+  .bubble.me { margin-left: auto; background: var(--primary); color: #fff; }
+  .did { display: flex; gap: 8px; align-items: center; padding: 6px 12px; border-radius: 10px; background: #fbfbfc; border: 1px dashed var(--line); font-size: 12px; color: var(--muted); max-width: 72%; }
+</style>
+</head>
+<body>
+<div id="page">
+  <div class="page-h">
+    <div class="col"><h1 class="h1">Calls</h1><span class="sub">Every call Alex answered: what the caller wanted, what Alex did, and the conversation.</span></div>
+  </div>
+  <div class="card split">
+    <div style="border-right:1px solid var(--line-soft)">
+      <div class="card-h" style="flex-wrap:wrap;gap:10px">
+        <div class="seg"><button class="on" data-seg="a">All<span class="n">128</span></button><button data-seg="m">Messages<span class="n">3 new</span></button><button data-seg="b">Booked<span class="n">34</span></button><button data-seg="t">Put through<span class="n">22</span></button></div>
+        <span class="pin">1</span>
+        <div class="search" style="flex:1;min-width:180px"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input class="input" placeholder="Search callers and requests" /></div>
+      </div>
+      <div class="list">
+        <a class="on" href="#"><div class="row"><b style="font-weight:600">Maya Lopez</b><span class="badge green">Booked</span><span class="spacer"></span><span class="cap">Today 9:14</span></div><span>Cleaning, Thursday 10:00</span><span class="cap">3:12</span></a>
+        <a href="#"><div class="row"><b style="font-weight:600">Tom Weller</b><span class="badge amber">Message</span><span class="spacer"></span><span class="cap">Today 8:52</span></div><span>Question about last month's bill</span><span class="cap">2:05</span></a>
+        <a href="#"><div class="row"><b style="font-weight:600">Caller didn't give a name</b><span class="badge blue">Put through</span><span class="spacer"></span><span class="cap">Yesterday</span></div><span>Wanted the front desk</span><span class="cap">0:48</span></a>
+        <a href="#"><div class="row"><b style="font-weight:600">Priya Nair</b><span class="badge">Answered</span><span class="spacer"></span><span class="cap">Yesterday</span></div><span>Asked about parking and hours</span><span class="cap">1:20</span></a>
+      </div>
+    </div>
+    <div class="col" style="gap:0">
+      <div class="card-h"><div class="col" style="gap:0"><h2 class="h3">Maya Lopez</h2><span class="cap">+1 207 555 0199 · Today 9:14 · 3:12</span></div><span class="spacer"></span><a class="btn sm" href="tel:+12075550199"><i data-i="phone"></i>Call back</a><span class="pin">2</span></div>
+      <div class="card-b col" style="gap:10px">
+        <div class="card" style="padding:12px 14px;border-radius:12px;background:#fbfbfc"><div class="row"><span class="badge green">Booked</span><span>Cleaning on Thursday Oct 9, 10:00, in your Google Calendar.</span></div></div>
+        <div class="bubble">Thanks for calling Harbor Dental, this is Alex. How can I help?</div>
+        <div class="bubble me">Hi, I'd like to book a cleaning, ideally Thursday morning.</div>
+        <div class="did"><i data-i="clock"></i>Checked your calendar for Thursday</div>
+        <div class="bubble">Thursday at 10:00 is open. Shall I book it under your name?</div>
+        <div class="bubble me">Yes please, Maya Lopez.</div>
+        <div class="did"><i data-i="check"></i>Booked: Cleaning, Thu Oct 9, 10:00</div>
+        <div class="bubble">Done. You'll get a text with the details. Anything else?</div>
+      </div>
+      <div class="row" style="padding:12px 20px;border-top:1px solid var(--line-soft)"><span class="cap">Was this call handled well?</span><button class="btn ghost sm">Yes</button><button class="btn ghost sm">Something was off</button><span class="pin">3</span></div>
+    </div>
+  </div>
+</div>
+<script>
+mount({
+  variant: "live", active: "calls", crumbs: ["Calls"],
+  notes: [
+    "통화·메시지·예약을 한 목록에서 결과별로 거릅니다. 지금은 Transcripts(실 통화)와 My receptionist의 Call activity(데모 통화)가 다른 화면, 다른 모양이고, 데모 쪽에는 Happy/Mixed 같은 운영자용 기분 라벨이 보입니다. 고객에게는 '잘 됨 / 뭔가 어긋남' 정도면 충분합니다.",
+    "오른쪽에 대화와 함께 Alex가 한 일(캘린더 확인, 예약, 연결, 문자)을 사이사이에 표시합니다. 'Call back' 버튼은 번호가 있을 때만.",
+    "고객이 통화 하나하나에 '잘 처리됐다 / 아니다'를 표시하면 우리가 고칠 거리를 찾는 데 쓸 수 있습니다. 새 기능 제안이고, 지금의 'Delete this call'(각 대화 아래 노출)은 ⋯ 메뉴로 숨기거나 빼도 될 것 같습니다.",
+  ],
+});
+</script>
+</body>
+</html>

@@ -2,6 +2,11 @@ import type {
   AccountStatus,
   Readiness,
   AgentNumber,
+  Billing,
+  CardInput,
+  PlanId,
+  AgentServiceStatus,
+  AgentServicesResponse,
   AvailableNumber,
   NumberSync,
   NumberWebhooks,
@@ -14,6 +19,11 @@ import type {
   CustomerPrompts,
   DemoBusinessProfile,
   PollerHeartbeat,
+  ScenarioDefinition,
+  ScenarioListResponse,
+  ScenarioPassDetail,
+  ScenarioPassSummary,
+  ScenarioTest,
   SessionPreview,
   SetupStateResponse,
   SetupTurnResponse,
@@ -295,6 +305,27 @@ export function declineGoLive(id: string, note?: string): Promise<{ user: AuthUs
   return request<{ user: AuthUser }>("POST", `/auth/users/${id}/decline-live`, { body: note ? { note } : {} });
 }
 
+const asUser = (userId?: string) => (userId ? `?userId=${encodeURIComponent(userId)}` : "");
+
+// ---- billing ----
+
+/** The plan, the (mock) card and where the first bill stands. Your own, or (admin) another's by id. */
+export function getBilling(userId?: string): Promise<{ billing: Billing; plans: PlanId[] }> {
+  return get<{ billing: Billing; plans: PlanId[] }>(`/billing${asUser(userId)}`);
+}
+
+export function setBillingPlan(plan: PlanId, userId?: string): Promise<{ billing: Billing }> {
+  return request<{ billing: Billing }>("PUT", `/billing/plan${asUser(userId)}`, { body: { plan } });
+}
+
+/**
+ * Put a card on file. 422 `bad_card` names the field that failed (`number`, `expiry`, `cvc`);
+ * `accountErrorMessage` shows the backend's own sentence.
+ */
+export function setPaymentMethod(card: CardInput, userId?: string): Promise<{ billing: Billing }> {
+  return request<{ billing: Billing }>("PUT", `/billing/payment-method${asUser(userId)}`, { body: card });
+}
+
 // ---- feedback ----
 
 // Send a note. The backend takes the author from the session, so there's nothing to pass but the
@@ -384,6 +415,12 @@ export function listPollers(
   return get<{ pollers: PollerHeartbeat[]; offline: number }>(
     `/transcribe/heartbeats${mailboxQuery(mailbox)}`,
   );
+}
+
+// ---- the voice agent's own processes (admin) ----
+
+export function listAgentServices(): Promise<AgentServiceStatus[]> {
+  return get<AgentServicesResponse>("/agent/heartbeats").then((r) => r.services);
 }
 
 // ---- the voice agent's phone numbers (admin) ----
@@ -482,6 +519,18 @@ export function saveHouseRules(
   );
 }
 
+/** Whether the phone agent presses 1 to accept forwarded calls. Its own endpoint, like the house rules. */
+export function saveForwardAcceptPress(
+  forwardAcceptPress: boolean,
+  userId?: string,
+): Promise<{ profile: BusinessProfile }> {
+  return request<{ profile: BusinessProfile }>(
+    "PUT",
+    `/business/forward-accept${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
+    { body: { forwardAcceptPress } },
+  );
+}
+
 export function saveBusinessProfile(
   sourceText: string,
   transferNumber: string,
@@ -513,6 +562,23 @@ export function saveBusinessKnowledge(
     `/business/knowledge${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
     { body: { profile } },
   );
+}
+
+/** What to research: blank fields fall back to the business's stored name and website. */
+export type BusinessResearchInputs = { businessName?: string; websiteUrl?: string; mapsUrl?: string; notes?: string };
+
+/**
+ * Research the business again (its site, FAQ pages, Maps listing) — `POST /business/research`. Saves
+ * nothing: the answer is the profile the run found, for the form to show and the business to save.
+ * Takes a minute or two; a real paid web search, limited to one a minute per account.
+ */
+export function researchBusinessProfile(
+  inputs: BusinessResearchInputs,
+  userId?: string,
+): Promise<{ profile: DemoBusinessProfile; sources: { url: string; title: string }[]; businessName: string }> {
+  return request("POST", `/business/research${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`, {
+    body: inputs,
+  });
 }
 
 /**
@@ -548,7 +614,6 @@ export function saveAgentIdentity(
 
 // ---- call settings: transfers, text-a-link, message scenarios ----
 
-const asUser = (userId?: string) => (userId ? `?userId=${encodeURIComponent(userId)}` : "");
 
 /** The draft the settings screens edit, the published copy callers get, and whether they differ. */
 export function getCallSettings(userId?: string): Promise<StoredCallSettings> {
@@ -615,6 +680,52 @@ export function getSessionPreview(
 ): Promise<SessionPreview> {
   const q = new URLSearchParams({ settings: which, ...(userId ? { userId } : {}) });
   return get<SessionPreview>(`/business/session-preview?${q.toString()}`);
+}
+
+// ---- scenario tests (admin only) ----
+
+export function listScenarioTests(userId: string): Promise<ScenarioListResponse> {
+  return get<ScenarioListResponse>(`/business/scenarios${asUser(userId)}`);
+}
+
+/** Add (id null) or edit a scenario. A bad definition comes back as a 400 with a message to show. */
+export function saveScenarioTest(
+  userId: string,
+  id: string | null,
+  body: { title: string; definition: ScenarioDefinition },
+): Promise<{ scenario: ScenarioTest }> {
+  return id
+    ? request<{ scenario: ScenarioTest }>("PUT", `/business/scenarios/${id}${asUser(userId)}`, { body })
+    : request<{ scenario: ScenarioTest }>("POST", `/business/scenarios${asUser(userId)}`, { body });
+}
+
+export function deleteScenarioTest(userId: string, id: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>("DELETE", `/business/scenarios/${id}${asUser(userId)}`);
+}
+
+export function resetScenarioTest(userId: string, id: string): Promise<{ scenario: ScenarioTest }> {
+  return request<{ scenario: ScenarioTest }>("POST", `/business/scenarios/${id}/reset${asUser(userId)}`, { body: {} });
+}
+
+/** One press of Run selected: each scenario once, then it stops. */
+export function startScenarioPass(
+  userId: string,
+  settings: "draft" | "published",
+  scenarioIds: string[],
+): Promise<{ passId: string }> {
+  return request<{ passId: string }>("POST", `/business/scenario-passes${asUser(userId)}`, { body: { settings, scenarioIds } });
+}
+
+export async function listScenarioPasses(userId: string): Promise<ScenarioPassSummary[]> {
+  return (await get<{ passes: ScenarioPassSummary[] }>(`/business/scenario-passes${asUser(userId)}`)).passes;
+}
+
+export function getScenarioPass(userId: string, id: string): Promise<ScenarioPassDetail> {
+  return get<ScenarioPassDetail>(`/business/scenario-passes/${id}${asUser(userId)}`);
+}
+
+export function stopScenarioPass(userId: string, id: string): Promise<ScenarioPassDetail> {
+  return request<ScenarioPassDetail>("POST", `/business/scenario-passes/${id}/stop${asUser(userId)}`, { body: {} });
 }
 
 // ---- calls the agent answered ----

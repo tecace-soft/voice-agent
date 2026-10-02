@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { ArrowLeft, Check, MailCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Link2, LockKeyhole, Mail, MailCheck, Store, UserRound, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,6 +44,10 @@ export function SignupForm({ mode, onSignedIn, onRequested, intro }: Props) {
   const [trap, setTrap] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  // /start is a page of its own, so its fields carry an icon and an example; the claim form sits in
+  // a small panel on the demo page and stays plain.
+  const start = mode.kind === "start";
 
   async function submitDetails(event: FormEvent) {
     event.preventDefault();
@@ -106,24 +110,41 @@ export function SignupForm({ mode, onSignedIn, onRequested, intro }: Props) {
       {intro}
       {mode.kind === "start" ? (
         <>
-          <Field id="su-business" label="Business name">
-            <Input id="su-business" required maxLength={160} value={businessName} onChange={(e) => setBusinessName(e.target.value)} autoComplete="organization" />
+          <Field id="su-business" label="Business name" icon={Store}>
+            <Input id="su-business" placeholder="e.g. Harbor Dental" className={FIELD_INPUT} required maxLength={160} value={businessName} onChange={(e) => setBusinessName(e.target.value)} autoComplete="organization" />
           </Field>
-          <Field id="su-link" label="Website or Google Maps link" hint="We read it to learn your hours, services and the questions callers ask.">
-            <Input id="su-link" required maxLength={1000} value={link} onChange={(e) => setLink(e.target.value)} placeholder="yourbusiness.com" inputMode="url" />
+          <Field id="su-link" label="Website or Google Maps link" icon={Link2} hint="We read it to learn your hours, services and the questions callers ask.">
+            <Input id="su-link" className={FIELD_INPUT} required maxLength={1000} value={link} onChange={(e) => setLink(e.target.value)} placeholder="yourbusiness.com" inputMode="url" />
           </Field>
         </>
       ) : null}
-      <Field id="su-name" label="Your name">
-        <Input id="su-name" required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+      <Field id="su-name" label="Your name" icon={start ? UserRound : undefined}>
+        <Input id="su-name" placeholder={start ? "First and last name" : undefined} className={start ? FIELD_INPUT : undefined} required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
       </Field>
-      <Field id="su-email" label="Work email">
-        <Input id="su-email" type="email" required maxLength={320} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+      <Field id="su-email" label="Work email" icon={start ? Mail : undefined}>
+        <Input id="su-email" placeholder={start ? "you@yourbusiness.com" : undefined} className={start ? FIELD_INPUT : undefined} type="email" required maxLength={320} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
       </Field>
-      <Field id="su-password" label="Password" hint={`At least ${MIN_PASSWORD} characters. You'll sign in with this email and password.`}>
+      <Field
+        id="su-password"
+        label="Password"
+        icon={start ? LockKeyhole : undefined}
+        hint={`At least ${MIN_PASSWORD} characters. You'll sign in with this email and password.`}
+        aside={
+          <button
+            type="button"
+            className="ta-caption-1 text-primary font-semibold underline-offset-2 hover:underline"
+            aria-controls="su-password"
+            aria-pressed={showPassword}
+            onClick={() => setShowPassword((v) => !v)}
+          >
+            {showPassword ? "Hide" : "Show"}
+          </button>
+        }
+      >
         <Input
           id="su-password"
-          type="password"
+          className={start ? FIELD_INPUT : undefined}
+          type={showPassword ? "text" : "password"}
           required
           minLength={MIN_PASSWORD}
           maxLength={512}
@@ -155,6 +176,7 @@ export function SignupForm({ mode, onSignedIn, onRequested, intro }: Props) {
       ) : null}
       <Button type="submit" size="lg" disabled={busy} className="h-11">
         {busy ? "Sending…" : mode.kind === "claim" ? "Request setup" : "Create my receptionist"}
+        {start && !busy ? <ArrowRight className="size-4" aria-hidden /> : null}
       </Button>
       <p className="ta-caption-2 text-muted-foreground text-center">
         Already have an account?{" "}
@@ -256,13 +278,42 @@ function CodeStep({ email, onBack, onSignedIn }: { email: string; onBack: () => 
   );
 }
 
-function Field({ id, label, hint, children }: { id: string; label: string; hint?: string; children: ReactNode }) {
+/** A taller input with room on the left for the field's icon. */
+const FIELD_INPUT = "h-10 pl-10";
+
+function Field({
+  id,
+  label,
+  hint,
+  icon: Icon,
+  aside,
+  children,
+}: {
+  id: string;
+  label: string;
+  hint?: string;
+  /** Drawn inside the input, on the left; the input needs FIELD_INPUT to make room for it. */
+  icon?: LucideIcon;
+  /** At the right of the label, e.g. the password's Show. */
+  aside?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={id} className="ta-label-1">
-        {label}
-      </Label>
-      {children}
+      <div className="flex items-center justify-between gap-3">
+        <Label htmlFor={id} className="ta-label-1">
+          {label}
+        </Label>
+        {aside}
+      </div>
+      {Icon ? (
+        <div className="relative">
+          <Icon className="text-muted-foreground pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2" aria-hidden />
+          {children}
+        </div>
+      ) : (
+        children
+      )}
       {hint ? <p className="ta-caption-2 text-muted-foreground">{hint}</p> : null}
     </div>
   );

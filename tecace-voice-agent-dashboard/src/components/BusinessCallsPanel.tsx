@@ -8,7 +8,7 @@ import { TalkTimeCards, formatTalkTime } from "./TalkTime";
 
 // One business's calls and talk time, collapsed to a summary row until you open it.
 //
-// The admin's "every business" view of Answered calls, built the same way as the per-person panels
+// The admin's "every business" view of Transcripts, built the same way as the per-person panels
 // on Overview and Analytics: each business keeps its own numbers and its own calls, instead of every
 // customer's conversations interleaved in one list. The closed row's figures come from the talk-time
 // list that is already loaded, so many businesses cost one request; a business's calls are fetched
@@ -83,11 +83,11 @@ export function BusinessCallsPanel({
             <section className="card">
               <div className="card-toolbar">
                 <div>
-                  <div className="card-title ta-headline-2">Answered calls</div>
+                  <div className="card-title ta-headline-2">Transcripts</div>
                   <div className="card-sub ta-caption-1">
                     {unassigned
                       ? "Calls that rang a number no customer owns. Assign the number under Agent numbers."
-                      : `Calls ${title} received. Open one to read what was said.`}
+                      : `Calls ${title} received. Open one to read the conversation.`}
                   </div>
                 </div>
                 {!unassigned && minutes.email && (

@@ -11,12 +11,15 @@ import { health } from "./routes/health.js";
 import { business } from "./routes/business.js";
 import { numbers } from "./routes/numbers.js";
 import { testCalls } from "./routes/testCalls.js";
+import { scenarios } from "./routes/scenarios.js";
 import { setup } from "./routes/setup.js";
 import { calendar } from "./routes/calendar.js";
 import { calls } from "./routes/calls.js";
 import { transcribe } from "./routes/transcribe.js";
 import { usage } from "./routes/usage.js";
+import { billing } from "./routes/billing.js";
 import { apiKeys } from "./routes/apiKeys.js";
+import { agentStatus } from "./routes/agentStatus.js";
 import { demo } from "./routes/demo.js";
 import { demoPublic } from "./routes/demoPublic.js";
 
@@ -65,6 +68,8 @@ export const app = new Elysia()
   // routes that stay in `business`.
   .use(numbers)
   .use(testCalls)
+  // Scenario tests: admin-only scripted test calls, and the runner's own routes under /internal.
+  .use(scenarios)
   // The guided setup interview: a consultant chat that writes the call-settings draft, never publishes.
   .use(setup)
   // Calendar connections and the booking tools. Its OAuth callback is the one route under it with
@@ -72,6 +77,9 @@ export const app = new Elysia()
   .use(calendar)
   .use(calls)
   .use(usage)
+  .use(billing)
+  // Heartbeats from the openai-agent-app processes (agent key) and the admin view of them.
+  .use(agentStatus)
   .use(apiKeys)
   .use(demo)
   // Last, and NOT behind the admin guard: the prospect's side of a demo link. Its own file says why

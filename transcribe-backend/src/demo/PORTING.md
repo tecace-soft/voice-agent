@@ -596,7 +596,7 @@ feed `Number()` or a `??=` onto an optional field, neither of which minds `undef
 
 ### `research.ts` — every line that differs
 
-Copied from `lib/research.ts`. Four lines differ and they are its first four, all imports:
+Copied from `lib/research.ts`. Its first four lines differ, all imports (and three prompt lines, below):
 
 - `research.ts:1` — `import { ClaudeCliError, extractJson } from "./claude-cli"` →
   `from "./callReview.js"`. **Not just a specifier rewrite.** The promo's `lib/claude-cli.ts` is the
@@ -611,7 +611,21 @@ Copied from `lib/research.ts`. Four lines differ and they are its first four, al
 - `research.ts:3` — `"./maps"` → `"./maps.js"`.
 - `research.ts:4` — `"./types"` → `"./types.js"`.
 
-The body is untouched, including `researchBusiness`'s two-pass structure, `stripEmpties`,
+Three prompt lines differ too (2026-10-01), so a research run gathers the business's own FAQs
+instead of only inventing likely questions — a customer should not have to retype a FAQ page that
+already exists on their site:
+
+- `research.ts:85` — the reading list adds the official site's FAQ, help or "good to know" pages.
+- `research.ts:92` — briefing section 5 was "The questions callers most often ask a business like
+  this, each with the answer for this one." It now asks first for the business's **published** FAQs
+  (its FAQ page, FAQ sections on booking/service pages, its Google Business Profile Q&A) copied in
+  full and in order under "Published FAQs", then "Other common questions" the published ones don't
+  cover.
+- `research.ts:113` — the JSON step's rules line gains: `faqs` holds every FAQ in the briefing, none
+  dropped, published ones first. Appended to the existing line rather than added as a new one, so the
+  file still compares line for line. Pinned by `src/demo/research.test.ts`.
+
+The body is otherwise untouched, including `researchBusiness`'s two-pass structure, `stripEmpties`,
 `cleanSourceUrl`'s tracking-parameter and search-page rules, `dedupeSources`' 25-source cap and
 `emptyProfile`.
 
@@ -839,3 +853,6 @@ All dashboard-only; the promo had no accounts.
 ## Customers: research optional, safer delete (2026-09-27) — not a promo port
 - `POST /demo/customers` takes `research` (boolean, default true). `false` saves the record at `status: "ready"` with no run and no `researchedAt`; the run is `POST /demo/customers/:id/research` as before.
 - `DELETE /demo/customers/:id` answers 409 `{error, code: "has_account"}` when an account past the demo (pre-production / production / unassigned) is linked. A linked `demo` account is unlinked (and its request cleared) in the same transaction, and open `signup_requests` for the demo are declined.
+
+## Self-serve onboarding and billing (2026-10-02) — not a promo port
+- `routes/demo.ts` `POST /customers/:id/request-onboarding`: with `plan` and `payment` (or both already on file) it calls `business/onboard.ts` `approveOnboarding` with the customer's own id as the approver and answers `{ customer, user, billing }`; 409 `billing_required` otherwise. New `billing/plans.ts` (plan ids, `TRIAL_DAYS`, the mock card check), `db/billing.ts`, `routes/billing.ts`, table `billing_accounts` in `db/client.ts`. `PublicUser` gained `liveAt`.

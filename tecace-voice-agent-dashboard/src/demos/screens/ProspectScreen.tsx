@@ -1,7 +1,7 @@
 
 import { demoFetch } from "@/api";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ExternalLink, MoreHorizontal, RefreshCw } from "lucide-react";
+import { Copy, ExternalLink, MoreHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,17 +11,33 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ActivityTab } from "@/components/admin/ActivityTab";
-import { AddDemoTimeMenu } from "@/components/admin/AddDemoTimeMenu";
-import { LifecycleBadges, LifecycleNotice, RequestSetup } from "@/components/admin/Lifecycle";
+import { LifecycleBadges, RequestSetup } from "@/components/admin/Lifecycle";
+import { OutreachEmailPanel } from "@/components/admin/OutreachEmailPanel";
+import {
+  CallsChartCard,
+  ContactCard,
+  DealCard,
+  DemoLinkCard,
+  NextStepCard,
+  ProspectStats,
+  ProspectStepper,
+  WhatToFixCard,
+} from "@/components/admin/ProspectOverview";
 import { ResearchInputsPanel } from "@/components/admin/ResearchInputsPanel";
-import { SharePanel } from "@/components/admin/SharePanel";
 import { SourcesPanel } from "@/components/research/SourcesPanel";
-import { StatCard, StatusBadge, statusKind } from "@/components/admin/shared";
-import { formatDuration, isResearchStalled } from "@/lib/analytics";
+import { StatusBadge, statusKind } from "@/components/admin/shared";
+import { isResearchStalled } from "@/lib/analytics";
 import { readJson } from "@/lib/http";
 import { quotedGreeting } from "@/lib/prompt";
 import { customerLink } from "@/lib/share";
@@ -30,7 +46,7 @@ import { DemoSettings } from "../../settings/DemoSettings";
 import { TestCallPanel } from "../../settings/simulator/TestCallPanel";
 import { ExampleCallPanel } from "../../settings/simulator/ExampleCallPanel";
 import { withDefaults } from "../../settings/callSettings";
-import type { ProspectTab, SectionId } from "../../routing";
+import { formatHash, type ProspectTab, type SectionId } from "../../routing";
 import { demoHref } from "@/routes";
 import type {
   CallLog,
@@ -85,13 +101,15 @@ export function ProspectScreen({
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [researching, setResearching] = useState(false);
-  const [localTab, setLocalTab] = useState<Tab>(operator && !section ? "activity" : "settings");
+  const [localTab, setLocalTab] = useState<Tab>(operator && !section ? "overview" : "receptionist");
+  const [pendingDelete, setPendingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   // Dashboard-only: read from the URL, so Back/Forward, a link or a refresh opens the tab the
   // address names (an open section is on Settings); local state only where no router is attached.
   const tab: Tab = onTab
     ? section
-      ? "settings"
-      : (routeTab ?? (operator ? "activity" : "settings"))
+      ? "receptionist"
+      : (routeTab ?? (operator ? "overview" : "receptionist"))
     : localTab;
   const setTab = onTab ?? setLocalTab;
   // Dashboard-only (PORTING.md, B2): the page takes the whole screen — sidebar as an icon rail, its
@@ -253,6 +271,40 @@ export function ProspectScreen({
     );
   }
 
+  // Dashboard-only (see PORTING.md): the Overview's cards save as they go. Only the fields that
+  // changed are sent, and only those are taken from the answer, so an operator's unsaved edits in
+  // the Receptionist studio survive a stage change or a pause of the link.
+  async function patch(partial: Partial<Customer>) {
+    try {
+      const response = await demoFetch(`/customers/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(partial),
+      });
+      const { customer } = await readJson<{ customer: Customer }>(response);
+      const taken: Partial<Customer> = {};
+      for (const key of Object.keys(partial) as (keyof Customer)[]) (taken as Record<string, unknown>)[key] = customer[key];
+      setDraft((current) => (current ? { ...current, ...taken } : current));
+      setData((current) => (current ? { ...current, customer: { ...current.customer, ...taken } } : current));
+      toast.success("Saved.");
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : "Could not save.");
+    }
+  }
+
+  async function remove() {
+    setDeleting(true);
+    try {
+      await readJson(await demoFetch(`/customers/${id}`, { method: "DELETE" }));
+      toast.success("Prospect removed.");
+      window.location.hash = demoHref("demoProspects");
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : "Could not delete it.");
+      setDeleting(false);
+      setPendingDelete(false);
+    }
+  }
+
   // A request, an Approve or a Decline (Lifecycle.tsx) answers with the whole record; only its
   // lifecycle is taken, so an operator's unsaved edits on this page survive it. Dashboard-only
   // (PORTING.md: phase gates).
@@ -288,24 +340,11 @@ export function ProspectScreen({
     );
   }
 
-  const { stats, calls } = data;
+  const { stats, calls, notes } = data;
   // Unsaved edits to the record. Call settings save on their own, so they don't count.
   const withoutCalls = (customer: Customer) => ({ ...customer, callSettings: undefined });
   const dirty = JSON.stringify(withoutCalls(draft)) !== JSON.stringify(withoutCalls(data.customer));
   const businessName = draft.profile.name || draft.businessName;
-
-  const statCards = (
-    <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      <StatCard title="Link opens" value={String(stats.views)} />
-      <StatCard title="Calls" value={String(stats.calls)} />
-      <StatCard title="Minutes" value={String(Math.round((stats.totalSec / 60) * 10) / 10)} />
-      <StatCard
-        title="Average call"
-        value={formatDuration(stats.calls ? stats.totalSec / stats.calls : 0)}
-        caption={stats.lastCallAt ? `Last call ${new Date(stats.lastCallAt).toLocaleDateString()}` : "No calls yet"}
-      />
-    </div>
-  );
 
   // Added without a research run (dashboard-only): ready to edit by hand, never researched.
   const unresearched = draft.status === "ready" && !draft.researchedAt;
@@ -329,7 +368,7 @@ export function ProspectScreen({
         {operator ? (
           <span className="hidden items-center gap-1.5 xl:flex">
             <a href={demoHref("demoProspects")} className="text-muted-foreground hover:text-foreground">
-              Customers
+              Prospects
             </a>
             <span className="text-muted-foreground/60" aria-hidden>
               /
@@ -353,94 +392,59 @@ export function ProspectScreen({
       </span>
       {operator && (
         <TabsList className="ml-1 shrink-0">
-          <TabsTrigger value="activity">Activity</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
-          <TabsTrigger value="sources">Sources</TabsTrigger>
-          <TabsTrigger value="share">Share</TabsTrigger>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="calls">
+            Calls
+            {calls.length ? <span className="text-muted-foreground tabular-nums">{calls.length}</span> : null}
+          </TabsTrigger>
+          <TabsTrigger value="receptionist">Receptionist</TabsTrigger>
+          <TabsTrigger value="research">Research</TabsTrigger>
+          <TabsTrigger value="email">Outreach email</TabsTrigger>
         </TabsList>
       )}
       <span className="flex-1" />
       {operator && (
         <span className="flex shrink-0 items-center gap-2">
-          <label className="ta-label-1 flex items-center gap-2 whitespace-nowrap">
-            <Switch
-              checked={draft.active}
-              onCheckedChange={(checked) => {
-                setDraft({ ...draft, active: checked });
-                void save({ active: checked });
-              }}
-              aria-label="Toggle the demo link"
-            />
-            <span className="hidden xl:inline">Live link</span>
-          </label>
-          <AddDemoTimeMenu customerId={id} demoMinutes={draft.demoMinutes} onAdded={addedTime} />
+          {/* The page's two actions. The link's switch, the demo time, research and Save left the
+              bar: the link and the time are the Overview's link card, research is its own tab, and
+              the Overview's cards save as they go (the Receptionist studio keeps its own Save). */}
+          <Button variant="outline" size="sm" nativeButton={false} render={<a href={customerLink(id)} target="_blank" rel="noreferrer" />}>
+            <span className="hidden xl:inline">Open demo page</span>
+            <ExternalLink className="size-4" />
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
                 <Button variant="ghost" size="icon-sm" aria-label="More actions" title="More actions">
-                  {researching ? <RefreshCw className="size-4 animate-spin" /> : <MoreHorizontal className="size-4" />}
+                  <MoreHorizontal className="size-4" />
                 </Button>
               }
             />
             <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem onClick={() => void research(false)} disabled={researching}>
-                <RefreshCw className="size-4" />
-                {researching ? "Researching" : unresearched ? "Run research" : "Re-research"}
-              </DropdownMenuItem>
               <DropdownMenuItem
-                render={<a href={customerLink(id)} target="_blank" rel="noreferrer" />}
+                onClick={() => {
+                  void navigator.clipboard.writeText(draft.customerCode ?? id);
+                  toast.success("Prospect ID copied.");
+                }}
               >
-                <ExternalLink className="size-4" />
-                Open the demo page
+                <Copy className="size-4" />
+                Copy prospect ID
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-destructive" onClick={() => setPendingDelete(true)}>
+                <Trash2 className="size-4" />
+                Delete prospect
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {/* On the Settings tab, Save lives at the end of the bar with the studio's save state. */}
-          {tab !== "settings" && (
-            <Button size="sm" onClick={() => save()} disabled={saving}>
-              {saving ? "Saving" : "Save"}
-            </Button>
-          )}
         </span>
       )}
     </>
   );
 
-  const problems = (
-    <>
-      {unresearched ? (
-        <div className="bg-muted/60 ta-label-1 flex flex-wrap items-center gap-3 rounded-lg p-3">
-          <span className="min-w-0 flex-1">
-            Not researched yet. Fill in Settings by hand, or research the business to fill it in for you — it
-            replaces what's in Business information and takes a minute or two.
-          </span>
-          <Button size="sm" onClick={() => void research(false)} disabled={researching}>
-            <RefreshCw className={`size-4 ${researching ? "animate-spin" : ""}`} />
-            {researching ? "Researching" : "Run research"}
-          </Button>
-        </div>
-      ) : null}
-      {draft.status === "error" && draft.error ? (
-        <div className="bg-destructive/10 ta-label-1 text-destructive rounded-lg p-3">{draft.error}</div>
-      ) : null}
-
-      {stalled ? (
-        <div className="bg-destructive/10 ta-label-1 text-destructive rounded-lg p-3">
-          Research has been running since {new Date(draft.updatedAt).toLocaleString()}, which is longer than it
-          takes. The run behind it is gone. Press Re-research.
-        </div>
-      ) : null}
-    </>
-  );
-
-  // Under the bar. The operator's: an open request to answer, research that failed. The customer's:
-  // one line saying this is a preview, with Request setup and how the demo has been used.
-  const notices = operator ? (
-    <div className="flex flex-col gap-3 border-b px-4 py-3 empty:hidden md:px-6">
-      <LifecycleNotice customer={draft} onChanged={mergeLifecycle} />
-      {problems}
-    </div>
-  ) : (
+  // Under the bar, the customer's: one line saying this is a preview, with Request setup and how
+  // the demo has been used. The operator's (an open request, research that failed) is the
+  // Overview's next-step card.
+  const notices = operator ? null : (
     <div className="border-b">
       <RequestSetup
         customer={draft}
@@ -486,13 +490,43 @@ export function ProspectScreen({
         <div ref={measureAbove}>{notices}</div>
 
         {operator && (
-          <TabsContent value="activity" className="flex flex-col gap-4 p-4 md:p-6">
-            {statCards}
-            <ActivityTab calls={calls} customerId={id} onChanged={load} />
+          <TabsContent value="overview" className="flex flex-col gap-4 p-4 md:p-6">
+            <Card className="rounded-xl border shadow-none">
+              <CardContent className="px-4 py-3 md:px-6">
+                <ProspectStepper customer={draft} stats={stats} />
+              </CardContent>
+            </Card>
+            <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="flex min-w-0 flex-col gap-4">
+                <NextStepCard
+                  customer={draft}
+                  stats={stats}
+                  researching={researching}
+                  onResearch={() => void research(false)}
+                  onLifecycle={mergeLifecycle}
+                  onPatch={patch}
+                  emailTabHref={formatHash({ view: "demoProspect", id, tab: "email", mailbox: undefined })}
+                />
+                <ProspectStats stats={stats} calls={calls} customer={draft} />
+                <CallsChartCard calls={calls} />
+                <WhatToFixCard calls={calls} customerId={id} />
+              </div>
+              <div className="flex min-w-0 flex-col gap-4">
+                <DemoLinkCard customer={draft} stats={stats} onPatch={patch} onAddedTime={addedTime} />
+                <DealCard customer={draft} notes={notes} onPatch={patch} onNoteAdded={() => void load()} />
+                <ContactCard customer={draft} onPatch={patch} />
+              </div>
+            </div>
           </TabsContent>
         )}
 
-        <TabsContent value="settings">
+        {operator && (
+          <TabsContent value="calls" className="flex flex-col gap-4 p-4 md:p-6">
+            <ActivityTab calls={calls} customerId={id} onChanged={load} compact />
+          </TabsContent>
+        )}
+
+        <TabsContent value="receptionist">
           <DemoSettings
             customerId={id}
             draft={draft}
@@ -572,7 +606,7 @@ export function ProspectScreen({
         </TabsContent>
 
         {operator && (
-          <TabsContent value="sources" className="p-4 md:p-6">
+          <TabsContent value="research" className="p-4 md:p-6">
             <Card className="rounded-xl border shadow-none">
               <CardContent className="space-y-6 p-4 md:p-6">
                 <ResearchInputsPanel
@@ -588,20 +622,38 @@ export function ProspectScreen({
         )}
 
         {operator && (
-          <TabsContent value="share" className="p-4 md:p-6">
+          <TabsContent value="email" className="p-4 md:p-6">
             <Card className="rounded-xl border shadow-none">
               <CardContent className="p-4 md:p-6">
-                <SharePanel
-                  customer={draft}
-                  stats={stats}
-                  onChange={(partial) => setDraft({ ...draft, ...partial })}
-                  onAddedTime={addedTime}
-                />
+                <OutreachEmailPanel customer={draft} />
               </CardContent>
             </Card>
           </TabsContent>
         )}
       </Tabs>
+
+      <Dialog open={pendingDelete} onOpenChange={(open) => !deleting && setPendingDelete(open)}>
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="ta-headline-1">Delete {title}</DialogTitle>
+            <DialogDescription className="ta-body-2">
+              This removes the prospect and its {calls.length} call {calls.length === 1 ? "log" : "logs"}. The demo link stops
+              working. This can&apos;t be undone.
+            </DialogDescription>
+            <p className="ta-caption-1 text-muted-foreground">
+              A prospect in onboarding or live keeps its record. Unlink the account in Accounts first.
+            </p>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPendingDelete(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => void remove()} disabled={deleting}>
+              {deleting ? "Deleting" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

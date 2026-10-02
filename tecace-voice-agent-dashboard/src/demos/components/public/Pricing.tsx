@@ -4,7 +4,6 @@ import { Logo } from "@/components/public/Logo";
 import { PlanEstimator } from "@/components/public/PlanEstimator";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { VersionBadge } from "@/components/VersionBadge";
 import { CONTACT_URL } from "@/lib/links";
 import {
@@ -48,7 +47,7 @@ const INCLUDED = [
   },
   {
     title: "A dashboard of your calls",
-    body: "Every call transcribed, with how many came in, when, and what people asked — so you can check the agent's work.",
+    body: "Every call transcribed, with how many came in, when, and what people asked, so you can check the agent's work.",
   },
 ];
 
@@ -57,7 +56,7 @@ const CONNECTIONS = [
   {
     title: "Schedule connections",
     price: "Mostly free",
-    body: "Bookings land in the calendar or booking tool you already run — Google Calendar, Outlook, Calendly, Square and the like. Most connect at no extra charge, and we tell you before you start if yours is not one of them.",
+    body: "Bookings land in the calendar or booking tool you already run: Google Calendar, Outlook, Calendly, Square and the like. Most connect at no extra charge, and we tell you before you start if yours is not one of them.",
   },
   {
     title: "Custom connections",
@@ -91,7 +90,7 @@ function faqs(): { q: string; a: string }[] {
   return [
     {
       q: "What happens if I go over my minutes?",
-      a: `Nothing breaks. The agent keeps answering and the extra minutes are added to that month's bill at your plan's rate — ${PLANS.map(
+      a: `Nothing breaks. The agent keeps answering and the extra minutes are added to that month's bill at your plan's rate: ${PLANS.map(
         (p) => `${formatRate(p.overagePerMinute)} on ${p.name}`,
       ).join(", ")}.`,
     },
@@ -99,7 +98,7 @@ function faqs(): { q: string; a: string }[] {
       q: "How do I know which plan I need?",
       a: `Count the calls you get in a month and double it: a typical call runs about two minutes, so ${solo.includedMinutes} minutes is about ${callsFor(
         solo.includedMinutes,
-      )} calls. If you are regularly over, the next plan up is cheaper than the overage — ${solo.name} passes the price of ${standard.name} at 750 minutes. The free ${TRIAL_WEEKS} weeks give you your real number.`,
+      )} calls. If you are regularly over, the next plan up is cheaper than the overage: ${solo.name} passes the price of ${standard.name} at 750 minutes. The free ${TRIAL_WEEKS} weeks give you your real number.`,
     },
     {
       q: `How does the ${TRIAL_WEEKS}-week free trial work?`,
@@ -107,7 +106,7 @@ function faqs(): { q: string; a: string }[] {
     },
     {
       q: "Do I have to change my phone number or my phone system?",
-      a: "No. Your number forwards to the agent — all day, after hours, or only when your line is busy. There is no new hardware and nothing to rip out.",
+      a: "No. Your number forwards to the agent all day, after hours, or only when your line is busy. There is no new hardware and nothing to rip out.",
     },
     {
       q: "Is the demo I tried the same thing I would be paying for?",
@@ -115,7 +114,7 @@ function faqs(): { q: string; a: string }[] {
     },
     {
       q: "Does connecting my calendar cost extra?",
-      a: "Usually not. Most calendars and booking tools connect at no extra charge. A custom connection — a system of your own, or a tool we have not connected before — is scoped and quoted separately, on any plan, and never appears on a bill you did not agree to first.",
+      a: "Usually not. Most calendars and booking tools connect at no extra charge. A custom connection (a system of your own, or a tool we have not connected before) is scoped and quoted separately, on any plan, and never appears on a bill you did not agree to first.",
     },
     {
       q: "Can I see what the agent said to my callers?",
@@ -128,15 +127,14 @@ function faqs(): { q: string; a: string }[] {
   ];
 }
 
+/** Outlined at the brand card radius. The kit's Card draws a ring as well, which doubled the outline. */
+const BOX = "rounded-[16px] border";
+
 function PlanCard({ plan }: { plan: Plan }) {
   const featured = Boolean(plan.recommended);
   return (
-    <Card
-      className={`rounded-xl border shadow-none ${
-        featured ? "border-primary bg-primary/5" : ""
-      }`}
-    >
-      <CardContent className="flex h-full flex-col gap-5 p-4 md:p-6">
+    <div className={`${BOX} ${featured ? "border-primary bg-primary/5" : ""}`}>
+      <div className="flex h-full flex-col gap-5 p-5 md:p-6">
         <div className="space-y-1">
           <div className="flex items-center justify-between gap-2">
             <h2 className="ta-heading-2">{plan.name}</h2>
@@ -180,8 +178,8 @@ function PlanCard({ plan }: { plan: Plan }) {
           Start {TRIAL_WEEKS} weeks free
           <ArrowUpRight className="size-4" />
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -193,10 +191,18 @@ function PlanCard({ plan }: { plan: Plan }) {
  */
 export function Pricing({ mailto, demo }: Props) {
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-10 px-4 py-8">
-      <header className="space-y-6">
-        <div className="flex items-center justify-between gap-4">
-          <Logo />
+    <>
+      {/* Dashboard-only (PORTING.md): the bar /start and the demo page have. */}
+      <header className="border-b">
+        <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-3 px-4 md:px-6">
+          <Logo className="h-6" />
+          {demo ? (
+            <>
+              <span className="bg-border hidden h-5 w-px sm:block" aria-hidden />
+              <span className="ta-label-1 hidden truncate font-semibold! sm:inline">{demo.businessName}</span>
+            </>
+          ) : null}
+          <span className="flex-1" />
           {demo ? (
             <Button
               variant="ghost"
@@ -209,178 +215,194 @@ export function Pricing({ mailto, demo }: Props) {
             </Button>
           ) : null}
         </div>
-        <div className="max-w-2xl space-y-3">
-          <h1 className="ta-title-1 text-balance">
-            Simple pricing for a phone that is always{" "}
-            <span className="text-primary">answered.</span>
-          </h1>
-          <p className="ta-body-1-reading text-muted-foreground">
-            {demo
-              ? `Putting ${demo.agentName} on the real line at ${demo.businessName} is a monthly plan with minutes included. `
-              : "An AI receptionist on your real line is a monthly plan with minutes included. "}
-            Pick by how much your phone rings — every plan does the same work.
-          </p>
-        </div>
       </header>
-
-      <section
-        aria-label="Launch offer"
-        className="border-primary/30 bg-primary/5 flex flex-col gap-3 rounded-xl border p-4 md:flex-row md:items-center md:gap-4 md:p-5"
-      >
-        <span className="bg-primary text-primary-foreground flex size-10 shrink-0 items-center justify-center rounded-full">
-          <Gift className="size-5" aria-hidden />
-        </span>
-        <div className="flex-1 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="ta-headline-2">Your first {TRIAL_WEEKS} weeks are free</p>
-            <Badge variant="outline" className="border-primary/40 text-primary">
-              Launch offer · limited time
-            </Badge>
-          </div>
-          <p className="ta-body-2-reading text-muted-foreground">
-            Every new customer, on any plan. The agent takes your real calls for{" "}
-            {TRIAL_DAYS} days before the first bill.
-          </p>
-        </div>
-      </section>
-
-      <section aria-label="Plans" className="space-y-4">
-        <div className="grid gap-4 md:grid-cols-3">
-          {PLANS.map((plan) => (
-            <PlanCard key={plan.id} plan={plan} />
-          ))}
-        </div>
-
-        <Card className="rounded-xl border shadow-none">
-          <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between md:p-6">
-            <div className="space-y-1">
-              <h2 className="ta-headline-2">Custom</h2>
-              <p className="ta-body-2-reading text-muted-foreground">
-                Unlimited minutes, quoted for your case — several locations or very
-                high call volume.
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              className="shrink-0"
-              nativeButton={false}
-              render={<a href={CONTACT_URL} target="_blank" rel="noreferrer" />}
-            >
-              Ask for a quote
-              <ArrowUpRight className="size-4" />
-            </Button>
-          </CardContent>
-        </Card>
-
-        <p className="ta-caption-1 text-muted-foreground">
-          Prices in US dollars, billed monthly, before any tax that applies. Call
-          counts assume about two minutes a call.
-        </p>
-      </section>
-
-      <PlanEstimator />
-
-      <section aria-labelledby="billing-title" className="space-y-5">
-        <h2 id="billing-title" className="ta-heading-2">
-          How the billing works
-        </h2>
-        <dl className="grid gap-5 md:grid-cols-3 md:gap-6">
-          {BILLING.map(({ title, body }) => (
-            <div key={title} className="space-y-1">
-              <dt className="ta-headline-2">{title}</dt>
-              <dd className="ta-body-2-reading text-muted-foreground">{body}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
-
-      <section aria-labelledby="connections-title" className="space-y-5">
-        <div className="space-y-2">
-          <h2 id="connections-title" className="ta-heading-2">
-            Connecting it to your schedule
-          </h2>
-          <p className="ta-body-2-reading text-muted-foreground max-w-2xl">
-            For the agent to take a booking it has to reach the diary the booking
-            goes in. This is the only thing that can sit outside the plan price.
-          </p>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          {CONNECTIONS.map(({ title, price, body }) => (
-            <Card key={title} className="rounded-xl border shadow-none">
-              <CardContent className="space-y-2 p-4 md:p-6">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="ta-headline-2">{title}</h3>
-                  <Badge variant="outline">{price}</Badge>
-                </div>
-                <p className="ta-body-2-reading text-muted-foreground">{body}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      <Card className="rounded-xl border shadow-none">
-        <CardContent className="space-y-5 p-4 md:p-6">
-          <div className="space-y-2">
-            <h2 className="ta-heading-2">On every plan</h2>
-            <p className="ta-body-2-reading text-muted-foreground">
-              The plans differ by minutes, not by what the agent is allowed to do.
+      <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-12 px-4 py-10 md:px-6 lg:py-12">
+        <section className="flex flex-col gap-4">
+          <span className="ta-caption-1 bg-primary/10 text-primary w-fit rounded-full px-3 py-1 font-semibold">
+            Pricing
+          </span>
+          <div className="max-w-3xl space-y-3">
+            <h1 className="ta-display-2 text-balance lg:text-[48px]! lg:leading-[60px]!">
+              Simple pricing for a phone that is always{" "}
+              <span className="text-primary">answered.</span>
+            </h1>
+            <p className="ta-body-1-reading text-muted-foreground">
+              {demo
+                ? `Putting ${demo.agentName} on the real line at ${demo.businessName} is a monthly plan with minutes included. `
+                : "An AI receptionist on your real line is a monthly plan with minutes included. "}
+              Pick by how much your phone rings. Every plan does the same work.
             </p>
           </div>
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {INCLUDED.map(({ title, body }) => (
-              <li key={title} className="flex gap-3">
-                <Check className="text-primary mt-0.5 size-5 shrink-0" aria-hidden />
-                <div className="space-y-0.5">
-                  <p className="ta-label-1">{title}</p>
-                  <p className="ta-caption-1 text-muted-foreground">{body}</p>
-                </div>
-              </li>
+        </section>
+
+        <section
+          aria-label="Launch offer"
+          className="border-primary/30 bg-primary/5 flex flex-col gap-3 rounded-[16px] border p-5 md:flex-row md:items-center md:gap-4"
+        >
+          <span className="bg-primary text-primary-foreground flex size-10 shrink-0 items-center justify-center rounded-full">
+            <Gift className="size-5" aria-hidden />
+          </span>
+          <div className="flex-1 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="ta-headline-2">Your first {TRIAL_WEEKS} weeks are free</p>
+              <Badge variant="outline" className="border-primary/40 text-primary">
+                Launch offer · limited time
+              </Badge>
+            </div>
+            <p className="ta-body-2-reading text-muted-foreground">
+              Every new customer, on any plan. The agent takes your real calls for{" "}
+              {TRIAL_DAYS} days before the first bill.
+            </p>
+          </div>
+        </section>
+
+        <section aria-label="Plans" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            {PLANS.map((plan) => (
+              <PlanCard key={plan.id} plan={plan} />
             ))}
-          </ul>
-        </CardContent>
-      </Card>
+          </div>
 
-      <section aria-labelledby="faq-title" className="space-y-3">
-        <h2 id="faq-title" className="ta-heading-2">
-          Questions people ask
-        </h2>
-        <div className="divide-y rounded-xl border">
-          {faqs().map(({ q, a }) => (
-            <details key={q} className="group px-4 md:px-6">
-              <summary className="ta-label-1 flex cursor-pointer list-none items-center justify-between gap-4 py-4 [&::-webkit-details-marker]:hidden">
-                {q}
-                <span
-                  aria-hidden
-                  className="text-muted-foreground transition-transform duration-150 group-open:rotate-45"
-                >
-                  +
-                </span>
-              </summary>
-              <p className="ta-body-2-reading text-muted-foreground max-w-prose pb-4">{a}</p>
-            </details>
-          ))}
-        </div>
-      </section>
+          <div className={BOX}>
+            <div className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between md:p-6">
+              <div className="space-y-1">
+                <h2 className="ta-headline-2">Custom</h2>
+                <p className="ta-body-2-reading text-muted-foreground">
+                  Unlimited minutes, quoted for your case: several locations or very
+                  high call volume.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                className="shrink-0"
+                nativeButton={false}
+                render={<a href={CONTACT_URL} target="_blank" rel="noreferrer" />}
+              >
+                Ask for a quote
+                <ArrowUpRight className="size-4" />
+              </Button>
+            </div>
+          </div>
 
-      <Card className="border-primary/30 bg-primary/5 rounded-xl border shadow-none">
-        <CardContent className="space-y-3 p-4 text-center md:p-6">
-          <p className="ta-headline-2">Not sure which one? Start with the free weeks.</p>
-          <p className="ta-body-2-reading text-muted-foreground">
-            Tell us about your phone and we will set the agent up on your line. The
-            plan can wait until you have seen your own numbers.
+          <p className="ta-caption-1 text-muted-foreground">
+            Prices in US dollars, billed monthly, before any tax that applies. Call
+            counts assume about two minutes a call.
           </p>
-          <ContactButtons mailto={mailto} pricing={false} className="justify-center" />
-        </CardContent>
-      </Card>
+        </section>
 
-      <footer className="flex flex-col items-center gap-1 pb-4">
-        <p className="ta-caption-1 text-muted-foreground text-center">
-          TecAce voice agent pricing.
-          {demo ? " The business shown in the demo has not endorsed it." : ""}
-        </p>
-        <VersionBadge />
+        <PlanEstimator />
+
+        <section aria-labelledby="billing-title" className="space-y-5">
+          <h2 id="billing-title" className="ta-heading-2">
+            How the billing works
+          </h2>
+          <dl className="grid gap-5 md:grid-cols-3 md:gap-6">
+            {BILLING.map(({ title, body }) => (
+              <div key={title} className="space-y-1">
+                <dt className="ta-headline-2">{title}</dt>
+                <dd className="ta-body-2-reading text-muted-foreground">{body}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        <section aria-labelledby="connections-title" className="space-y-5">
+          <div className="space-y-2">
+            <h2 id="connections-title" className="ta-heading-2">
+              Connecting it to your schedule
+            </h2>
+            <p className="ta-body-2-reading text-muted-foreground max-w-2xl">
+              For the agent to take a booking it has to reach the diary the booking
+              goes in. This is the only thing that can sit outside the plan price.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {CONNECTIONS.map(({ title, price, body }) => (
+              <div key={title} className={BOX}>
+                <div className="space-y-2 p-5 md:p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="ta-headline-2">{title}</h3>
+                    <Badge variant="outline">{price}</Badge>
+                  </div>
+                  <p className="ta-body-2-reading text-muted-foreground">{body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <div className={BOX}>
+          <div className="space-y-5 p-5 md:p-6">
+            <div className="space-y-2">
+              <h2 className="ta-heading-2">On every plan</h2>
+              <p className="ta-body-2-reading text-muted-foreground">
+                The plans differ by minutes, not by what the agent is allowed to do.
+              </p>
+            </div>
+            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {INCLUDED.map(({ title, body }) => (
+                <li key={title} className="flex gap-3">
+                  <Check className="text-primary mt-0.5 size-5 shrink-0" aria-hidden />
+                  <div className="space-y-0.5">
+                    <p className="ta-label-1">{title}</p>
+                    <p className="ta-caption-1 text-muted-foreground">{body}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <section aria-labelledby="faq-title" className="space-y-3">
+          <h2 id="faq-title" className="ta-heading-2">
+            Questions people ask
+          </h2>
+          <div className="divide-y rounded-[16px] border">
+            {faqs().map(({ q, a }) => (
+              <details key={q} className="group px-4 md:px-6">
+                <summary className="ta-label-1 flex cursor-pointer list-none items-center justify-between gap-4 py-4 [&::-webkit-details-marker]:hidden">
+                  {q}
+                  <span
+                    aria-hidden
+                    className="text-muted-foreground transition-transform duration-150 group-open:rotate-45"
+                  >
+                    +
+                  </span>
+                </summary>
+                <p className="ta-body-2-reading text-muted-foreground max-w-prose pb-4">{a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        <div className="border-primary/30 bg-primary/5 rounded-[16px] border">
+          <div className="flex flex-col items-center gap-3 p-5 text-center md:p-8">
+            <p className="ta-heading-1">Not sure which one? Start with the free weeks.</p>
+            <p className="ta-body-2-reading text-muted-foreground">
+              Tell us about your phone and we will set the agent up on your line. The
+              plan can wait until you have seen your own numbers.
+            </p>
+            <ContactButtons mailto={mailto} pricing={false} className="justify-center" />
+          </div>
+        </div>
+      </main>
+
+      {/* Full width with a hairline, like /start's and the demo page's. */}
+      <footer className="border-t">
+        <div className="ta-caption-1 text-muted-foreground mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-6 md:flex-row md:items-center md:justify-between md:px-6">
+          <p>
+            TecAce voice agent pricing.
+            {demo ? " The business shown in the demo has not endorsed it." : ""}
+          </p>
+          <div className="flex items-center gap-6">
+            <a className="hover:text-foreground transition-colors" href={CONTACT_URL} target="_blank" rel="noreferrer">
+              Contact us
+            </a>
+            <span>© {new Date().getFullYear()} TecAce</span>
+            <VersionBadge />
+          </div>
+        </div>
       </footer>
-    </main>
+    </>
   );
 }

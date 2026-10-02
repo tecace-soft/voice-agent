@@ -15,6 +15,10 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    volumes:
+      # Rendered greetings (GREETING_CACHE_DIR). A volume so `up -d --build` keeps them: without
+      # it every deploy sends each business's next call back to the model's slow greeting.
+      - greetings:/data/greetings
     networks:
       - traefik
     labels:
@@ -47,6 +51,24 @@ services:
       - "traefik.http.routers.openai-poller.entrypoints=websecure"
       - "traefik.http.routers.openai-poller.tls.certresolver=mytlschallenge"
       - "traefik.http.services.openai-poller.loadbalancer.server.port=5060"
+
+  # Scenario tests (docs/superpowers/specs/2026-10-01-scenario-tests-design.md): scripted test calls
+  # against the real GPT-Live receptionist. Idle until transcribe-backend wakes it for one pass; it
+  # runs each ticked scenario once and stops. Shares the hostname, separated by path like the poller.
+  scenarios:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    command: ["python", "scripts/run_scenario_runner.py"]
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.openai-scenarios.rule=Host(`31-97-214-59.sslip.io`) && PathPrefix(`/scenarios`)"
+      - "traefik.http.routers.openai-scenarios.priority=100"
+      - "traefik.http.routers.openai-scenarios.entrypoints=websecure"
+      - "traefik.http.routers.openai-scenarios.tls.certresolver=mytlschallenge"
+      - "traefik.http.services.openai-scenarios.loadbalancer.server.port=5070"
 
   # The messages the assistant TAKES, written into the test spreadsheet as rows.
   #
@@ -85,3 +107,6 @@ networks:
   traefik:
     external: true
     name: root_default
+
+volumes:
+  greetings:

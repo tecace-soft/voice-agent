@@ -3,7 +3,7 @@ import {
   IconActivity,
   IconAlert,
   IconAnalytics,
-  IconColumns,
+  IconCard,
   IconInbox,
   IconMessage,
   IconOverview,
@@ -21,6 +21,7 @@ import { formatDateTime } from "../lib";
 import { APP_VERSION } from "../changelog";
 
 export type ViewId =
+  | "dashboard"
   | "overview"
   | "analytics"
   | "people"
@@ -46,22 +47,28 @@ export type ViewId =
 const NAV: {
   key: string;
   group: string;
-  items: { id: ViewId; label: string; icon: typeof IconOverview; adminOnly?: boolean }[];
+  items: { id: ViewId; label: string; icon: typeof IconOverview; adminOnly?: boolean; customerOnly?: boolean }[];
 }[] = [
+  // The receptionist a business runs: its calls at a glance (the Demo Overview's page, for one
+  // business — src/demos/screens/ReceptionistOverviewScreen.tsx), and every call's transcript.
   {
     key: "dashboard",
     group: "Dashboard",
+    items: [
+      { id: "dashboard", label: "Overview", icon: IconOverview },
+      { id: "calls", label: "Transcripts", icon: IconMessage },
+    ],
+  },
+  // The voicemail pipeline's numbers and runs (GET /transcribe/*) — one group of their own, so they
+  // aren't read as the dashboard's main page now that the dashboard is mostly the receptionist.
+  {
+    key: "voicemail",
+    group: "Voicemail",
     items: [
       { id: "overview", label: "Overview", icon: IconOverview },
       { id: "analytics", label: "Analytics", icon: IconAnalytics },
       { id: "people", label: "Per person", icon: IconUsers, adminOnly: true },
       { id: "activity", label: "Daily activity", icon: IconActivity },
-    ],
-  },
-  {
-    key: "runs",
-    group: "Runs",
-    items: [
       { id: "runs", label: "All runs", icon: IconRuns },
       { id: "failed", label: "Failed runs", icon: IconAlert, adminOnly: true },
     ],
@@ -78,20 +85,23 @@ const NAV: {
     key: "settings",
     group: "Settings",
     items: [
-      { id: "calls", label: "Answered calls", icon: IconPhone },
       { id: "business", label: "Business information", icon: IconIdea },
+      // Their plan and card. An admin has no business of their own to bill; a customer's is read
+      // from their account page.
+      { id: "billing", label: "Billing", icon: IconCard, customerOnly: true },
       { id: "numbers", label: "Agent numbers", icon: IconPhone, adminOnly: true },
       { id: "apiKeys", label: "API keys", icon: IconKey, adminOnly: true },
       { id: "accounts", label: "Accounts", icon: IconUsers, adminOnly: true },
     ],
   },
+  // Selling the receptionist: the prospects we built demos for (list and deal board in one), and
+  // how those demos are doing. The group key stays "demos" (the routes are #/demos/*).
   {
     key: "demos",
-    group: "Demo",
+    group: "Sales",
     items: [
-      { id: "demoOverview", label: "Overview", icon: IconPresentation, adminOnly: true },
-      { id: "demoProspects", label: "Customers", icon: IconTable, adminOnly: true },
-      { id: "demoPipeline", label: "CRM", icon: IconColumns, adminOnly: true },
+      { id: "demoProspects", label: "Prospects", icon: IconTable, adminOnly: true },
+      { id: "demoOverview", label: "Demo analytics", icon: IconPresentation, adminOnly: true },
     ],
   },
 ];
@@ -114,6 +124,7 @@ const DEMO_ONLY_NAV: typeof NAV = [
       { id: "myOverview", label: "Overview", icon: IconOverview },
       { id: "myCalls", label: "Call activity", icon: IconActivity },
       { id: "demoProspect", label: "Settings", icon: IconPresentation },
+      { id: "billing", label: "Billing", icon: IconCard },
     ],
   },
 ];
@@ -154,7 +165,7 @@ export function Sidebar({
   showScope?: boolean;
   user: AuthUser;
   onSignOut: () => void;
-  /** Setup requests waiting for an admin (Demo › Customers badge). */
+  /** Setup requests waiting for an admin (Sales › Prospects badge). */
   setupRequests?: number;
   /** Go-live requests waiting for an admin (Accounts badge). */
   liveRequests?: number;
@@ -186,7 +197,9 @@ export function Sidebar({
       {(user.status === "demo" ? DEMO_ONLY_NAV : NAV).map((section) => {
         // Account management is admin-only; a `user` doesn't see the section at all. The backend
         // enforces it too — this only keeps the nav honest about what's reachable.
-        const items = section.items.filter((item) => !item.adminOnly || user.role === "admin");
+        const items = section.items.filter(
+          (item) => (!item.adminOnly || user.role === "admin") && (!item.customerOnly || user.role !== "admin"),
+        );
         if (items.length === 0) return null;
         return (
         <div className="sidebar-group" key={section.key} data-group={section.key}>

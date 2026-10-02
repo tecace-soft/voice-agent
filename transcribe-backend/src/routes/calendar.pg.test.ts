@@ -272,6 +272,60 @@ describe("calendar connections", () => {
     expect(callback.status).toBe(400);
   });
 
+  // A calendar whose credentials stopped working (CALENDAR_SECRET changed, a revoked token) is the
+  // CALENDAR's sign-in failing, not the dashboard's. Answering 401 made the dashboard treat it as an
+  // expired session and sign the person out as soon as the Appointments screen listed the calendars.
+  it("never answers 401 for a connection that can't be read — the session is still good", async () => {
+    const [saved] = (await db.query("SELECT secret FROM calendar_connections")).rows as any[];
+    await db.query("UPDATE calendar_connections SET secret = 'v1.unreadable'");
+    try {
+      const targets = await call("GET", "/business/calendar/targets", JANE);
+      expect(targets.status).not.toBe(401);
+      expect(targets.body.error).toBe("calendar_auth");
+      expect(targets.body.message).toMatch(/Reconnect/);
+      const pick = await call("PUT", "/business/calendar/target", JANE, { targetId: "7" });
+      expect(pick.status).not.toBe(401);
+      const openings = await call("POST", "/business/calendar/availability", JANE, {});
+      expect(openings.status).not.toBe(401);
+    } finally {
+      await db.query("UPDATE calendar_connections SET secret = $1", [saved.secret]);
+    }
+  });
+
+  it("keeps a connection saved before CALENDAR_SECRET was set, and re-seals it under the new key", async () => {
+    // As on production: the key everything was sealed under so far (AUTH_SECRET, standing in) is now
+    // the fallback, and CALENDAR_SECRET is a new one. Set on `env` itself, not process.env: Bun runs
+    // the test files in one process, so whichever loaded config/env.ts first decided its values.
+    const { env } = await import("../config/env.js");
+    const settings = env as unknown as Record<string, unknown>; // the pattern demo.pg.test.ts uses
+    const { seal, open } = await import("../calendar/secrets.js");
+    const before = { secret: env.calendarSecret, fallbacks: env.calendarSecretFallbacks };
+    const [saved] = (await db.query("SELECT secret FROM calendar_connections")).rows as any[];
+    const legacy = seal({ apiKey: "cal_live_good" }, before.secret);
+    await db.query("UPDATE calendar_connections SET secret = $1", [legacy]);
+    settings.calendarSecret = "calendar-secret-calendar-secret-0123456";
+    settings.calendarSecretFallbacks = [before.secret];
+    try {
+      const targets = await call("GET", "/business/calendar/targets", JANE);
+      expect(targets.status).toBe(200);
+      expect(targets.body.targets[0]).toMatchObject({ name: "Intro call" });
+      // Migrated on read: the stored value now opens under CALENDAR_SECRET itself. (The re-seal is
+      // written alongside the request, not before its answer, so wait for it rather than race it.)
+      let row: any;
+      for (let i = 0; i < 50; i++) {
+        [row] = (await db.query("SELECT secret FROM calendar_connections")).rows as any[];
+        if (row.secret !== legacy) break;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      expect(row.secret).not.toBe(legacy);
+      expect(open<{ apiKey: string }>(row.secret)).toEqual({ apiKey: "cal_live_good" });
+    } finally {
+      settings.calendarSecret = before.secret;
+      settings.calendarSecretFallbacks = before.fallbacks;
+      await db.query("UPDATE calendar_connections SET secret = $1", [saved.secret]);
+    }
+  });
+
   it("disconnects", async () => {
     expect((await call("DELETE", "/business/calendar", JANE)).body.connection).toBeNull();
     expect((await call("GET", "/business/calendar", JANE)).body.connection).toBeNull();

@@ -14,6 +14,7 @@
   --surface: var(--background-normal-normal); /* cards, table, sidebar, topbar */
   --border: var(--line-normal-neutral); /* hairlines */
   --border-strong: var(--line-normal-strong); /* control outlines */
+  --border-row: var(--line-normal-normal); /* outlined rows that must read as edges (transcripts) */
   --primary: var(--primary-normal); /* TecAce blue #116DFF — the one and only */
   --primary-hover: var(--primary-strong);
   --primary-tint: var(--fill-normal);
@@ -2221,16 +2222,11 @@ button.person-primary:hover {
 
 /* ---- agent phone numbers ---- */
 
-.number-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 12px;
-}
-@media (max-width: 720px) {
-  .number-form {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.number-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .number-cell {
   display: inline-flex;
@@ -2255,7 +2251,7 @@ button.person-primary:hover {
 .number-messages {
   display: grid;
   gap: 8px;
-  padding: 8px 20px 0;
+  padding: 12px 16px 0; /* the Numbers card's .card-toolbar inset, so a message lines up with its title */
 }
 .number-messages p {
   margin: 0;
@@ -2488,19 +2484,29 @@ button.person-primary:hover {
   height: 34px;
   min-width: 180px;
 }
+/* Each call is its own outlined row, 8px apart, so where one ends and the next begins is plain even
+   with a long conversation open. The open one is outlined in brand blue and its head is shaded: that
+   bar is the control that closes it. */
 .call-list {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 8px;
   margin: 0;
-  padding: 0 20px 8px;
+  padding: 4px 20px 20px;
   list-style: none;
 }
 .call-item {
-  border-top: 1px solid var(--border);
+  border: 1px solid var(--border-row);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+  transition: border-color 0.15s ease;
 }
-.call-item:first-child {
-  border-top: none;
+.call-item:hover {
+  border-color: var(--border-strong);
+}
+.call-item.is-open {
+  border-color: var(--primary);
 }
 
 /* The row is the control: who rang, and when. Everything else waits behind a click, because the
@@ -2510,17 +2516,26 @@ button.person-primary:hover {
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 14px 0;
+  padding: 14px 16px;
   border: none;
   background: none;
   color: var(--ink);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: color 0.15s ease;
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
 .call-head:hover {
   color: var(--primary);
+  background: var(--accent-soft);
+}
+.call-item.is-open .call-head {
+  background: var(--accent);
+  border-bottom: 1px solid var(--border-row);
+}
+.call-head:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
 }
 .call-head .chevron {
   color: var(--muted);
@@ -2541,8 +2556,9 @@ button.person-primary:hover {
   flex: none;
   font-variant-numeric: tabular-nums;
 }
+/* Indented under the name: 16px row padding + the 14px chevron + its 12px gap. */
 .call-detail {
-  padding: 4px 0 18px 26px;
+  padding: 16px 16px 16px 42px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -2556,7 +2572,16 @@ button.person-primary:hover {
 /* The parent .call-detail is a 12px flex column, so this needs no margin of its own. */
 .call-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.call-close {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.call-close .chevron {
+  transform: rotate(180deg); /* points up: this folds the call away */
 }
 
 /* Destructive, so it reads that way on hover — quiet until you reach for it. Beats .btn-quiet:hover
@@ -2572,31 +2597,9 @@ button.person-primary:hover {
   border-color: var(--danger);
 }
 
-/* The conversation. Speakers are distinguished by an indented rail rather than chat bubbles —
-   this is a record to be read, not a messaging app. */
-.call-turns {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.call-turn {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding-left: 12px;
-  border-left: 2px solid var(--border);
-}
-.call-turn-caller {
-  border-left-color: var(--primary);
-}
-.call-speaker {
-  color: var(--muted);
-  letter-spacing: 0.04em;
-}
+/* The conversation itself is chat bubbles in a .tw island (components/CallConversation.tsx). */
 @media (prefers-reduced-motion: reduce) {
+  .call-item,
   .call-head,
   .call-head .chevron {
     transition: none;

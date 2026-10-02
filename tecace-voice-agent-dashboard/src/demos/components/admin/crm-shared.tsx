@@ -24,6 +24,9 @@ export const HEAT_KIND: Record<Heat, keyof typeof STATUS_STYLES> = {
   cold: "neutral",
 };
 
+/** Dashboard-only: the level as a word in sentence case. */
+export const HEAT_LABEL: Record<Heat, string> = { hot: "Hot", warm: "Warm", cold: "Cold" };
+
 /** The icon for a timeline or feed row, by what happened. */
 export const ENTRY_ICON = {
   note: NotebookPen,

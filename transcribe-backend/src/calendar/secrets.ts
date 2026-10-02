@@ -34,6 +34,21 @@ export function open<T>(sealed: string, secret?: string): T | null {
   }
 }
 
+/**
+ * A stored value, tried under each key in turn (the current one first). `stale` says it opened only
+ * under an earlier key, so the caller re-seals it under the current one. Null when none opens it.
+ */
+export function openStored<T>(
+  sealed: string,
+  secrets: string[] = [env.calendarSecret, ...env.calendarSecretFallbacks],
+): { value: T; stale: boolean } | null {
+  for (const [index, secret] of secrets.entries()) {
+    const value = open<T>(sealed, secret);
+    if (value !== null) return { value, stale: index > 0 };
+  }
+  return null;
+}
+
 export type OAuthState = {
   /** The account the connection is for (an admin may connect on a customer's behalf). */
   uid: string;

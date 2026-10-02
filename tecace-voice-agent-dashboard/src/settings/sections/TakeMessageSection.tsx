@@ -75,7 +75,7 @@ export function TakeMessageSection({ binding }: { binding: CallSettingsBinding }
         <p className="ta-label-1">Every message, as standard</p>
         <p className="ta-caption-1 text-muted-foreground mt-1">
           Caller's name · the number they called from (asked only if it's withheld) · what the call is about ·
-          when they'd like a callback, if they say. Messages appear under Answered calls.
+          when they'd like a callback, if they say. Messages appear under Transcripts.
         </p>
       </div>
 

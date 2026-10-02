@@ -40,7 +40,7 @@ from ..telephony import transfer
 from ..telephony.outbound import is_machine
 from ..tools.agent_tools import INBOUND_TOOL_SCHEMAS, ToolExecutor
 from ..tools.business_config import fetch_business_config
-from . import amd, greeting_audio
+from . import amd, greeting_audio, pickup
 from .bridge import (
     _HANGUP_FALLBACK_SECONDS,
     _SPOKEN_HOLD_LINE,
@@ -58,7 +58,7 @@ from .bridge import (
     _turns,
 )
 from .instructions import build_instructions
-from .instructions_inbound import RETURN_GREETING, spoken_greeting
+from .instructions_inbound import RETURN_GREETING
 from .instructions_inbound import build_instructions as build_instructions_inbound
 from .instructions_neutral import NEUTRAL_GREETING, build_instructions_neutral
 from .booking_inbound import apply_booking, tools_with_booking
@@ -94,6 +94,10 @@ _MAX_HELD_FRAMES = 150  # 3s of 20ms frames
 # Lowered from 6s: on a real call the agent took 9.8s to say hello — six of them waiting for a
 # greeting that was never coming, and the caller said "Hello?" into the silence first.
 _GREETING_WAIT_SECONDS = 3.0
+# How long the bridge waits, at stream start, for a greeting render that is still under way. Short:
+# /incoming has usually waited already, and this only catches a render landing a moment late.
+# Every bit of it is silence on an answered line, but far less than the model's ~2.5s greeting.
+_GREETING_LATE_WAIT = 0.5
 # And when asking again does not work either — a call where the model never spoke at all — this is
 # how long after that the bridge gives up and speaks the greeting itself. A caller listening to
 # silence has no way of knowing anyone picked up.
@@ -383,12 +387,23 @@ def _books(business, composed) -> bool:
     return bool(business.booking)
 
 
+async def _greeting_for(cfg: Config, opening: str) -> tuple[bytes | None, str]:
+    """The rendered opening to play, and where it came from (for the pickup log)."""
+    if not cfg.prerendered_greeting:
+        return None, "off"
+    return await greeting_audio.await_ready(cfg, opening, timeout=_GREETING_LATE_WAIT)
+
+
 async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
     await twilio_ws.accept()
     # Opened alongside Twilio's start handshake, as in bridge.py — every millisecond is silence.
     connecting = asyncio.create_task(_open_live(cfg))
 
     stream_sid, call_sid, params = await _await_start(twilio_ws)
+    # What /incoming noted while the phone rang (empty for an outbound call) — see pickup.py.
+    timeline = pickup.take(call_sid or "")
+    timeline["stream_start_at"] = time.monotonic()
+    timeline["greeting_source"] = "model"  # until a rendered greeting is found below
     if not stream_sid:
         try:
             await (await connecting).close()
@@ -467,19 +482,22 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         # ~2.5s the model needs before its first audible word, spent before the call was answered.
         if composed is not None and not returning:
             opening = composed.opening
+            prerendered, timeline["greeting_source"] = await _greeting_for(cfg, opening)
+            # After the wait, not before: a render started by this very call cannot land within the
+            # late wait, so warming first would only make the caller sit through 0.5s of silence.
+            # Waiting first covers a render /incoming or the warm-up began, and this still starts
+            # one when there was none (for the rescue path and the next call).
             greeting_audio.warm(cfg, opening)
-            prerendered = greeting_audio.ready(cfg, opening) if cfg.prerendered_greeting else None
         elif business is not None and not returning:
-            opening = spoken_greeting(
-                greeting=business.greeting or cfg.greeting,
-                business_name=business.business_name,
-                agent_name=business.agent_name or cfg.agent_name,
-                disclose_recording=cfg.disclose_recording,
-            )
+            # Built by the same function /incoming and the warm-up render use, so the text played
+            # here can never drift from the text that was rendered while the phone rang.
+            opening = pickup.expected_opening(cfg, business)
             # Rendered either way. Played now only where the deployment asked for it; otherwise
             # it waits as the rescue for a model that never says hello — see the nudger.
+            # Warmed after the wait for the same reason as above: only a render that /incoming or
+            # the warm-up already began is worth waiting on.
+            prerendered, timeline["greeting_source"] = await _greeting_for(cfg, opening)
             greeting_audio.warm(cfg, opening)
-            prerendered = greeting_audio.ready(cfg, opening) if cfg.prerendered_greeting else None
 
         tools = INBOUND_TOOL_SCHEMAS
         if composed is not None:
@@ -531,6 +549,7 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         "messages": [],
         "transcript": [],
         "started": time.monotonic(),
+        "pickup": timeline,  # the pickup timeline, logged at the end of the call
         "closing": False,
         "hangup_pending": False,
         "forward_guard_until": 0.0,
@@ -616,7 +635,8 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
             forwarded_from = str(params.get("forwarded_from", ""))
             if is_inbound and forwarded_from:
                 state["forward_guard_until"] = time.monotonic() + cfg.forward_announcement_seconds
-                if cfg.forward_accept_inband and cfg.forward_accept_digit.strip():
+                if (cfg.forward_accept_inband and cfg.forward_accept_digit.strip()
+                        and params.get("accept_press") == "1"):
                     log.info("call arrived forwarded from %s — sending the in-band accept digit",
                              forwarded_from)
                     await _accept_forwarded_call(twilio_ws, cfg, state)
@@ -661,6 +681,10 @@ async def run_live_bridge(twilio_ws: WebSocket, cfg: Config) -> None:
         amd.unregister(call_sid)
         _flush_run(state)
         _sync_transcript(state)
+        # One line per inbound call saying where the time went between the ring and the first word
+        # (see pickup.py). Outbound calls have no ring to account for, so they log nothing.
+        if is_inbound:
+            log.info("%s", pickup.summary(state["pickup"]))
         _log_live_cost(state, cfg)
         await _finalize_call(state, params, executor, cfg)
 
@@ -933,6 +957,11 @@ def _note_agent_audio(state: dict, payload: str, *, audible: bool = True) -> Non
                         (now - state["play_until"]) * 1000)
     if not audible or not _has_sound(payload):
         return
+    # The first audible sound from the MODEL. When the greeting was pre-rendered, the model's deltas
+    # during the greeting are dropped before they reach this function, so this is the model's first
+    # sound AFTER the greeting (usually its reply), not the greeting itself. Next to first_audio_at
+    # it shows how the model's voice compares with what the caller heard. setdefault keeps the first.
+    state["pickup"].setdefault("model_first_audio_at", now)
     if not state["greeted"]:
         state["greeted"] = True
         log.info("agent first spoke %.1fs after the stream opened", now - state["started"])
@@ -1091,6 +1120,14 @@ async def _stream_to_caller(twilio_ws: WebSocket, state: dict) -> None:
         state["play_until"] = max(state["play_until"], now) + len(chunk) / _MULAW_SAMPLES_PER_SECOND
         state["max_playback_lead"] = max(state["max_playback_lead"], state["play_until"] - now)
         state["sent_at"] = now
+        # The first moment the caller actually hears something. GPT-Live streams SILENCE continuously
+        # and every delta passes through here, so "the first chunk sent" would record model silence
+        # and make slow calls look fast. Count only the rendered greeting (the bridge's own greeting
+        # sets greeting_until before the sender starts, so its first chunk is the greeting) or model
+        # audio once _note_agent_audio has heard sound in it. Only the first such chunk is stamped.
+        p = state["pickup"]
+        if "first_audio_at" not in p and (state["greeting_until"] > 0 or "model_first_audio_at" in p):
+            p["first_audio_at"] = now
 
 
 async def _watch_the_clock(state: dict) -> None:

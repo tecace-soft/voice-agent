@@ -11,15 +11,25 @@ import {
   publishCallSettings,
   saveAgentIdentity,
   saveBusinessKnowledge,
+  researchBusinessProfile,
+  type BusinessResearchInputs,
   saveBusinessPrompts,
   saveCallSettingsDraft,
+  saveForwardAcceptPress,
   saveHouseRules,
   setWaterfallAllowed,
 } from "../api/backend";
 import type { AgentNumber, BehaviourDefault, BusinessProfile, Readiness } from "../api/types";
 import { accountErrorMessage } from "../auth";
 import type { SectionId } from "../routing";
-import { displayPhone, withDefaults, type CallSettings, type StoredCallSettings } from "./callSettings";
+import {
+  displayPhone,
+  oldTransferInUse,
+  oldTransferScenario,
+  withDefaults,
+  type CallSettings,
+  type StoredCallSettings,
+} from "./callSettings";
 import { SaveRow, SettingsShell, type Phase, type SettingsSection } from "./SettingsShell";
 import { useAutosave, type AutosaveView } from "./useAutosave";
 import { businessInfoProblem, faqsProblem } from "./sectionChecks";
@@ -33,6 +43,8 @@ import { LaunchGuide } from "./sections/LaunchGuide";
 import { RequestGoLive } from "./sections/RequestGoLive";
 import { BusinessTestConsole, BusinessTestSection, useTestCalls } from "./sections/TestSection";
 import { GuidedSetupSection } from "./sections/GuidedSetupSection";
+import { ResearchFillCard, type ResearchOutcome } from "./sections/ResearchFillCard";
+import { mergeResearch } from "./researchMerge";
 import { SetupBoard } from "./setup/SetupBoard";
 import { useGuidedSetup } from "./setup/useGuidedSetup";
 import {
@@ -42,6 +54,7 @@ import {
   FaqsSection,
   type AgentFields,
 } from "./sections/ProfileSections";
+import { ScenarioTestsSection } from "./scenarios/ScenarioTestsSection";
 
 // A real business's receptionist settings: the shared shell, with every section saving to its own
 // endpoint — the same split the old cards and tabs had, because a business's settings are stored
@@ -88,8 +101,8 @@ type Props = {
 
 /** The sections that save themselves. */
 type Autosaved = "knowledge" | "faqs" | "agent" | "rules";
-/** The saves still made on a button. */
-type Saving = "prompts" | "rebuild" | null;
+/** The saves still made on a button (or, for forwarding, on the switch). */
+type Saving = "prompts" | "rebuild" | "forwarding" | null;
 
 const NO_PROMPTS: CustomerPrompts = { live: "", backend: "", greeting: "", edited: false };
 
@@ -110,6 +123,7 @@ export function BusinessSettings(props: Props) {
   const [knowledge, setKnowledge] = useState<DemoBusinessProfile | null>(profile.profile);
   const [agent, setAgent] = useState<AgentFields>(() => agentOf(profile));
   const [rules, setRules] = useState(profile.houseRules ?? "");
+  const [pressToAccept, setPressToAccept] = useState(profile.forwardAcceptPress ?? false);
   const [prompts, setPrompts] = useState<CustomerPrompts>(profile.prompts ?? NO_PROMPTS);
   // What the server holds, so the editor can tell a person's unsaved typing from text a save made
   // stale — and so "edited by hand" means saved that way, not merely typed into.
@@ -117,10 +131,16 @@ export function BusinessSettings(props: Props) {
   const savedPromptsRef = useRef(savedPrompts);
   const [previewVersion, setPreviewVersion] = useState(0);
   const [saving, setSaving] = useState<Saving>(null);
+  const [saved, setSaved] = useState<Saving>(null);
   const [error, setError] = useState<{ where: Saving; message: string } | null>(null);
   const [calls, setCalls] = useState<StoredCallSettings | null>(null);
   const [callsError, setCallsError] = useState<string | null>(null);
   const test = useTestCalls(userId);
+  // "Fill in from research" (Business information). The form before the run is kept for Undo.
+  const [researching, setResearching] = useState(false);
+  const [researchError, setResearchError] = useState<string | null>(null);
+  const [researchOutcome, setResearchOutcome] = useState<ResearchOutcome | null>(null);
+  const beforeResearch = useRef<DemoBusinessProfile | null>(null);
 
   // The business profile as last saved from here. Business information and FAQs each send their own
   // part laid over it, so it must be what the server holds NOW — taken from each save's answer, never
@@ -200,10 +220,11 @@ export function BusinessSettings(props: Props) {
   /**
    * What a save takes back from the saved row. The sections that save themselves keep their own
    * draft — the person may be typing into it while the save is on its way — so only the prompts
-   * follow.
+   * (and the forwarding switch, which saves on the flip) follow.
    */
   function adopt(which: Autosaved | Exclude<Saving, null>, next: BusinessProfile) {
     serverProfile.current = next.profile;
+    if (which === "forwarding") setPressToAccept(next.forwardAcceptPress ?? false);
     // Every save answers with the stored prompts, and a knowledge, FAQ or agent save rebuilds them
     // when nobody edited them by hand. The editor follows — unless the person has typed into it
     // and not saved yet. Left showing the old text, "Save prompts" would freeze that old text as a
@@ -222,6 +243,7 @@ export function BusinessSettings(props: Props) {
     failure = "Couldn't save that. Nothing was changed.",
   ) {
     setSaving(which);
+    setSaved(null);
     setError(null);
     // A save made of two requests reports the first as soon as it lands, so a failure in the second
     // leaves the page showing what really was saved.
@@ -232,8 +254,11 @@ export function BusinessSettings(props: Props) {
     try {
       const { profile: next } = await action(partial);
       partial(next);
+      setSaved(which);
+      return true;
     } catch (e) {
       setError({ where: which, message: accountErrorMessage(e, failure) });
+      return false;
     } finally {
       setSaving(null);
     }
@@ -269,6 +294,28 @@ export function BusinessSettings(props: Props) {
       const body = which === "faqs" ? { ...saved, faqs: knowledge.faqs } : { ...knowledge, faqs: saved.faqs };
       return saveBusinessKnowledge(body, userId);
     });
+
+  // Research fills the form; it saves nothing. The business checks what changed and presses Save.
+  const runResearch = async (inputs: BusinessResearchInputs) => {
+    setResearching(true);
+    setResearchError(null);
+    setResearchOutcome(null);
+    try {
+      const result = await researchBusinessProfile(inputs, userId);
+      beforeResearch.current = knowledge;
+      const merged = mergeResearch(knowledge, result.profile);
+      setKnowledge(merged.profile);
+      setResearchOutcome({ ...merged, sources: result.sources });
+    } catch (e) {
+      setResearchError(accountErrorMessage(e, "The research didn't finish. Nothing in the form was changed."));
+    } finally {
+      setResearching(false);
+    }
+  };
+  const undoResearch = () => {
+    setKnowledge(beforeResearch.current);
+    setResearchOutcome(null);
+  };
 
   const saveAgent = () =>
     persist("agent", async (saved) => {
@@ -364,13 +411,21 @@ export function BusinessSettings(props: Props) {
       </p>
     );
 
-  const legacyTransfer =
-    profile.transferNumber && calls && calls.draft.transfer.scenarios.length === 0 ? (
-      <div className="bg-primary/5 ta-caption-1 text-primary mb-5 rounded-lg px-3 py-2.5">
-        Callers who ask for a person are put through to {displayPhone(profile.transferNumber)}, the number you set
-        up before transfer scenarios existed. Add a transfer and publish it to replace that.
-      </div>
-    ) : null;
+  // Decided by what is PUBLISHED, as the phone decides it — not by the draft, which once hid a
+  // number calls were still being put through to as soon as a transfer was saved unpublished.
+  const oldNumber = calls ? oldTransferInUse(profile, calls) : null;
+  const oldTransfer = oldNumber ? oldTransferScenario(oldNumber, profile.transferTopics) : null;
+  const legacyTransfer = oldNumber ? (
+    <div className="bg-primary/5 ta-caption-1 text-primary mb-5 rounded-lg px-3 py-2.5">
+      Callers who ask for a person are put through to {displayPhone(oldNumber)}, the number you set up before
+      transfer scenarios existed.{" "}
+      {!profile.profile
+        ? "The transfers below are used on calls once your business details are read again on Business information."
+        : calls?.draft.transfer.scenarios.length
+          ? "Publish your transfers to replace it."
+          : "Add it to your transfers to keep it, or add your own, then publish to replace it."}
+    </div>
+  ) : null;
 
   const waterfallAdmin =
     props.isAdmin && userId && calls ? (
@@ -430,7 +485,22 @@ export function BusinessSettings(props: Props) {
         <BusinessInfoSection
           profile={knowledge}
           onChange={setKnowledge}
-          source={source}
+          source={
+            <>
+              {source}
+              {knowledge ? (
+                <ResearchFillCard
+                  defaults={{ businessName, websiteUrl: knowledge.website ?? profile.website ?? "" }}
+                  running={researching}
+                  error={researchError}
+                  outcome={researchOutcome}
+                  onRun={(inputs) => void runResearch(inputs)}
+                  onUndo={undoResearch}
+                  onOpenFaqs={() => openSection("faqs")}
+                />
+              ) : null}
+            </>
+          }
           footer={footer(knowledgeSave)}
           promptsFrozen={savedPrompts.edited}
         />
@@ -490,6 +560,7 @@ export function BusinessSettings(props: Props) {
       render: callsSection((binding) => (
         <TransferCallsSection
           binding={binding}
+          inUse={oldTransfer}
           notes={
             <>
               {legacyTransfer}
@@ -530,6 +601,10 @@ export function BusinessSettings(props: Props) {
       ),
     },
     { id: "test", render: () => <BusinessTestSection test={test} /> },
+    // Admin only: the menu only lists sections that are in this array (SettingsShell filters by it).
+    ...(props.isAdmin && userId
+      ? [{ id: "scenario-tests" as const, render: () => <ScenarioTestsSection key={userId} userId={userId} /> }]
+      : []),
     {
       id: "launch",
       render: () => (
@@ -557,7 +632,25 @@ export function BusinessSettings(props: Props) {
     {
       id: "forwarding",
       guide: true,
-      render: () => <ForwardingSection agentNumber={props.number?.phoneE164 ?? null} />,
+      render: () => (
+        <ForwardingSection
+          agentNumber={props.number?.phoneE164 ?? null}
+          pressToAccept={{
+            on: pressToAccept,
+            saving: saving === "forwarding",
+            saved: saved === "forwarding",
+            error: error?.where === "forwarding" ? error.message : null,
+            // Saved on the flip: one switch, nothing to review first. Shown at once; a failed save
+            // puts it back.
+            onChange: (on) => {
+              setPressToAccept(on);
+              void run("forwarding", () => saveForwardAcceptPress(on, userId)).then((ok) => {
+                if (!ok) setPressToAccept(!on);
+              });
+            },
+          }}
+        />
+      ),
     },
   ];
 

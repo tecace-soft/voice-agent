@@ -9,10 +9,21 @@ import { formatHash, parseHash } from "../routing";
 //
 // The link keeps the current mailbox scope (read from the hash when the link is rendered), as the
 // sidebar's navigate does, so following a promo link and going back to a transcribe view keeps
-// it. Pass `{ mailbox }` to choose the scope instead (`undefined` = every mailbox).
-export function demoHref(view: ViewId, id?: string, scope?: { mailbox: MailboxScope }): string {
-  const mailbox = scope ? scope.mailbox : currentMailbox();
-  return formatHash(id === undefined ? { view, mailbox } : { view, mailbox, id });
+// it. Pass `{ mailbox }` to choose the scope instead (`undefined` = every mailbox), and `customer`
+// to open Business information / Answered calls on that business (its account email).
+export function demoHref(
+  view: ViewId,
+  id?: string,
+  scope?: { mailbox?: MailboxScope; customer?: string },
+): string {
+  const mailbox = scope && "mailbox" in scope ? scope.mailbox : currentMailbox();
+  const customer = scope?.customer;
+  return formatHash({
+    view,
+    mailbox,
+    ...(id === undefined ? {} : { id }),
+    ...(customer === undefined ? {} : { customer }),
+  });
 }
 
 function currentMailbox(): MailboxScope {

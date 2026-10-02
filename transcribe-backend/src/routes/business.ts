@@ -11,6 +11,7 @@ import {
   hashSource,
   saveProfile,
   saveAgentIdentity,
+  saveForwardAcceptPress,
   saveHouseRules,
   saveStructured,
   saveTypedFields,
@@ -18,6 +19,8 @@ import {
 import { ExtractionError, MAX_SOURCE_CHARS } from "../tools/extractBusiness.js";
 import { extractProfile } from "../tools/extractProfile.js";
 import { normalizeProfile } from "../business/profileShape.js";
+import { researchBusiness } from "../demo/research.js";
+import { rateLimited } from "./demoCommon.js";
 import { deriveFromProfile } from "../business/derive.js";
 import { resolveSessionPrompts } from "../session/prompts.js";
 import { CallSettingsError, validateCallSettings } from "../business/callSettings.js";
@@ -175,11 +178,12 @@ export const business = new Elysia({ prefix: "/business" })
         return { assigned: false, to: toE164(query.to), reason: "no_number" };
       }
 
-      // A demo or an account still being set up does not answer real callers yet; they test in the
-      // app, and an admin switches the line on with Go live. `unassigned` (accounts from before the
-      // stages) and `production` answer as before.
+      // A demo does not answer real callers: it has no line of its own and tests in the app.
+      // Onboarding (`pre-production`) does: the business configures its own receptionist and calls
+      // its number — or forwards its line to it — to check what callers will get before Go live.
+      // `unassigned` (accounts from before the stages) and `production` answer as before.
       const owner = number.userId ? await findUserById(number.userId) : null;
-      if (owner && (owner.status === "demo" || owner.status === "pre-production")) {
+      if (owner && owner.status === "demo") {
         return { assigned: false, to: number.phoneE164, reason: "not_live_stage" };
       }
 
@@ -249,6 +253,10 @@ export const business = new Elysia({ prefix: "/business" })
           // null means this customer has nobody to put callers through to, and the agent must not
           // offer to — a transfer it cannot perform is worse than never mentioning one.
           transferNumber: profile.transferNumber,
+          // True only when this business's forwarding holds the call behind "press 1 to accept".
+          // The agent presses 1 on a forwarded call only then; otherwise the caller is already
+          // connected and would hear the tones.
+          forwardAcceptPress: profile.forwardAcceptPress,
           booking,
         },
         session,
@@ -581,6 +589,29 @@ export const business = new Elysia({ prefix: "/business" })
     },
   )
 
+  // Whether the agent presses 1 on forwarded calls — a switch in the Call forwarding guide, so its
+  // own endpoint. A setting of the line, not of what the assistant says: nothing else is touched.
+  .put(
+    "/forward-accept",
+    async ({ body, headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      const target = profileTargetFor(user, query.userId);
+      const profile = await saveForwardAcceptPress(target, body.forwardAcceptPress);
+      if (!profile) {
+        return status(409, {
+          error: "no_profile",
+          message: "Add your business information first — until then the assistant answers neutrally.",
+        });
+      }
+      return { profile };
+    },
+    {
+      query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }),
+      body: t.Object({ forwardAcceptPress: t.Boolean() }),
+    },
+  )
+
   // How the assistant introduces itself — its own section in the dashboard, so its own endpoint.
   /**
    * Save the Knowledge tab.
@@ -722,6 +753,87 @@ export const business = new Elysia({ prefix: "/business" })
         language: t.Optional(t.String({ maxLength: 16 })),
         rebuild: t.Optional(t.Boolean()),
       }),
+    },
+  )
+
+  /**
+   * Research the business again — the same run that fills a demo (`demo/research.ts`: its site, FAQ
+   * pages, Maps listing and reviews) — so a business can refill Business information and FAQs instead
+   * of typing them all over again.
+   *
+   * It SAVES NOTHING. The answer is the profile the run found, shaped exactly as a Business information
+   * save expects; the dashboard puts it into the form, the business checks it, and their own Save
+   * writes it (prompts follow as on any save). A run is a guess about the outside world and must never
+   * overwrite what callers hear on its own.
+   *
+   * Runs inside the request, like the demo's Re-research (up to the 300 s function ceiling), and
+   * costs a real OpenAI web search, so: one run a minute per account, and none without the key.
+   */
+  .post(
+    "/research",
+    async ({ body, headers, query, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      if (user.role !== "admin" && user.status === "demo") {
+        return status(403, {
+          error: "demo_read_only",
+          message: "Your details can be researched again once your receptionist is being set up.",
+        });
+      }
+      const target = profileTargetFor(user, query.userId);
+      const existing = await findProfile(target);
+      if (!existing) return status(409, { error: "no_profile", message: ADD_DETAILS_FIRST });
+      if (!env.openaiApiKey) {
+        return status(503, { error: "no_openai_key", message: "Research isn't available on this server (no OpenAI key)." });
+      }
+
+      const typed = (value: string | undefined) => value?.trim() || undefined;
+      const businessName = typed(body?.businessName) ?? existing.profile?.name ?? existing.businessName ?? "";
+      if (!businessName.trim()) {
+        return status(400, { error: "no_name", message: "Enter the business name to research." });
+      }
+      if (rateLimited(`business-research:${target}`, 1)) {
+        return status(429, { error: "rate_limited", message: "Research is already running. Try again in a minute." });
+      }
+
+      let result;
+      try {
+        result = await researchBusiness({
+          businessName: businessName.trim(),
+          websiteUrl: typed(body?.websiteUrl) ?? existing.profile?.website ?? existing.website ?? undefined,
+          mapsUrl: typed(body?.mapsUrl),
+          notes: typed(body?.notes),
+        });
+      } catch (error) {
+        console.error("[business] research failed", error);
+        // 502, never 401: a provider refusing OUR key is not the person's sign-in failing.
+        return status(502, {
+          error: "research_failed",
+          message: error instanceof Error ? error.message : "The research didn't finish. Try again in a moment.",
+        });
+      }
+
+      let profile: StructuredProfile;
+      try {
+        profile = normalizeProfile(result.profile);
+      } catch (err) {
+        if (err instanceof ExtractionError) {
+          return status(422, { error: "nothing_found", message: "The research didn't find enough about this business to fill in." });
+        }
+        throw err;
+      }
+      return { profile, sources: result.sources, businessName: result.businessName };
+    },
+    {
+      query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }),
+      body: t.Optional(
+        t.Object({
+          businessName: t.Optional(t.String({ maxLength: 200 })),
+          websiteUrl: t.Optional(t.String({ maxLength: 500 })),
+          mapsUrl: t.Optional(t.String({ maxLength: 1000 })),
+          notes: t.Optional(t.String({ maxLength: 1000 })),
+        }),
+      ),
     },
   )
 

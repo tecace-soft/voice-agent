@@ -251,8 +251,20 @@ def main() -> int:
                     check("Transfers: the number warm transfers come from is shown", "(425) 555-0100" in body)
                     check("Transfers: the old single transfer number is explained",
                           "before transfer scenarios existed" in body)
+                    check("Transfers: the old number is listed as in use, not 'No transfers yet'",
+                          "In use on calls" in body and "(425) 555-0111" in body and "No transfers yet" not in body,
+                          body[:400])
                     check("Transfers: nothing to publish yet",
                           page.get_by_role("button", name="Publish").is_disabled())
+                    # The old number opens in the editor, so its type and hours can be changed in place.
+                    page.get_by_role("button", name="Edit Someone on the team").click()
+                    page.wait_for_timeout(300)
+                    old_editor = page.get_by_role("group", name="Edit Someone on the team")
+                    check("Transfers: the old number opens in the editor",
+                          old_editor.count() == 1 and old_editor.get_by_role("tab", name="Warm").count() == 1
+                          and old_editor.get_by_role("button", name="Set hours").count() == 1)
+                    old_editor.get_by_role("button", name="Cancel").click()
+                    page.wait_for_timeout(200)
                     page.get_by_role("button", name="Add a transfer").first.click()
                     page.wait_for_timeout(300)
                     # The form opens in place, at the top of the list, rather than in a dialog.
@@ -269,6 +281,10 @@ def main() -> int:
                     drafts = requests("/business/call-settings")
                     check("Transfers: Save PUTs the draft", len(drafts) == 2, str(drafts)[:200])
                     check("Transfers: the new transfer is listed", "Billing" in page.inner_text("main"))
+                    # Calls follow what is published: a saved draft does not replace the old number.
+                    body = page.inner_text("main")
+                    check("Transfers: the old number stays in use until the draft is published",
+                          "In use on calls" in body and "Publish your transfers to replace it" in body, body[:400])
                     publish = page.get_by_role("button", name="Publish")
                     check("Transfers: Publish is offered once there is a change", publish.is_enabled())
                     publish.click()
@@ -277,6 +293,8 @@ def main() -> int:
                           len(requests("/call-settings/publish", "POST")) == 1)
                     check("...and then has nothing left to publish",
                           page.get_by_role("button", name="Publish").is_disabled())
+                    check("...and the old number is no longer shown as in use",
+                          "In use on calls" not in page.inner_text("main"))
 
                     # ---- Text a link
                     open_section("Text a link")
@@ -284,15 +302,22 @@ def main() -> int:
                     check("Text a link: the empty state says what to do", "No link scenarios yet" in body)
                     check("Text a link: the consent text is previewed", "Reply YES" in body and "STOP" in body)
 
-                    # ---- Custom training: instructions, and the prompts behind Advanced
+                    # ---- Custom training: the prompts first and open, then the rules and instructions.
+                    # (They used to sit behind "Advanced: prompts" at the foot of the page, below the
+                    # fold on a business, and read as missing.)
                     open_section("Custom training")
                     check("Custom training: your own instructions are editable",
                           page.get_by_label("Your own instructions", exact=True).count() == 1)
-                    page.get_by_role("button", name="Advanced: prompts").click()
-                    page.wait_for_timeout(300)
+                    check("Custom training: no Advanced toggle to find first",
+                          page.get_by_role("button", name="Advanced: prompts").count() == 0)
                     for label in ("Voice prompt", "Backend prompt"):
-                        check(f"Custom training: the {label} box is there",
+                        check(f"Custom training: the {label} box is there, open",
                               page.get_by_label(label, exact=True).count() == 1)
+                    prompts_top = page.get_by_role("heading", name="Prompts", exact=True).bounding_box()
+                    rules_top = page.get_by_text("On every call, as standard").bounding_box()
+                    check("Custom training: the Prompts section comes before the standard rules",
+                          prompts_top is not None and rules_top is not None and prompts_top["y"] < rules_top["y"],
+                          f"{prompts_top} {rules_top}")
                     page.get_by_role("button", name="Show", exact=True).click()
                     page.wait_for_timeout(700)
                     check("Custom training: the preview reads the composed session",
@@ -346,10 +371,23 @@ def main() -> int:
                     check("Forwarding: the button opens the guide", "#/business/forwarding" in page.url, page.url)
                     check("Forwarding: missed-call codes carry the assistant's number",
                           "**61*4255550100#" in body and "**67*4255550100#" in body, body[:400])
-                    page.get_by_role("radio", name="Every call").click()
+                    check("Forwarding: every-call code shown alongside, no mode switch",
+                          "**21*4255550100#" in body and page.get_by_role("radio").count() == 0, body[:400])
                     page.get_by_role("tab", name="Verizon").click()
                     body = page.inner_text("main")
-                    check("Forwarding: every call on Verizon", "*724255550100" in body, body[:400])
+                    check("Forwarding: Verizon shows *71 and *72 together, not the landline *90/*92",
+                          "*714255550100" in body and "*724255550100" in body and "*90" not in body, body[:400])
+                    check("Forwarding: no press-to-accept switch on a mobile tab while it's off",
+                          page.get_by_role("switch").count() == 0)
+                    page.get_by_role("tab", name="Landline").click()
+                    body = page.inner_text("main")
+                    check("Forwarding: landline explains answer confirmation", "press 1 to accept" in body, body[:400])
+                    page.get_by_role("switch", name="My phone company still asks to press 1 to accept").click()
+                    page.wait_for_timeout(300)
+                    puts = [x for x in sent if x[0] == "PUT" and "/business/forward-accept" in x[1]]
+                    check("Forwarding: the switch saves press-to-accept",
+                          len(puts) == 1 and '"forwardAcceptPress":true' in puts[0][2].replace(" ", ""), str(puts))
+                    check("Forwarding: the switch says it saved", "applies from the next call" in page.inner_text("main"))
 
                     # ---- Request go live: an account being set up, its part done, asks for its line
                     fake_backend.USER["status"] = "pre-production"

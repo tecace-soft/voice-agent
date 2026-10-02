@@ -84,6 +84,10 @@ class BusinessConfig:
     # voice, language, tools, transfers, reachable, canBook, returnLeg}. None for a business whose
     # profile predates the structured editor; the hand-built prompt is used then.
     session: dict | None = None
+    # Their forwarding holds the call behind "press 1 to accept" (a landline carrier's answer
+    # confirmation), so a forwarded call needs a keypress before the caller is connected. Off for
+    # everyone else: on a mobile forward the caller is already on the line and would hear the tones.
+    forward_accept_press: bool = False
 
 
 def _usable_session(value: object) -> dict | None:
@@ -97,14 +101,19 @@ def _usable_session(value: object) -> dict | None:
     return value
 
 
-async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | None:
+async def fetch_business_config(cfg: Config, dialled: str, *, quiet: bool = False) -> BusinessConfig | None:
     """Look up the owner of the number that was dialled, or None if there isn't one.
 
     None covers every "we don't know" case deliberately: unconfigured, unreachable, unauthorised,
     unknown number, unassigned number. The caller can't act differently on any of them — in all of
     them there is no business to speak for — so collapsing them keeps the decision at the call site
     binary instead of a ladder of half-measures.
+
+    `quiet` is for the greeting warm-up, which looks up every number with no caller on the line:
+    it logs at DEBUG, so an unassigned number is not reported as a caller reaching it.
     """
+    warn = log.debug if quiet else log.warning
+    info = log.debug if quiet else log.info
     if not cfg.business_config_url or not cfg.agent_config_key:
         log.debug("business config not configured; answering neutrally")
         return None
@@ -114,7 +123,7 @@ async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | N
 
     cached = _cache.get(dialled)
     if cached and time.monotonic() - cached[0] < _CACHE_SECONDS:
-        log.info("business config for %s served from the last %.0fs — no lookup", dialled, _CACHE_SECONDS)
+        info("business config for %s served from the last %.0fs — no lookup", dialled, _CACHE_SECONDS)
         return cached[1]
 
     url = f"{cfg.business_config_url.rstrip('/')}/business/config?to={quote(dialled)}"
@@ -122,30 +131,38 @@ async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | N
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(url, headers={"x-agent-key": cfg.agent_config_key})
         if resp.status_code != 200:
-            log.warning(
+            warn(
                 "business config lookup for %s returned %s — answering neutrally",
                 dialled, resp.status_code,
             )
             return None
         data = resp.json()
     except Exception as exc:  # noqa: BLE001 — a monitor outage must not take the phone line down
-        log.warning("business config lookup for %s failed (%s) — answering neutrally", dialled, exc)
+        warn("business config lookup for %s failed (%s) — answering neutrally", dialled, exc)
         return None
 
     if not data.get("assigned"):
         # A registered-but-unassigned number, or one we've never seen. Loud, because it means a
         # real caller just reached a line nobody owns and an admin needs to assign it.
-        log.warning(
-            "number %s is not assigned to anyone — answering neutrally. "
-            "Assign it under Agent numbers in the dashboard.",
-            data.get("to") or dialled,
+        # The backend says why, and each reason has a different fix — so the log says which.
+        reason = str(data.get("reason") or "")
+        fix = {
+            "no_number": "this backend has no such number — assign it under Agent numbers, on the "
+            "dashboard whose backend BUSINESS_CONFIG_URL points at",
+            "not_live_stage": "its account is still in Demo or Onboarding — real calls are answered "
+            "only once an admin has pressed Go live",
+            "no_business_details": "its business has no name or details saved yet",
+        }.get(reason, "unknown reason")
+        warn(
+            "number %s is not answered as any business (%s) — answering neutrally: %s",
+            data.get("to") or dialled, reason or "?", fix,
         )
         return None
 
     user = data.get("user") or {}
     biz = data.get("business") or {}
     name = str(biz.get("name") or "")
-    log.info(
+    info(
         "call to %s is for %r (%s <%s>)",
         data.get("to"), name, user.get("name"), user.get("email"),
     )
@@ -167,6 +184,7 @@ async def fetch_business_config(cfg: Config, dialled: str) -> BusinessConfig | N
         website=str(biz.get("website") or ""),
         facts=str(biz.get("facts") or ""),
         transfer_number=str(biz.get("transferNumber") or ""),
+        forward_accept_press=biz.get("forwardAcceptPress") is True,
         agent_name=str(biz.get("agentName") or ""),
         greeting=str(biz.get("greeting") or ""),
         transfer_topics=str(biz.get("transferTopics") or ""),

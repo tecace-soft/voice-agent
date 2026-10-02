@@ -30,6 +30,162 @@ export type Release = {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.0.15",
+    date: "2026-10-02",
+    title: "Set up your receptionist yourself; a Sales section for prospects",
+    items: [
+      {
+        kind: "new",
+        text: "Request setup no longer waits for us. Pick a plan, add a card and your receptionist is yours to change and test straight away. Nothing is charged until your line is live; your 14-day free trial starts that day.",
+      },
+      {
+        kind: "new",
+        text: "Billing, in the sidebar: your plan, the card on file, when the free trial ends and the first bill comes. Payments are in test mode for now: cards are checked but never charged.",
+      },
+      {
+        kind: "improved",
+        text: "A new home page for each stage. While you're being set up: a checklist of what's left, what we do for you, and your phone line. Once you're live: calls answered, bookings made, messages waiting for you, callers put through, and who needs a reply.",
+      },
+      {
+        kind: "improved",
+        text: "The demo home leads with calling your receptionist and asking for setup, and leaves out our own link-tracking numbers.",
+      },
+      {
+        kind: "improved",
+        text: "Your earlier transfer number can be edited: click it to change its type or when it can be used, without adding a new number. Saving adds it to your transfers with your changes.",
+      },
+      {
+        kind: "improved",
+        text: "Rows under Transfer calls, Take a message and Text a link show \"Edit\" so it's clear you can click them to change them.",
+      },
+      {
+        kind: "fixed",
+        text: "Transfer calls lists the transfer number you set up before transfer scenarios for as long as calls still use it, instead of \"No transfers yet\". Add it to your transfers in one click; it stays in use until you publish.",
+      },
+      {
+        kind: "fixed",
+        text: "Call forwarding shows the right missed-call code for Verizon mobile phones (*71). The busy and no-answer codes it showed before (*90, *92) are for landlines and are now under Landline.",
+      },
+      {
+        kind: "improved",
+        text: "Call forwarding shows both ways to forward for your phone company at once, missed calls and every call, each with what it does, instead of making you pick one first.",
+      },
+      {
+        kind: "improved",
+        text: "Approve and Decline on a prospect are only needed for setups you start yourself; a customer's own request moves them to onboarding without you.",
+        admin: true,
+      },
+      {
+        kind: "improved",
+        text: "Demo › Customers and CRM are one page, Sales › Prospects: a table or a board of the same prospects. The first tab, Needs you, holds what is on you (a setup request, an overdue follow-up, failed research), and a Next step column says what happens next instead of three status columns.",
+        admin: true,
+      },
+      {
+        kind: "improved",
+        text: "A prospect's page opens on an Overview: where the deal is, one card with the next thing to do (approve, follow up, research, send the link), the demo link with its minutes, the deal's stage, follow-up date and notes, and the contact. Each change saves as you make it. Calls, Receptionist, Research and Outreach email are the other tabs.",
+        admin: true,
+      },
+      {
+        kind: "new",
+        text: "Demo analytics replaces the Demo Overview: how many prospects opened their link, called, asked for setup and went live, the most active prospects, and the latest activity across all of them.",
+        admin: true,
+      },
+      {
+        kind: "new",
+        text: "New prospect asks for two things, the name and a website or Google Maps link; the contact can wait. Review every unreviewed call on a prospect in one press.",
+        admin: true,
+      },
+    ],
+  },
+  {
+    version: "0.0.14",
+    date: "2026-10-02",
+    title: "A clearer sign-up, demo and pricing page",
+    items: [
+      {
+        kind: "improved",
+        text: "The sign-up page (/start) has a new layout: the form sits beside how it works, each field shows an example, you can show the password you typed, and the free trial length is stated up front.",
+      },
+      {
+        kind: "improved",
+        text: "Demo pages (the link we send a business) match the new sign-up page: a larger headline, one clear Request setup button and a footer with how to reach us.",
+      },
+      {
+        kind: "improved",
+        text: "The pricing page you reach from a demo has the same look, with the business's name at the top and a clear way back to the demo.",
+      },
+    ],
+  },
+  {
+    version: "0.0.13",
+    date: "2026-10-01",
+    title: "Refill your details from research; your prompts up front",
+    items: [
+      {
+        kind: "new",
+        text: "Dashboard overview shows whether the voice agent's call server, outbound poller and scenario runner are running.",
+        admin: true,
+      },
+      {
+        kind: "improved",
+        text: "Call forwarding has a new step: how to turn off answer confirmation (\"press 1 to accept\") for your phone company or phone app, so callers reach your receptionist without waiting or hearing key tones.",
+      },
+      {
+        kind: "fixed",
+        text: "Callers forwarded from a mobile phone no longer hear loud key tones when your receptionist picks up. If your phone company still asks to press 1 to accept, turn on the switch in Call forwarding and your receptionist presses it for you.",
+      },
+      {
+        kind: "new",
+        text: "Business information › Fill in from research: we read your website, its FAQ pages and your Google listing again and fill in the form and your FAQs for you. Nothing changes for callers until you check it and press Save, and Undo puts the form back.",
+      },
+      {
+        kind: "improved",
+        text: "Custom training opens with your receptionist's prompts, already open. They're built from Business information, Agent profile and FAQs and rebuilt whenever you save those. Before, they were behind an \"Advanced: prompts\" button at the bottom of the page, easy to miss.",
+      },
+      {
+        kind: "improved",
+        text: "When we research your business, we now copy the FAQs already on your website and Google listing into your FAQs, in the order you published them, so you don't have to type them in again.",
+      },
+      {
+        kind: "new",
+        text: "Scenario tests: run written test calls against a business's receptionist, once per press, and see each conversation, the tools it used, and why it passed or failed.",
+        admin: true,
+      },
+    ],
+  },
+  {
+    version: "0.0.12",
+    date: "2026-09-30",
+    title: "A calls overview and chat-style transcripts; voicemail gets its own section",
+    items: [
+      {
+        kind: "fixed",
+        text: "Opening Appointments no longer signs you out when a connected calendar needs attention; it says to reconnect instead. Calendars connected earlier keep working as they are.",
+      },
+      {
+        kind: "fixed",
+        text: "Appointments: Google Calendar can now be connected. A calendar that can't be connected yet says \"Not available\" instead of \"Needs setup\".",
+      },
+      {
+        kind: "improved",
+        text: "Answered calls is now Transcripts, under Dashboard next to Overview. Open a call and the conversation reads like a text-message chat — the caller on the right, your receptionist on the left — just like the test call on your demo. Each call sits in its own outlined box, the open one is outlined in blue, and Hide conversation at the bottom closes it.",
+      },
+      {
+        kind: "new",
+        text: "Dashboard › Overview: your receptionist at a glance — calls, minutes, callbacks requested and this month's talk time, calls per day, and your most recent calls with what each caller wanted and how it ended. Pick the last 7, 30 or 90 days. It's the page you land on when you sign in.",
+      },
+      {
+        kind: "new",
+        text: "Admins can view every business together or pick one on Dashboard › Overview; the choice stays in the address.",
+        admin: true,
+      },
+      {
+        kind: "improved",
+        text: "Overview, Analytics, Per person, Daily activity and the runs lists are grouped under Voicemail in the menu, since they show your voicemail transcriptions rather than your receptionist's calls.",
+      },
+    ],
+  },
+  {
     version: "0.0.11",
     date: "2026-09-29",
     title: "Guided setup, Request go live, settings that save as you type, and links that land where you were",
@@ -65,6 +221,10 @@ export const CHANGELOG: Release[] = [
         text: "Real calls to your number now follow what you set up here, the same as a test call: your prompts and Custom training, knowledge, FAQs, instructions, greeting and voice, plus the transfers and message situations you published. Texting a link is test-call only for now.",
       },
       {
+        kind: "improved",
+        text: "While you're onboarding, calls to your receptionist's number — or your line forwarded to it — are answered as your business with what you've published, so you can check it before go live.",
+      },
+      {
         kind: "fixed",
         text: "A customer's Activity, Settings, Sources and Share tabs are in the address now: a refresh, Back and Forward, or a shared link opens the same tab, and the address no longer names a settings section while another tab is open.",
         admin: true,
@@ -76,7 +236,25 @@ export const CHANGELOG: Release[] = [
       },
       {
         kind: "fixed",
+        text: "Leaving a customer's Business information or Answered calls no longer keeps every other page on that customer. Clicking the page you're on in the sidebar takes you back to the list of customers.",
+        admin: true,
+      },
+      {
+        kind: "fixed",
+        text: "Switching customers quickly no longer shows the previous customer's details or calls under the new name, and a half-written description no longer carries over to the next customer.",
+        admin: true,
+      },
+      {
+        kind: "fixed",
         text: "While you're trying your receptionist, Version · Changelog opens the changelog, and a refresh stays on the section you had open.",
+      },
+      {
+        kind: "fixed",
+        text: "An old link to one of your page's other tabs opens your settings instead of a blank page.",
+      },
+      {
+        kind: "fixed",
+        text: "Signing in after someone else signed out in the same browser tab starts you on your own page, not on theirs.",
       },
       {
         kind: "fixed",
@@ -85,6 +263,11 @@ export const CHANGELOG: Release[] = [
       {
         kind: "fixed",
         text: "Agent numbers connects to Twilio with an API key as well as the account's auth token, so syncing the account's numbers works on a server set up with a key.",
+        admin: true,
+      },
+      {
+        kind: "improved",
+        text: "Agent numbers no longer has a form to register a number by hand: the list comes from Twilio, and Sync from Twilio now sits on the Numbers table.",
         admin: true,
       },
     ],

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   countOpenFeedback,
   countSetupRequests,
@@ -11,14 +11,17 @@ import { useAuth } from "./auth";
 import { ChromeContext } from "./chrome";
 import { Sidebar, type ViewId } from "./components/Sidebar";
 import { MailboxPicker } from "./components/MailboxPicker";
+import { DemosGate } from "./demos/DemosGate";
 import { DemosView } from "./demos/DemosView";
+import { ReceptionistOverviewScreen } from "./demos/screens/ReceptionistOverviewScreen";
 import { DEMO_VIEWS } from "./demos/views";
 import { IconPanelLeft, IconRefresh } from "./icons";
 import { AccountsPage } from "./pages/AccountsPage";
 import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AllFeedbackPage } from "./pages/AllFeedbackPage";
-import { BillingPage } from "./pages/BillingPage";
+import { BillingScreen } from "./billing/BillingScreen";
+import { CustomerHome } from "./home/CustomerHome";
 import { ChangelogPage } from "./pages/ChangelogPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { FailuresPage } from "./pages/FailuresPage";
@@ -42,13 +45,17 @@ import { DashboardSkeleton } from "./ui";
 // An invite or reset link the page was opened with (#/welcome?token=… / #/reset?token=…), read once
 // at load and taken out of the address bar before the router sees it.
 const LINK_AT_LOAD = typeof window === "undefined" ? null : takeLinkFromHash();
-// Which view the address asked for when the page loaded, before the router normalised it. A
-// customer who asked for nothing in particular lands on their own page.
-const ASKED_AT_LOAD = typeof window === "undefined" ? "" : window.location.hash.replace(/^#\/?/, "").split(/[/?]/)[0] ?? "";
+// The previous account's view and scope are not the next one's: signing out empties the address, so
+// whoever signs in next starts on their own default page rather than on an admin's customer or an
+// admin-only view.
+function clearRoute() {
+  window.history.replaceState(null, "", window.location.pathname + window.location.search);
+}
 
 // Views that don't read the transcription stats, so a stats failure shouldn't hide them.
 // Analytics reads its own endpoint, so it belongs with the views that don't wait on /transcribe/stats.
 const STANDALONE_VIEWS = new Set<ViewId>([
+  "dashboard",
   "accounts",
   "feedback",
   "allFeedback",
@@ -76,8 +83,12 @@ const WIDE_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>(["demoProspects"]);
 
 // What a demo-stage account can open; anything else lands on its Overview.
 const DEMO_OWNER_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>(["myOverview", "myCalls", "demoProspect", "changelog", "billing"]);
+// The one tab of their own page a demo-stage account has; the others are operator-only and render
+// nothing for them, which left a blank page the sidebar couldn't leave.
+const DEMO_OWNER_TAB: ProspectTab = "receptionist";
 
 const VIEW_TITLES: Record<ViewId, string> = {
+  dashboard: "Overview",
   overview: "Overview",
   analytics: "Analytics",
   people: "Per person",
@@ -86,15 +97,15 @@ const VIEW_TITLES: Record<ViewId, string> = {
   failed: "Failed runs",
   feedback: "Send feedback",
   allFeedback: "All feedback",
-  calls: "Answered calls",
+  calls: "Transcripts",
   business: "Business information",
   numbers: "Agent numbers",
   apiKeys: "API keys",
   accounts: "Accounts",
-  demoOverview: "Overview",
-  demoProspects: "Customers",
+  demoOverview: "Demo analytics",
+  demoProspects: "Prospects",
   demoProspect: "Detail",
-  demoPipeline: "CRM",
+  demoPipeline: "Prospects",
   myOverview: "Overview",
   myCalls: "Call activity",
   changelog: "Changelog",
@@ -108,22 +119,35 @@ function useStats(mailbox: MailboxScope, skip = false) {
   const [data, setData] = useState<TranscribeStats | null>(null);
   const [loading, setLoading] = useState(!skip);
   const [error, setError] = useState<string | null>(null);
+  // Only the latest request may write: switching mailbox while one is in flight must not let the
+  // previous mailbox's numbers land under the new name.
+  const latest = useRef(0);
 
   const load = useCallback(() => {
     // A customer we are still demoing to has no voicemail runs — nothing has ever reported for their
     // address. Asking anyway would be one request per page load answering with zeroes.
     if (skip) return Promise.resolve();
+    const request = ++latest.current;
     setLoading(true);
     return getTranscribeStats(mailbox)
       .then((d) => {
+        if (request !== latest.current) return;
         setData(d);
         setError(null);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load transcription stats."))
-      .finally(() => setLoading(false));
-  }, [mailbox]);
+      .catch((e) => {
+        if (request === latest.current) setError(e instanceof Error ? e.message : "Failed to load transcription stats.");
+      })
+      .finally(() => {
+        if (request === latest.current) setLoading(false);
+      });
+  }, [mailbox, skip]);
 
+  // A new mailbox starts empty (the skeleton), never on the previous one's numbers; Refresh keeps
+  // what is on screen, which is why this is here and not in `load`.
   useEffect(() => {
+    setData(null);
+    setError(null);
     void load();
   }, [load]);
 
@@ -135,7 +159,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // The view and the mailbox both live in the URL, so a refresh stays where you were and the
   // browser's Back button walks the views you visited.
   const [
-    { view: routeView, mailbox: routeMailbox, id: routeRecordId, section: routeSection, tab: routeTab },
+    { view: routeView, mailbox: routeMailbox, id: routeRecordId, section: routeSection, tab: routeTab, customer: routeCustomer },
     navigate,
   ] = useRoute();
   // Open by default on a desktop-width screen; on narrow screens the rail is an overlay, so it
@@ -176,6 +200,12 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   const routeId = demoOnly ? (user.businessId ?? undefined) : routeRecordId;
   const mailbox: MailboxScope = isAdmin ? routeMailbox : undefined;
   const setMailbox = useCallback((next: MailboxScope) => navigate({ mailbox: next }), [navigate]);
+  // Which business an admin is viewing on Business information / Transcripts. Separate from the
+  // mailbox, and dropped when they leave that page (`nextRoute`).
+  const customer = isAdmin ? routeCustomer : undefined;
+  const setCustomer = useCallback((next: MailboxScope) => navigate({ customer: next ?? undefined }), [navigate]);
+  // Only the Settings tab is a demo-stage account's; any other in the address is ignored.
+  const tab = demoOnly && routeTab !== DEMO_OWNER_TAB ? undefined : routeTab;
   // Which settings section is open, on the Business page and a demo's page. In the URL like the
   // view, so a refresh stays on it and a link can point at "Transfer calls".
   const setSection = useCallback((next: SectionId) => navigate({ section: next }), [navigate]);
@@ -190,9 +220,19 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
     if (!demoOnly) return;
     if (!DEMO_OWNER_VIEWS.has(routeView)) navigate({ view: "myOverview" }, { replace: true });
     else if (routeView === "demoProspect" && user.businessId && routeRecordId !== user.businessId) {
-      navigate({ view: "demoProspect", id: user.businessId }, { replace: true });
+      navigate({ view: "demoProspect", id: user.businessId, tab: undefined }, { replace: true });
+    } else if (routeView === "demoProspect" && routeTab && routeTab !== DEMO_OWNER_TAB) {
+      navigate({ tab: undefined }, { replace: true });
     }
-  }, [demoOnly, routeView, routeRecordId, user.businessId, navigate]);
+  }, [demoOnly, routeView, routeRecordId, routeTab, user.businessId, navigate]);
+  // Only an admin has a mailbox scope or a customer to view. For anyone else they were ignored but
+  // stayed in the address, carried to every view they opened next.
+  useEffect(() => {
+    if (isAdmin) return;
+    if (routeMailbox !== undefined || routeCustomer !== undefined) {
+      navigate({ mailbox: undefined, customer: undefined }, { replace: true });
+    }
+  }, [isAdmin, routeMailbox, routeCustomer, navigate]);
   const { data, loading, error, refresh } = useStats(mailbox, demoOnly);
 
   // How many notes are waiting on the team, for the sidebar badge. Admins only — it's the one
@@ -203,7 +243,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // a count of failed runs can only ever grow, so it could never clear and stopped meaning
   // "something needs attention" the first time anything went wrong.
   const [unseenFailures, setUnseenFailures] = useState(0);
-  // Setup requests waiting for an answer (Demo › Customers badge). Admins only.
+  // Setup requests waiting for an answer (Sales › Prospects badge). Admins only.
   const [setupRequests, setSetupRequests] = useState(0);
   // Go-live requests waiting for an answer (Accounts badge). Admins only.
   const [liveRequests, setLiveRequests] = useState(0);
@@ -225,14 +265,6 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
       active = false;
     };
   }, [isAdmin, routeView]);
-  // A customer who has just been approved lands on their own business information, not on the
-  // voicemail Overview they have no use for. Only when nothing else was asked for in the address.
-  useEffect(() => {
-    if (!isAdmin && user.status === "pre-production" && ASKED_AT_LOAD === "") {
-      navigate({ view: "business", section: "business-info" }, { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   useEffect(() => {
     if (!isAdmin) return; // the endpoint is admin-only; asking as a user is a guaranteed 403
     let active = true;
@@ -280,9 +312,13 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   const showMailbox = isAdmin && mailbox === undefined;
 
   const openView = (id: ViewId) => {
+    // The item for the page you are on takes you to its start: out of the business an admin picked
+    // (the only way back to the list from the studio's rail on a narrow screen), and off a section
+    // or tab.
+    const reset = id === view ? { customer: undefined, section: undefined, tab: undefined } : {};
     // For a demo-stage account there is one destination, and it needs the record id in the path.
-    if (demoOnly && id === "demoProspect") navigate({ view: "demoProspect", id: user.businessId ?? undefined });
-    else navigate({ view: id });
+    if (demoOnly && id === "demoProspect") navigate({ view: "demoProspect", id: user.businessId ?? undefined, ...reset });
+    else navigate({ view: id, ...reset });
     if (window.innerWidth < 900) closeNav();
   };
 
@@ -297,7 +333,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
         lastRunAt={data?.lastRunAt ?? null}
         mailboxLabel={mailboxLabel}
         mailboxSubLabel={mailboxSubLabel}
-        showScope={!isDemoView}
+        showScope={!isDemoView && view !== "dashboard" && view !== "calls"}
         user={user}
         onSignOut={onSignOut}
         setupRequests={setupRequests}
@@ -323,7 +359,9 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           {studio && <div className="topbar-slot tw" ref={setSlotMain} />}
           {!studio && (
           <nav className="crumbs ta-label-1" aria-label="Breadcrumb">
-            <span className="muted">{demoOnly ? "My receptionist" : isDemoView ? "Demo" : "Transcribe"}</span>
+            <span className="muted">
+              {demoOnly ? "My receptionist" : isDemoView ? "Sales" : view === "dashboard" || view === "calls" ? "Dashboard" : "Transcribe"}
+            </span>
             <span className="muted" aria-hidden="true">
               /
             </span>
@@ -336,8 +374,14 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             {studio && <div className="topbar-end tw" ref={setSlotEnd} />}
             {/* The studio's pages say whose settings these are in their own breadcrumb, and read no
                 transcription stats, so neither the picker nor Refresh applies there. */}
-            {isAdmin && !isDemoView && !studio && <MailboxPicker value={mailbox} onChange={setMailbox} />}
-            {!isDemoView && !studio && (
+            {/* Not on Business information / Transcripts: they pick a business of their own
+                (`customer`), and the voicemail scope would be a control that changes nothing there. */}
+            {/* Nor on Dashboard › Overview: it reads calls, not transcriptions, and has its own picker. */}
+            {isAdmin && !isDemoView && !studio && view !== "business" && view !== "calls" && view !== "dashboard" && (
+              <MailboxPicker value={mailbox} onChange={setMailbox} />
+            )}
+            {/* Refresh reloads the voicemail stats, which the Dashboard group's pages don't read. */}
+            {!isDemoView && !studio && view !== "dashboard" && view !== "calls" && (
               <button
                 type="button"
                 className="btn btn-primary"
@@ -396,14 +440,27 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             ) : (
               <p className="muted ta-body-2">Only an admin can see transcription failures.</p>
             ))}
-          {view === "calls" && (
-            <CallsPage isAdmin={isAdmin} scope={mailbox} onScope={setMailbox} />
+          {view === "dashboard" && (
+            <DemosGate>
+              {/* A customer being set up, or live, gets their Home; everyone else the calls overview. */}
+              {!isAdmin && (user.status === "pre-production" || user.status === "production") ? (
+                <CustomerHome user={user} />
+              ) : (
+                <ReceptionistOverviewScreen isAdmin={isAdmin} customer={customer} onCustomer={setCustomer} />
+              )}
+            </DemosGate>
           )}
+          {view === "calls" && (
+            <CallsPage isAdmin={isAdmin} scope={customer} onScope={setCustomer} />
+          )}
+          {/* Keyed by the customer, so nothing typed or loaded for one business can reach the next:
+              an open description editor, or a slow response for the one just left. */}
           {view === "business" && (
             <BusinessPage
+              key={customer ?? ""}
               isAdmin={isAdmin}
-              scope={mailbox}
-              onScope={setMailbox}
+              scope={customer}
+              onScope={setCustomer}
               section={routeSection}
               onSection={setSection}
             />
@@ -422,7 +479,11 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             ))}
           {view === "feedback" && <FeedbackPage />}
           {view === "changelog" && <ChangelogPage isAdmin={isAdmin} />}
-          {view === "billing" && <BillingPage />}
+          {view === "billing" && (
+            <DemosGate>
+              <BillingScreen user={user} />
+            </DemosGate>
+          )}
           {view === "allFeedback" &&
             (isAdmin ? (
               <AllFeedbackPage onCountChange={setOpenFeedback} />
@@ -442,7 +503,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
                 id={routeId}
                 section={routeSection}
                 onSection={setSection}
-                tab={routeTab}
+                tab={tab}
                 onTab={setTab}
               />
             ) : demoOnly ? (
@@ -451,7 +512,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
                 id={routeId}
                 section={routeSection}
                 onSection={setSection}
-                tab={routeTab}
+                tab={tab}
                 onTab={setTab}
                 operator={false}
               />
@@ -472,6 +533,13 @@ export function App() {
   const { status, user, needsSetup, signOut } = useAuth();
   const [screen, setScreen] = useState<"signin" | "setup">("signin");
   const [link, setLink] = useState(LINK_AT_LOAD);
+  // Signing out — the button, or a token the backend stopped accepting — empties the address (see
+  // `clearRoute`). Only on the way out of a session: a page opened while signed out keeps its link.
+  const wasSignedIn = useRef(false);
+  useEffect(() => {
+    if (wasSignedIn.current && status === "signed-out") clearRoute();
+    wasSignedIn.current = status === "signed-in";
+  }, [status]);
 
   if (status === "loading") {
     return (

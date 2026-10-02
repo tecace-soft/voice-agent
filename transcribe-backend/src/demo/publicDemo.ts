@@ -1,6 +1,6 @@
 import { readCallSettings, type Window } from "../business/callSettings.js";
 import type { BusinessHour } from "./types.js";
-import { calendarSlots, pickSlots, type PartOfDay } from "../calendar/availability.js";
+import { calendarSlots, pickSlots, type Interval, type PartOfDay } from "../calendar/availability.js";
 import { spokenTime } from "../calendar/time.js";
 import type { BookingTarget } from "../session/appointments.js";
 
@@ -89,16 +89,17 @@ const PARTS: PartOfDay[] = ["morning", "afternoon", "evening", "any"];
  * check_availability / book_appointment for a demo call, answered in the shapes the real tools use
  * (`calendar/service.ts runAppointmentTool`) so the receptionist behaves as it would on a live line.
  * A booking is checked against the openings and then answered as made; nothing is stored.
+ * `busy` marks times as taken — the scenario sandbox uses it to make a slot "full".
  */
 export function runDemoAppointmentTool(
   name: string,
   args: Record<string, unknown>,
-  ctx: { settings: unknown; profileHours: BusinessHour[] | undefined; timeZone: string; now?: number },
+  ctx: { settings: unknown; profileHours: BusinessHour[] | undefined; timeZone: string; now?: number; busy?: Interval[] },
 ): Record<string, unknown> {
   const rules = readCallSettings(ctx.settings).appointments;
   if (!rules.enabled) return { ok: false, error: "Booking is switched off for this business." };
   const now = ctx.now ?? Date.now();
-  const starts = calendarSlots({ rules, profileHours: ctx.profileHours, busy: [], now, timeZone: ctx.timeZone });
+  const starts = calendarSlots({ rules, profileHours: ctx.profileHours, busy: ctx.busy ?? [], now, timeZone: ctx.timeZone });
   const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
   if (name === "check_availability") {

@@ -215,6 +215,51 @@ describe("what /business/config sends the phone agent", () => {
     expect(phone.voice).toBe("gleam");
   });
 
+  it("is built from the number's business, section by section", () => {
+    const faqs = Array.from({ length: 20 }, (_, i) => ({ q: `Question ${i + 1}?`, a: `Answer ${i + 1}. ${"x".repeat(250)}` }));
+    const custom = phoneSession({
+      record: {
+        ...record,
+        profile: { ...profile, faqs },
+        agentName: "Rosa",
+        greeting: "Hi, {business}, {agent} here.",
+        houseRules: "Tell first-time guests to arrive fifteen minutes early.",
+      },
+      published: settings,
+      waterfallAllowed: false,
+      booking: null,
+      now,
+      timeZone: tz,
+    });
+    // Business information: what it knows.
+    expect(custom.live).toContain("You are Rosa, the phone receptionist at Acme Dental");
+    expect(custom.live).toContain("1 Main Street, Tacoma");
+    expect(custom.live).toContain("Cleaning ($120)");
+    expect(custom.backend).toContain('"parking": "Free lot behind the building"');
+    // Agent profile: its name, greeting and voice.
+    expect(custom.greetingLine).toBe("Hi, Acme Dental, Rosa here.");
+    expect(custom.voice).toBe("gleam");
+    // FAQs: every one, in full, on the voice half and the backend half.
+    for (const f of faqs) {
+      expect(custom.live).toContain(f.q);
+      expect(custom.live).toContain(f.a);
+      expect(custom.backend).toContain(f.q);
+    }
+    // Custom training: the business's own instructions, and a hand-edited prompt in place of the built one.
+    expect(custom.live).toContain("Tell first-time guests to arrive fifteen minutes early.");
+    expect(custom.returnLeg.live).toContain("Tell first-time guests to arrive fifteen minutes early.");
+    const edited = phoneSession({
+      record: { ...record, prompts: { ...buildSessionPrompts(profile, "Mia"), live: "HAND WRITTEN PERSONA", backend: "HAND WRITTEN BACK OFFICE", edited: true } },
+      published: settings,
+      waterfallAllowed: false,
+      booking: null,
+      now,
+      timeZone: tz,
+    });
+    expect(edited.live).toContain("HAND WRITTEN PERSONA");
+    expect(edited.backend).toContain("HAND WRITTEN BACK OFFICE");
+  });
+
   it("resolves each transfer scenario to its numbers, for transfer_call to dial", () => {
     expect(phone.transfers).toEqual([{ id: "billing", name: "Billing", mode: "warm", numbers: ["+12535550111"] }]);
     expect(phone.reachable).toBe(true);

@@ -46,6 +46,49 @@ export interface AuthUser {
   emailVerified?: boolean;
   /** Onboarding: asked for the line to be switched on, not answered yet (Accounts badge). */
   liveRequest?: { requestedAt: string; note: string | null } | null;
+  /** When the line was switched on (production). The free trial counts from here. */
+  liveAt?: string | null;
+}
+
+// ---- billing (GET/PUT /billing) ----
+//
+// The plan the customer chose and the card on file. The card is a MOCK until ax-billing (Stripe) is
+// behind the form: the backend keeps only what a receipt prints. Nothing is charged before the line
+// is live; the trial is `trialDays` from that day and the first bill is `billingFrom`.
+
+export type PlanId = "solo" | "standard" | "business";
+
+export type BillingStatus = "none" | "not_live" | "trial" | "active";
+
+export interface PaymentMethod {
+  brand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+  name: string | null;
+}
+
+export interface Billing {
+  plan: PlanId | null;
+  paymentMethod: PaymentMethod | null;
+  /** "test" until a real processor is behind the form. */
+  paymentMode: string;
+  status: BillingStatus;
+  trialDays: number;
+  liveAt: string | null;
+  /** The last day of the trial. */
+  trialEndsAt: string | null;
+  /** The first day that is billed. */
+  billingFrom: string | null;
+}
+
+/** What the card form sends. The number and the code never come back. */
+export interface CardInput {
+  number: string;
+  expMonth: number;
+  expYear: number;
+  cvc: string;
+  name?: string;
 }
 
 // One mailbox the transcribe-app has reported for — GET /transcribe/mailboxes (admins only).
@@ -197,6 +240,28 @@ export interface PollerHeartbeat {
   secondsSinceSeen: number;
 }
 
+// One of openai-agent-app's three processes, as `GET /agent/heartbeats` (admin) reports it. Always
+// three entries, in order: server, poller, scenarios. `state` is derived by the backend from the
+// process's own reported interval; `never` means it has not reported at all.
+export interface AgentServiceStatus {
+  service: "server" | "poller" | "scenarios";
+  label: string;
+  state: "online" | "erroring" | "offline" | "never";
+  lastSeenAt: string | null;
+  secondsSinceSeen: number | null;
+  intervalSeconds: number | null;
+  ok: boolean | null;
+  detail: string | null;
+  startedAt: string | null;
+  uptimeSeconds: number | null;
+  host: string | null;
+  metrics: Record<string, number | string | boolean | null> | null;
+}
+
+export interface AgentServicesResponse {
+  services: AgentServiceStatus[];
+}
+
 // A phone number the voice agent answers, and who it belongs to. `userId` null = registered but
 // unassigned; the agent answers such a call neutrally rather than guessing whose business it is.
 //
@@ -285,6 +350,11 @@ export interface BusinessProfile {
   greeting: string | null;
   /** How this business wants the assistant to behave, in their own words. Null means defaults. */
   houseRules: string | null;
+  /**
+   * Their forwarding asks for "press 1 to accept", so the phone agent presses it on forwarded calls.
+   * Optional only so a dashboard deployed ahead of the backend reads it as off.
+   */
+  forwardAcceptPress?: boolean;
   /**
    * What the Knowledge tab edits — the SAME shape a demo prospect has, so one editor serves both.
    *
@@ -462,3 +532,73 @@ export type SetupSession = { id: string; status: "active" | "finished"; topics: 
 export type SetupUnavailableReason = "no_openai_key" | "demo_stage" | "no_profile";
 export interface SetupStateResponse { session: SetupSession | null; draft: CallSettings; dirty: boolean; available: boolean; unavailableReason?: SetupUnavailableReason }
 export interface SetupTurnResponse { session: SetupSession; reply: SetupMessage; draft: CallSettings; dirty: boolean }
+
+// ---- scenario tests (admin only; transcribe-backend src/routes/scenarios.ts) ----
+
+export type ScenarioDefinition = {
+  customerLines: string[];
+  language: "ko" | "en";
+  world: { fullSlots?: string[]; failTool?: string; transferAnswer?: "accepted" | "declined" | "no_answer" };
+  expect: {
+    tools?: { name: string; args?: Record<string, string>; times?: number }[];
+    forbidden?: string[];
+    final?: { bookings?: number; messages?: number };
+    judge?: string[];
+  };
+};
+
+export type ScenarioTest = {
+  id: string;
+  templateId: string | null;
+  title: string;
+  definition: ScenarioDefinition;
+  position: number;
+  updatedAt: string;
+  /** False for a built-in one the business's draft no longer supports (booking switched off). */
+  applicable: boolean;
+  /** From this scenario's recent measured runs; the average of all recent runs when it has none. */
+  estimate: ScenarioRunEstimate;
+};
+
+/** `basedOnRuns` 0 = this scenario hasn't run yet: the cost is the average of recent runs. */
+export type ScenarioRunEstimate = { costUsd: number; durationSec: number; basedOnRuns: number };
+
+export type ScenarioListResponse = { scenarios: ScenarioTest[]; perRunEstimateUsd: number; runnerConfigured: boolean };
+
+export type ScenarioPassStatus = "running" | "completed" | "cancelled" | "interrupted";
+
+export type ScenarioPassSummary = {
+  id: string;
+  settingsKind: "draft" | "published";
+  status: ScenarioPassStatus;
+  createdAt: string;
+  finishedAt: string | null;
+  runs: number;
+  done: number;
+  passed: number;
+  failed: number;
+  errors: number;
+  costUsd: number;
+};
+
+export type ScenarioToolCall = { name: string; args: Record<string, unknown>; ok: boolean; output: Record<string, unknown>; at: string };
+export type ScenarioFailure = { kind: "code" | "judge"; text: string; evidence?: string };
+export type ScenarioTranscriptEntry = { id: string; speaker: "caller" | "receptionist"; text: string; startMs: number; endMs: number };
+
+export type ScenarioRun = {
+  id: string;
+  position: number;
+  title: string;
+  scenario: ScenarioDefinition | null;
+  status: "queued" | "running" | "grading" | "done";
+  verdict: "pass" | "fail" | "run_error" | null;
+  failures: ScenarioFailure[];
+  errorReason: string | null;
+  transcript: ScenarioTranscriptEntry[];
+  sandbox: { calls: ScenarioToolCall[]; bookings: { start: string; name: string }[]; messages: Record<string, unknown>[] };
+  durationSec: number | null;
+  costUsd: number | null;
+  startedAt: string | null;
+};
+
+export type ScenarioPassDetail = { pass: ScenarioPassSummary; runs: ScenarioRun[] };

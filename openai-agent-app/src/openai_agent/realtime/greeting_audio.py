@@ -12,9 +12,10 @@ stream opens. The model is then told what the caller has already heard, and pick
 up from the caller's first words — which is work the caller is not sitting in silence for.
 
 WHAT IT COSTS. One speech request per distinct greeting (about 2 seconds, a fraction of a cent),
-kept in memory for the life of the process. A cold cache is not a problem worth solving: the
-warm-up starts at /incoming while Twilio is still setting up the stream, and a call that arrives
-before it lands simply greets the old way.
+kept in memory and on disk (GREETING_CACHE_DIR, a Docker volume), so a deploy does not throw
+them away. The server renders every number's greeting at startup and every
+GREETING_WARM_INTERVAL seconds, /incoming renders the dialled one while the phone is still
+ringing, and a call that arrives before any of that lands simply greets the old way.
 
 TURNING IT OFF. PRERENDERED_GREETING=false, and every call greets through the model as before.
 """
@@ -26,7 +27,9 @@ import base64
 import hashlib
 import logging
 import math
+import os
 import struct
+from pathlib import Path
 
 import httpx
 
@@ -43,10 +46,65 @@ _FRAME_BYTES = SAMPLE_RATE * FRAME_MS // 1000  # 160 bytes of μ-law = 20ms
 # text -> μ-law 8k audio. Small by nature: one entry per business greeting this process has seen.
 _cache: dict[str, bytes] = {}
 _pending: dict[str, asyncio.Task] = {}
+# Said once per process: an unwritable cache directory is a deployment fault worth one line, not
+# one line per call.
+_disk_warned = False
+
+
+# Bump when pcm24_to_ulaw8 or the speech request changes: rendered files persist across deploys
+# now, and a stale one would keep playing the old conversion to every caller.
+_RENDER_VERSION = 1
 
 
 def _key(cfg: Config, text: str) -> str:
-    return hashlib.sha256(f"{cfg.openai_voice}|{cfg.openai_tts_model}|{text}".encode()).hexdigest()
+    return hashlib.sha256(f"{_RENDER_VERSION}|{cfg.openai_voice}|{cfg.openai_tts_model}|{text}".encode()).hexdigest()
+
+
+def _disk_file(cfg: Config, key: str) -> Path | None:
+    if not cfg.greeting_cache_dir:
+        return None
+    return Path(cfg.greeting_cache_dir) / f"{key}.ulaw"
+
+
+def _load_disk(cfg: Config, key: str) -> bytes | None:
+    path = _disk_file(cfg, key)
+    if path is None:
+        return None
+    try:
+        return path.read_bytes() or None
+    except OSError:
+        return None  # not rendered yet, or no usable directory — either way, not on disk
+
+
+def _save_disk(cfg: Config, key: str, audio: bytes) -> None:
+    """Keep a render across restarts. Written aside and renamed, so a crash mid-write can never
+    leave a truncated greeting for the next call to play."""
+    global _disk_warned
+    path = _disk_file(cfg, key)
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_bytes(audio)
+        os.replace(tmp, path)
+    except OSError as exc:
+        if not _disk_warned:
+            _disk_warned = True
+            log.warning("greeting cache %s is not writable (%s) — greetings are kept in memory only",
+                        cfg.greeting_cache_dir, exc)
+
+
+def _lookup(cfg: Config, key: str) -> tuple[bytes | None, str]:
+    """Memory first, then disk (promoted into memory). The source is for the pickup log."""
+    audio = _cache.get(key)
+    if audio:
+        return audio, "memory"
+    audio = _load_disk(cfg, key)
+    if audio:
+        _cache[key] = audio
+        return audio, "disk"
+    return None, "miss"
 
 
 # A 63-tap windowed-sinc low-pass at 3.4 kHz, the top of the telephone band, built once at import.
@@ -142,13 +200,14 @@ def warm(cfg: Config, text: str) -> None:
     if not text.strip():
         return
     key = _key(cfg, text)
-    if key in _cache or key in _pending:
+    if key in _cache or key in _pending or _lookup(cfg, key)[0]:
         return
 
     async def run() -> None:
         audio = await _synthesise(cfg, text)
         if audio:
             _cache[key] = audio
+            await asyncio.to_thread(_save_disk, cfg, key, audio)
             log.info("greeting pre-rendered (%.1fs of audio) and cached", len(audio) / SAMPLE_RATE)
 
     task = asyncio.create_task(run())
@@ -157,10 +216,45 @@ def warm(cfg: Config, text: str) -> None:
 
 
 def ready(cfg: Config, text: str) -> bytes | None:
-    """The cached greeting audio, or None if it has not been rendered (yet, or at all)."""
+    """The rendered greeting audio, or None if it has not been rendered (yet, or at all)."""
     if not text.strip():
         return None
-    return _cache.get(_key(cfg, text))
+    return _lookup(cfg, _key(cfg, text))[0]
+
+
+async def await_ready(cfg: Config, text: str, timeout: float) -> tuple[bytes | None, str]:
+    """The greeting, waiting up to `timeout` for a render already under way.
+
+    Returns (audio, source): source is "memory" or "disk" for a greeting that was already there,
+    "waited" for one that finished while we waited, "miss" otherwise. Never cancels the render —
+    a call that could not wait for it still leaves it cached for the next one.
+    """
+    if not text.strip():
+        return None, "miss"
+    key = _key(cfg, text)
+    audio, source = _lookup(cfg, key)
+    if audio:
+        return audio, source
+    task = _pending.get(key)
+    if task is None or timeout <= 0:
+        return None, "miss"
+    await asyncio.wait({task}, timeout=timeout)  # asyncio.wait never cancels what it waits on
+    audio = _cache.get(key)
+    return (audio, "waited") if audio else (None, "miss")
+
+
+async def render(cfg: Config, text: str) -> bytes | None:
+    """Render a greeting (unless it is already cached) and wait for it. For the warm-up pass,
+    which renders one greeting at a time so a startup with many numbers does not burst the
+    speech API."""
+    if not text.strip():
+        return None
+    warm(cfg, text)
+    key = _key(cfg, text)
+    task = _pending.get(key)
+    if task is not None:
+        await asyncio.wait({task})
+    return _lookup(cfg, key)[0]
 
 
 def frames(audio: bytes) -> list[str]:
@@ -183,4 +277,7 @@ def already_greeted(greeting: str) -> str:
     return ALREADY_GREETED.format(greeting=greeting.strip())
 
 
-__all__ = ["ALREADY_GREETED", "already_greeted", "frames", "pcm24_to_ulaw8", "ready", "warm"]
+__all__ = [
+    "ALREADY_GREETED", "already_greeted", "await_ready", "frames", "pcm24_to_ulaw8", "ready",
+    "render", "warm",
+]

@@ -13,6 +13,165 @@ Format:
 
 ---
 
+## 2026-10-02 14:00 · Hans · merge origin/Main-Hans into local Main-Hans (Request go live + autosave ⇄ billing, forwarding, Sales)
+- `users` keeps both column sets: `live_requested_at`/`live_request_note`/`live_declined_*` (go-live request) and `live_at`; `PublicUser` carries both `liveRequest` and `liveAt`. `billing_accounts` table added alongside.
+- Onboarding (pre-production) numbers now ANSWER as the business (origin's e9c4227 wins); the lifecycle test "keeps an onboarding customer's number off the phone line" is replaced by origin's.
+- `BusinessSettings`: autosave kept for business info / agent / FAQs / house rules; the forwarding press-to-accept switch still saves on the flip via `run`; the research card sits above Business information and is saved by autosave (no Save button).
+
+## 2026-10-02 · johnson · Sales section: Prospects, Demo analytics, prospect page (dashboard)
+- Rail: the admin "Demo" group is "Sales" with two items, Prospects (`#/demos/prospects`, was Customers) and Demo analytics (`#/demos/overview`, was Overview). CRM is the Prospects board (`#/demos/pipeline` redirects there). Routes unchanged; the sidebar group key stays `demos`.
+- Prospect page tabs renamed in the URL: `#/demos/prospects/<id>/<overview|calls|receptionist|research|email>`; the old `activity|settings|sources|share` still parse (`routing.ts` `LEGACY_TABS`). A settings section in the address still opens the Receptionist tab.
+- Deleted: `CustomerTable`, `NewCustomerDialog`, `PipelineScreen`, `OverviewScreen`, `TopCustomersChart`, `ActivityFeed`, `CrmDrawer`, `CrmTab`, `SharePanel`. New: `ProspectTable`, `NewProspectDialog`, `DemoAnalyticsScreen`, `ProspectOverview`, `OutreachEmailPanel`, `lib/nextStep.ts`. Details in `src/demos/PORTING.md`.
+- No API change. `demos_e2e.py` rewritten for the new screens; `tests/routing.test.ts` updated. Changelog 0.0.15 (same day).
+- ⚠ Not done from the mockups: field-level autosave in the Receptionist studio (it keeps its Save), the Accounts split into Customers / Team, and the Voicemail merge. Hours grouping on Business information is unchanged.
+
+## 2026-10-02 11:15 · Michael · merge Main-Hans into master
+- Both sides shipped a changelog `0.0.14` on 2026-10-02. Kept Main-Hans's 0.0.14 (sign-up/demo/pricing) and 0.0.15 (self-serve billing); master's 0.0.14 items (transfer calls, call forwarding) moved into 0.0.15. package.json is 0.0.15. Entries below that say "Changelog 0.0.14" for Michael's work now live in 0.0.15.
+
+## 2026-10-02 11:00 · Michael · dashboard (Transfer calls: edit the old in-use number)
+- `settings/sections/TransferCallsSection.tsx`: the "In use on calls" row (old `transfer_number`) now opens the transfer editor on click, prefilled, so Type/When/etc. can be changed without adding a new number. Saving prepends the edited copy to the draft transfers (same as **Add to transfers**); calls switch to it on publish. Not clickable once adopted, when read-only, or at the scenario limit.
+- Shared `ScenarioRow` (`settings/sections/shared.tsx`) now ends every row with an "Edit ⌄" / "Close ⌃" cue and a pointer cursor (Transfer calls, Take a message, Text a link). New export `ROW_CUE_WIDTH`: column heads and unclickable rows reserve that width so columns line up.
+- `TransferEditor` takes an optional `description`. `business_tabs.py` checks the editor opens. Changelog 0.0.14. No API change.
+
+## 2026-10-02 10:27 · Michael · dashboard (Call forwarding guide: Verizon codes)
+- `settings/sections/ForwardingSection.tsx`: Verizon (mobile) missed calls is now `*71{n}` (busy + no answer, one code; confirmed on a real Verizon Wireless phone, test book C14/E6). The old `*90`/`*92` were Fios/landline codes; they moved to the Landline tab with `*91`/`*93` to turn them off. Dropped "US Cellular" from the Verizon tab (now T-Mobile, test book C12).
+- Same file: the "Missed calls / Every call" radio step is gone; each carrier tab now lists both ways (missed calls, recommended, and every call) with an explanation, and `Code` has an optional `detail` line (used for Verizon `*71`/`*72`). Steps renumbered 1–3. `business_tabs.py` updated (no radio click; checks `*71` + `*72` on Verizon). Changelog 0.0.14. No API change.
+
+## 2026-10-02 · johnson · self-serve onboarding with billing (transcribe-backend, dashboard)
+- transcribe-backend: new table `billing_accounts` (self-migrating; plan + MOCK card: brand, last4, expiry only). New routes `GET /billing`, `PUT /billing/plan {plan}`, `PUT /billing/payment-method {number, expMonth, expYear, cvc, name?}` (any signed-in account; admin `?userId=`). `GET /billing` → `{ billing: { plan, paymentMethod, paymentMode: "test", status: none|not_live|trial|active, trialDays: 14, liveAt, trialEndsAt, billingFrom }, plans }`. The rule: nothing charged before `users.live_at`; trial = 14 days from that day; first bill the day after. `PublicUser` gained `liveAt`.
+- ⚠ `POST /demo/customers/:id/request-onboarding` changed behaviour: body may carry `plan` and `payment` (card); with both on file it runs the same `approveOnboarding` as the admin's `/onboard` and answers `{ customer, user, billing }` with the account already in `pre-production`. Without them: 409 `billing_required`; bad card/plan: 422 `bad_card` (with `field`) / `unknown_plan`. Admin Approve/Decline still exist for admin-started setups, but a customer's request never waits on them now. `customerLifecycle.pg.test.ts` updated.
+- Dashboard: `src/billing/` (RequestSetupDialog: plan → card → confirm; BillingScreen replaces the Billing placeholder; CardForm/PlanPicker). Sidebar: `Billing` for every customer stage (new `customerOnly` nav flag), never for admins. `src/home/CustomerHome.tsx`: Dashboard › Overview is now a per-stage Home for customers (onboarding checklist; live: line status + answered/booked/messages/put-through from call `outcome`). Onboarding customers land on `#/dashboard`, not business-info. `receptionistStats.ts` gained `outcomeKpis`/`needsReply`. Demo Home (`MyReceptionistScreen`) rebuilt per the mockups.
+- fake_backend.py: `/billing` routes and the new request-onboarding behaviour. New `scripts/regression/customer_home.py`; `demo_customer.py` updated. Changelog 0.0.15.
+- ⚠ Deploy transcribe-backend before the dashboard: the old backend answers the new request body by recording a request only, and the dashboard would then wait on an admin that the new UI no longer shows.
+
+## 2026-10-02 09:00 · Michael · dashboard (Transfer calls: the old `transferNumber` shown while calls use it)
+- Bug: a business with the pre-scenario `business_profiles.transfer_number` (e.g. TecAce Test) saw "No transfers yet" on Transfer calls while real calls still went to that number. The page showed the old number only when the call-settings **draft** had no transfers; the phone (`composeSession`) uses it while nothing has been **published** (and always for a profile without a structured `profile`, which gets the agent's older prompt).
+- `settings/callSettings.ts`: new `oldTransferInUse(profile, stored)` (same rule as the backend) and `oldTransferScenario()` (mirror of backend `legacyScenario`). `TransferCallsSection` takes `inUse` and lists it as an "In use on calls" row with **Add to transfers** (copies it into the draft; it stops being used once published). Tests: `tests/old-transfer.test.ts`, `business_tabs.py`. Changelog 0.0.14. No API change.
+- ⚠ If `compose.ts`'s legacy rule (`neverPublished && no scenarios`) or `legacyScenario` changes, change `oldTransferInUse`/`oldTransferScenario` with it.
+
+## 2026-10-02 · johnson · customer dashboard mockups + journey index (docs only)
+- `docs/mockups/index.html` is now the entry: the demo → setup request → onboarding → live journey with what the customer sees and what the admin does at each step, linking both mockup sets. `docs/mockups/customer/` adds the customer side (Home per stage, Calls, Receptionist, Phone line); `admin/shell.js` gained a customer nav variant.
+- Proposes for customers: one Home per stage (demo: call it + request setup; onboarding: a 6-step checklist that marks our steps; live: line status + messages), a 3–4 item sidebar with no Voicemail/Transcribe leftovers, customer wording, and three new features that need backend (message done-state, per-call feedback, pause the line). Nothing decided, no app code changed.
+
+## 2026-10-02 · johnson · admin redesign mockups (docs only)
+- New static mockups in `docs/mockups/admin/` (open `index.html`; no build, fake data). Proposal for the whole admin, deepest on the Demo section: Customers + CRM merged into "Prospects" (table/board), one prospect page with a lifecycle stepper and next-step card, CRM and link controls on it, autosave instead of four save paths; Accounts split into Customers (go live in a drawer) and Team; Voicemail's six nav items as one tabbed page.
+- Design notes in the mockups are in Korean. No app code changed; nothing here is decided yet.
+
+## 2026-10-02 · johnson · public demo page (/c/<id>) restyled to match /start (dashboard)
+- `PublicDemoScreen.tsx`, `src/public/DemoCall.tsx`: pill eyebrow, 48px headline, radius-16 cards, full-width footer (disclaimer + privacy note + Contact us). Logged in `src/demos/PORTING.md`.
+- `components/public/ContactButtons.tsx` (shared with the pricing page): new optional `talk` prop, default `true`, so other callers are unchanged.
+- `public_page.py` passes (34 checks).
+- Same day: the pricing sub-page (`/c/<id>/pricing`, `components/public/Pricing.tsx` + `PlanEstimator.tsx`) restyled the same way (header bar, pill + 48px headline, radius-16 outlined boxes, full-width footer, em-dashes removed). Logged in `PORTING.md`.
+
+## 2026-10-02 · johnson · /start sign-up page redesign (dashboard)
+- `src/start/StartApp.tsx` re-laid out (hero, step cards, form beside them, footer); `src/signup/SignupForm.tsx` `Field` gained `icon` / `aside`, a password Show toggle (both modes), and icons + examples in `start` mode only. Selectors/labels used by `signup.py` and `public_page.py` unchanged; both pass.
+- New optional asset: drop `public/sample-call.mp3` and /start shows a "Hear a sample call" player (hidden while the file is missing). None is committed yet.
+- Changelog 0.0.14 / package.json 0.0.14.
+
+## 2026-10-02 · johnson · repo-level Claude skill: design-taste-frontend (Taste Skill)
+- New `.claude/skills/design-taste-frontend/` vendored from Leonxlnx/taste-skill @ ce26fc2 (MIT). Anti-slop design rules for landing pages / portfolios / marketing pages; provenance in `VENDORED.md`.
+- `.gitignore`: `.claude/` → `.claude/*` + `!.claude/skills/`, so repo skills are committed while `settings.local.json` etc. stay ignored.
+- ⚠ Not for the dashboards: they keep following `tecace-dashboard-ui` (brand blue #116DFF, Pretendard + Poppins, lucide allowed). Taste's defaults (avoid Inter/lucide, zero em-dashes, etc.) conflict with it, and the skill description says so.
+
+## 2026-10-02 11:00 · Michael · dashboard (Transfer calls: edit the old in-use number)
+- `settings/sections/TransferCallsSection.tsx`: the "In use on calls" row (old `transfer_number`) now opens the transfer editor on click, prefilled, so Type/When/etc. can be changed without adding a new number. Saving prepends the edited copy to the draft transfers (same as **Add to transfers**); calls switch to it on publish. Not clickable once adopted, when read-only, or at the scenario limit.
+- Shared `ScenarioRow` (`settings/sections/shared.tsx`) now ends every row with an "Edit ⌄" / "Close ⌃" cue and a pointer cursor (Transfer calls, Take a message, Text a link). New export `ROW_CUE_WIDTH`: column heads and unclickable rows reserve that width so columns line up.
+- `TransferEditor` takes an optional `description`. `business_tabs.py` checks the editor opens. Changelog 0.0.14. No API change.
+
+## 2026-10-02 10:27 · Michael · dashboard (Call forwarding guide: Verizon codes)
+- `settings/sections/ForwardingSection.tsx`: Verizon (mobile) missed calls is now `*71{n}` (busy + no answer, one code; confirmed on a real Verizon Wireless phone, test book C14/E6). The old `*90`/`*92` were Fios/landline codes; they moved to the Landline tab with `*91`/`*93` to turn them off. Dropped "US Cellular" from the Verizon tab (now T-Mobile, test book C12).
+- Same file: the "Missed calls / Every call" radio step is gone; each carrier tab now lists both ways (missed calls, recommended, and every call) with an explanation, and `Code` has an optional `detail` line (used for Verizon `*71`/`*72`). Steps renumbered 1–3. `business_tabs.py` updated (no radio click; checks `*71` + `*72` on Verizon). Changelog 0.0.14. No API change.
+
+## 2026-10-02 09:00 · Michael · dashboard (Transfer calls: the old `transferNumber` shown while calls use it)
+- Bug: a business with the pre-scenario `business_profiles.transfer_number` (e.g. TecAce Test) saw "No transfers yet" on Transfer calls while real calls still went to that number. The page showed the old number only when the call-settings **draft** had no transfers; the phone (`composeSession`) uses it while nothing has been **published** (and always for a profile without a structured `profile`, which gets the agent's older prompt).
+- `settings/callSettings.ts`: new `oldTransferInUse(profile, stored)` (same rule as the backend) and `oldTransferScenario()` (mirror of backend `legacyScenario`). `TransferCallsSection` takes `inUse` and lists it as an "In use on calls" row with **Add to transfers** (copies it into the draft; it stops being used once published). Tests: `tests/old-transfer.test.ts`, `business_tabs.py`. Changelog 0.0.14. No API change.
+- ⚠ If `compose.ts`'s legacy rule (`neverPublished && no scenarios`) or `legacyScenario` changes, change `oldTransferInUse`/`oldTransferScenario` with it.
+
+## 2026-10-01 14:37 · Michael · voice agent service heartbeats (transcribe-backend, openai-agent-app, dashboard)
+- transcribe-backend: new `POST /agent/heartbeat` (header `x-agent-key` = `AGENT_CONFIG_KEY`; body `{ service: server|poller|scenarios, intervalSeconds, ok, detail?, startedAt, host?, metrics? }`) and admin-only `GET /agent/heartbeats` returning `{ services }` (always 3 entries; state online/erroring/offline/never; stale after max(interval×2.5, 120 s)). New table `service_heartbeats` (one UPSERTed row per service, self-migrating). Test: `src/routes/agentStatus.pg.test.ts`.
+- openai-agent-app: new `src/openai_agent/heartbeat.py`; the call server (`telephony/server.py` lifespan, plus an active-call counter), the poller (`run_poller.py`, daemon thread) and the scenario runner each post every 60 s. A failed post is logged once and never affects calls. Optional env `HEARTBEAT_SECONDS` (default 60). Check: `scripts/checks/verify_heartbeat.py`.
+- Dashboard: admin-only "Voice agent services" panel on Dashboard › Overview (`components/AgentServiceStatus.tsx`, `agentServices.ts`) reads `GET /agent/heartbeats`; `fake_backend.py` serves that route.
+- ⚠ Deploy: transcribe-backend first, then on the VPS rebuild all three agent containers (`docker compose up -d --build server poller scenarios`, a moment when no call is live — rebuilding `server` drops calls in progress). They already share `.env`, so `BUSINESS_CONFIG_URL` and `AGENT_CONFIG_KEY` reach every process.
+
+## 2026-10-01 14:30 · Michael · forwarded calls: per-business "press 1 to accept" (transcribe-backend, openai-agent-app, dashboard)
+- transcribe-backend: new column `business_profiles.forward_accept_press BOOLEAN NOT NULL DEFAULT false` (self-migrating); `BusinessProfile.forwardAcceptPress`; new `PUT /business/forward-accept?userId=` `{forwardAcceptPress: boolean}` → `{profile}` (409 `no_profile`); `GET /business/config` sends `business.forwardAcceptPress`. Test in `src/routes/appointments.e2e.pg.test.ts`.
+- openai-agent-app: `/incoming` plays `FORWARD_ACCEPT_TWIML_DIGITS` on a forwarded call **only when the business has the flag on** (waits ≤3 s for the config lookup; failure/timeout = no press). New stream parameter `accept_press` gates the in-band fallback too. `BusinessConfig.forward_accept_press` (default False).
+- Dashboard: Call forwarding step 3 "Turn off answer confirmation" (per-carrier how-to) + a switch "My phone company still asks to press 1 to accept" (saves on flip; business settings only, not demo). `fake_backend.py` fakes the PUT; `business_tabs.py` checks it.
+- ⚠ Behaviour change: forwarded calls are **no longer pressed by default** (fixes the loud tones on Verizon/mobile forwards). A business whose landline still asks "press 1 to accept" must turn the switch on, or its forwarded callers ring out. Deploy transcribe-backend before/with the agent (`docker compose up -d --build server`).
+
+## 2026-10-01 14:25 · Michael · scenario tests: estimates from measured runs (transcribe-backend, dashboard)
+- `GET /business/scenarios` now returns `estimate: {costUsd, durationSec, basedOnRuns}` on each scenario (its own last 5 measured runs; the average of the last 50 runs overall when it has none, `basedOnRuns: 0`; $0.08 / 60 s only before any run exists), and `perRunEstimateUsd` is that measured overall average instead of a fixed $0.08. New `src/scenarios/estimate.ts`, `db/scenarios.ts` `recentRunCosts`.
+- Dashboard: Run selected and its confirmation add up the ticked scenarios' own estimates; each row shows "About $x and y s per run, from its last n runs".
+- ⚠ Deploy transcribe-backend and the dashboard together (the dashboard reads the new `estimate` field).
+
+## 2026-10-01 12:25 · Michael · scenario tests (transcribe-backend, openai-agent-app, dashboard)
+- New admin-only **Scenario tests** (Business settings › Tuning): one press of Run selected runs each ticked scenario **once** against the real GPT-Live receptionist with sandbox tools (no real bookings, messages or transfers), grades it (code checks + `gpt-5.6-luna` judge) and stops. Spec/plan: `docs/superpowers/{specs,plans}/2026-10-01-scenario-tests*`.
+- transcribe-backend: tables `scenario_tests`, `scenario_passes`, `scenario_runs` (self-migrating; run status `queued|running|grading|done`); admin routes `/business/scenarios*`, `/business/scenario-passes*`; runner routes `/internal/scenario-passes/:id/next`, `/internal/scenario-runs/:id/{tool,result}` (`x-runner-key`). Errors are `{error: code, message}`. `runDemoAppointmentTool` takes optional `busy`. Tests: `src/scenarios/*.test.ts`, `src/routes/scenarios.pg.test.ts`.
+- openai-agent-app: new Compose service `scenarios` (`scripts/run_scenario_runner.py`, port 5070, Traefik `PathPrefix(/scenarios)`), package `src/openai_agent/scenario/`, offline check `scripts/checks/verify_scenario_runner.py`. Call server and poller untouched.
+- ⚠ Env — transcribe-backend: `SCENARIO_RUNNER_URL` (e.g. `https://31-97-214-59.sslip.io/scenarios`), `SCENARIO_RUNNER_KEY`, optional `SCENARIO_JUDGE_MODEL`. openai-agent-app: `SCENARIO_RUNNER_KEY` (same value), optional `SCENARIO_RUNNER_ENABLED` (kill switch), `SCENARIO_TTS_MODEL`, `SCENARIO_CUSTOMER_VOICE`. Each run is a real, billable GPT-Live + TTS + judge call (~$0.08–0.15). Deploy all three apps together.
+- ⚠ Deploy order on the VPS: set `SCENARIO_RUNNER_KEY` (and check `BUSINESS_CONFIG_URL` points at the same transcribe-backend that has `SCENARIO_RUNNER_URL`) **before** starting the service — without them the runner exits and restart-loops. Then `docker compose up -d --build scenarios` only; a plain `up -d --build` also recreates `server` and drops live calls. Confirm the backend's function duration allows ~60 s on `POST /internal/scenario-runs/:id/result` (it waits on the judge).
+- Known v1 limits: scenario runs don't have the phone bridge's backstops (greeting rescue, take-message reminder, Korean guide) and the agent is told it's an in-app test call from a withheld number — treat failures as receptionist/prompt findings, confirm phone behaviour with a real call. The one-pass lock is global, so Run on another business returns "already running".
+
+## 2026-10-01 11:30 · Michael · transcribe-backend + dashboard (Business information: Fill in from research)
+- New `POST /business/research?userId=` `{businessName?, websiteUrl?, mapsUrl?, notes?}` (blank = the stored name/website) → `{profile, sources, businessName}`. Runs the demo's `researchBusiness` inside the request (≤300 s), normalised with `normalizeProfile`, and **saves nothing**. Refusals: 403 `demo_read_only` (demo-stage account), 409 `no_profile`, 503 `no_openai_key`, 400 `no_name`, 429 `rate_limited` (1 run/min per account), 502 `research_failed` (never 401). Test: `src/routes/businessResearch.pg.test.ts`.
+- Dashboard: `settings/sections/ResearchFillCard.tsx` on Business information; `settings/researchMerge.ts` lays the result over the form (filled fields replace, empty ones keep the business's value, policies per key; FAQs appended after the business's own, duplicates skipped, capped at 20). Undo restores the form; the business's own Save writes it (FAQs saved on the FAQs page). `api/backend.ts` `researchBusinessProfile`. Tests: `tests/research-merge.test.ts`, new `scripts/regression/research_fill.py`; `fake_backend.py` fakes `/business/research` (records `RESEARCH_ASKED`).
+- ⚠ Each run is a paid OpenAI web search (same `OPENAI_API_KEY`). Deploy transcribe-backend with the dashboard.
+
+## 2026-10-01 10:05 · Michael · transcribe-backend (research gathers the business's own FAQs)
+- `src/demo/research.ts` (used by an operator's research run and by `/start` sign-up): the briefing now reads the site's FAQ/help pages and asks first for the business's **published** FAQs (FAQ page, FAQ sections on booking/service pages, Google Business Profile Q&A), copied in full and in order, then "other common questions" they don't cover. The JSON step keeps every FAQ, published first. Before, it only wrote likely questions for "a business like this".
+- Three prompt lines differ from the promo's `lib/research.ts`, listed by number in `src/demo/PORTING.md` (`parity.test.ts` holds it to that); new `src/demo/research.test.ts`. `bun test` 1016/1016. No API or schema change.
+- ⚠ Only new research runs pick this up: re-run research (or Re-research) on a demo to fill its FAQs. Copying a demo to a business still keeps the first 20 FAQs (`profileShape.ts` `MAX_FAQS`).
+
+## 2026-10-01 09:20 · Michael · dashboard (Custom training: prompts first and always open)
+- `src/settings/sections/ProfileSections.tsx` `CustomTrainingSection` (shared by the business page and a demo's Settings): the "Advanced: prompts" toggle is gone. A **Prompts** section (Voice / Backend / Greeting, Rebuild from settings, Save prompts, "What a call is told" preview) is now the first thing under the intro, open; standard rules and Your own instructions follow. Reason: on a business the toggle sat below ten standard rules and the instructions box, below the fold, and read as missing.
+- No API change: the prompts already follow saves of Business information / FAQs (`PUT /business/knowledge`) and Agent profile (`PUT /business/prompts` after identity) unless edited by hand.
+- `business_tabs.py` / `demos_e2e.py` no longer click "Advanced: prompts"; `business_tabs.py` checks there is no toggle and that Prompts sits above the standard rules. Changelog 0.0.13 (package version bumped).
+
+## 2026-09-30 18:10 · Michael · transcribe-backend (calendar errors no longer sign the dashboard out)
+- Bug: opening Business information › Appointments for a business whose calendar credentials no longer work signed the viewer out. `GET /business/calendar/targets` (also `PUT /target`, `POST /availability`) answered **401** for a calendar-side `CalendarError("auth")`, and the dashboard treats every 401 as an expired session. Triggered by setting `CALENDAR_SECRET` on production today (connections sealed under the `AUTH_SECRET` fallback became unreadable) and by any revoked Google/Microsoft token.
+- Fix: `routes/calendar.ts` `refusal()` maps calendar auth failures to **409 `calendar_auth`** ("…Reconnect the calendar."); `/connect` still answers 400 for a key refused while connecting. New test in `calendar.pg.test.ts`; `bun test` 1012/1012.
+- ⚠ Rule for every route the dashboard calls: 401 only for OUR session. A third party refusing its credentials is 409/502 (setup.ts already does this for OpenAI).
+- Also: connections saved before `CALENDAR_SECRET` was set keep working. `env.calendarSecretFallbacks` (= `AUTH_SECRET` when it differs from `CALENDAR_SECRET`) is tried after the current key (`calendar/secrets.ts` `openStored`), and `clientFor` re-seals such a connection under `CALENDAR_SECRET` the first time it's read. No reconnect needed. Tests: `calendar.test.ts` + `calendar.pg.test.ts`; `bun test` 1014/1014.
+- ⚠ Deploy transcribe-backend. Don't change `CALENDAR_SECRET` once set (only the AUTH_SECRET→CALENDAR_SECRET move is bridged), and don't rotate `AUTH_SECRET` until every connection has been read once under the new key.
+
+## 2026-09-30 17:20 · Michael · dashboard + production env (Appointments: Google connectable, "Not available" when it can't be)
+- Production `transcribe-app-backend` now has `GOOGLE_CLIENT_ID/SECRET` and `CALENDAR_SECRET` (set by hand; staging's values are sensitive/unreadable). No `PUBLIC_BACKEND_URL` needed (the dashboard only uses this backend; the redirect URI is taken from the request). Still no `MICROSOFT_*` on either backend, so Outlook stays unavailable.
+- `settings/sections/appointments/AppointmentsRules.tsx`: `offered(status)` = `status === "ready"`. A provider the backend reports `needs_setup` (no OAuth app) is now tagged **"Not available"** (was "Needs setup") and can't be clicked; `soon` stays "Coming soon". Same at every account stage.
+- `AppointmentsSection.tsx`: a 409 from `POST /business/calendar/oauth/start` (server changed after the page loaded) shows "<provider> isn't available on this dashboard right now." and reloads the tiles. No backend/API change.
+- ⚠ Google must have `https://transcribe-app-backend.vercel.app/calendar/oauth/google/callback` as an authorised redirect URI on the OAuth client, and the backend needs a redeploy to pick up the new env.
+- `scripts/regression/appointments.py` expects Google/Outlook "Not available" against the fake (which has no OAuth app).
+
+## 2026-09-30 16:30 · Michael · dashboard (Answered calls → Transcripts, chat-style)
+- Sidebar: "Answered calls" left the Settings group and is now "Transcripts" in the Dashboard group (Overview, Transcripts). View id and address are unchanged (`calls`, `#/calls?customer=`), so existing links keep working. Breadcrumb "Dashboard / Transcripts"; the voicemail scope block and Refresh are hidden there, as on Dashboard › Overview.
+- An open call's conversation is now chat bubbles: new `src/components/CallConversation.tsx` renders the demo's `Exchange` (caller right/blue, receptionist left/grey) in a `.tw` island; the legacy `.call-turn*` CSS is removed. Copy that said "Answered calls" (Take a message section, examples) now says Transcripts.
+- Call rows (`legacy.css` `.call-list`/`.call-item`, used by Transcripts and the admin's per-business panels): each call is an outlined row (new token `--border-row` = `--line-normal-normal`), 8px apart; the open one is outlined in `--primary` with a shaded head; new "Hide conversation" button (`.call-close`) opposite Delete.
+- `compare.py`: each app's Settings group is hidden whole (HIDE_OLD child 5, HIDE_NEW `data-group="settings"`), the hover-nav capture hovers "Send feedback", and the four `#/calls` captures are expected changes (marker "Transcripts"). Still IDENTICAL. `demo_customer.py` also checks "Transcripts" is absent for a demo account.
+
+## 2026-09-30 15:40 · Michael · dashboard (sign-in lands on Dashboard › Overview)
+- `src/routing.ts` `DEFAULT_VIEW` is now `dashboard` (was `overview`): a sign-in with no address, and any unknown `#/…` path, lands on Dashboard › Overview. The voicemail Overview is still at `#/overview`.
+- Unchanged: demo-stage accounts still land on `#/my/overview`; a pre-production customer signing in with no address still goes to Business information.
+- ⚠ Links or scripts that relied on an unknown path falling back to the voicemail Overview now get `#/dashboard`; use `#/overview` explicitly.
+
+## 2026-09-30 15:10 · Michael · dashboard (Dashboard › Overview for the receptionist)
+- New view `dashboard` (`#/dashboard`, `?customer=` for an admin) in a new first sidebar group "Dashboard" (`data-group="dashboard"`), above Voicemail: `src/demos/screens/ReceptionistOverviewScreen.tsx`, the Demo Overview's layout over `GET /calls` + `GET /usage/minutes` (cards Calls, Minutes, Callbacks requested, Talk time this month; calls per day; recent calls). No backend/API change. Helpers in `src/demos/lib/receptionistStats.ts`.
+- `ViewId`/`PATHS`/`VIEW_TITLES`/`STANDALONE_VIEWS` gained `dashboard`; the default landing is still the voicemail `overview`. Breadcrumb reads "Dashboard"; mailbox picker and Refresh are hidden there.
+- `compare.py` `HIDE_NEW` also hides the dashboard group (still IDENTICAL). New `scripts/regression/dashboard_overview.py` (ports 8895/4185). Changelog 0.0.12 gained the items.
+
+## 2026-09-30 13:58 · Michael · dashboard (Voicemail nav group)
+- Sidebar: the "Dashboard" and "Runs" nav groups are merged into one "Voicemail" group (`data-group="voicemail"`): Overview, Analytics, Per person, Daily activity, All runs, Failed runs. The `dashboard`/`runs` group keys are gone; views, `ViewId`s and `#/` paths are unchanged.
+- `scripts/regression/compare.py` gained `HIDE_OLD` / `HIDE_NEW` (each app hides its own version of that block: the old app's groups 2+3, the new app's voicemail group); still IDENTICAL. Changelog 0.0.12, package version bumped.
+
+## 2026-09-30 10:12 · Michael · openai-agent-app (instant pickup on the phone)
+- Inbound: `/incoming` now holds its TwiML up to `PICKUP_HOLD_SECONDS` (default 3.0, clamped to max 8.0 because Twilio's webhook timeout is 15s; `0` = old behaviour) until the business's pre-rendered greeting is ready — the caller hears ringing instead of an answered silent line. Rendered greetings persist in `GREETING_CACHE_DIR` (default `/data/greetings`) and are warmed for every Twilio number at startup and every `GREETING_WARM_INTERVAL` s (600). The hold applies only on the GPT-Live engine (`OPENAI_LIVE_MODEL` set) with `PRERENDERED_GREETING` on; otherwise `/incoming` answers at once.
+- New per-call log line `pickup: greeting=… held=… hold=…ms …` (GPT-Live bridge only; logs only, no API change), plus `greeting warm-up: N business greeting(s) ready, M number(s) failed`.
+- openai-agent-app internals: `realtime/pickup.py` `expected_opening` is now the single source for the inbound opening text (server + bridge); `fetch_business_config` gained a keyword-only `quiet=` flag.
+- ⚠ Deploy: `docker compose up -d --build` creates the new `greetings` volume on the `server` service; no other service or contract changes.
+
+## 2026-09-30 09:40 · Michael · workspace (merge Main-Hans into master)
+- Merged Main-Hans @ ed71a8a (guided setup interview, Customers list kit, docs) with master's navigation (`?customer=`), pre-production calls and Agent numbers changes. Conflicts were only the HISTORY.md order and the `routing.test.ts` import line (now imports both `SECTION_IDS` and `nextRoute`).
+- Verified on the merged tree: dashboard typecheck + vitest 366/366, transcribe-backend typecheck + `bun test` 1011/1011, `compare.py` IDENTICAL, all 10 other regression scripts pass (incl. `guided_setup.py`, `numbers_twilio.py`).
+- ⚠ Deploying transcribe-backend creates `business_setup_sessions`; `SETUP_*` env is optional.
+
 ## 2026-09-30 · bottomup32 · docs (customer journey page, 30 Sep edition)
 - `docs/customer-journey.html` (published: https://claude.ai/artifact/DM1JiVC95iN2HZoukLWxoS) now describes 0.0.11. "What changed since 29 Sep" draws guided setup (the consultant writes only the draft), real calls on the composed session (GPT-Live bridge vs Realtime bridge, with a before/now transfer table), the Customers list for hundreds, and the Bland AI audio findings; violet New/Changed tags moved to today's changes in the system map, swimlane, live call, "where it works" table and "Still open".
 - ⚠ The Korean copy (`docs/customer-journey.ko.html`, https://claude.ai/artifact/3eiJvCTMR9XUYtaGDEjEaE) is still the 29 Sep edition.
@@ -36,6 +195,30 @@ Format:
 - `business/callSettings.ts` exports `newScenarioId()`; `routes/demoCommon.ts` `rateLimited(key, limit?)` takes an optional per-minute limit (default 5 unchanged).
 - ⚠ DB: new table `business_setup_sessions` (self-migrates; probe in `migrateIfNeeded`); Reset deletes an account's rows; user delete cascades.
 - ⚠ Env (optional): `SETUP_ASSISTANT_MODEL` (default `gpt-5.6-luna`), `SETUP_MAX_TURNS` (80), `SETUP_DAILY_TURN_CAP` (150/day, admins exempt); same `OPENAI_API_KEY` gate. ⚠ The consultant tells customers the phone truth from `src/setup/capabilities.ts` (one cold-dialled number per transfer, no keypress accept, no hold music, no waterfall, no SMS, no after-hours mode, booking = new appointments only with a connected calendar) — update the manifest in the same commit as any phone-agent capability change.
+
+## 2026-09-29 16:40 · Michael · dashboard (Agent numbers: register-by-hand card removed)
+- `src/pages/NumbersPage.tsx`: the "Agent phone numbers" card (intro + "Register a number by hand" form) is gone; numbers come from Twilio sync/buy only. "Sync from Twilio" and the page's setup/error/status messages moved into the Numbers table card's toolbar (`.number-toolbar-actions`; `.number-form` CSS removed).
+- The dashboard no longer calls `registerAgentNumber` / `POST /business/numbers`; the backend route and the client function are untouched. Existing hand-registered rows still show and can still be deleted.
+- `scripts/regression/numbers_twilio.py` updated (checks the card is gone; message alignment is measured against the Numbers card title).
+
+## 2026-09-29 16:05 · Michael · transcribe-backend production env (open /start sign-up)
+- Production `/start` showed "Sign-up isn't open here yet" because `transcribe-app-backend` (production) had no SMTP env, so `/auth/setup-state` returned `signup:false`. The /start code is identical on staging and production.
+- Added to `transcribe-app-backend` (Production): `SMTP_USERNAME` (resend, as staging), `ADMIN_NOTIFY_EMAIL` (as staging), `DASHBOARD_URL=https://ax-voiceagent.tecace.com`.
+- ⚠ Still needed, copied from `va-staging-backend`: `SMTP_HOST`, `SMTP_PORT`, `SMTP_PASSWORD`, `SMTP_FROM`; then redeploy the backend. Sign-up opens only once host + username + password are all set.
+- Vercel free plan hit its 100 deployments/day limit (every push built ~7 projects). Vercel projects `voice-agent-backend`, `voice-agent-voicemail-dashboard`, `voice-agent-form`, `voice-agent-dashboard` and `voice-agent` (repo-root leftover) now have Ignored Build Step `exit 0`: pushes no longer build them; their last deployment stays live. ⚠ To deploy one again, clear that setting first.
+
+## 2026-09-29 14:10 · Michael · dashboard (navigation: admin no longer locked into a business)
+- `src/routing.ts`: new `Route.customer` / `?customer=<account email>` = which business an admin is viewing on Business information and Answered calls. These pages no longer read `?mailbox=` (that stays the voicemail views' shared scope). A link to a business's page is now `#/business?customer=…`; `demoHref(view, id, { mailbox, customer })` takes it.
+- New pure `nextRoute(current, next)` holds `navigate`'s merge rules: a view change drops `id`/`section`/`tab`/`customer` unless named; a customer change closes the section. Clicking the sidebar item of the page you're on resets it (back to the list).
+- `App.tsx`: non-admins get `?mailbox=`/`?customer=` stripped (replace); demo accounts get operator-only prospect tabs stripped; leaving a session (sign-out or a 401) clears the hash so the next account starts clean; `BusinessPage` keyed by customer, `BusinessCalls` by business; `useStats` ignores stale responses. The header mailbox picker is no longer shown on Business information / Answered calls.
+- `scripts/regression/compare.py`: captures may carry `new_hash` (the new app's address for the same screen; admin-scoped `calls`/`business`) and `hide_old` (selectors hidden in the OLD app only; the picker on admin `calls`/`business`).
+- ⚠ Old bookmarks `#/business?mailbox=…` / `#/calls?mailbox=…` now open the list, not that business.
+
+## 2026-09-29 13:30 · Michael · transcribe-backend, openai-agent-app, dashboard (onboarding numbers answer real calls)
+- `GET /business/config`: a `pre-production` (Onboarding) account's number now answers as its business (was `assigned:false, reason:"not_live_stage"`), so businesses can call or forward to it to verify before Go live. Only `demo` still gets `not_live_stage`. Go live / readiness unchanged.
+- `openai-agent-app`: the "answering neutrally" log line now names the backend's `reason` (`no_number` / `not_live_stage` / `no_business_details`) and its fix.
+- Dashboard Launch instructions: onboarding copy says calls to the number are answered with what's published (was "Test calls only… line stays off until go live").
+- ⚠ Deploy transcribe-backend (production) for this to take effect; the forwarded calls to +1 425-598-7522 (Hans, pre-production) went neutral because of this gate.
 
 ## 2026-09-29 · bottomup32 · dashboard (Customers list for hundreds of rows; list-screen kit)
 - Customers: phase tabs + counts, category filter, created date, sort select + sortable headers, full width (`App.tsx` `WIDE_VIEWS` → `.content-wide`), `table-fixed` so it never scrolls sideways, pages sized to the window (Fit to screen / 25 / 50 / 100).

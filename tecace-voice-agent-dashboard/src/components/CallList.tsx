@@ -4,8 +4,9 @@ import type { InboundCall } from "../api/types";
 import { accountErrorMessage } from "../auth";
 import { IconChevronDown, IconPhone, IconTrash } from "../icons";
 import { formatDateTime, formatPhone } from "../lib";
+import { CallConversation } from "./CallConversation";
 
-// Calls the assistant answered, read the way a transcribed voicemail is read.
+// Transcripts: the calls the receptionist answered, each one's conversation read as a chat thread.
 //
 // The list answers the three questions someone actually has — who rang, on what number, and when —
 // and the conversation itself is one click away. That split matters: a page of full transcripts is
@@ -95,20 +96,7 @@ The conversation is removed permanently — this can't be undone.`)) return;
           {call.request && (
             <p className="ta-caption-1 muted call-request">Wanted: {call.request}</p>
           )}
-          <ul className="call-turns">
-            {turns.length === 0 ? (
-              <li className="muted ta-caption-1">No conversation was captured for this call.</li>
-            ) : (
-              turns.map((turn, i) => (
-                <li key={i} className={`call-turn call-turn-${turn.speaker}`}>
-                  <span className="call-speaker ta-caption-2">
-                    {turn.speaker === "agent" ? "Assistant" : name || "Caller"}
-                  </span>
-                  <span className="ta-body-2">{turn.text}</span>
-                </li>
-              ))
-            )}
-          </ul>
+          <CallConversation turns={turns} callerName={name} />
           <p className="call-meta ta-caption-2 muted">
             Rang {formatPhone(call.dialled)}
             {call.caller && call.callbackNumber && call.caller !== call.callbackNumber
@@ -117,7 +105,12 @@ The conversation is removed permanently — this can't be undone.`)) return;
             {showWho && call.userId === null ? " · not assigned to a customer" : ""}
           </p>
           {failed && <p className="error ta-caption-1">{failed}</p>}
+          {/* Close sits at the far side from Delete, so reaching for one never lands on the other. */}
           <div className="call-actions">
+            <button type="button" className="btn btn-quiet call-close" onClick={() => setOpen(false)}>
+              <IconChevronDown size={14} className="icon chevron" />
+              Hide conversation
+            </button>
             <button
               type="button"
               className="btn btn-quiet call-delete"

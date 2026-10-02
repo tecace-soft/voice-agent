@@ -258,6 +258,7 @@ describe("POST /auth/login", () => {
       emailVerified: false,
       // An onboarding customer's open go-live request (Accounts badge); nobody else has one.
       liveRequest: null,
+      liveAt: null,
     });
     expect(body.user.passwordHash).toBeUndefined();
     expect(new Date(body.expiresAt).getTime()).toBeGreaterThan(Date.now());
