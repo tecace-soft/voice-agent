@@ -22,7 +22,14 @@ import {
 import type { AgentNumber, BehaviourDefault, BusinessProfile } from "../api/types";
 import { accountErrorMessage } from "../auth";
 import type { SectionId } from "../routing";
-import { displayPhone, withDefaults, type CallSettings, type StoredCallSettings } from "./callSettings";
+import {
+  displayPhone,
+  oldTransferInUse,
+  oldTransferScenario,
+  withDefaults,
+  type CallSettings,
+  type StoredCallSettings,
+} from "./callSettings";
 import { SaveRow, SettingsShell, type Phase, type SettingsSection } from "./SettingsShell";
 import { PublishControl, makeUpdater, type CallSettingsBinding } from "./sections/shared";
 import { TransferCallsSection } from "./sections/TransferCallsSection";
@@ -343,13 +350,21 @@ export function BusinessSettings(props: Props) {
       </p>
     );
 
-  const legacyTransfer =
-    profile.transferNumber && calls && calls.draft.transfer.scenarios.length === 0 ? (
-      <div className="bg-primary/5 ta-caption-1 text-primary mb-5 rounded-lg px-3 py-2.5">
-        Callers who ask for a person are put through to {displayPhone(profile.transferNumber)}, the number you set
-        up before transfer scenarios existed. Add a transfer and publish it to replace that.
-      </div>
-    ) : null;
+  // Decided by what is PUBLISHED, as the phone decides it — not by the draft, which once hid a
+  // number calls were still being put through to as soon as a transfer was saved unpublished.
+  const oldNumber = calls ? oldTransferInUse(profile, calls) : null;
+  const oldTransfer = oldNumber ? oldTransferScenario(oldNumber, profile.transferTopics) : null;
+  const legacyTransfer = oldNumber ? (
+    <div className="bg-primary/5 ta-caption-1 text-primary mb-5 rounded-lg px-3 py-2.5">
+      Callers who ask for a person are put through to {displayPhone(oldNumber)}, the number you set up before
+      transfer scenarios existed.{" "}
+      {!profile.profile
+        ? "The transfers below are used on calls once your business details are read again on Business information."
+        : calls?.draft.transfer.scenarios.length
+          ? "Publish your transfers to replace it."
+          : "Add it to your transfers to keep it, or add your own, then publish to replace it."}
+    </div>
+  ) : null;
 
   const waterfallAdmin =
     props.isAdmin && userId && calls ? (
@@ -487,6 +502,7 @@ export function BusinessSettings(props: Props) {
       render: callsSection((binding) => (
         <TransferCallsSection
           binding={binding}
+          inUse={oldTransfer}
           notes={
             <>
               {legacyTransfer}

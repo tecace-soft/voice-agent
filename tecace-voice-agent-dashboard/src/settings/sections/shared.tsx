@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CallSettings } from "../callSettings";
 
@@ -230,6 +231,9 @@ export function Tag({ tone = "muted", children }: { tone?: "muted" | "blue" | "a
  * the switch and delete sit beside it, outside the button. `data-row` keeps the row visible when the
  * settings are read-only (see `.settings-readonly` in src/styles/index.css).
  */
+/** Width of a ScenarioRow's "Edit" cue; column heads and unclickable rows leave the same room. */
+export const ROW_CUE_WIDTH = "w-12";
+
 export function ScenarioRow({
   open,
   onToggle,
@@ -257,10 +261,20 @@ export function ScenarioRow({
           onClick={onToggle}
           aria-expanded={open}
           aria-label={label}
-          className="flex min-w-0 flex-1 items-center gap-4 py-2.5 pl-4 text-left disabled:cursor-default"
+          className="group flex min-w-0 flex-1 cursor-pointer items-center gap-4 py-2.5 pl-4 text-left disabled:cursor-default"
         >
           <span className="min-w-0 flex-1">{main}</span>
           {meta ? <span className="hidden shrink-0 items-center gap-4 @2xl:flex">{meta}</span> : null}
+          {/* Says the row opens: without it a row reads as a plain line of text. */}
+          <span
+            aria-hidden
+            className={`ta-caption-1 flex ${ROW_CUE_WIDTH} shrink-0 items-center justify-end gap-1 transition-colors duration-150 ease-in-out ${
+              open ? "text-primary" : "text-muted-foreground group-hover:text-primary"
+            }`}
+          >
+            {open ? "Close" : "Edit"}
+            {open ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          </span>
         </button>
         {actions}
       </div>

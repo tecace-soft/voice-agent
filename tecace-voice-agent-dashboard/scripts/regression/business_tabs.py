@@ -233,8 +233,20 @@ def main() -> int:
                     check("Transfers: the number warm transfers come from is shown", "(425) 555-0100" in body)
                     check("Transfers: the old single transfer number is explained",
                           "before transfer scenarios existed" in body)
+                    check("Transfers: the old number is listed as in use, not 'No transfers yet'",
+                          "In use on calls" in body and "(425) 555-0111" in body and "No transfers yet" not in body,
+                          body[:400])
                     check("Transfers: nothing to publish yet",
                           page.get_by_role("button", name="Publish").is_disabled())
+                    # The old number opens in the editor, so its type and hours can be changed in place.
+                    page.get_by_role("button", name="Edit Someone on the team").click()
+                    page.wait_for_timeout(300)
+                    old_editor = page.get_by_role("group", name="Edit Someone on the team")
+                    check("Transfers: the old number opens in the editor",
+                          old_editor.count() == 1 and old_editor.get_by_role("tab", name="Warm").count() == 1
+                          and old_editor.get_by_role("button", name="Set hours").count() == 1)
+                    old_editor.get_by_role("button", name="Cancel").click()
+                    page.wait_for_timeout(200)
                     page.get_by_role("button", name="Add a transfer").first.click()
                     page.wait_for_timeout(300)
                     # The form opens in place, at the top of the list, rather than in a dialog.
@@ -251,6 +263,10 @@ def main() -> int:
                     drafts = requests("/business/call-settings")
                     check("Transfers: Save PUTs the draft", len(drafts) == 2, str(drafts)[:200])
                     check("Transfers: the new transfer is listed", "Billing" in page.inner_text("main"))
+                    # Calls follow what is published: a saved draft does not replace the old number.
+                    body = page.inner_text("main")
+                    check("Transfers: the old number stays in use until the draft is published",
+                          "In use on calls" in body and "Publish your transfers to replace it" in body, body[:400])
                     publish = page.get_by_role("button", name="Publish")
                     check("Transfers: Publish is offered once there is a change", publish.is_enabled())
                     publish.click()
@@ -259,6 +275,8 @@ def main() -> int:
                           len(requests("/call-settings/publish", "POST")) == 1)
                     check("...and then has nothing left to publish",
                           page.get_by_role("button", name="Publish").is_disabled())
+                    check("...and the old number is no longer shown as in use",
+                          "In use on calls" not in page.inner_text("main"))
 
                     # ---- Text a link
                     open_section("Text a link")
@@ -335,10 +353,12 @@ def main() -> int:
                     check("Forwarding: the button opens the guide", "#/business/forwarding" in page.url, page.url)
                     check("Forwarding: missed-call codes carry the assistant's number",
                           "**61*4255550100#" in body and "**67*4255550100#" in body, body[:400])
-                    page.get_by_role("radio", name="Every call").click()
+                    check("Forwarding: every-call code shown alongside, no mode switch",
+                          "**21*4255550100#" in body and page.get_by_role("radio").count() == 0, body[:400])
                     page.get_by_role("tab", name="Verizon").click()
                     body = page.inner_text("main")
-                    check("Forwarding: every call on Verizon", "*724255550100" in body, body[:400])
+                    check("Forwarding: Verizon shows *71 and *72 together, not the landline *90/*92",
+                          "*714255550100" in body and "*724255550100" in body and "*90" not in body, body[:400])
                     check("Forwarding: no press-to-accept switch on a mobile tab while it's off",
                           page.get_by_role("switch").count() == 0)
                     page.get_by_role("tab", name="Landline").click()
