@@ -39,6 +39,7 @@ import {
   EmptyState,
   FieldMessage,
   InlineEditor,
+  ROW_CUE_WIDTH,
   ScenarioRow,
   Tag,
   localField,
@@ -144,6 +145,9 @@ export function TransferCallsSection({
   // transfers, on top like `adopt`, since the old number itself lives on the business profile.
   const inUseEditable = Boolean(inUse && !readOnly && !inUseAdopted && !full);
   const editingInUse = editing?.index === IN_USE;
+  // "Add to transfers" is wider than a switch and a delete button; while it shows, every row's last
+  // column takes its width so the Type/Rings/When columns stay under their heads.
+  const actionsWidth = inUseEditable ? "w-[120px]" : "";
   const editor = editing ? (
     <TransferEditor
       key={editing.scenario.id}
@@ -215,13 +219,15 @@ export function TransferCallsSection({
             <span role="columnheader" className="w-[76px]">Type</span>
             <span role="columnheader" className="w-32">Rings</span>
             <span role="columnheader" className="w-36">When</span>
-            <span role="columnheader" className={readOnly ? "w-7 text-right" : "w-16 text-right"}>On</span>
+            <span aria-hidden className={ROW_CUE_WIDTH} />
+            <span role="columnheader" className={`${actionsWidth || (readOnly ? "w-7" : "w-16")} text-right`}>On</span>
           </div>
           <ul className="divide-y">
             {inUse ? (
               <InUseRow
                 scenario={inUse}
                 onAdopt={inUseEditable ? () => void adopt() : undefined}
+                actionsWidth={actionsWidth}
                 open={editingInUse}
                 onToggle={
                   inUseEditable
@@ -274,7 +280,7 @@ export function TransferCallsSection({
                     </>
                   }
                   actions={
-                    <span className="flex items-center justify-end gap-1">
+                    <span className={`flex items-center justify-end gap-1 ${actionsWidth}`}>
                       <Switch
                         checked={scenario.enabled}
                         // A waterfall on an account without the feature can be kept but not switched on.
@@ -368,10 +374,13 @@ function InUseRow({
   onAdopt,
   open = false,
   onToggle,
+  actionsWidth = "",
   children,
 }: {
   scenario: TransferScenario;
   onAdopt?: () => void;
+  /** Width of the last column, shared with the other rows. */
+  actionsWidth?: string;
   open?: boolean;
   onToggle?: () => void;
   children?: ReactNode;
@@ -398,9 +407,11 @@ function InUseRow({
     </>
   );
   const adopt = onAdopt ? (
-    <Button variant="outline" size="sm" onClick={onAdopt}>
-      Add to transfers
-    </Button>
+    <span className={`flex justify-end ${actionsWidth}`}>
+      <Button variant="outline" size="sm" onClick={onAdopt}>
+        Add to transfers
+      </Button>
+    </span>
   ) : null;
   if (onToggle) {
     return (
@@ -429,6 +440,8 @@ function InUseRow({
           {caption}
         </span>
         <span className="hidden shrink-0 items-center gap-4 @2xl:flex">{meta}</span>
+        {/* Room for the "Edit" cue the other rows have, so the columns still line up. */}
+        <span aria-hidden className={`${ROW_CUE_WIDTH} shrink-0`} />
       </div>
       {adopt}
     </li>

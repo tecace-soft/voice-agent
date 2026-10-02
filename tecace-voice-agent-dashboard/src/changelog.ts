@@ -39,6 +39,10 @@ export const CHANGELOG: Release[] = [
         text: "Your earlier transfer number can be edited: click it to change its type or when it can be used, without adding a new number. Saving adds it to your transfers with your changes.",
       },
       {
+        kind: "improved",
+        text: "Rows under Transfer calls, Take a message and Text a link show \"Edit\" so it's clear you can click them to change them.",
+      },
+      {
         kind: "fixed",
         text: "Transfer calls lists the transfer number you set up before transfer scenarios for as long as calls still use it, instead of \"No transfers yet\". Add it to your transfers in one click; it stays in use until you publish.",
       },

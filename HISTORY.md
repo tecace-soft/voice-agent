@@ -15,6 +15,7 @@ Format:
 
 ## 2026-10-02 11:00 · Michael · dashboard (Transfer calls: edit the old in-use number)
 - `settings/sections/TransferCallsSection.tsx`: the "In use on calls" row (old `transfer_number`) now opens the transfer editor on click, prefilled, so Type/When/etc. can be changed without adding a new number. Saving prepends the edited copy to the draft transfers (same as **Add to transfers**); calls switch to it on publish. Not clickable once adopted, when read-only, or at the scenario limit.
+- Shared `ScenarioRow` (`settings/sections/shared.tsx`) now ends every row with an "Edit ⌄" / "Close ⌃" cue and a pointer cursor (Transfer calls, Take a message, Text a link). New export `ROW_CUE_WIDTH`: column heads and unclickable rows reserve that width so columns line up.
 - `TransferEditor` takes an optional `description`. `business_tabs.py` checks the editor opens. Changelog 0.0.14. No API change.
 
 ## 2026-10-02 10:27 · Michael · dashboard (Call forwarding guide: Verizon codes)
