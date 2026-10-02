@@ -13,6 +13,11 @@ Format:
 
 ---
 
+## 2026-10-02 15:00 · Hans · deploy (staging now follows Main-Hans)
+- Vercel `voice-agent-staging` (dashboard, root `tecace-voice-agent-dashboard`) and `va-staging-backend` (root `transcribe-backend`) are now connected to GitHub `tecace-soft/voice-agent` with production branch `Main-Hans`. Every push to Main-Hans deploys staging; no more CLI uploads.
+- Both have Ignored Build Step `[ "$VERCEL_GIT_COMMIT_REF" != "Main-Hans" ]`, so other branches don't build there.
+- ⚠ Don't `vercel deploy` an app folder to these projects by hand any more — with a root directory set, it would look for the subfolder inside the upload.
+
 ## 2026-10-02 14:00 · Hans · merge origin/Main-Hans into local Main-Hans (Request go live + autosave ⇄ billing, forwarding, Sales)
 - `users` keeps both column sets: `live_requested_at`/`live_request_note`/`live_declined_*` (go-live request) and `live_at`; `PublicUser` carries both `liveRequest` and `liveAt`. `billing_accounts` table added alongside.
 - Onboarding (pre-production) numbers now ANSWER as the business (origin's e9c4227 wins); the lifecycle test "keeps an onboarding customer's number off the phone line" is replaced by origin's.
