@@ -13,9 +13,12 @@ import { SectionIntro } from "../SettingsShell";
 // Shared by the business settings (admin and the customer) and a demo's settings, where there is no
 // number yet and the codes show a placeholder.
 
-type Mode = "missed" | "all";
-
-type Code = { label: string; code: string };
+type Code = {
+  label: string;
+  code: string;
+  /** A line under the code on what it does, when the label alone doesn't say it. */
+  detail?: string;
+};
 
 type Carrier = {
   id: string;
@@ -60,10 +63,24 @@ const CARRIERS: Carrier[] = [
     label: "Verizon",
     covers: "Verizon mobile phones, and other mobile plans on Verizon's network. A Verizon home or Fios line uses the Landline codes.",
     // *71 is Verizon Wireless's own no-answer/busy code; *90/*92 are landline (Fios) codes and do nothing on a mobile.
-    missed: [{ label: "When you're on another call or don't pick up", code: "*71{n}" }],
-    all: [{ label: "Every call", code: "*72{n}" }],
+    missed: [
+      {
+        label: "When you're on another call or don't pick up",
+        code: "*71{n}",
+        detail:
+          "Your phone rings about 3 or 4 times first; Verizon sets this and it can't be changed. If you don't answer, or you're already on a call, the caller goes to your receptionist. One code covers both.",
+      },
+    ],
+    all: [
+      {
+        label: "Every call",
+        code: "*72{n}",
+        detail:
+          "Your phone doesn't ring: every caller goes straight to your receptionist. Dial this instead of *71, not as well.",
+      },
+    ],
     off: [{ label: "Turn off all forwarding", code: "*73" }],
-    note: "Verizon sets the ring time (about 3 or 4 rings) — it can't be changed. Verizon can't turn off one rule on its own: *73 turns off all of them.",
+    note: "Verizon can't turn off one rule on its own: *73 turns off all of them.",
     confirm: MOBILE_CONFIRM,
   },
   {
@@ -123,11 +140,10 @@ export function ForwardingSection({
   notice?: ReactNode;
   pressToAccept?: PressToAccept;
 }) {
-  const [mode, setMode] = useState<Mode>("missed");
   const [carrierId, setCarrierId] = useState("gsm");
   const carrier = CARRIERS.find((c) => c.id === carrierId) ?? GSM;
   const digits = agentNumber?.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "") ?? "";
-  const codes = mode === "missed" ? carrier.missed : carrier.all;
+  const hasCodes = carrier.missed.length > 0 || carrier.all.length > 0;
 
   return (
     <div className="max-w-3xl">
@@ -142,32 +158,7 @@ export function ForwardingSection({
         {notice ? <p className="ta-caption-1 text-muted-foreground mt-1">{notice}</p> : null}
       </div>
 
-      <Step n={1} title="Choose which calls the receptionist answers">
-        <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Which calls to forward">
-          <ModeCard
-            selected={mode === "missed"}
-            onSelect={() => setMode("missed")}
-            title="Missed calls"
-            badge="Recommended"
-            body="Your phone rings first. When you're busy, don't pick up or have no signal, the receptionist answers."
-          />
-          <ModeCard
-            selected={mode === "all"}
-            onSelect={() => setMode("all")}
-            title="Every call"
-            body="The receptionist answers every call straight away, and puts callers through to you when they need a person."
-          />
-        </div>
-        {mode === "all" ? (
-          <p className="ta-caption-1 text-muted-foreground mt-3 flex items-start gap-2">
-            <TriangleAlert className="text-warning mt-0.5 size-4 shrink-0" aria-hidden />
-            Transfer calls to a different number than the one you forward, such as a mobile — a call transferred to
-            the forwarded line comes straight back to the receptionist.
-          </p>
-        ) : null}
-      </Step>
-
-      <Step n={2} title="Dial the code from your business phone">
+      <Step n={1} title="Dial the code from your business phone">
         <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Your phone company">
           {CARRIERS.map((c) => (
             <Button
@@ -184,21 +175,37 @@ export function ForwardingSection({
         </div>
         <p className="ta-caption-1 text-muted-foreground mb-3">{carrier.covers}</p>
 
-        {codes.length ? (
+        {hasCodes ? (
           <>
-            <ul className="divide-y rounded-xl border">
-              {codes.map((c) => (
-                <CodeRow key={c.code} label={c.label} code={fill(c.code, digits)} copyable={Boolean(digits)} />
-              ))}
-            </ul>
-            <p className="ta-caption-1 text-muted-foreground mt-3">
-              Dial each code and press call. You'll hear a tone or see a confirmation, then you can hang up.
-              {mode === "missed" && codes.length > 1 ? " Each code is its own rule, so dial all of them." : ""}
+            <p className="ta-body-2 mb-4">
+              There are two ways to forward. Pick one and dial its codes, then press call. You'll hear a tone or see a
+              confirmation, then you can hang up.
             </p>
+            <div className="space-y-6">
+              <ForwardWay
+                title="Forward missed calls"
+                badge="Recommended"
+                body="Your phone rings first, so you can still answer. The receptionist only takes the calls you miss."
+                codes={carrier.missed}
+                digits={digits}
+              />
+              <ForwardWay
+                title="Forward every call"
+                body="The receptionist answers every call straight away, and puts callers through to you when they need a person."
+                codes={carrier.all}
+                digits={digits}
+              >
+                <p className="ta-caption-1 text-muted-foreground mt-3 flex items-start gap-2">
+                  <TriangleAlert className="text-warning mt-0.5 size-4 shrink-0" aria-hidden />
+                  Transfer calls to a different number than the one you forward, such as a mobile — a call transferred
+                  to the forwarded line comes straight back to the receptionist.
+                </p>
+              </ForwardWay>
+            </div>
           </>
         ) : null}
         {carrier.note ? (
-          <p className={codes.length ? "ta-caption-1 text-muted-foreground mt-3" : "ta-body-2"}>
+          <p className={hasCodes ? "ta-caption-1 text-muted-foreground mt-4" : "ta-body-2"}>
             {fill(carrier.note, digits)}
           </p>
         ) : null}
@@ -215,7 +222,7 @@ export function ForwardingSection({
         ) : null}
       </Step>
 
-      <Step n={3} title="Turn off answer confirmation">
+      <Step n={2} title="Turn off answer confirmation">
         <p className="ta-body-2">{fill(carrier.confirm, digits)}</p>
         {carrier.confirm !== MOBILE_CONFIRM ? (
           <p className="ta-caption-1 text-muted-foreground mt-3">
@@ -249,21 +256,21 @@ export function ForwardingSection({
         ) : null}
       </Step>
 
-      <Step n={4} title="Check it works" last>
+      <Step n={3} title="Check it works" last>
         <ul className="ta-body-2 list-disc space-y-2 pl-5">
           <li>
-            From a different phone, call your business number.
-            {mode === "missed" ? " Let it ring without answering." : ""}
+            From a different phone, call your business number. If you forward missed calls, let it ring without
+            answering.
           </li>
           <li>Your receptionist should answer as your business. Ask it something from your FAQs.</li>
           <li>
             Voicemail answered instead? On an iPhone, turn off Live Voicemail (Settings › Apps › Phone). On
-            Android, turn off Call Screen. Otherwise shorten the ring time above, so forwarding happens before
-            voicemail.
+            Android, turn off Call Screen. Otherwise shorten the ring time in step 1, if your phone company lets
+            you, so forwarding happens before voicemail.
           </li>
           <li>
             Hear "This is a forwarded call, press 1 to accept" or a beep before the receptionist speaks? Answer
-            confirmation is still on — see step 3.
+            confirmation is still on — see step 2.
           </li>
           <li>A code didn't take? Codes vary by plan — your phone company can turn forwarding on for you.</li>
         </ul>
@@ -288,45 +295,67 @@ function Step({ n, title, last, children }: { n: number; title: string; last?: b
   );
 }
 
-function ModeCard({
-  selected,
-  onSelect,
+/** One way to forward (missed calls or every call): what it does, then its codes. */
+function ForwardWay({
   title,
   badge,
   body,
+  codes,
+  digits,
+  children,
 }: {
-  selected: boolean;
-  onSelect: () => void;
   title: string;
   badge?: string;
   body: string;
+  codes: Code[];
+  digits: string;
+  children?: ReactNode;
 }) {
+  if (!codes.length) return null;
   return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      onClick={onSelect}
-      className={`rounded-xl border p-4 text-left transition-colors ${
-        selected ? "border-primary bg-primary/5" : "hover:bg-muted/40"
-      }`}
-    >
-      <span className="ta-label-1 flex items-center gap-2">
+    <section aria-label={title}>
+      <h4 className="ta-label-1 flex items-center gap-2">
         {title}
         {badge ? <span className="ta-caption-2 text-primary">{badge}</span> : null}
-      </span>
-      <span className="ta-caption-1 text-muted-foreground mt-1 block">{body}</span>
-    </button>
+      </h4>
+      <p className="ta-caption-1 text-muted-foreground mt-1 mb-3">{body}</p>
+      <ul className="divide-y rounded-xl border">
+        {codes.map((c) => (
+          <CodeRow
+            key={c.code}
+            label={c.label}
+            code={fill(c.code, digits)}
+            detail={c.detail}
+            copyable={Boolean(digits)}
+          />
+        ))}
+      </ul>
+      {codes.length > 1 ? (
+        <p className="ta-caption-1 text-muted-foreground mt-3">Each code is its own rule, so dial all of them.</p>
+      ) : null}
+      {children}
+    </section>
   );
 }
 
-function CodeRow({ label, code, copyable }: { label: string; code: string; copyable: boolean }) {
+function CodeRow({
+  label,
+  code,
+  detail,
+  copyable,
+}: {
+  label: string;
+  code: string;
+  detail?: string;
+  copyable: boolean;
+}) {
   const [copied, setCopied] = useState(false);
   return (
     <li className="flex items-center justify-between gap-3 px-4 py-3">
       <span className="min-w-0">
         <span className="ta-caption-1 text-muted-foreground block">{label}</span>
         <span className="ta-body-1 font-mono break-all">{code}</span>
+        {detail ? <span className="ta-caption-1 text-muted-foreground mt-1 block">{detail}</span> : null}
       </span>
       {copyable ? (
         <Button

@@ -344,10 +344,12 @@ def main() -> int:
                     check("Forwarding: the button opens the guide", "#/business/forwarding" in page.url, page.url)
                     check("Forwarding: missed-call codes carry the assistant's number",
                           "**61*4255550100#" in body and "**67*4255550100#" in body, body[:400])
-                    page.get_by_role("radio", name="Every call").click()
+                    check("Forwarding: every-call code shown alongside, no mode switch",
+                          "**21*4255550100#" in body and page.get_by_role("radio").count() == 0, body[:400])
                     page.get_by_role("tab", name="Verizon").click()
                     body = page.inner_text("main")
-                    check("Forwarding: every call on Verizon", "*724255550100" in body, body[:400])
+                    check("Forwarding: Verizon shows *71 and *72 together, not the landline *90/*92",
+                          "*714255550100" in body and "*724255550100" in body and "*90" not in body, body[:400])
                     check("Forwarding: no press-to-accept switch on a mobile tab while it's off",
                           page.get_by_role("switch").count() == 0)
                     page.get_by_role("tab", name="Landline").click()

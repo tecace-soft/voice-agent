@@ -14,7 +14,8 @@ Format:
 ---
 
 ## 2026-10-02 10:27 · Michael · dashboard (Call forwarding guide: Verizon codes)
-- `settings/sections/ForwardingSection.tsx`: Verizon (mobile) missed calls is now `*71{n}` (busy + no answer, one code; confirmed on a real Verizon Wireless phone, test book C14/E6). The old `*90`/`*92` were Fios/landline codes; they moved to the Landline tab with `*91`/`*93` to turn them off. Dropped "US Cellular" from the Verizon tab (now T-Mobile, test book C12). Changelog 0.0.14. Copy only, no API change.
+- `settings/sections/ForwardingSection.tsx`: Verizon (mobile) missed calls is now `*71{n}` (busy + no answer, one code; confirmed on a real Verizon Wireless phone, test book C14/E6). The old `*90`/`*92` were Fios/landline codes; they moved to the Landline tab with `*91`/`*93` to turn them off. Dropped "US Cellular" from the Verizon tab (now T-Mobile, test book C12).
+- Same file: the "Missed calls / Every call" radio step is gone; each carrier tab now lists both ways (missed calls, recommended, and every call) with an explanation, and `Code` has an optional `detail` line (used for Verizon `*71`/`*72`). Steps renumbered 1–3. `business_tabs.py` updated (no radio click; checks `*71` + `*72` on Verizon). Changelog 0.0.14. No API change.
 
 ## 2026-10-02 09:00 · Michael · dashboard (Transfer calls: the old `transferNumber` shown while calls use it)
 - Bug: a business with the pre-scenario `business_profiles.transfer_number` (e.g. TecAce Test) saw "No transfers yet" on Transfer calls while real calls still went to that number. The page showed the old number only when the call-settings **draft** had no transfers; the phone (`composeSession`) uses it while nothing has been **published** (and always for a profile without a structured `profile`, which gets the agent's older prompt).

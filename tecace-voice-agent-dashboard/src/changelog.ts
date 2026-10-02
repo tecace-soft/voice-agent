@@ -42,6 +42,10 @@ export const CHANGELOG: Release[] = [
         kind: "fixed",
         text: "Call forwarding shows the right missed-call code for Verizon mobile phones (*71). The busy and no-answer codes it showed before (*90, *92) are for landlines and are now under Landline.",
       },
+      {
+        kind: "improved",
+        text: "Call forwarding shows both ways to forward for your phone company at once, missed calls and every call, each with what it does, instead of making you pick one first.",
+      },
     ],
   },
   {
