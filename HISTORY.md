@@ -13,6 +13,11 @@ Format:
 
 ---
 
+## 2026-10-02 15:35 · Michael · repo (Vercel deployment counter)
+- New root `scripts/vercel-deploys.mjs`: `node scripts/vercel-deploys.mjs [--list]` counts Vercel deployments in the rolling last 24h against the Hobby limit (100/day), per project, with and without canceled ones. Vercel's dashboard has no counter for this.
+- Auth: uses your logged-in Vercel CLI (`vercel login`, needs CLI ≥ 60 for `vercel api`); or set `VERCEL_TOKEN` in the shell or a repo-root `.env` (git-ignored).
+- Every push to master currently creates a deployment in ~7 Vercel projects (most are skipped/canceled), so each push uses ~7 of the 100.
+
 ## 2026-10-02 14:38 · Michael · transcribe-backend + dashboard (call summary emails)
 - New column `users.email_call_summaries BOOLEAN NOT NULL DEFAULT false` (self-migrates); new routes `GET`/`PUT /business/call-emails` (`{enabled}` → `{enabled, email}`, admin `?userId=`).
 - `POST /calls` now emails the owner a summary + dashboard link when that switch is on. It awaits the send (5 s cap, because Vercel can stop un-awaited work); the 201 and body are unchanged and a mail failure never fails the call. `sendMail` takes an optional `{timeoutMs}`.
