@@ -30,6 +30,17 @@ export type Release = {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.0.14",
+    date: "2026-10-02",
+    title: "Your earlier transfer number, shown where calls use it",
+    items: [
+      {
+        kind: "fixed",
+        text: "Transfer calls lists the transfer number you set up before transfer scenarios for as long as calls still use it, instead of \"No transfers yet\". Add it to your transfers in one click; it stays in use until you publish.",
+      },
+    ],
+  },
+  {
     version: "0.0.13",
     date: "2026-10-01",
     title: "Refill your details from research; your prompts up front",

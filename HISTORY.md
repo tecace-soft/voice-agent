@@ -13,6 +13,11 @@ Format:
 
 ---
 
+## 2026-10-02 09:00 · Michael · dashboard (Transfer calls: the old `transferNumber` shown while calls use it)
+- Bug: a business with the pre-scenario `business_profiles.transfer_number` (e.g. TecAce Test) saw "No transfers yet" on Transfer calls while real calls still went to that number. The page showed the old number only when the call-settings **draft** had no transfers; the phone (`composeSession`) uses it while nothing has been **published** (and always for a profile without a structured `profile`, which gets the agent's older prompt).
+- `settings/callSettings.ts`: new `oldTransferInUse(profile, stored)` (same rule as the backend) and `oldTransferScenario()` (mirror of backend `legacyScenario`). `TransferCallsSection` takes `inUse` and lists it as an "In use on calls" row with **Add to transfers** (copies it into the draft; it stops being used once published). Tests: `tests/old-transfer.test.ts`, `business_tabs.py`. Changelog 0.0.14. No API change.
+- ⚠ If `compose.ts`'s legacy rule (`neverPublished && no scenarios`) or `legacyScenario` changes, change `oldTransferInUse`/`oldTransferScenario` with it.
+
 ## 2026-10-01 14:37 · Michael · voice agent service heartbeats (transcribe-backend, openai-agent-app, dashboard)
 - transcribe-backend: new `POST /agent/heartbeat` (header `x-agent-key` = `AGENT_CONFIG_KEY`; body `{ service: server|poller|scenarios, intervalSeconds, ok, detail?, startedAt, host?, metrics? }`) and admin-only `GET /agent/heartbeats` returning `{ services }` (always 3 entries; state online/erroring/offline/never; stale after max(interval×2.5, 120 s)). New table `service_heartbeats` (one UPSERTed row per service, self-migrating). Test: `src/routes/agentStatus.pg.test.ts`.
 - openai-agent-app: new `src/openai_agent/heartbeat.py`; the call server (`telephony/server.py` lifespan, plus an active-call counter), the poller (`run_poller.py`, daemon thread) and the scenario runner each post every 60 s. A failed post is logged once and never affects calls. Optional env `HEARTBEAT_SECONDS` (default 60). Check: `scripts/checks/verify_heartbeat.py`.

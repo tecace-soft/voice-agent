@@ -73,10 +73,16 @@ function blankScenario(): TransferScenario {
 export function TransferCallsSection({
   binding,
   notes,
+  inUse,
 }: {
   binding: CallSettingsBinding;
   /** Under the intro: an older single transfer number still in use, the admin's waterfall switch. */
   notes?: ReactNode;
+  /**
+   * The number set up before transfer scenarios, while real calls still dial it. Listed as the
+   * transfer callers get today, so the list never reads "No transfers yet" while calls go through.
+   */
+  inUse?: TransferScenario | null;
 }) {
   const scenarios = binding.value.transfer.scenarios;
   const [editing, setEditing] = useState<{ scenario: TransferScenario; index: number } | null>(null);
@@ -113,13 +119,24 @@ export function TransferCallsSection({
   const full = scenarios.length >= MAX_SCENARIOS;
   const readOnly = Boolean(binding.readOnly);
   // Nothing set up yet and nothing to edit with: show what it could look like instead of an empty box.
-  const showingExamples = readOnly && scenarios.length === 0;
+  const showingExamples = readOnly && scenarios.length === 0 && !inUse;
   const rows = showingExamples
     ? TRANSFER_EXAMPLES.map((e) => ({ ...e.scenario(), numbers: e.sampleNumbers }))
     : scenarios;
   const fromExample = (example: (typeof TRANSFER_EXAMPLES)[number]) =>
     setEditing({ scenario: example.scenario(), index: -1 });
-  const sample = scenarios.find((s) => s.enabled) ?? scenarios[0];
+  const sample = scenarios.find((s) => s.enabled) ?? scenarios[0] ?? inUse ?? undefined;
+  // Already carried over into the draft: nothing to add, the row only says calls still use it.
+  const inUseAdopted = Boolean(inUse && scenarios.some((s) => s.numbers.includes(inUse.numbers[0] ?? "")));
+  async function adopt() {
+    if (!inUse) return;
+    setRowError(null);
+    try {
+      await change((list) => [{ ...inUse, id: newId() }, ...list]);
+    } catch (e) {
+      setRowError(toFieldError(e, "Couldn't add that.").message);
+    }
+  }
   const editor = editing ? (
     <TransferEditor
       key={editing.scenario.id}
@@ -157,7 +174,7 @@ export function TransferCallsSection({
         </p>
       ) : null}
 
-      {rows.length === 0 && !editing ? (
+      {rows.length === 0 && !editing && !inUse ? (
         <EmptyState
           title="No transfers yet"
           action={
@@ -187,6 +204,9 @@ export function TransferCallsSection({
             <span role="columnheader" className={readOnly ? "w-7 text-right" : "w-16 text-right"}>On</span>
           </div>
           <ul className="divide-y">
+            {inUse ? (
+              <InUseRow scenario={inUse} onAdopt={readOnly || inUseAdopted || full ? undefined : () => void adopt()} />
+            ) : null}
             {editing?.index === -1 ? <li>{editor}</li> : null}
             {rows.map((scenario, index) => {
               const open = editing?.index === index && editing.scenario.id === scenario.id;
@@ -310,6 +330,41 @@ export function TransferCallsSection({
         <TransferExchange businessName={binding.businessName} scenario={sample} />
       </div>
     </div>
+  );
+}
+
+/**
+ * The older single transfer number, as the phone uses it. Not editable here — it lives on the
+ * business profile — but it can be copied into the transfers, which replace it once published.
+ */
+function InUseRow({ scenario, onAdopt }: { scenario: TransferScenario; onAdopt?: () => void }) {
+  const number = scenario.numbers[0] ?? "";
+  return (
+    <li data-row className="flex items-center gap-2 pr-3">
+      <div className="flex min-w-0 flex-1 items-center gap-4 py-2.5 pl-4">
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span className="ta-label-1 truncate font-semibold!">{scenario.name}</span>
+            <Tag tone="blue">In use on calls</Tag>
+          </span>
+          <span className="ta-caption-1 text-muted-foreground block truncate">
+            Your earlier transfer number. <span className="@2xl:hidden">{displayPhone(number)}</span>
+          </span>
+        </span>
+        <span className="hidden shrink-0 items-center gap-4 @2xl:flex">
+          <span className="w-[76px]">
+            <Tag tone={MODE_TONE[scenario.mode]}>{MODE_LABEL[scenario.mode]}</Tag>
+          </span>
+          <span className="w-32 truncate font-mono text-[12px]">{displayPhone(number)}</span>
+          <span className="text-muted-foreground w-36 truncate text-[12px]">{hoursSummary(scenario.hours)}</span>
+        </span>
+      </div>
+      {onAdopt ? (
+        <Button variant="outline" size="sm" onClick={onAdopt}>
+          Add to transfers
+        </Button>
+      ) : null}
+    </li>
   );
 }
 
