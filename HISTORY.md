@@ -13,6 +13,11 @@ Format:
 
 ---
 
+## 2026-10-02 · johnson · repo-level Claude skill: design-taste-frontend (Taste Skill)
+- New `.claude/skills/design-taste-frontend/` vendored from Leonxlnx/taste-skill @ ce26fc2 (MIT). Anti-slop design rules for landing pages / portfolios / marketing pages; provenance in `VENDORED.md`.
+- `.gitignore`: `.claude/` → `.claude/*` + `!.claude/skills/`, so repo skills are committed while `settings.local.json` etc. stay ignored.
+- ⚠ Not for the dashboards: they keep following `tecace-dashboard-ui` (brand blue #116DFF, Pretendard + Poppins, lucide allowed). Taste's defaults (avoid Inter/lucide, zero em-dashes, etc.) conflict with it, and the skill description says so.
+
 ## 2026-10-01 14:37 · Michael · voice agent service heartbeats (transcribe-backend, openai-agent-app, dashboard)
 - transcribe-backend: new `POST /agent/heartbeat` (header `x-agent-key` = `AGENT_CONFIG_KEY`; body `{ service: server|poller|scenarios, intervalSeconds, ok, detail?, startedAt, host?, metrics? }`) and admin-only `GET /agent/heartbeats` returning `{ services }` (always 3 entries; state online/erroring/offline/never; stale after max(interval×2.5, 120 s)). New table `service_heartbeats` (one UPSERTed row per service, self-migrating). Test: `src/routes/agentStatus.pg.test.ts`.
 - openai-agent-app: new `src/openai_agent/heartbeat.py`; the call server (`telephony/server.py` lifespan, plus an active-call counter), the poller (`run_poller.py`, daemon thread) and the scenario runner each post every 60 s. A failed post is logged once and never affects calls. Optional env `HEARTBEAT_SECONDS` (default 60). Check: `scripts/checks/verify_heartbeat.py`.
