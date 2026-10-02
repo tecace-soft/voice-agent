@@ -19,6 +19,9 @@ import { readJson } from "@/lib/http";
 import { PHASE_KIND, PHASE_LABELS, phaseOf } from "@/lib/phase";
 import type { Customer } from "@/lib/types";
 import { demoHref } from "@/routes";
+import { toast } from "sonner";
+import { useAuth } from "../../../auth";
+import { RequestSetupDialog, type Moved } from "../../../billing/RequestSetupDialog";
 
 // Dashboard-only (see PORTING.md): where a demo customer is in its life — demo, onboarding,
 // production — on the one page that already belongs to them. No promo counterpart.
@@ -417,64 +420,22 @@ export function RequestSetup({
   /** The strip's second line: how the demo has been used. */
   extra?: ReactNode;
 }) {
-  const [current, update] = useCustomer(customer, onChanged);
+  const [current] = useCustomer(customer, onChanged);
   const [open, setOpen] = useState(false);
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { adopt } = useAuth();
 
-  async function send() {
-    setBusy(true);
-    setError(null);
-    try {
-      update(
-        await post(`/customers/${current.id}/request-onboarding`, {
-          note: note.trim() || undefined,
-        }),
-      );
-      setOpen(false);
-      setNote("");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not send your request.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  // The account is in onboarding now. Their Home is where the setup checklist lives; move there
+  // first, then adopt the moved account, so no screen renders between the two states.
+  const moved = (result: Moved) => {
+    setOpen(false);
+    window.location.hash = demoHref("dashboard");
+    adopt(result.user);
+    toast.success("Setup started. Everything is yours to change now.");
+  };
 
   const requested = current.request;
   const dialog = (
-      <Dialog open={open} onOpenChange={(next) => !busy && setOpen(next)}>
-        <DialogContent className="max-w-md rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="ta-headline-1">Request setup</DialogTitle>
-            <DialogDescription className="ta-body-2">
-              We&apos;ll review your request and get back to you. Once it&apos;s approved, your
-              receptionist is copied into your own business information, where you can edit it.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="request-note" className="ta-label-1">
-              Anything we should know? (optional)
-            </Label>
-            <Textarea
-              id="request-note"
-              value={note}
-              maxLength={MAX_NOTE}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder="For example: we'd like to start next month."
-            />
-          </div>
-          <ErrorLine error={error} />
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button onClick={() => void send()} disabled={busy}>
-              {busy ? "Sending" : "Send request"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+    <RequestSetupDialog customerId={current.id} open={open} onOpenChange={setOpen} onMoved={moved} />
   );
 
   if (variant === "strip") {

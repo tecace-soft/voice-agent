@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prospect · Harbor Dental (mockup)</title>
+<link rel="stylesheet" href="mockup.css" />
+<script src="shell.js"></script>
+</head>
+<body>
+<div id="page">
+
+  <!-- Header: who, where they are, and the only page-level actions -->
+  <section class="col" style="gap:12px">
+    <a class="cap row" href="prospects.html"><i data-i="back"></i>Prospects</a>
+    <div class="page-h" style="align-items:center">
+      <div class="col" style="gap:4px">
+        <div class="row wrap" style="gap:10px">
+          <h1 class="h1">Harbor Dental</h1>
+          <span class="badge blue">Demo</span>
+          <span class="badge red">Hot</span>
+          <span class="badge amber"><span class="dot"></span>Setup requested</span>
+        </div>
+        <p class="cap"><span class="mono">HADE-0001</span> · Dentist · 12 Wharf St, Portland, ME · Added Sep 22</p>
+      </div>
+      <span class="spacer"></span>
+      <a class="btn" href="#">Open demo page <i data-i="ext"></i></a>
+      <div class="menu-wrap">
+        <button class="btn icon" data-menu="m-more" title="More"><i data-i="more"></i></button>
+        <div class="menu" id="m-more">
+          <button><i data-i="copy"></i>Copy prospect ID</button>
+          <hr />
+          <button class="danger"><i data-i="trash"></i>Delete prospect</button>
+        </div>
+      </div>
+      <span class="pin">1</span>
+    </div>
+
+    <div class="card pad">
+      <div class="stepper">
+        <div class="s done"><span class="n">✓</span>Researched</div>
+        <div class="s done"><span class="n">✓</span>Link shared</div>
+        <div class="s done"><span class="n">✓</span>Tried it</div>
+        <div class="s now"><span class="n">4</span>Setup requested</div>
+        <div class="s"><span class="n">5</span>Onboarding</div>
+        <div class="s"><span class="n">6</span>Live</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="tabs" data-tabs="p">
+    <button class="on" data-tab="overview">Overview</button>
+    <button data-tab="calls">Calls<span class="n">4</span></button>
+    <button data-tab="receptionist">Receptionist</button>
+    <button data-tab="research">Research</button>
+    <button data-tab="email">Outreach email</button>
+    <span class="spacer"></span>
+    <span class="saved" style="align-self:center"><i data-i="check"></i>All changes saved</span>
+    <span class="pin" style="align-self:center;margin-left:8px">2</span>
+  </div>
+
+  <!-- ===================== Overview ===================== -->
+  <div data-panel-of="p" data-panel="overview" class="grid g12" style="align-items:start">
+    <div class="col" style="gap:16px">
+
+      <!-- Next step: changes with the lifecycle. The segment only exists in the mockup, to show each state. -->
+      <div class="row cap" style="gap:8px">Mockup: show the next-step card for
+        <div class="seg" data-view="next">
+          <button data-seg="research">Not researched</button>
+          <button data-seg="share">Ready to share</button>
+          <button class="on" data-seg="request">Setup requested</button>
+          <button data-seg="onboarding">Onboarding</button>
+        </div>
+      </div>
+
+      <div class="card" style="border-color:var(--warning);" data-view-of="next" data-view-name="request">
+        <div class="card-h">
+          <span class="badge amber">Next step</span>
+          <h2 class="h3">Dana Reyes asked to set this up</h2>
+          <span class="spacer"></span><span class="cap">Oct 1, 3:12 PM</span><span class="pin">3</span>
+        </div>
+        <div class="card-b col" style="gap:14px">
+          <dl class="kv">
+            <dt>Requested by</dt><dd>Dana Reyes · dana@harbordental.example <span class="badge green">Email verified</span></dd>
+            <dt>From</dt><dd>The demo page · first request</dd>
+            <dt>Their note</dt><dd>“We'd like it on the front desk line before the holidays.”</dd>
+          </dl>
+          <div class="row">
+            <span class="cap">Approving creates their account and moves them to onboarding. Go live happens on the Customers page.</span>
+            <span class="spacer"></span>
+            <button class="btn ghost" data-open="dlg-decline">Decline</button>
+            <button class="btn primary" data-open="dlg-approve">Approve and send invite</button>
+          </div>
+        </div>
+      </div>
+      <div class="card" data-view-of="next" data-view-name="research" hidden>
+        <div class="card-h"><span class="badge">Next step</span><h2 class="h3">Research the business</h2></div>
+        <div class="card-b row"><span class="sub">The receptionist knows nothing yet. Research reads the website and public listings, about two minutes.</span><span class="spacer"></span><a class="btn primary" href="#" data-tab-link>Go to Research</a></div>
+      </div>
+      <div class="card" data-view-of="next" data-view-name="share" hidden>
+        <div class="card-h"><span class="badge blue">Next step</span><h2 class="h3">Send the demo to Dana</h2></div>
+        <div class="card-b row"><span class="sub">The receptionist is ready and the link is live. The outreach email is written for you.</span><span class="spacer"></span><button class="btn primary">Copy email</button></div>
+      </div>
+      <div class="card" data-view-of="next" data-view-name="onboarding" hidden>
+        <div class="card-h"><span class="badge blue">Onboarding</span><h2 class="h3">Approved Oct 2. Waiting on go live.</h2></div>
+        <div class="card-b row"><span class="sub">2 of 4 go live checks pass. A number still needs to be assigned.</span><span class="spacer"></span><a class="btn primary" href="customers.html">Open in Customers</a></div>
+      </div>
+
+      <div class="grid g4">
+        <div class="card stat"><span class="cap">Link opens</span><span class="big tabular">14</span><span class="cap">4 people</span></div>
+        <div class="card stat"><span class="cap">Calls</span><span class="big tabular">3</span><span class="cap">1 test call left out</span></div>
+        <div class="card stat"><span class="cap">Minutes</span><span class="big tabular">9</span><span class="cap">of 10 demo minutes</span></div>
+        <div class="card stat"><span class="cap">Average call</span><span class="big tabular">3:00</span><span class="cap">Last call Oct 2</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2 class="h3">Calls per day</h2><span class="cap">last 14 days, customer calls</span><span class="spacer"></span>
+          <span class="badge green">Happy 2</span><span class="badge">Not reviewed 1</span></div>
+        <div class="card-b" id="chart-calls"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2 class="h3">What to fix</h2><span class="cap">where the receptionist ran out of answers</span><span class="pin">4</span></div>
+        <div class="card-b col" style="gap:10px">
+          <div class="row"><span class="badge amber tabular">2 calls</span><span>No price list for implants</span><span class="spacer"></span><a class="btn sm" href="#">Add an FAQ</a></div>
+          <hr class="sep" />
+          <div class="row"><span class="badge amber tabular">1 call</span><span>Could not say if Saturday opens again</span><span class="spacer"></span><a class="btn sm" href="#">Edit hours</a></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right rail: everything about the link, the deal and the contact, next to each other -->
+    <div class="col" style="gap:16px">
+      <div class="card">
+        <div class="card-h"><h2 class="h3">Demo link</h2><span class="spacer"></span><span class="cap">Live</span><span class="switch on" data-switch></span><span class="pin">5</span></div>
+        <div class="card-b col" style="gap:12px">
+          <div class="row"><input class="input mono" style="flex:1" value="ax-voiceagent.tecace.com/c/pr0SPct1" readonly /><button class="btn icon" title="Copy link"><i data-i="copy"></i></button></div>
+          <div class="col" style="gap:6px">
+            <div class="row"><span class="cap">Demo minutes</span><span class="spacer"></span><span class="cap tabular"><b style="color:var(--text)">9:00</b> of 10:00 used</span></div>
+            <div class="bar warn"><i style="width:90%"></i></div>
+            <div class="row"><span class="cap">The call button closes at 10:00. Your test calls don't count.</span><span class="spacer"></span>
+              <div class="menu-wrap"><button class="btn sm" data-menu="m-time"><i data-i="plus"></i>Add time</button>
+                <div class="menu" id="m-time"><button>10 minutes</button><button>30 minutes</button><button>60 minutes</button></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2 class="h3">Deal</h2><span class="spacer"></span><span class="pin">6</span></div>
+        <div class="card-b col" style="gap:12px">
+          <div class="grid g2" style="gap:10px">
+            <div class="field"><label class="cap">Stage</label><select class="select"><option>Interested</option><option>New</option><option>Contacted</option><option>Won</option><option>Lost</option></select></div>
+            <div class="field"><label class="cap">Follow up on</label><input class="input" value="Oct 6" /></div>
+          </div>
+          <div class="field"><label class="cap">Add a note</label><textarea class="input" rows="2" placeholder="Called, left a voicemail…"></textarea></div>
+          <div class="row"><span class="spacer"></span><button class="btn sm">Add note</button></div>
+          <hr class="sep" />
+          <div class="col" style="gap:10px">
+            <div class="col" style="gap:0"><span>Setup requested from the demo page</span><span class="cap">Oct 1 · automatic</span></div>
+            <div class="col" style="gap:0"><span>Met at the expo, keen on after-hours calls.</span><span class="cap">Sep 22 · Ada</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2 class="h3">Contact</h2><span class="spacer"></span><button class="btn ghost sm">Edit</button></div>
+        <div class="card-b">
+          <dl class="kv"><dt>Name</dt><dd>Dana Reyes</dd><dt>Email</dt><dd>dana@harbordental.example</dd><dt>Label</dt><dd>Met at the expo</dd></dl>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Calls ===================== -->
+  <div data-panel-of="p" data-panel="calls" hidden class="card">
+    <div class="card-h">
+      <div class="seg"><button class="on" data-seg="a">All<span class="n">4</span></button><button data-seg="c">Customers<span class="n">3</span></button><button data-seg="t">Tests<span class="n">1</span></button></div>
+      <select class="select"><option>Any mood</option><option>Happy</option><option>Mixed</option><option>Frustrated</option><option>Not reviewed</option></select>
+      <span class="spacer"></span>
+      <button class="btn"><i data-i="spark"></i>Review 2 unreviewed calls</button><span class="pin">7</span>
+    </div>
+    <table class="t">
+      <colgroup><col style="width:14%"><col style="width:12%"><col style="width:12%"><col><col style="width:14%"><col style="width:44px"></colgroup>
+      <thead><tr><th>When</th><th>Length</th><th>Mood</th><th>What was asked</th><th>Counted as</th><th></th></tr></thead>
+      <tbody>
+        <tr data-open="drawer-call" style="cursor:pointer"><td><div class="cell2"><span>Oct 2</span><span class="cap">1:48 PM</span></div></td><td><div class="cell2"><span class="tabular">1:00</span><span class="cap">4 turns</span></div></td><td><span class="badge">Not reviewed</span></td><td><div class="cell2"><span>Book a cleaning next week, Thursday. How much is a cleaning?</span></div></td><td><span class="badge blue">Your test</span></td><td><i data-i="chev"></i></td></tr>
+        <tr data-open="drawer-call" style="cursor:pointer"><td><div class="cell2"><span>Oct 2</span><span class="cap">12:48 PM</span></div></td><td><div class="cell2"><span class="tabular">4:00</span><span class="cap">18 turns</span></div></td><td><span class="badge green">Happy</span></td><td><div class="cell2"><span>Booking a cleaning and asking about prices</span><span class="cap" style="color:var(--warning)">2 things to fix</span></div></td><td><span class="badge">Customer</span></td><td><i data-i="chev"></i></td></tr>
+        <tr data-open="drawer-call" style="cursor:pointer"><td><div class="cell2"><span>Oct 1</span><span class="cap">11:48 AM</span></div></td><td><div class="cell2"><span class="tabular">3:00</span><span class="cap">12 turns</span></div></td><td><span class="badge green">Happy</span></td><td><div class="cell2"><span>Booking a cleaning and asking about prices</span><span class="cap" style="color:var(--warning)">1 thing to fix</span></div></td><td><span class="badge">Customer</span></td><td><i data-i="chev"></i></td></tr>
+        <tr data-open="drawer-call" style="cursor:pointer"><td><div class="cell2"><span>Sep 28</span><span class="cap">10:48 AM</span></div></td><td><div class="cell2"><span class="tabular">2:00</span><span class="cap">9 turns</span></div></td><td><span class="badge">Not reviewed</span></td><td><div class="cell2"><span>Cleaning, implants roughly, and parking</span></div></td><td><span class="badge">Customer</span></td><td><i data-i="chev"></i></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ===================== Receptionist ===================== -->
+  <div data-panel-of="p" data-panel="receptionist" hidden class="card studio">
+    <nav class="snav">
+      <p>Business</p>
+      <a class="on" href="#">Business information</a><a href="#">Agent profile</a><a href="#">FAQs <span class="cap">12</span></a>
+      <p>Calls</p>
+      <a href="#">Take a message</a><a href="#">Transfer calls <span class="cap">2</span></a><a href="#">Text a link <span class="cap">1</span></a><a href="#">Appointments</a>
+      <p>Advanced</p>
+      <a href="#">Custom training</a>
+      <p>Going live</p>
+      <a href="#">Launch guide</a><a href="#">Call forwarding</a>
+    </nav>
+    <div class="smain">
+      <div class="row"><div class="col" style="gap:2px"><h2 class="h2">Business information</h2><span class="sub">What the receptionist answers callers from. Anything missing here, it says it doesn't know.</span></div><span class="spacer"></span><span class="saved"><i data-i="check"></i>Saved</span><span class="pin">8</span></div>
+      <div class="grid g2">
+        <div class="field"><label>Business name</label><input class="input" value="Harbor Dental" /></div>
+        <div class="field"><label>Category</label><input class="input" value="Dentist" /></div>
+        <div class="field"><label>Address</label><input class="input" value="12 Wharf St, Portland, ME" /></div>
+        <div class="field"><label>Phone</label><input class="input" value="+1 207 555 0142" /></div>
+      </div>
+      <div class="col" style="gap:8px">
+        <div class="row"><h3 class="h3">Hours</h3><span class="spacer"></span><button class="btn sm"><i data-i="plus"></i>Add hours</button></div>
+        <div class="card" style="border-radius:12px">
+          <table class="t"><tbody>
+            <tr><td style="height:44px">Monday to Friday</td><td class="tabular">8:00 to 17:00</td><td style="width:40px"><button class="btn ghost sm icon"><i data-i="more"></i></button></td></tr>
+            <tr><td style="height:44px">Saturday</td><td class="sub">Closed</td><td><button class="btn ghost sm icon"><i data-i="more"></i></button></td></tr>
+            <tr><td style="height:44px">Sunday</td><td class="sub">Closed</td><td><button class="btn ghost sm icon"><i data-i="more"></i></button></td></tr>
+          </tbody></table>
+        </div>
+        <span class="cap">Days with the same hours are grouped. Seven rows of three inputs become one line each.</span>
+      </div>
+      <details class="card" style="padding:14px 16px"><summary class="h3" style="cursor:pointer">Services <span class="cap">6</span></summary></details>
+      <details class="card" style="padding:14px 16px"><summary class="h3" style="cursor:pointer">Policies <span class="cap">parking, payment, cancellation</span></summary></details>
+    </div>
+    <div class="scon">
+      <div class="row"><h3 class="h3">Test call</h3><span class="spacer"></span><a class="cap" href="#">Example call</a></div>
+      <div class="row card" style="padding:12px;border-radius:12px"><span class="orb"></span><div class="col" style="gap:0"><span>Alex · Harbor Dental</span><span class="cap">Ready to call</span></div><span class="spacer"></span><button class="btn primary sm">Call</button></div>
+      <div class="empty" style="flex:1;justify-content:center">Call, then talk as a caller would. Try asking for a person, or for directions.</div>
+      <div class="card" style="padding:10px 12px;border-radius:12px;background:var(--warning-soft);border-color:transparent">
+        <span class="cap" style="color:var(--warning)">When the call is off, it says why here: “Research is still running” or “The demo link is paused”.</span>
+      </div>
+      <span class="pin">9</span>
+      <span class="cap">Uses your test minutes, not the prospect's. Phone line is simulated.</span>
+    </div>
+  </div>
+
+  <!-- ===================== Research ===================== -->
+  <div data-panel-of="p" data-panel="research" hidden class="grid g2" style="align-items:start">
+    <div class="card">
+      <div class="card-h"><h2 class="h3">What we research from</h2><span class="spacer"></span><span class="pin">10</span></div>
+      <div class="card-b col" style="gap:14px">
+        <div class="field"><label>Business to look up</label><input class="input" value="Harbor Dental" /><span class="hint">Only used to search. Callers hear the name in Business information.</span></div>
+        <div class="field"><label>Website or Google Maps link</label><input class="input" value="harbordental.example" /></div>
+        <div class="field"><label>Notes for the research</label><textarea class="input" rows="3">Ask about after-hours emergencies.</textarea></div>
+        <div class="row"><span class="cap">Last run Sep 22. Running again rewrites Business information, not your FAQs or call settings.</span><span class="spacer"></span><button class="btn primary"><i data-i="refresh"></i>Run research again</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h2 class="h3">Sources</h2><span class="cap">2 public sources</span></div>
+      <div class="card-b col" style="gap:10px">
+        <a class="row" href="#"><i data-i="ext"></i>harbordental.example</a>
+        <a class="row" href="#"><i data-i="ext"></i>Google Maps listing</a>
+        <details><summary class="cap" style="cursor:pointer">Raw research</summary><p class="sub">…</p></details>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Outreach email ===================== -->
+  <div data-panel-of="p" data-panel="email" hidden class="card">
+    <div class="card-h"><h2 class="h3">Outreach email</h2><span class="cap">to Dana Reyes, dana@harbordental.example</span><span class="spacer"></span><button class="btn">Open in mail app</button><button class="btn primary"><i data-i="copy"></i>Copy email</button><span class="pin">11</span></div>
+    <div class="card-b col" style="gap:12px">
+      <div class="field"><label>Subject</label><input class="input" value="A quick demo: an AI receptionist for Harbor Dental" /></div>
+      <div class="field"><label>Message</label><textarea class="input" rows="9">Hi Dana,
+
+We built a working AI receptionist for Harbor Dental so you can hear it for yourself.
+
+Open this link and press call: ax-voiceagent.tecace.com/c/pr0SPct1
+
+It answers in a real voice, knows your hours, services and policies, and you can interrupt it like a real call. It takes about a minute.</textarea></div>
+    </div>
+  </div>
+
+  <!-- drawer: call details -->
+  <div class="scrim" id="scrim" data-close></div>
+  <aside class="drawer" id="drawer-call">
+    <div class="dh"><div class="col" style="gap:2px"><h2 class="h3">Call on Oct 2, 12:48 PM</h2><span class="cap">4:00 · 18 turns · Customer</span></div><span class="spacer"></span><button class="btn ghost icon" data-close><i data-i="x"></i></button></div>
+    <div class="db">
+      <div class="row"><span class="badge green">Happy</span><span class="spacer"></span><span class="cap">Counted as</span><span class="badge">Customer</span><span class="switch" data-switch title="Mark as my test"></span><span class="cap">Test</span></div>
+      <div class="col"><h3 class="h3">Summary</h3><p class="sub" style="margin:0">Booked a cleaning for Thursday 10:00 and asked what a cleaning and implants cost.</p></div>
+      <div class="col"><h3 class="h3">Things to fix</h3><div class="row wrap"><span class="badge amber">No price list for implants</span><span class="badge amber">Insurance not listed</span></div></div>
+      <div class="col"><h3 class="h3">Transcript</h3><p class="cap">Caller: Hi, I'd like to book a cleaning…</p><p class="cap">Alex: Of course. We have Thursday at 10…</p></div>
+    </div>
+  </aside>
+
+  <!-- dialog: approve -->
+  <div class="dialog" id="dlg-approve">
+    <div class="dh"><h2 class="h2">Approve Harbor Dental</h2><p class="sub" style="margin:4px 0 0">We create their account, copy the demo into their business, and email an invite.</p></div>
+    <div class="db">
+      <div class="grid g2"><div class="field"><label>Name</label><input class="input" value="Dana Reyes" /></div><div class="field"><label>Email</label><input class="input" value="dana@harbordental.example" /></div></div>
+    </div>
+    <div class="df"><button class="btn ghost" data-close>Cancel</button><button class="btn primary" data-close>Approve and send invite</button></div>
+  </div>
+  <div class="dialog" id="dlg-decline">
+    <div class="dh"><h2 class="h2">Decline the request</h2></div>
+    <div class="db"><div class="field"><label>Note to keep (optional)</label><textarea class="input" rows="3"></textarea></div></div>
+    <div class="df"><button class="btn ghost" data-close>Cancel</button><button class="btn danger" data-close>Decline</button></div>
+  </div>
+</div>
+
+<script>
+mount({
+  active: "prospects",
+  crumbs: ["Prospects", "Harbor Dental"],
+  notes: [
+    "헤더 동작은 두 개만: 데모 페이지 열기(유일한 위치), ⋯ 메뉴(ID 복사·삭제). 지금은 Live 스위치·Demo time·⋯·Save가 상단 바에 흩어져 있고, Live 스위치가 다른 탭의 미저장 편집까지 저장해 버립니다.",
+    "저장 버튼 없음. 모든 탭이 필드 단위로 자동 저장하고 상태는 이 한 자리에 표시합니다. 지금은 저장 방식이 4가지입니다(헤더 Save, 상단 Save, 'Save booking rules', 즉시 저장).",
+    "다음 단계 카드는 단계(stepper)에 따라 바뀝니다. 승인·거절이 요청 내용 바로 옆에 있습니다. 위 세그먼트로 다른 상태를 볼 수 있습니다(목업 전용).",
+    "고칠 점 옆에 바로 고치는 버튼(FAQ 추가, 영업시간 편집)을 둬서 Receptionist 탭의 해당 섹션으로 보냅니다.",
+    "링크 관련(라이브 여부, 링크 복사, 남은 데모 시간, 시간 추가)을 카드 하나로 모았습니다. 지금은 헤더·Share 탭·목록 행 메뉴 세 곳에 나뉘어 있습니다.",
+    "CRM(단계, 후속 연락일, 메모)을 상세 페이지로 옮겼습니다. 지금은 CRM 화면 서랍에서만 바꿀 수 있습니다. Share 탭의 'Notes'(다른 필드)는 이 메모로 합칩니다.",
+    "미검토 통화 일괄 분석. 행마다 있던 Analyze 버튼은 서랍 안으로 옮깁니다. 테스트/고객 전환도 서랍에서 합니다.",
+    "Receptionist 탭은 기존 설정 스튜디오를 유지하되 그룹 라벨을 sentence case로, 'Test & improve'(본문 없음)는 오른쪽 테스트 콘솔과 합칩니다. 영업시간은 같은 시간끼리 묶어 한 줄로 표시합니다.",
+    "테스트 콜이 꺼져 있으면 이유를 콘솔에 직접 표시합니다. 지금은 아무 설명 없이 비활성화됩니다. 데모 단계는 레코드의 실제 단계를 따릅니다(지금은 항상 'demo'로 고정).",
+    "리서치 실행 버튼은 이 탭 한 곳에만 둡니다(지금은 ⋯ 메뉴, 배너, Sources 탭 세 곳). 검색용 이름과 손님이 듣는 이름이 다른 필드라는 점을 힌트로 밝힙니다.",
+    "Share 탭은 이메일만 남깁니다. 링크·시간은 Overview의 링크 카드로, 연락처는 Contact 카드로 옮겼습니다.",
+  ],
+});
+document.getElementById("chart-calls").innerHTML = areaChart([0,0,0,0,0,0,0,0,1,0,0,0,1,1], ["9/19","","9/21","","9/23","","9/25","","9/27","","9/29","","10/1",""]);
+</script>
+</body>
+</html>

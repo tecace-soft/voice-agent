@@ -3,6 +3,7 @@ import {
   IconActivity,
   IconAlert,
   IconAnalytics,
+  IconCard,
   IconColumns,
   IconInbox,
   IconMessage,
@@ -47,7 +48,7 @@ export type ViewId =
 const NAV: {
   key: string;
   group: string;
-  items: { id: ViewId; label: string; icon: typeof IconOverview; adminOnly?: boolean }[];
+  items: { id: ViewId; label: string; icon: typeof IconOverview; adminOnly?: boolean; customerOnly?: boolean }[];
 }[] = [
   // The receptionist a business runs: its calls at a glance (the Demo Overview's page, for one
   // business — src/demos/screens/ReceptionistOverviewScreen.tsx), and every call's transcript.
@@ -86,6 +87,9 @@ const NAV: {
     group: "Settings",
     items: [
       { id: "business", label: "Business information", icon: IconIdea },
+      // Their plan and card. An admin has no business of their own to bill; a customer's is read
+      // from their account page.
+      { id: "billing", label: "Billing", icon: IconCard, customerOnly: true },
       { id: "numbers", label: "Agent numbers", icon: IconPhone, adminOnly: true },
       { id: "apiKeys", label: "API keys", icon: IconKey, adminOnly: true },
       { id: "accounts", label: "Accounts", icon: IconUsers, adminOnly: true },
@@ -120,6 +124,7 @@ const DEMO_ONLY_NAV: typeof NAV = [
       { id: "myOverview", label: "Overview", icon: IconOverview },
       { id: "myCalls", label: "Call activity", icon: IconActivity },
       { id: "demoProspect", label: "Settings", icon: IconPresentation },
+      { id: "billing", label: "Billing", icon: IconCard },
     ],
   },
 ];
@@ -189,7 +194,9 @@ export function Sidebar({
       {(user.status === "demo" ? DEMO_ONLY_NAV : NAV).map((section) => {
         // Account management is admin-only; a `user` doesn't see the section at all. The backend
         // enforces it too — this only keeps the nav honest about what's reachable.
-        const items = section.items.filter((item) => !item.adminOnly || user.role === "admin");
+        const items = section.items.filter(
+          (item) => (!item.adminOnly || user.role === "admin") && (!item.customerOnly || user.role !== "admin"),
+        );
         if (items.length === 0) return null;
         return (
         <div className="sidebar-group" key={section.key} data-group={section.key}>

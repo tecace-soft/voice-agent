@@ -256,6 +256,7 @@ describe("POST /auth/login", () => {
       lastLoginAt: expect.any(String),
       signupSource: "admin",
       emailVerified: false,
+      liveAt: null,
     });
     expect(body.user.passwordHash).toBeUndefined();
     expect(new Date(body.expiresAt).getTime()).toBeGreaterThan(Date.now());

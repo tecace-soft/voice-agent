@@ -13,6 +13,9 @@ Format:
 
 ---
 
+## 2026-10-02 11:15 · Michael · merge Main-Hans into master
+- Both sides shipped a changelog `0.0.14` on 2026-10-02. Kept Main-Hans's 0.0.14 (sign-up/demo/pricing) and 0.0.15 (self-serve billing); master's 0.0.14 items (transfer calls, call forwarding) moved into 0.0.15. package.json is 0.0.15. Entries below that say "Changelog 0.0.14" for Michael's work now live in 0.0.15.
+
 ## 2026-10-02 11:00 · Michael · dashboard (Transfer calls: edit the old in-use number)
 - `settings/sections/TransferCallsSection.tsx`: the "In use on calls" row (old `transfer_number`) now opens the transfer editor on click, prefilled, so Type/When/etc. can be changed without adding a new number. Saving prepends the edited copy to the draft transfers (same as **Add to transfers**); calls switch to it on publish. Not clickable once adopted, when read-only, or at the scenario limit.
 - Shared `ScenarioRow` (`settings/sections/shared.tsx`) now ends every row with an "Edit ⌄" / "Close ⌃" cue and a pointer cursor (Transfer calls, Take a message, Text a link). New export `ROW_CUE_WIDTH`: column heads and unclickable rows reserve that width so columns line up.
@@ -22,10 +25,42 @@ Format:
 - `settings/sections/ForwardingSection.tsx`: Verizon (mobile) missed calls is now `*71{n}` (busy + no answer, one code; confirmed on a real Verizon Wireless phone, test book C14/E6). The old `*90`/`*92` were Fios/landline codes; they moved to the Landline tab with `*91`/`*93` to turn them off. Dropped "US Cellular" from the Verizon tab (now T-Mobile, test book C12).
 - Same file: the "Missed calls / Every call" radio step is gone; each carrier tab now lists both ways (missed calls, recommended, and every call) with an explanation, and `Code` has an optional `detail` line (used for Verizon `*71`/`*72`). Steps renumbered 1–3. `business_tabs.py` updated (no radio click; checks `*71` + `*72` on Verizon). Changelog 0.0.14. No API change.
 
+## 2026-10-02 · johnson · self-serve onboarding with billing (transcribe-backend, dashboard)
+- transcribe-backend: new table `billing_accounts` (self-migrating; plan + MOCK card: brand, last4, expiry only). New routes `GET /billing`, `PUT /billing/plan {plan}`, `PUT /billing/payment-method {number, expMonth, expYear, cvc, name?}` (any signed-in account; admin `?userId=`). `GET /billing` → `{ billing: { plan, paymentMethod, paymentMode: "test", status: none|not_live|trial|active, trialDays: 14, liveAt, trialEndsAt, billingFrom }, plans }`. The rule: nothing charged before `users.live_at`; trial = 14 days from that day; first bill the day after. `PublicUser` gained `liveAt`.
+- ⚠ `POST /demo/customers/:id/request-onboarding` changed behaviour: body may carry `plan` and `payment` (card); with both on file it runs the same `approveOnboarding` as the admin's `/onboard` and answers `{ customer, user, billing }` with the account already in `pre-production`. Without them: 409 `billing_required`; bad card/plan: 422 `bad_card` (with `field`) / `unknown_plan`. Admin Approve/Decline still exist for admin-started setups, but a customer's request never waits on them now. `customerLifecycle.pg.test.ts` updated.
+- Dashboard: `src/billing/` (RequestSetupDialog: plan → card → confirm; BillingScreen replaces the Billing placeholder; CardForm/PlanPicker). Sidebar: `Billing` for every customer stage (new `customerOnly` nav flag), never for admins. `src/home/CustomerHome.tsx`: Dashboard › Overview is now a per-stage Home for customers (onboarding checklist; live: line status + answered/booked/messages/put-through from call `outcome`). Onboarding customers land on `#/dashboard`, not business-info. `receptionistStats.ts` gained `outcomeKpis`/`needsReply`. Demo Home (`MyReceptionistScreen`) rebuilt per the mockups.
+- fake_backend.py: `/billing` routes and the new request-onboarding behaviour. New `scripts/regression/customer_home.py`; `demo_customer.py` updated. Changelog 0.0.15.
+- ⚠ Deploy transcribe-backend before the dashboard: the old backend answers the new request body by recording a request only, and the dashboard would then wait on an admin that the new UI no longer shows.
+
 ## 2026-10-02 09:00 · Michael · dashboard (Transfer calls: the old `transferNumber` shown while calls use it)
 - Bug: a business with the pre-scenario `business_profiles.transfer_number` (e.g. TecAce Test) saw "No transfers yet" on Transfer calls while real calls still went to that number. The page showed the old number only when the call-settings **draft** had no transfers; the phone (`composeSession`) uses it while nothing has been **published** (and always for a profile without a structured `profile`, which gets the agent's older prompt).
 - `settings/callSettings.ts`: new `oldTransferInUse(profile, stored)` (same rule as the backend) and `oldTransferScenario()` (mirror of backend `legacyScenario`). `TransferCallsSection` takes `inUse` and lists it as an "In use on calls" row with **Add to transfers** (copies it into the draft; it stops being used once published). Tests: `tests/old-transfer.test.ts`, `business_tabs.py`. Changelog 0.0.14. No API change.
 - ⚠ If `compose.ts`'s legacy rule (`neverPublished && no scenarios`) or `legacyScenario` changes, change `oldTransferInUse`/`oldTransferScenario` with it.
+
+## 2026-10-02 · johnson · customer dashboard mockups + journey index (docs only)
+- `docs/mockups/index.html` is now the entry: the demo → setup request → onboarding → live journey with what the customer sees and what the admin does at each step, linking both mockup sets. `docs/mockups/customer/` adds the customer side (Home per stage, Calls, Receptionist, Phone line); `admin/shell.js` gained a customer nav variant.
+- Proposes for customers: one Home per stage (demo: call it + request setup; onboarding: a 6-step checklist that marks our steps; live: line status + messages), a 3–4 item sidebar with no Voicemail/Transcribe leftovers, customer wording, and three new features that need backend (message done-state, per-call feedback, pause the line). Nothing decided, no app code changed.
+
+## 2026-10-02 · johnson · admin redesign mockups (docs only)
+- New static mockups in `docs/mockups/admin/` (open `index.html`; no build, fake data). Proposal for the whole admin, deepest on the Demo section: Customers + CRM merged into "Prospects" (table/board), one prospect page with a lifecycle stepper and next-step card, CRM and link controls on it, autosave instead of four save paths; Accounts split into Customers (go live in a drawer) and Team; Voicemail's six nav items as one tabbed page.
+- Design notes in the mockups are in Korean. No app code changed; nothing here is decided yet.
+
+## 2026-10-02 · johnson · public demo page (/c/<id>) restyled to match /start (dashboard)
+- `PublicDemoScreen.tsx`, `src/public/DemoCall.tsx`: pill eyebrow, 48px headline, radius-16 cards, full-width footer (disclaimer + privacy note + Contact us). Logged in `src/demos/PORTING.md`.
+- `components/public/ContactButtons.tsx` (shared with the pricing page): new optional `talk` prop, default `true`, so other callers are unchanged.
+- `public_page.py` passes (34 checks).
+- Same day: the pricing sub-page (`/c/<id>/pricing`, `components/public/Pricing.tsx` + `PlanEstimator.tsx`) restyled the same way (header bar, pill + 48px headline, radius-16 outlined boxes, full-width footer, em-dashes removed). Logged in `PORTING.md`.
+
+## 2026-10-02 · johnson · /start sign-up page redesign (dashboard)
+- `src/start/StartApp.tsx` re-laid out (hero, step cards, form beside them, footer); `src/signup/SignupForm.tsx` `Field` gained `icon` / `aside`, a password Show toggle (both modes), and icons + examples in `start` mode only. Selectors/labels used by `signup.py` and `public_page.py` unchanged; both pass.
+- New optional asset: drop `public/sample-call.mp3` and /start shows a "Hear a sample call" player (hidden while the file is missing). None is committed yet.
+- Changelog 0.0.14 / package.json 0.0.14.
+
+## 2026-10-02 · johnson · repo-level Claude skill: design-taste-frontend (Taste Skill)
+- New `.claude/skills/design-taste-frontend/` vendored from Leonxlnx/taste-skill @ ce26fc2 (MIT). Anti-slop design rules for landing pages / portfolios / marketing pages; provenance in `VENDORED.md`.
+- `.gitignore`: `.claude/` → `.claude/*` + `!.claude/skills/`, so repo skills are committed while `settings.local.json` etc. stay ignored.
+- ⚠ Not for the dashboards: they keep following `tecace-dashboard-ui` (brand blue #116DFF, Pretendard + Poppins, lucide allowed). Taste's defaults (avoid Inter/lucide, zero em-dashes, etc.) conflict with it, and the skill description says so.
+
 
 ## 2026-10-01 14:37 · Michael · voice agent service heartbeats (transcribe-backend, openai-agent-app, dashboard)
 - transcribe-backend: new `POST /agent/heartbeat` (header `x-agent-key` = `AGENT_CONFIG_KEY`; body `{ service: server|poller|scenarios, intervalSeconds, ok, detail?, startedAt, host?, metrics? }`) and admin-only `GET /agent/heartbeats` returning `{ services }` (always 3 entries; state online/erroring/offline/never; stale after max(interval×2.5, 120 s)). New table `service_heartbeats` (one UPSERTed row per service, self-migrating). Test: `src/routes/agentStatus.pg.test.ts`.

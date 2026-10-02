@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Home · live (customer mockup)</title>
+<link rel="stylesheet" href="../admin/mockup.css" />
+<script src="../admin/shell.js"></script>
+</head>
+<body>
+<div id="page">
+  <div class="page-h">
+    <div class="col"><h1 class="h1">Harbor Dental</h1><span class="sub">Alex has been answering your missed calls since Oct 6.</span></div>
+    <span class="spacer"></span>
+    <select class="select"><option>Last 30 days</option><option>Last 7 days</option><option>Last 90 days</option></select>
+  </div>
+
+  <div class="card row" style="padding:12px 16px;gap:14px"><span class="dot" style="color:var(--success)"></span><span><b style="font-weight:600">Line is on.</b> Missed calls to +1 207 555 0142 go to Alex at +1 833 555 0177.</span><span class="spacer"></span><a class="btn sm" href="phone-line.html">Phone line</a><span class="pin">1</span></div>
+
+  <div class="grid g4">
+    <div class="card stat"><span class="cap">Calls answered</span><span class="big tabular">128</span><span class="cap">that would have gone to voicemail</span></div>
+    <div class="card stat"><span class="cap">Booked</span><span class="big tabular">34</span><span class="cap">appointments, straight into your calendar</span></div>
+    <div class="card stat"><span class="cap">Messages for you</span><span class="big tabular">17</span><span class="cap"><b>3 new</b> since yesterday</span></div>
+    <div class="card stat"><span class="cap">Put through</span><span class="big tabular">22</span><span class="cap">to the front desk</span></div>
+  </div>
+  <span class="pin" style="margin-top:-12px">2</span>
+
+  <div class="grid g21">
+    <div class="card"><div class="card-h"><h2 class="h3">Calls per day</h2><span class="cap">answered by Alex</span></div><div class="card-b" id="c1"></div></div>
+    <div class="card">
+      <div class="card-h"><h2 class="h3">Worth a look</h2><span class="spacer"></span><span class="pin">3</span></div>
+      <div class="card-b col" style="gap:12px">
+        <div class="row" style="align-items:flex-start"><span class="badge amber">4 calls</span><div class="col" style="gap:2px"><span>Callers asked about implant prices</span><a class="cap" href="receptionist.html">Add an FAQ</a></div></div>
+        <div class="row" style="align-items:flex-start"><span class="badge amber">2 calls</span><div class="col" style="gap:2px"><span>Nobody picked up the transfer after 5 PM</span><a class="cap" href="receptionist.html">Change transfer hours</a></div></div>
+        <div class="row" style="align-items:flex-start"><span class="badge green">New</span><div class="col" style="gap:2px"><span>Callers sound happier this month</span><span class="cap">91% went well, up from 84%</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><h2 class="h3">Needs a reply</h2><span class="cap">messages callers left</span><span class="spacer"></span><a class="cap" href="calls.html">All messages</a><span class="pin">4</span></div>
+    <table class="t"><colgroup><col style="width:18%"><col><col style="width:16%"><col style="width:120px"></colgroup>
+      <tbody>
+        <tr><td><div class="cell2"><span>Tom Weller</span><span class="cap">+1 207 555 0110</span></div></td><td>Has a question about last month's bill, please call back after 3.</td><td class="cap">Today 8:52</td><td><button class="btn sm">Mark done</button></td></tr>
+        <tr><td><div class="cell2"><span>Caller didn't give a name</span><span class="cap">+1 207 555 0167</span></div></td><td>Wants to know if you take Delta Dental.</td><td class="cap">Yesterday</td><td><button class="btn sm">Mark done</button></td></tr>
+      </tbody></table>
+  </div>
+</div>
+<script>
+mount({
+  variant: "live", active: "home", crumbs: ["Home"],
+  notes: [
+    "라이브 고객의 첫 줄은 회선 상태입니다. 켜져 있는지, 어느 번호가 어디로 가는지. 지금은 이 정보가 Launch instructions 섹션 안쪽에 있고 첫 화면에는 없습니다.",
+    "지표를 고객 말로 바꿨습니다. '통화 1, 분 1.6, 콜백 요청 1, 이번 달 통화 시간(모든 에이전트 통화 포함)' 대신 '받은 전화, 예약된 건, 남긴 메시지, 연결한 건'. 특히 '모든 에이전트 통화'는 운영자 기준 수치라 고객에게는 혼란스럽습니다.",
+    "'Worth a look'은 데모 페이지의 'What to fix'와 같은 데이터인데, 고치는 곳으로 바로 보내는 링크를 붙였습니다.",
+    "메시지는 고객이 매일 처리할 일이라 첫 화면에 둡니다. 지금은 메시지가 Transcripts 안에 '콜백 요청'으로만 표시되고 처리 여부를 표시할 방법이 없습니다. 'Mark done'은 새 기능 제안입니다.",
+  ],
+});
+document.getElementById("c1").innerHTML = areaChart([3,5,4,6,2,1,7,5,6,4,8,3,2,6], ["9/19","","9/21","","9/23","","9/25","","9/27","","9/29","","10/1",""]);
+</script>
+</body>
+</html>

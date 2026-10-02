@@ -11,5 +11,6 @@ venv/
 
 data/
 
-.claude/
+.claude/*
+!.claude/skills/
 .gstack/

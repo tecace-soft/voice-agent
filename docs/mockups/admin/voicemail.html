@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Voicemail (mockup)</title>
+<link rel="stylesheet" href="mockup.css" />
+<script src="shell.js"></script>
+</head>
+<body>
+<div id="page">
+  <div class="page-h">
+    <div class="col"><h1 class="h1">Voicemail</h1><span class="sub">The transcription app: voicemails read from the mailboxes, transcribed and logged.</span></div>
+    <span class="spacer"></span>
+    <select class="select"><option>All mailboxes</option><option>sam@tecace.com</option></select>
+    <button class="btn"><i data-i="refresh"></i>Refresh</button><span class="pin">1</span>
+  </div>
+
+  <div class="tabs" data-tabs="v">
+    <button class="on" data-tab="overview">Overview</button>
+    <button data-tab="runs">Runs</button>
+    <button data-tab="failures">Failures<span class="n" style="color:var(--danger)">1 new</span></button>
+    <button data-tab="people">People</button>
+    <button data-tab="analytics">Analytics</button>
+    <span class="pin" style="align-self:center;margin-left:8px">2</span>
+  </div>
+
+  <div data-panel-of="v" data-panel="overview" class="col" style="gap:16px">
+    <div class="card row" style="padding:10px 16px"><span class="row cap"><span class="dot" style="color:var(--success)"></span>Poller ran 4 min ago</span><span class="spacer"></span><button class="btn sm">Check again</button></div>
+    <div class="grid g4">
+      <div class="card stat"><span class="cap">Transcribed</span><span class="big tabular">1,284</span><span class="cap">all time</span></div>
+      <div class="card stat"><span class="cap">Today</span><span class="big tabular">12</span></div>
+      <div class="card stat"><span class="cap">This month</span><span class="big tabular">214</span><div class="bar"><i style="width:43%"></i></div><span class="cap">of the 500 monthly cap</span></div>
+      <div class="card stat"><span class="cap">Success rate</span><span class="big tabular">98.6%</span></div>
+    </div>
+    <div class="card"><div class="card-h"><h2 class="h3">Voicemails transcribed</h2><span class="spacer"></span><div class="seg"><button class="on" data-seg="1">All runs</button><button data-seg="2">Last 30</button><button data-seg="3">Last 10</button></div></div><div class="card-b" id="c1"></div></div>
+  </div>
+
+  <div data-panel-of="v" data-panel="runs" hidden class="card">
+    <div class="card-h"><div class="seg"><button class="on" data-seg="a">All</button><button data-seg="f">Failed<span class="n">3</span></button><button data-seg="e">Nothing to do<span class="n">41</span></button></div><span class="spacer"></span><button class="btn sm">Columns</button></div>
+    <table class="t"><thead><tr><th>When</th><th>Mailbox</th><th>Status</th><th>Found</th><th>Transcribed</th><th>Failed</th></tr></thead>
+      <tbody><tr><td class="cap">Today 10:55</td><td>sam@tecace.com</td><td><span class="badge green">Done</span></td><td class="tabular">3</td><td class="tabular">3</td><td class="tabular">0</td></tr>
+      <tr><td class="cap">Today 10:40</td><td>sam@tecace.com</td><td><span class="badge red">Failed</span></td><td class="tabular">1</td><td class="tabular">0</td><td class="tabular">1</td></tr></tbody></table>
+  </div>
+
+  <div data-panel-of="v" data-panel="failures" hidden class="card">
+    <div class="card-h"><h2 class="h3">Why transcriptions failed</h2><span class="cap">grouped by cause; click one to see its runs</span></div>
+    <div class="card-b col" style="gap:12px">
+      <div class="row"><span class="badge red tabular">3</span><div class="col" style="gap:0"><span>Audio file could not be decoded</span><span class="cap">sam@tecace.com · last Today 10:40 · voicemail-1002.wav</span></div><span class="badge blue">New</span></div>
+    </div>
+  </div>
+
+  <div data-panel-of="v" data-panel="people" hidden class="empty">Per-person table, as today (admin only).</div>
+  <div data-panel-of="v" data-panel="analytics" hidden class="empty">Sessions, by hour and by weekday, as today.</div>
+</div>
+<script>
+mount({
+  active: "voicemail", crumbs: ["Voicemail"],
+  notes: [
+    "메일함 선택과 새로고침을 상단 바에서 이 페이지 안으로 내렸습니다. 다른 화면에서는 보이지 않습니다.",
+    "사이드바 6개 항목(Overview, Analytics, Per person, Daily activity, All runs, Failed runs)을 한 페이지의 탭 5개로 줄였습니다. Daily activity는 Analytics와 Overview 차트에 이미 있는 내용이라 합쳤고, Failed runs의 '실패 원인 묶음'과 '실패한 실행 표'는 같은 사건을 두 번 보여 주므로 Failures 탭 하나로 합쳤습니다.",
+  ],
+});
+document.getElementById("c1").innerHTML = areaChart([8,12,9,14,11,6,4,13,15,10,12,9,7,12], []);
+</script>
+</body>
+</html>
