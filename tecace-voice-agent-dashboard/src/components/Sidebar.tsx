@@ -4,7 +4,6 @@ import {
   IconAlert,
   IconAnalytics,
   IconCard,
-  IconColumns,
   IconInbox,
   IconMessage,
   IconOverview,
@@ -95,13 +94,14 @@ const NAV: {
       { id: "accounts", label: "Accounts", icon: IconUsers, adminOnly: true },
     ],
   },
+  // Selling the receptionist: the prospects we built demos for (list and deal board in one), and
+  // how those demos are doing. The group key stays "demos" (the routes are #/demos/*).
   {
     key: "demos",
-    group: "Demo",
+    group: "Sales",
     items: [
-      { id: "demoOverview", label: "Overview", icon: IconPresentation, adminOnly: true },
-      { id: "demoProspects", label: "Customers", icon: IconTable, adminOnly: true },
-      { id: "demoPipeline", label: "CRM", icon: IconColumns, adminOnly: true },
+      { id: "demoProspects", label: "Prospects", icon: IconTable, adminOnly: true },
+      { id: "demoOverview", label: "Demo analytics", icon: IconPresentation, adminOnly: true },
     ],
   },
 ];
@@ -164,7 +164,7 @@ export function Sidebar({
   showScope?: boolean;
   user: AuthUser;
   onSignOut: () => void;
-  /** Setup requests waiting for an admin (Demo › Customers badge). */
+  /** Setup requests waiting for an admin (Sales › Prospects badge). */
   setupRequests?: number;
   onChangePassword?: () => void;
 }) {

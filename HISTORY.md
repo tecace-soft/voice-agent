@@ -13,6 +13,13 @@ Format:
 
 ---
 
+## 2026-10-02 · johnson · Sales section: Prospects, Demo analytics, prospect page (dashboard)
+- Rail: the admin "Demo" group is "Sales" with two items, Prospects (`#/demos/prospects`, was Customers) and Demo analytics (`#/demos/overview`, was Overview). CRM is the Prospects board (`#/demos/pipeline` redirects there). Routes unchanged; the sidebar group key stays `demos`.
+- Prospect page tabs renamed in the URL: `#/demos/prospects/<id>/<overview|calls|receptionist|research|email>`; the old `activity|settings|sources|share` still parse (`routing.ts` `LEGACY_TABS`). A settings section in the address still opens the Receptionist tab.
+- Deleted: `CustomerTable`, `NewCustomerDialog`, `PipelineScreen`, `OverviewScreen`, `TopCustomersChart`, `ActivityFeed`, `CrmDrawer`, `CrmTab`, `SharePanel`. New: `ProspectTable`, `NewProspectDialog`, `DemoAnalyticsScreen`, `ProspectOverview`, `OutreachEmailPanel`, `lib/nextStep.ts`. Details in `src/demos/PORTING.md`.
+- No API change. `demos_e2e.py` rewritten for the new screens; `tests/routing.test.ts` updated. Changelog 0.0.15 (same day).
+- ⚠ Not done from the mockups: field-level autosave in the Receptionist studio (it keeps its Save), the Accounts split into Customers / Team, and the Voicemail merge. Hours grouping on Business information is unchanged.
+
 ## 2026-10-02 · johnson · self-serve onboarding with billing (transcribe-backend, dashboard)
 - transcribe-backend: new table `billing_accounts` (self-migrating; plan + MOCK card: brand, last4, expiry only). New routes `GET /billing`, `PUT /billing/plan {plan}`, `PUT /billing/payment-method {number, expMonth, expYear, cvc, name?}` (any signed-in account; admin `?userId=`). `GET /billing` → `{ billing: { plan, paymentMethod, paymentMode: "test", status: none|not_live|trial|active, trialDays: 14, liveAt, trialEndsAt, billingFrom }, plans }`. The rule: nothing charged before `users.live_at`; trial = 14 days from that day; first bill the day after. `PublicUser` gained `liveAt`.
 - ⚠ `POST /demo/customers/:id/request-onboarding` changed behaviour: body may carry `plan` and `payment` (card); with both on file it runs the same `approveOnboarding` as the admin's `/onboard` and answers `{ customer, user, billing }` with the account already in `pre-production`. Without them: 409 `billing_required`; bad card/plan: 422 `bad_card` (with `field`) / `unknown_plan`. Admin Approve/Decline still exist for admin-started setups, but a customer's request never waits on them now. `customerLifecycle.pg.test.ts` updated.

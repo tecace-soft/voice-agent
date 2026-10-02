@@ -1,5 +1,5 @@
 """End-to-end check of the Demos section: who may reach it, the record-id routes, and the promo's
-real Overview, Prospects, prospect and CRM screens (KPIs, charts, tables, portals, the drawer and
+real Demo analytics, Prospects (table and board) and prospect screens (KPIs, charts, tables, portals and
 the pipeline board), plus a runtime check that no transcribe (@layer legacy) class name lands on
 promo markup.
 
@@ -140,21 +140,6 @@ async ([base, token]) => {
   return out;
 }
 """
-
-# What a stale, slow read of Harbor Dental would put in the drawer if it were allowed to land.
-STALE_HARBOR = {
-    "customer": {"id": "pr0SPct1", "businessName": "Harbor Dental", "active": True,
-                 "profile": {"name": "Harbor Dental", "category": "Dentist", "address": "12 Wharf St",
-                             "hours": [], "services": [], "highlights": [], "policies": {}, "faqs": []},
-                 "dossier": "", "sources": [], "prompts": {"live": "", "backend": "", "greeting": "",
-                                                           "edited": False},
-                 "voice": "gleam", "agentName": "Alex", "stage": "interested", "status": "ready",
-                 "createdAt": "2026-09-01T00:00:00.000Z", "updatedAt": "2026-09-01T00:00:00.000Z"},
-    "stats": {"views": 0, "calls": 0, "totalSec": 0, "visitors": 0},
-    "calls": [], "events": [],
-    "notes": [{"id": "stale1", "at": "2026-09-01T00:00:00.000Z",
-               "text": "A note only the stale read has."}],
-}
 
 # The pipeline board: one entry per stage column, with its header count and the cards in it.
 BOARD_JS = """
@@ -427,14 +412,25 @@ def demo_nav(page, label: str):
 
 
 def open_customers(page):
-    """Click Customers and wait until the list is what's on screen.
+    """Click Prospects and wait until the list (every prospect, as a table) is what's on screen.
 
     Without the wait, a lookup made straight after the click can run against the page being left:
-    the Demo Overview's recent-calls table also links "Harbor Dental" (once per call), so a strict
-    `get_by_role("link", name="Harbor Dental")` resolved to four elements there and failed."""
-    demo_nav(page, "Customers").click()
+    the Demo analytics' recent-calls table also links "Harbor Dental" (once per call), so a strict
+    `get_by_role("link", name="Harbor Dental")` resolved to four elements there and failed.
+    The list opens on "Needs you" (Cedar's overdue follow-up); the checks read every row, so "All"."""
+    demo_nav(page, "Prospects").click()
     page.wait_for_function("location.hash.startsWith('#/demos/prospects')")
-    page.get_by_role("heading", name="Customers", level=1).wait_for()
+    page.get_by_role("heading", name="Prospects", level=1).wait_for()
+    page.get_by_role("tab", name="Table", exact=True).click()
+    page.get_by_role("tab", name=re.compile(r"^All ·")).click()
+
+
+def open_board(page):
+    """The Prospects board (the promo's CRM page, now the list's other view)."""
+    demo_nav(page, "Prospects").click()
+    page.get_by_role("heading", name="Prospects", level=1).wait_for()
+    page.get_by_role("tab", name="Board", exact=True).click()
+    page.wait_for_function("() => document.querySelectorAll('main .tw .grid-cols-5 > section').length === 5")
 
 
 def open_page(browser, token: str | None, url: str, demo_requests: list[str], page_errors: list[str]):
@@ -510,8 +506,8 @@ def run() -> int:
                     # Admin: the group is there, and a transcribe view doesn't read demo data.
                     reqs = []
                     ctx, page = open_page(browser, "tok-admin", base + "#/overview", reqs, page_errors)
-                    check("admin: Demo group with three items",
-                          page.locator('.sidebar-group[data-group="demos"] .nav-item').count() == 3)
+                    check("admin: Sales group with two items (Prospects, Demo analytics)",
+                          page.locator('.sidebar-group[data-group="demos"] .nav-item').count() == 2)
                     # The one exception is the sidebar's count of setup requests waiting for an admin
                     # (GET /demo/setup-requests): a number, not demo data, so the badge shows on every view.
                     BADGE = "GET /demo/setup-requests"
@@ -526,11 +522,11 @@ def run() -> int:
                     # on screen with nothing else asked of the operator.
                     check("admin: the prospects load with no second sign-in",
                           harbor_link.is_visible()
-                          and rows.filter(has_text="Researching").count() == 1
+                          and rows.filter(has_text="cedarbakery").count() == 1
                           and page.get_by_label("Password", exact=True).count() == 0)
                     check("admin: ... and the only request was for them",
                           reqs != [] and set(reqs) - {BADGE} == {"GET /demo/customers"}, str(reqs))
-                    check("breadcrumb says Demo", page.locator(".crumbs").inner_text().startswith("Demo"))
+                    check("breadcrumb says Sales", page.locator(".crumbs").inner_text().startswith("Sales"))
                     check("no mailbox picker or Refresh on Demos views",
                           page.locator(".mailbox-picker").count() == 0
                           and page.get_by_role("button", name="Refresh").count() == 0)
@@ -539,7 +535,7 @@ def run() -> int:
 
                     # --- Prospects: the promo's real table ---
                     check("prospects: the table lists both prospects", rows.count() == 2, str(rows.count()))
-                    search = page.get_by_label("Search customers")
+                    search = page.get_by_label("Search prospects")
                     search.fill("cedar")
                     page.wait_for_function(
                         "() => document.querySelectorAll('main .tw table tbody tr').length === 1")
@@ -557,13 +553,13 @@ def run() -> int:
                     check("prospects: the actions menu renders inside [data-tw-portal]",
                           menu.count() == 1
                           and page.locator("[role=menu]").count() == 1
-                          and menu.get_by_role("menuitem", name="Copy link").is_visible())
+                          and menu.get_by_role("menuitem", name="Copy demo link").is_visible())
                     colors = menu.evaluate(POPOVER_COLOR_JS)
                     check("prospects: the menu has the promo's popover background",
                           colors["bg"] == colors["popover"] and colors["bg"] not in ("rgba(0, 0, 0, 0)", "transparent"),
                           str(colors))
                     tw_classes |= set(page.evaluate(TW_CLASSES_JS))
-                    menu.get_by_role("menuitem", name="Copy link").click()
+                    menu.get_by_role("menuitem", name="Copy demo link").click()
                     page.get_by_text("Link copied.").wait_for()
                     check("prospects: Copy link shows a toast",
                           page.locator("main .tw [data-sonner-toast]", has_text="Link copied.").count() >= 1)
@@ -571,43 +567,28 @@ def run() -> int:
                     check("prospects: Copy link copies the public demo link (this origin)",
                           copied == f"{DEMO_BASE_URL}/c/pr0SPct1", repr(copied))
 
-                    # The "Add time" steps as a submenu on a row (AddDemoTimeSubmenu). Cedar's, so
-                    # the prospect page's own top-ups further down still start from the fixture.
-                    cedar_row = rows.filter(has_text="sam@cedarbakery.example")
-                    cedar_row.get_by_role("button", name="More actions").click()
-                    row_menu = page.locator("[data-tw-portal] [role=menu]").first
-                    row_menu.wait_for()
-                    row_menu.get_by_role("menuitem", name="Add demo time").hover()
-                    sub = page.locator("[data-tw-portal] [data-slot='dropdown-menu-sub-content']")
-                    sub.wait_for()
-                    steps = sub.get_by_role("menuitem")
-                    check("prospects: the row menu offers the demo-time steps as a submenu",
-                          [t.strip() for t in steps.all_inner_texts()] == DEMO_TIME_LABELS,
-                          str(steps.all_inner_texts()))
-                    tw_classes |= set(page.evaluate(TW_CLASSES_JS))
-                    page.evaluate(MARK_TOASTS_JS)
-                    with page.expect_request(lambda r: r.method == "PATCH"
-                                             and r.url.endswith("/demo/customers/cedar42")) as req:
-                        sub.get_by_role("menuitem", name="30 minutes").click()
-                    body = req.value.post_data_json
-                    check("prospects: a step PATCHes {addDemoMinutes: n} and sends no total",
-                          body == {"addDemoMinutes": 30}, str(body))
-                    # Cedar stores no minutes, so the backend added 30 to DEFAULT_DEMO_MINUTES. The
-                    # request above carried the amount and nothing else, so the 40 in the toast can
-                    # only have been worked out from the stored value.
-                    check("prospects: ... and the toast names the total the backend added it to",
-                          new_toast(page, "Added 30 minutes. The demo now has 40 in all.",
-                                    required=False))
+                    harbor_row.get_by_role("button", name="More actions").click()
+                    menu = page.locator("[data-tw-portal] [role=menu]")
+                    menu.wait_for()
+                    items = [i.strip() for i in menu.get_by_role("menuitem").all_inner_texts()]
+                    check("prospects: the row menu is Open, Copy demo link, Delete (demo time, email and the "
+                          "demo page live on the prospect's page)",
+                          items == ["Open", "Copy demo link", "Delete"], str(items))
+                    page.keyboard.press("Escape")
+                    menu.wait_for(state="detached")
 
-                    page.get_by_role("button", name="New customer").click()
+                    page.get_by_role("button", name="New prospect").click()
                     dialog = page.locator("[data-tw-portal] [role=dialog]")
                     dialog.wait_for()
-                    check("prospects: the New customer dialog renders inside [data-tw-portal]",
+                    check("prospects: the New prospect dialog renders inside [data-tw-portal]",
                           page.locator("[role=dialog]").count() == 1
-                          and dialog.get_by_role("heading", name="New customer").is_visible())
+                          and dialog.get_by_role("heading", name="New prospect").is_visible())
                     tw_classes |= set(page.evaluate(TW_CLASSES_JS))
-                    add = dialog.get_by_role("button", name="Add customer")
-                    check("prospects: Add customer is disabled with no business name", add.is_disabled())
+                    add = dialog.get_by_role("button", name="Add prospect")
+                    check("prospects: Add prospect is disabled with no business name", add.is_disabled())
+                    check("prospects: the contact fields are folded away, research is on by default",
+                          dialog.get_by_label("Contact name").is_hidden()
+                          and dialog.get_by_label("Research it now").is_checked())
                     # The button stays disabled for a blank name, so a name of spaces is submitted
                     # the only way left (the form's own submit); the backend refuses it.
                     reqs.clear()
@@ -619,11 +600,12 @@ def run() -> int:
                           and "POST /demo/customers" in reqs,
                           dialog.get_by_role("alert").inner_text())
                     dialog.get_by_label("Business name").fill("Birch Florist")
+                    dialog.get_by_label("Website or Google Maps link").fill("birchflorist.com")
                     with page.expect_response(
                             lambda r: r.request.method == "POST"
                             and urlparse(r.url).path == "/demo/customers") as created:
-                        dialog.get_by_role("button", name="Add and research").click()
-                    page.get_by_text("Customer added. Research is running.").wait_for()
+                        dialog.get_by_role("button", name="Add prospect").click()
+                    page.get_by_text("Prospect added. Research is running.").wait_for()
                     dialog.wait_for(state="detached")
                     check("prospects: adding a customer toasts and closes the dialog",
                           page.locator("[role=dialog]").count() == 0)
@@ -631,35 +613,69 @@ def run() -> int:
                     # makes that true. POST /demo/customers fires the research in the background
                     # and answers straight away, so a new prospect is always mid-research.
                     made = created.value.json().get("customer", {})
-                    check("prospects: ... and the new prospect comes back researching",
+                    sent = created.value.request.post_data_json or {}
+                    check("prospects: ... and the new prospect comes back researching, the link sent as the website",
                           made.get("status") == "researching"
-                          and (created.value.request.post_data_json or {}).get("research") is True
-                          and made.get("businessName") == "Birch Florist", str(made.get("status")))
+                          and sent.get("research") is True
+                          and sent.get("websiteUrl") == "https://birchflorist.com"
+                          and "mapsUrl" not in sent
+                          and made.get("businessName") == "Birch Florist", f"{made.get('status')} {sent}")
 
-                    page.get_by_role("switch", name="Toggle the demo for Harbor Dental").click()
-                    page.get_by_text("Demo is paused.").wait_for()
-                    check("prospects: pausing a live demo says so", True)
-                    rows.filter(has_text="sam@cedarbakery.example").get_by_role("switch").click()
-                    page.get_by_text("Demo is live.").wait_for()
-                    check("prospects: resuming a paused demo says so", True)
+                    # The one line per row that replaced Status, Phase and the live switch.
+                    page.get_by_role("tab", name=re.compile(r"^Needs you ·")).click()
+                    page.wait_for_function(
+                        "() => document.querySelectorAll('main .tw table tbody tr').length === 1")
+                    check("prospects: Needs you holds Cedar (its follow-up is overdue), with the date as its next step",
+                          "cedarbakery" in rows.first.inner_text() and "Follow up, due" in rows.first.inner_text(),
+                          rows.first.inner_text())
+                    page.get_by_role("tab", name=re.compile(r"^All ·")).click()
+                    page.wait_for_function(
+                        "() => document.querySelectorAll('main .tw table tbody tr').length === 2")
+                    check("prospects: Harbor's next step is on them (the link is out, nothing is due)",
+                          "Waiting on them" in harbor_row.inner_text()
+                          and page.get_by_role("switch").count() == 0, harbor_row.inner_text())
 
-                    # --- Demo overview: KPIs, charts, recent calls ---
-                    demo_nav(page, "Overview").click()
-                    page.get_by_text("Recent calls").wait_for()
-                    page.wait_for_function("() => document.querySelectorAll('main .tw canvas').length === 2")
-                    stats = {t: page.evaluate(STAT_JS, t) for t in ("Customers", "Tested", "Calls", "Minutes")}
-                    check("overview: the KPI cards show the backend's numbers",
-                          stats == {"Customers": "2", "Tested": "1", "Calls": "3", "Minutes": "9"}, str(stats))
-                    check("overview: both charts are titled",
-                          page.get_by_text("Calls per day", exact=True).is_visible()
-                          and page.get_by_text("Top customers", exact=True).is_visible())
-                    check("overview: a <canvas> for each chart",
-                          page.locator("main .tw canvas").count() == 2)
+                    # --- Demo analytics: the Overview's KPIs and chart, the CRM's deals and feed ---
+                    demo_nav(page, "Demo analytics").click()
+                    page.get_by_text("Latest activity").wait_for()
+                    page.wait_for_function("() => document.querySelectorAll('main .tw canvas').length === 1")
+                    page.get_by_text("Opened the demo link").first.wait_for()
+                    stats = {t: page.evaluate(STAT_JS, t) for t in ("Links opened", "Prospects who called", "Demo calls", "Open deals")}
+                    check("overview: the four cards read /demo/analytics and /demo/crm",
+                          stats == {"Links opened": "14", "Prospects who called": "1", "Demo calls": "3", "Open deals": "2"}
+                          and {"GET /demo/analytics", "GET /demo/crm"} <= set(reqs),
+                          f"{stats} {reqs[-4:]}")
+                    check("overview: the chart and the funnel are titled",
+                          page.get_by_text("Demo calls per day", exact=True).is_visible()
+                          and page.get_by_text("From link to deal", exact=True).is_visible())
+                    funnel = page.locator("main .tw ol[aria-label='From link to deal'] li")
+                    check("overview: the funnel counts every prospect, step by step",
+                          [" ".join(funnel.nth(i).inner_text().split()) for i in range(funnel.count())]
+                          == ["Researched 1", "Opened the link 1", "Called the demo 1", "Asked for setup 0", "Live 0"],
+                          str(funnel.all_inner_texts()))
                     recent = page.locator("main .tw table tbody tr")
-                    check("overview: Recent calls links a row to the prospect",
-                          recent.count() == 4
-                          and recent.locator('a[href="#/demos/prospects/pr0SPct1"]').count() == 4,
-                          str(recent.count()))
+                    check("overview: Most active prospects links the row to the prospect, with its heat",
+                          recent.count() == 1
+                          and recent.locator('a[href="#/demos/prospects/pr0SPct1"]').count() == 1
+                          and "Hot" in recent.first.inner_text(), recent.first.inner_text())
+                    feed_rows = page.locator("main .tw ul[aria-label='Latest activity'] li")
+                    top = [" ".join(feed_rows.nth(i).inner_text().split()) for i in range(4)]
+                    check("overview: the latest activity lists both prospects, newest first, each row a link",
+                          feed_rows.count() == 12
+                          and top[0].startswith("Harbor Dental Your test call · 1:00 · 4 turns")
+                          and top[1].startswith("Harbor Dental Called · 4:00 · 18 turns")
+                          and top[2].startswith("Harbor Dental Opened the demo link")
+                          and top[3].startswith("Cedar Bakery Left a voicemail with the owner.")
+                          and feed_rows.locator('a[href="#/demos/prospects/cedar42"]').count() == 1,
+                          f"{feed_rows.count()} rows; first four: {top}")
+                    page.get_by_label("Which activity to show").click()
+                    notes_option = page.locator("[data-tw-portal] [role=option]", has_text="Notes")
+                    notes_option.wait_for()
+                    notes_option.click()
+                    page.wait_for_function("() => document.querySelectorAll(\"main .tw ul[aria-label='Latest activity'] li\").length === 2")
+                    check("overview: the feed filters to notes alone",
+                          feed_rows.count() == 2 and all("Harbor Dental" in r or "Cedar Bakery" in r for r in feed_rows.all_inner_texts()),
+                          str(feed_rows.all_inner_texts()))
                     tw_classes |= set(page.evaluate(TW_CLASSES_JS))
 
                     # The charts read their colours when drawn, so a theme change must redraw them —
@@ -669,10 +685,10 @@ def run() -> int:
                     page.get_by_title("Dark theme").click()
                     page.wait_for_function(
                         "() => document.documentElement.dataset.theme === 'dark'"
-                        " && document.querySelectorAll('main .tw canvas').length === 2"
+                        " && document.querySelectorAll('main .tw canvas').length === 1"
                         " && document.querySelectorAll('main .tw canvas[data-before-toggle]').length === 0",
                         timeout=5000)
-                    check("overview: toggling the theme redraws both charts (new <canvas> elements)", True)
+                    check("overview: toggling the theme redraws the chart (a new <canvas> element)", True)
                     tw_classes |= set(page.evaluate(TW_CLASSES_JS))
 
                     # Dark charts are drawn in the promo's dark palette — not the transcribe
@@ -687,7 +703,7 @@ def run() -> int:
                     c1 = chart_vars["colors"][0]
                     rgb = [int(c1[i:i + 2], 16) for i in (1, 3, 5)] if hex6.match(c1) else [0, 0, 0]
                     canvases = page.locator("main .tw canvas")
-                    for i, which in enumerate(("calls line + area fill", "top-customers bar")):
+                    for i, which in enumerate(("calls line + area fill",)):
                         px = canvases.nth(i).evaluate(CANVAS_PIXELS_JS, rgb)
                         check(f"dark: the {which} is painted in --ui-chart-1, not black",
                               px["near"] >= 300 and px["black"] < px["near"] // 10, f"{px} for {c1}")
@@ -705,7 +721,7 @@ def run() -> int:
                     with page.expect_request(lambda r: "/demo/analytics" in r.url
                                              and r.method == "GET") as req:
                         option.click()
-                    page.get_by_text("Recent calls").wait_for()
+                    page.get_by_text("Latest activity").wait_for()
                     check("overview: picking a period re-reads the analytics for it",
                           "days=7" in req.value.url, req.value.url)
 
@@ -726,8 +742,8 @@ def run() -> int:
                     check("a prospect gets its own URL",
                           page.evaluate("location.hash") == "#/demos/prospects/pr0SPct1",
                           page.evaluate("location.hash"))
-                    check("Customers stays highlighted on a prospect",
-                          page.locator(".nav-item.is-active").inner_text().strip() == "Customers")
+                    check("Prospects stays highlighted on a prospect",
+                          page.locator(".nav-item.is-active").inner_text().strip() == "Prospects")
 
                     # The page's own row lives in the app's top bar (B2), so "the page" is both.
                     main_tw = page.locator("main .tw, header.topbar .tw")
@@ -739,16 +755,16 @@ def run() -> int:
                     check("prospect: the stat cards show the backend's numbers",
                           stats == {"Link opens": "14", "Calls": "3", "Minutes": "9", "Average call": "3:00"},
                           str(stats))
-                    # The tabs across the page; the Test call is the settings studio's console.
-                    page.get_by_role("tab", name="Settings").click()
+                    # The tabs across the page; the Test call is the Receptionist studio's console.
+                    page.get_by_role("tab", name="Receptionist").click()
                     page.locator("main .tw aside[aria-label='Test call']").wait_for()
                     layout = page.evaluate(STUDIO_JS)
                     check("prospect: the tabs sit in the app's top bar, outside any card; the test call is the settings console",
                           layout["tabsInBar"] and not layout["tabsInCard"] and layout["aside"] >= 300
                           and layout["hasCall"] and layout["section"] >= 700,
                           str(layout))
-                    check("prospect (B2): one bar, breadcrumb Customers / Harbor Dental, no 'Demo / Detail' crumbs",
-                          layout["crumbs"] == "Customers/Harbor Dental" and layout["oldCrumbs"] == 0, str(layout))
+                    check("prospect (B2): one bar, breadcrumb Prospects / Harbor Dental, no 'Sales / Detail' crumbs",
+                          layout["crumbs"] == "Prospects/Harbor Dental" and layout["oldCrumbs"] == 0, str(layout))
                     check("prospect (B2): the sidebar folds to a 56px icon rail",
                           layout["rail"] == "rail" and layout["sidebar"] == 56, str(layout))
                     check("prospect (B2): the studio runs edge to edge, no card, from the rail's edge",
@@ -771,7 +787,7 @@ def run() -> int:
                     centred = page.evaluate(ORB_CENTRED_JS)
                     check("prospect: ... level with the Call button, to its left",
                           centred["level"] and centred["leftOfButton"], str(centred))
-                    page.get_by_role("tab", name="Activity").click()
+                    page.get_by_role("tab", name="Overview").click()
                     brand = page.evaluate(ORB_JS, '.sidebar-brand video')
                     check("sidebar: the brand mark is the orb, in a .tw island so the utilities apply",
                           brand["found"] and brand["inTw"] and brand["parentClass"] == "tw"
@@ -785,12 +801,12 @@ def run() -> int:
                     check("sidebar: ... and the tinted square behind it is gone",
                           tint in ("rgba(0, 0, 0, 0)", "transparent"), tint)
 
-                    # --- Add demo time, from the page header (AddDemoTimeMenu) ---
+                    # --- Add demo time, from the Overview's Demo link card (AddDemoTimeMenu) ---
                     #
-                    # Harbor stores no minutes, so the button opens on DEFAULT_DEMO_MINUTES. The
-                    # Share tab is closed, so this is the only one of these buttons on screen.
+                    # Harbor stores no minutes, so the button opens on DEFAULT_DEMO_MINUTES. It is
+                    # the one place the time is added now (the header and the Share tab lost theirs).
                     add_time = main_tw.get_by_role("button", name=DEMO_TIME_BUTTON)
-                    check("prospect: the header carries the Add-time button with the current total",
+                    check("prospect: the link card carries the Add-time button with the current total",
                           add_time.count() == 1
                           and add_time.inner_text().strip() == "Demo time: 10 min",
                           str(page.evaluate(DEMO_TIME_SHOWN_JS)))
@@ -809,7 +825,7 @@ def run() -> int:
                     body = req.value.post_data_json
                     check("prospect: a step PATCHes {addDemoMinutes: n} and sends no total",
                           body == {"addDemoMinutes": 10}, str(body))
-                    check("prospect: ... and the header shows the new total without a reload",
+                    check("prospect: ... and the card shows the new total without a reload",
                           settled(page, f"() => ({DEMO_TIME_SHOWN_JS})()"
                                         ".includes('Demo time: 20 min')"),
                           str(page.evaluate(DEMO_TIME_SHOWN_JS)))
@@ -844,17 +860,42 @@ def run() -> int:
                     def snapshot(label: str) -> None:
                         per_state[label] = set(page.evaluate(TW_CLASSES_JS))
 
-                    # Activity (the default tab)
-                    transcript_buttons = main_tw.get_by_role("button", name="Open call details")
-                    check("activity: one table row per call (4)", transcript_buttons.count() == 4,
-                          str(transcript_buttons.count()))
+                    # Overview (the default tab): the stepper, the next step, and what to fix
+                    stepper = main_tw.locator("ol[aria-label='Where this prospect is'] li")
+                    check("overview: the stepper has six steps, Harbor on 'Setup requested'",
+                          stepper.count() == 6
+                          and [" ".join(stepper.nth(i).inner_text().split()) for i in range(3)]
+                          == ["Researched", "Link shared", "Tried it"]
+                          and "(current step)" in stepper.nth(3).inner_text(),
+                          str(stepper.all_inner_texts()))
+                    next_step = main_tw.locator("[data-next-step]")
+                    check("overview: the next-step card says the ball is in their court, with Start onboarding",
+                          "Waiting on them" in next_step.inner_text()
+                          and next_step.get_by_role("button", name="Start onboarding").count() == 1,
+                          next_step.inner_text()[:200])
                     fix = main_tw.locator("section", has=page.get_by_role("heading", name="What to fix"))
                     shared = fix.locator("li", has_text="No price list for implants")
-                    check("activity: the gap roll-up counts the shared gap twice",
-                          shared.count() == 1 and shared.locator(".ta-numeric").inner_text().strip() == "2",
+                    check("overview: the gap roll-up counts the shared gap twice, with a way to the FAQs",
+                          shared.count() == 1 and " ".join(shared.inner_text().split()).startswith("2 calls")
+                          and shared.locator("a[href='#/demos/prospects/pr0SPct1/faqs']").count() == 1,
                           fix.inner_text() if fix.count() else "no 'What to fix' section")
-                    check("activity: the test call is called out",
-                          main_tw.get_by_text("1 of these are marked as your own tests").is_visible())
+                    check("overview: the deal card shows the note and the stage",
+                          main_tw.get_by_text("Asked for a follow-up after the expo.").is_visible()
+                          and main_tw.get_by_label("Deal stage").inner_text().strip() == "Interested")
+                    check("overview: the contact card holds the contact",
+                          main_tw.get_by_label("Name", exact=True).input_value() == "Dana Reyes"
+                          and main_tw.get_by_label("Email", exact=True).input_value() == "dana@harbordental.example")
+                    snapshot("overview")
+
+                    # Calls: the table alone, with a bulk review
+                    main_tw.get_by_role("tab", name="Calls").click()
+                    transcript_buttons = main_tw.get_by_role("button", name="Open call details")
+                    transcript_buttons.first.wait_for()
+                    check("activity: one table row per call (4)", transcript_buttons.count() == 4,
+                          str(transcript_buttons.count()))
+                    check("activity: the test call is called out, and the unreviewed calls can be reviewed at once",
+                          main_tw.get_by_text("1 of these are marked as your own tests").is_visible()
+                          and main_tw.get_by_role("button", name="Review 2 unreviewed calls").count() == 1)
                     snapshot("activity")
 
                     transcript_buttons.nth(1).click()  # call2: the 18-turn reviewed call
@@ -904,7 +945,7 @@ def run() -> int:
                             page.get_by_role("option", name=label).click()
                         page.wait_for_timeout(300)
 
-                    main_tw.get_by_role("tab", name="Settings").click()
+                    main_tw.get_by_role("tab", name="Receptionist").click()
                     check("settings: opens on Business information",
                           main_tw.locator("#settings-section-title").inner_text().strip() == "Business information")
                     phone = main_tw.get_by_label("Phone", exact=True)
@@ -952,8 +993,8 @@ def run() -> int:
                     check("prompt: ... and the page says the prompts were edited by hand",
                           main_tw.get_by_text("These prompts were edited by hand").is_visible())
 
-                    # Sources (the research inputs and the dossier as markdown)
-                    main_tw.get_by_role("tab", name="Sources").click()
+                    # Research (the research inputs and the dossier as markdown)
+                    main_tw.get_by_role("tab", name="Research").click()
                     main_tw.get_by_role("heading", name="Raw research").wait_for()
                     check("sources: the dossier renders as markdown (<strong>, <li>)",
                           main_tw.locator("strong", has_text="Family dental practice").count() == 1
@@ -964,35 +1005,44 @@ def run() -> int:
                           str(links.count()))
                     snapshot("sources")
 
-                    # Share
-                    main_tw.get_by_role("tab", name="Share").click()
+                    # The link: the Overview's Demo link card. The email: its own tab.
+                    main_tw.get_by_role("tab", name="Overview").click()
                     link = main_tw.get_by_label("Customer link")
                     link.wait_for()
                     check("share: the customer link is the public demo URL",
                           link.input_value() == f"{DEMO_BASE_URL}/c/pr0SPct1", link.input_value())
                     page.evaluate(MARK_TOASTS_JS)
-                    main_tw.get_by_role("button", name="Copy", exact=True).click()
+                    main_tw.get_by_role("button", name="Copy link", exact=True).click()
                     new_toast(page, "Link copied.")
                     copied = page.evaluate("navigator.clipboard.readText()")
                     check("share: Copy copies it", copied == f"{DEMO_BASE_URL}/c/pr0SPct1", repr(copied))
-                    subject = main_tw.get_by_label("Email subject").input_value()
+                    page.evaluate(MARK_TOASTS_JS)
+                    with page.expect_request(lambda r: r.method == "PATCH"
+                                             and r.url.endswith("/demo/customers/pr0SPct1")) as req:
+                        main_tw.get_by_role("switch", name="Toggle the demo link").click()
+                    body = req.value.post_data_json
+                    check("share: the link's switch PATCHes {active} alone and says Saved.",
+                          body == {"active": False} and new_toast(page, "Saved."), str(body))
+                    main_tw.get_by_role("switch", name="Toggle the demo link").click()
+                    page.wait_for_timeout(300)
+                    main_tw.get_by_role("tab", name="Outreach email").click()
+                    subject = main_tw.get_by_label("Email subject")
+                    subject.wait_for()
                     email = main_tw.get_by_label("Email body").input_value()
                     check("share: the email names the business and carries the link",
-                          "Harbor Dental" in subject and "Harbor Dental" in email
-                          and f"{DEMO_BASE_URL}/c/pr0SPct1" in email, subject)
-
-                    # The third Add-time menu: beside the Share tab's own Demo minutes field, which
-                    # sets the total outright. Scoped to the field's row, because the header's
-                    # button is on screen too — and that is what makes the last check below worth
-                    # making: one answer moves both.
-                    minutes_field = main_tw.locator("#demo-minutes")
-                    share_add_time = minutes_field.locator("xpath=..").get_by_role(
-                        "button", name=DEMO_TIME_BUTTON)
-                    check("share: the Add-time menu sits beside the Demo minutes field",
-                          share_add_time.count() == 1 and minutes_field.input_value() == "20",
-                          f"{share_add_time.count()} buttons, field={minutes_field.input_value()}")
+                          "Harbor Dental" in subject.input_value() and "Harbor Dental" in email
+                          and f"{DEMO_BASE_URL}/c/pr0SPct1" in email, subject.input_value())
                     page.evaluate(MARK_TOASTS_JS)
-                    share_add_time.click()
+                    main_tw.get_by_role("button", name="Copy email").click()
+                    check("share: Copy email copies subject and body", new_toast(page, "Email copied.")
+                          and page.evaluate("navigator.clipboard.readText()").startswith(subject.input_value()))
+
+                    # A second top-up compounds on the first because the backend added it to what
+                    # it had stored; every one of these requests carried only the amount.
+                    main_tw.get_by_role("tab", name="Overview").click()
+                    add_time.wait_for()
+                    page.evaluate(MARK_TOASTS_JS)
+                    add_time.click()
                     time_menu.wait_for()
                     with page.expect_request(lambda r: r.method == "PATCH"
                                              and r.url.endswith("/demo/customers/pr0SPct1")) as req:
@@ -1000,16 +1050,11 @@ def run() -> int:
                     body = req.value.post_data_json
                     check("share: a step PATCHes {addDemoMinutes: n} and sends no total",
                           body == {"addDemoMinutes": 30}, str(body))
-                    # 10 + 10 + 30. The second top-up compounds on the first because the backend
-                    # added it to what it had stored; every one of these requests carried only the
-                    # amount, so the browser's own figure never entered into it.
-                    landed = settled(
-                        page, "() => document.querySelector('main .tw #demo-minutes').value === '50'")
-                    shown = page.evaluate(DEMO_TIME_SHOWN_JS)
-                    check("share: ... and the field and both Add-time buttons show the compounded "
-                          "total without a reload",
-                          landed and shown == ["Demo time: 50 min", "Demo time: 50 min"],
-                          f"field={minutes_field.input_value()} buttons={shown}")
+                    landed = settled(page, f"() => ({DEMO_TIME_SHOWN_JS})()"
+                                           ".includes('Demo time: 50 min')")
+                    check("share: ... and the card shows the compounded total without a reload",
+                          landed and page.evaluate(DEMO_TIME_SHOWN_JS) == ["Demo time: 50 min"],
+                          str(page.evaluate(DEMO_TIME_SHOWN_JS)))
                     check("share: ... and says what the total now is",
                           new_toast(page, "Added 30 minutes. The demo now has 50 in all.",
                                     required=False))
@@ -1024,8 +1069,8 @@ def run() -> int:
                     # the offer, so the granted path is walked too: the answer is taken, the line
                     # rings (nothing is listening on the candidates, so it rings until it is hung
                     # up), and hanging up reports the call to POST /demo/calls/<callId>.
-                    # The test call is the Settings tab's console now.
-                    main_tw.get_by_role("tab", name="Settings").click()
+                    # The test call is the Receptionist tab's console now.
+                    main_tw.get_by_role("tab", name="Receptionist").click()
                     call_now = main_tw.get_by_role("button", name="Call now")
                     end_call = main_tw.get_by_role("button", name="End the call")
                     again = main_tw.get_by_role("button", name="Start a new call")
@@ -1132,7 +1177,7 @@ def run() -> int:
                           len(mics) == 3 and all(t.endswith(":ended") for t in mics[2]), str(mics))
                     harbor_link.click()
                     page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
-                    main_tw.get_by_role("tab", name="Settings").click()
+                    main_tw.get_by_role("tab", name="Receptionist").click()
 
                     # The billed case: the backend GRANTS the session after the admin has left. The
                     # session request is held (not answered) until the page is gone, then answered
@@ -1199,14 +1244,18 @@ def run() -> int:
                     cedar_link.wait_for()
                     cedar_link.click()
                     page.get_by_role("heading", name="Cedar Bakery", level=1).wait_for()
-                    # B2: Re-research is in the top bar's "More actions" menu.
-                    main_tw.get_by_role("button", name="More actions").click()
-                    re_research = page.locator("[data-tw-portal] [role=menu]").get_by_role("menuitem", name="Re-research")
-                    re_research.wait_for()
-                    check("research: a prospect mid-research says so, and offers Re-research",
+                    # Cedar is mid-research, and its follow-up is overdue: the overdue follow-up is
+                    # the next step (it is ours to do); the badge says the research is still running.
+                    check("research: a prospect mid-research says so; its overdue follow-up is the next step",
                           page.evaluate(STATUS_BADGE_JS) == "Researching"
-                          and re_research.count() == 1 and re_research.is_enabled(),
-                          f"badge={page.evaluate(STATUS_BADGE_JS)}, {re_research.count()} buttons")
+                          and "Follow up with Sam Ortiz" in main_tw.locator("[data-next-step]").inner_text(),
+                          f"badge={page.evaluate(STATUS_BADGE_JS)} {main_tw.locator('[data-next-step]').inner_text()[:120]}")
+                    # Research runs from its own tab, the one place for it.
+                    check("research: the top bar's More menu no longer carries it",
+                          main_tw.get_by_role("button", name=re.compile("research", re.IGNORECASE)).count() == 0)
+                    main_tw.get_by_role("tab", name="Research").click()
+                    re_research = main_tw.get_by_role("button", name="Run research again")
+                    re_research.wait_for()
                     page.evaluate(MARK_TOASTS_JS)
                     with page.expect_request(
                             lambda r: r.method == "POST"
@@ -1222,13 +1271,8 @@ def run() -> int:
                           and page.locator("header.topbar h1").get_attribute("title") == "8 Mill Lane, Portland, ME",
                           f"badge={page.evaluate(STATUS_BADGE_JS)}")
 
-                    # ResearchInputsPanel's own run button — the second trigger for the same
-                    # action, which is why it could not outlive the handler and had to come back
-                    # with it.
-                    main_tw.get_by_role("tab", name="Sources").click()
-                    run_again = main_tw.get_by_role("button", name="Run research again")
-                    run_again.wait_for()
-                    check("research: the Sources tab carries the panel's own run button, under the "
+                    run_again = re_research
+                    check("research: the Research tab carries the run button, under the "
                           "dossier the run wrote",
                           run_again.count() == 1
                           and main_tw.locator("strong", has_text="The run finished just now.").count() == 1)
@@ -1282,18 +1326,22 @@ def run() -> int:
                     # to "../../analytics", which would leave the customer route.
                     reqs.clear()
                     page.evaluate("() => { location.hash = '#/demos/prospects/..%2F..%2Fanalytics'; }")
+                    page.get_by_role("heading", name="Prospects", level=1).wait_for()
+                    page.get_by_role("tab", name=re.compile(r"^All ·")).click()
                     harbor_link.wait_for()
                     page.wait_for_timeout(500)
                     stray = [r for r in reqs if not re.fullmatch(
                         r"/demo/customers(/[A-Za-z0-9_-]+(/[a-z]+)?)?", r.split(" ", 1)[1])]
                     check("a malformed prospect id shows the list and asks the backend nothing else",
-                          page.get_by_role("heading", name="Customers", level=1).is_visible() and stray == [],
+                          page.get_by_role("heading", name="Prospects", level=1).is_visible() and stray == [],
                           str(reqs))
 
-                    # --- The CRM pipeline ---
-                    demo_nav(page, "CRM").click()
-                    page.get_by_role("heading", name="CRM", level=1).wait_for()
-                    main_tw.get_by_text("Left a voicemail with the owner.").wait_for()
+                    # --- The board (the promo's CRM pipeline, as the Prospects list's other view) ---
+                    page.goto(base + "#/demos/pipeline")
+                    page.wait_for_function("location.hash === '#/demos/prospects'")
+                    page.wait_for_function("() => document.querySelectorAll('main .tw .grid-cols-5 > section').length === 5")
+                    check("pipeline: the old #/demos/pipeline address opens Prospects on the board",
+                          page.get_by_role("tab", name="Board", exact=True).get_attribute("aria-selected") == "true")
                     board = page.evaluate(BOARD_JS)
                     check("pipeline: a column per stage, with the fake's counts and cards",
                           board == [{"stage": "New", "count": "0", "cards": []},
@@ -1301,21 +1349,8 @@ def run() -> int:
                                     {"stage": "Interested", "count": "1", "cards": ["Harbor Dental"]},
                                     {"stage": "Won", "count": "0", "cards": []},
                                     {"stage": "Lost", "count": "0", "cards": []}], str(board))
-                    due = main_tw.locator("div", has=page.get_by_text("Due now", exact=True)).last
-                    check("pipeline: the due-follow-up section names Cedar Bakery",
-                          due.get_by_role("button", name="Cedar Bakery").count() == 1
-                          and page.evaluate(STAT_JS, "Follow-ups due") == "1", due.inner_text())
-                    feed = main_tw.locator("ul", has=page.get_by_text("Opened the demo link").first).last
-                    rows = feed.locator("li")
-                    top = [" ".join(rows.nth(i).inner_text().split()) for i in range(4)]
-                    check("pipeline: the activity feed lists both prospects, newest first",
-                          rows.count() == 20
-                          and top[0].startswith("Harbor Dental Your test call · 1:00 · 4 turns")
-                          and top[1].startswith("Harbor Dental Called · 4:00 · 18 turns")
-                          and top[2].startswith("Harbor Dental Opened the demo link")
-                          and top[3].startswith("Cedar Bakery Left a voicemail with the owner.")
-                          and rows.filter(has_text="Cedar Bakery").count() == 1,
-                          f"{rows.count()} rows; first four: {top}")
+                    check("pipeline: Cedar's card says its follow-up is due",
+                          main_tw.locator("li", has_text="Cedar Bakery").get_by_text("Follow up due").count() == 1)
                     per_state["pipeline"] = set(page.evaluate(TW_CLASSES_JS))
 
                     # The board moves a card before its PATCH is answered, so every move check
@@ -1367,20 +1402,17 @@ def run() -> int:
                         else:
                             fulfill_json(route, 500, {"error": "The CRM is unavailable."})
 
-                    page.route("**/demo/crm", crm_unavailable)
+                    page.route("**/demo/customers", crm_unavailable)
                     page.evaluate(MARK_TOASTS_JS)
                     main_tw.get_by_role("button", name="Move on to Won").click()
                     answer_held(500, {"error": "The store is read-only."})
                     check("pipeline: a failed move whose reload also fails still reports it",
                           new_toast(page, "The CRM is unavailable.", required=False))
-                    page.unroute("**/demo/crm")
+                    page.unroute("**/demo/customers")
                     held.clear()
 
                     # Back to a board that matches the fake for the rest of the checks.
-                    open_customers(page)
-                    harbor_link.wait_for()
-                    demo_nav(page, "CRM").click()
-                    main_tw.get_by_text("Left a voicemail with the owner.").wait_for()
+                    open_board(page)
 
                     page.evaluate(MARK_TOASTS_JS)
                     main_tw.get_by_role("button", name="Move on to Won").click()
@@ -1397,149 +1429,59 @@ def run() -> int:
                     check("pipeline: ... and says where it went", new_toast(page, "Moved to Won."))
                     page.unroute("**/demo/customers/pr0SPct1")
 
-                    # The drawer: one prospect's CRM, over the board. Three ways in.
-                    drawer = page.locator("[data-tw-portal] [role=dialog]")
-                    feed.locator("li", has_text="Left a voicemail with the owner.").first.click()
-                    drawer.get_by_role("heading", name="Cedar Bakery").wait_for()
-                    check("pipeline: an activity-feed row opens that prospect's drawer",
-                          drawer.get_by_text("Left a voicemail with the owner.").count() >= 1)
-                    page.keyboard.press("Escape")
-                    drawer.wait_for(state="detached")
-                    due.get_by_role("button", name="Cedar Bakery").click()
-                    drawer.get_by_role("heading", name="Cedar Bakery").wait_for()
-                    check("pipeline: a Due now chip opens that prospect's drawer",
-                          drawer.get_by_label("Deal stage").inner_text().strip() == "Contacted",
-                          drawer.get_by_label("Deal stage").inner_text())
-                    page.keyboard.press("Escape")
-                    drawer.wait_for(state="detached")
-
+                    # A card opens the prospect; the deal (stage, follow-up, notes) is a card on its Overview.
                     main_tw.get_by_role("button", name="Harbor Dental").first.click()
-                    drawer.wait_for()
-                    drawer.get_by_text("Asked for a follow-up after the expo.").wait_for()
-                    check("pipeline: the card opens the drawer inside [data-tw-portal], with the timeline",
-                          page.locator("[role=dialog]").count() == 1
-                          and drawer.get_by_role("heading", name="Harbor Dental").is_visible()
-                          and drawer.get_by_text("Called · 4:00 · 18 turns").count() == 1
-                          and drawer.get_by_text("Opened the demo link").count() == 14)
-                    # The ported Button renders the link as <a role="button"> (verbatim promo
-                    # markup), so this looks for the anchor rather than the "link" role.
-                    opener = page.evaluate("""() => {
-                        const el = [...document.querySelectorAll('[data-tw-portal] [role=dialog] a')]
-                          .find((n) => n.textContent.trim().startsWith('Open the customer'));
-                        return el ? { href: el.getAttribute('href'), role: el.getAttribute('role') } : null;
-                    }""")
-                    check("pipeline: the drawer links to the prospect page",
-                          opener is not None and opener["href"] == "#/demos/prospects/pr0SPct1",
-                          str(opener))
-                    per_state["pipeline + drawer"] = set(page.evaluate(TW_CLASSES_JS))
-
-                    # The drawer's own writes. Its Stage select is a second portal surface: a
-                    # popover portalled into the shared .tw container beside the modal sheet, so
-                    # it has to be reachable and clickable from inside the sheet.
-                    # (The fake is stateless, so the board behind can't be asserted to follow:
-                    # its next read of /demo/crm returns the original stages.)
-                    drawer.get_by_label("Deal stage").click()
+                    page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
+                    check("pipeline: a card opens the prospect page",
+                          page.evaluate("location.hash") == "#/demos/prospects/pr0SPct1",
+                          page.evaluate("location.hash"))
+                    deal = main_tw.locator("[data-slot=card]", has=page.get_by_role("heading", name="Deal"))
+                    deal.get_by_label("Deal stage").click()
                     listbox = page.locator("[data-tw-portal] [role=listbox]")
                     listbox.wait_for()
                     lost = listbox.get_by_role("option", name="Lost")
-                    check("drawer: the stage select opens inside [data-tw-portal]",
+                    check("deal: the stage select opens inside [data-tw-portal]",
                           page.locator("[role=listbox]").count() == 1 and lost.is_visible())
+                    page.evaluate(MARK_TOASTS_JS)
                     with page.expect_request(lambda r: r.method == "PATCH"
                                              and "/demo/customers/" in r.url) as req:
                         lost.click()
                     body = req.value.post_data_json
-                    check("drawer: picking a stage PATCHes {stage}",
+                    check("deal: picking a stage PATCHes {stage} alone, and says Saved.",
                           body == {"stage": "lost"}
-                          and req.value.url.endswith("/demo/customers/pr0SPct1"),
+                          and req.value.url.endswith("/demo/customers/pr0SPct1")
+                          and new_toast(page, "Saved."),
                           f"{body} {req.value.url}")
                     with page.expect_request(lambda r: r.method == "PATCH"
                                              and "/demo/customers/" in r.url) as req:
-                        drawer.get_by_label("Follow up on").fill("2026-10-01")
+                        deal.get_by_label("Follow up on").fill("2026-10-01")
                     body = req.value.post_data_json
-                    check("drawer: setting the follow-up date PATCHes {followUpAt}",
+                    check("deal: setting the follow-up date PATCHes {followUpAt}",
                           body == {"followUpAt": "2026-10-01"}, str(body))
 
-                    note = drawer.get_by_label("Add a note")
-                    add_note = drawer.get_by_role("button", name="Add note")
+                    note = deal.get_by_label("Add a note")
+                    add_note = deal.get_by_role("button", name="Add note")
                     reqs.clear()
                     note.fill("   ")
                     page.wait_for_timeout(300)
-                    check("pipeline: a blank note can't be sent (the button stays disabled)",
+                    check("deal: a blank note can't be sent (the button stays disabled)",
                           add_note.is_disabled()
                           and [r for r in reqs if r.endswith("/notes")] == [], str(reqs))
                     note.fill("Called back, wants pricing.")
-                    page.evaluate(MARK_TOASTS_JS)
                     with page.expect_request(lambda r: r.method == "POST"
                                              and r.url.endswith("/demo/customers/pr0SPct1/notes")) as req:
                         add_note.click()
                     body = req.value.post_data_json
-                    # expect_request fires when the request goes out; the box is cleared when the
-                    # answer comes back, so wait for that before reading the toasts.
-                    expect(note).to_have_value("", timeout=10000)
-                    check("pipeline: adding a note POSTs {text}, clears the box and reports nothing",
-                          body == {"text": "Called back, wants pricing."}
-                          and page.locator("main .tw [data-sonner-toast]:not([data-seen])").count() == 0,
-                          f"body={body} draft={note.input_value()!r}")
-                    page.keyboard.press("Escape")
-                    drawer.wait_for(state="detached")
+                    page.wait_for_function("() => document.querySelector('main .tw #deal-note').value === ''")
+                    check("deal: adding a note POSTs {text} and clears the box",
+                          body == {"text": "Called back, wants pricing."}, str(body))
+                    snapshot("deal")
+                    per_state["pipeline + deal"] = set(page.evaluate(TW_CLASSES_JS))
 
-                    # A slow read for a prospect the operator has already closed must not land in
-                    # the drawer they are looking at now — nor let its next save go to the wrong
-                    # record (the drawer keeps the id it is *currently* on).
-                    held.clear()
-
-                    def hold_harbor_get(route):
-                        if route.request.method == "GET":
-                            held.append(route)
-                        else:
-                            route.fallback()
-
-                    page.route("**/demo/customers/pr0SPct1", hold_harbor_get)
-                    main_tw.get_by_role("button", name="Harbor Dental").first.click()
-                    drawer.wait_for()
-                    for _ in range(50):
-                        if held:
-                            break
-                        page.wait_for_timeout(100)
-                    if not held:
-                        raise HarnessError("the drawer never read the prospect")
-                    page.keyboard.press("Escape")
-                    drawer.wait_for(state="detached")
-                    main_tw.get_by_role("button", name="Cedar Bakery").first.click()
-                    drawer.get_by_text("Left a voicemail with the owner.").wait_for()
-                    fulfill_json(held[0], 200, STALE_HARBOR)
-                    page.wait_for_timeout(1000)
-                    check("drawer: a stale read for a closed prospect can't take over the open one",
-                          drawer.get_by_role("heading", name="Cedar Bakery").is_visible()
-                          and drawer.get_by_text("A note only the stale read has.").count() == 0
-                          and drawer.get_by_text("Left a voicemail with the owner.").count() >= 1,
-                          drawer.inner_text()[:400])
-                    drawer.get_by_label("Deal stage").click()
-                    listbox.wait_for()
-                    with page.expect_request(lambda r: r.method == "PATCH"
-                                             and "/demo/customers/" in r.url) as req:
-                        listbox.get_by_role("option", name="Interested").click()
-                    check("drawer: ... and the next save still goes to the prospect on screen",
-                          req.value.url.endswith("/demo/customers/cedar42")
-                          and req.value.post_data_json == {"stage": "interested"},
-                          f"{req.value.url} {req.value.post_data_json}")
-                    page.unroute("**/demo/customers/pr0SPct1")
-                    page.keyboard.press("Escape")
-                    drawer.wait_for(state="detached")
-
-                    for label in ("pipeline", "pipeline + drawer"):
+                    for label in ("pipeline", "pipeline + deal"):
                         bad, _ = legacy_collisions(css, per_state[label])
                         check(f"no @layer legacy class name on promo markup: {label}",
                               bool(per_state[label]) and bad == [], f"collisions: {bad}")
-
-                    main_tw.get_by_role("button", name="Harbor Dental").first.click()
-                    drawer.wait_for()
-                    open_link = drawer.locator(':is(a, button):has-text("Open the customer")').last
-                    open_link.click()
-                    page.get_by_role("heading", name="Harbor Dental", level=1).wait_for()
-                    check("pipeline: following the drawer's link lands on the prospect page",
-                          page.evaluate("location.hash") == "#/demos/prospects/pr0SPct1",
-                          page.evaluate("location.hash"))
 
                     page.goto(base + "#/apiKeys")
                     page.reload()

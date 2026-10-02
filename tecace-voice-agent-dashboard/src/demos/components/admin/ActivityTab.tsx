@@ -173,15 +173,19 @@ export function ActivityTab({
   customerId,
   onChanged,
   readOnly = false,
+  compact = false,
 }: {
   calls: CallLog[];
   customerId: string;
   onChanged?: () => void;
   /** Dashboard-only: the demo's own customer — no test switch, no Analyze, no chart or roll-up. */
   readOnly?: boolean;
+  /** Dashboard-only: the table alone (the prospect page's Calls tab; the chart and the roll-up are on its Overview). */
+  compact?: boolean;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState(false);
   const [who, setWho] = useState<Who>("all");
   const [mood, setMood] = useState<Mood | "all">("all");
   const [shown, setShown] = useState(PAGE);
@@ -208,6 +212,29 @@ export function ActivityTab({
     void patch(call, { isTest }, isTest ? "Counted as your test." : "Counted as a customer call.");
   const analyze = (call: CallLog) => void patch(call, { analyze: true }, "Reviewed.");
 
+  // Dashboard-only: every unreviewed finished call, one after the other (each is a model call).
+  async function reviewAll(targets: CallLog[]) {
+    setReviewing(true);
+    let done = 0;
+    try {
+      for (const call of targets) {
+        const response = await demoFetch(`/customers/${customerId}/calls`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ callId: call.id, analyze: true }),
+        });
+        await readJson<{ call: CallLog }>(response);
+        done += 1;
+      }
+      toast.success(done === 1 ? "Reviewed 1 call." : `Reviewed ${done} calls.`);
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : "Could not review every call.");
+    } finally {
+      setReviewing(false);
+      onChanged?.();
+    }
+  }
+
   if (calls.length === 0) {
     return (
       <Card className="rounded-xl border shadow-none">
@@ -232,6 +259,7 @@ export function ActivityTab({
   // same shortcoming read four times in four transcripts is just four calls.
   const gaps = gapRollup(calls);
   const topGap = gaps[0]?.count ?? 0;
+  const unreviewed = calls.filter((call) => !call.review && call.status !== "started");
 
   const byWho = calls.filter((call) =>
     who === "all" ? true : who === "test" ? call.isTest : !call.isTest,
@@ -245,7 +273,7 @@ export function ActivityTab({
 
   return (
     <div className="flex flex-col gap-4">
-      {readOnly ? null : (
+      {readOnly || compact ? null : (
         <div className="grid gap-4 xl:grid-cols-3">
           <Card className="rounded-xl border shadow-none xl:col-span-2">
             <CardContent className="p-4 md:p-6">
@@ -265,7 +293,7 @@ export function ActivityTab({
         </div>
       )}
 
-      {gaps.length && !readOnly ? (
+      {gaps.length && !readOnly && !compact ? (
         <Card className="rounded-xl border shadow-none">
           <CardContent className="p-4 md:p-6">
             <section>
@@ -306,6 +334,12 @@ export function ActivityTab({
               Calls <span className="text-muted-foreground tabular-nums">{visible.length}</span>
             </p>
             <div className="ml-auto flex flex-wrap items-center gap-2">
+              {compact && unreviewed.length ? (
+                <Button size="sm" variant="outline" disabled={reviewing} onClick={() => void reviewAll(unreviewed)}>
+                  <Sparkles className="size-3.5" aria-hidden />
+                  {reviewing ? "Reviewing" : `Review ${unreviewed.length} unreviewed ${unreviewed.length === 1 ? "call" : "calls"}`}
+                </Button>
+              ) : null}
               {readOnly || !testCount ? null : (
                 <>
                   <Chip active={who === "all"} onClick={() => setWho("all")}>

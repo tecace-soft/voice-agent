@@ -32,7 +32,7 @@ export const CHANGELOG: Release[] = [
   {
     version: "0.0.15",
     date: "2026-10-02",
-    title: "Set up your receptionist yourself: pick a plan, add a card, start",
+    title: "Set up your receptionist yourself; a Sales section for prospects",
     items: [
       {
         kind: "new",
@@ -53,6 +53,26 @@ export const CHANGELOG: Release[] = [
       {
         kind: "improved",
         text: "Approve and Decline on a prospect are only needed for setups you start yourself; a customer's own request moves them to onboarding without you.",
+        admin: true,
+      },
+      {
+        kind: "improved",
+        text: "Demo › Customers and CRM are one page, Sales › Prospects: a table or a board of the same prospects. The first tab, Needs you, holds what is on you (a setup request, an overdue follow-up, failed research), and a Next step column says what happens next instead of three status columns.",
+        admin: true,
+      },
+      {
+        kind: "improved",
+        text: "A prospect's page opens on an Overview: where the deal is, one card with the next thing to do (approve, follow up, research, send the link), the demo link with its minutes, the deal's stage, follow-up date and notes, and the contact. Each change saves as you make it. Calls, Receptionist, Research and Outreach email are the other tabs.",
+        admin: true,
+      },
+      {
+        kind: "new",
+        text: "Demo analytics replaces the Demo Overview: how many prospects opened their link, called, asked for setup and went live, the most active prospects, and the latest activity across all of them.",
+        admin: true,
+      },
+      {
+        kind: "new",
+        text: "New prospect asks for two things, the name and a website or Google Maps link; the contact can wait. Review every unreviewed call on a prospect in one press.",
         admin: true,
       },
     ],

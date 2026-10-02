@@ -79,7 +79,7 @@ const WIDE_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>(["demoProspects"]);
 const DEMO_OWNER_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>(["myOverview", "myCalls", "demoProspect", "changelog", "billing"]);
 // The one tab of their own page a demo-stage account has; the others are operator-only and render
 // nothing for them, which left a blank page the sidebar couldn't leave.
-const DEMO_OWNER_TAB: ProspectTab = "settings";
+const DEMO_OWNER_TAB: ProspectTab = "receptionist";
 
 const VIEW_TITLES: Record<ViewId, string> = {
   dashboard: "Overview",
@@ -96,10 +96,10 @@ const VIEW_TITLES: Record<ViewId, string> = {
   numbers: "Agent numbers",
   apiKeys: "API keys",
   accounts: "Accounts",
-  demoOverview: "Overview",
-  demoProspects: "Customers",
+  demoOverview: "Demo analytics",
+  demoProspects: "Prospects",
   demoProspect: "Detail",
-  demoPipeline: "CRM",
+  demoPipeline: "Prospects",
   myOverview: "Overview",
   myCalls: "Call activity",
   changelog: "Changelog",
@@ -237,7 +237,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // a count of failed runs can only ever grow, so it could never clear and stopped meaning
   // "something needs attention" the first time anything went wrong.
   const [unseenFailures, setUnseenFailures] = useState(0);
-  // Setup requests waiting for an answer (Demo › Customers badge). Admins only.
+  // Setup requests waiting for an answer (Sales › Prospects badge). Admins only.
   const [setupRequests, setSetupRequests] = useState(0);
   const [passwordOpen, setPasswordOpen] = useState(false);
   useEffect(() => {
@@ -346,7 +346,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           {!studio && (
           <nav className="crumbs ta-label-1" aria-label="Breadcrumb">
             <span className="muted">
-              {demoOnly ? "My receptionist" : isDemoView ? "Demo" : view === "dashboard" || view === "calls" ? "Dashboard" : "Transcribe"}
+              {demoOnly ? "My receptionist" : isDemoView ? "Sales" : view === "dashboard" || view === "calls" ? "Dashboard" : "Transcribe"}
             </span>
             <span className="muted" aria-hidden="true">
               /

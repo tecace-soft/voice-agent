@@ -1,7 +1,7 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { StatusBadge } from "@/components/admin/shared";
-import { FOLLOW_UP_ICON, HEAT_KIND, STAGE_LABEL, sinceLabel } from "@/components/admin/crm-shared";
+import { FOLLOW_UP_ICON, HEAT_KIND, HEAT_LABEL, STAGE_LABEL, sinceLabel } from "@/components/admin/crm-shared";
 import { formatDuration } from "@/lib/analytics";
 import { CUSTOMER_STAGES } from "@/lib/types";
 import type { CustomerStage, CustomerWithStats } from "@/lib/types";
@@ -37,7 +37,7 @@ function Card({
         </span>
         <span className="flex flex-wrap items-center gap-1.5">
           <StatusBadge kind={HEAT_KIND[customer.heat.level]}>
-            {customer.heat.level}
+            {HEAT_LABEL[customer.heat.level]}
           </StatusBadge>
           {at ? (
             <span className="ta-caption-2 text-muted-foreground">{sinceLabel(at)}</span>
