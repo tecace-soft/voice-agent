@@ -38,6 +38,10 @@ export const CHANGELOG: Release[] = [
         kind: "fixed",
         text: "Transfer calls lists the transfer number you set up before transfer scenarios for as long as calls still use it, instead of \"No transfers yet\". Add it to your transfers in one click; it stays in use until you publish.",
       },
+      {
+        kind: "fixed",
+        text: "Call forwarding shows the right missed-call code for Verizon mobile phones (*71). The busy and no-answer codes it showed before (*90, *92) are for landlines and are now under Landline.",
+      },
     ],
   },
   {

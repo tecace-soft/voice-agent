@@ -58,24 +58,29 @@ const CARRIERS: Carrier[] = [
   {
     id: "verizon",
     label: "Verizon",
-    covers: "Also US Cellular and other plans on Verizon's network.",
-    missed: [
-      { label: "When you're on another call", code: "*90{n}" },
-      { label: "When you don't pick up", code: "*92{n}" },
-    ],
+    covers: "Verizon mobile phones, and other mobile plans on Verizon's network. A Verizon home or Fios line uses the Landline codes.",
+    // *71 is Verizon Wireless's own no-answer/busy code; *90/*92 are landline (Fios) codes and do nothing on a mobile.
+    missed: [{ label: "When you're on another call or don't pick up", code: "*71{n}" }],
     all: [{ label: "Every call", code: "*72{n}" }],
     off: [{ label: "Turn off all forwarding", code: "*73" }],
-    note: "Verizon can't turn off one rule on its own: *73 turns off all of them.",
+    note: "Verizon sets the ring time (about 3 or 4 rings) — it can't be changed. Verizon can't turn off one rule on its own: *73 turns off all of them.",
     confirm: MOBILE_CONFIRM,
   },
   {
     id: "landline",
     label: "Landline",
-    covers: "A traditional business line from the phone company.",
-    missed: [],
+    covers: "A business line from the phone company, including Verizon Fios, AT&T Phone, Frontier and Cox.",
+    missed: [
+      { label: "When you're on another call", code: "*90{n}" },
+      { label: "When you don't pick up", code: "*92{n}" },
+    ],
     all: [{ label: "Every call", code: "*72{n}" }],
-    off: [{ label: "Turn off all forwarding", code: "*73" }],
-    note: "Forwarding only missed calls depends on your plan — ask your phone company to forward when busy or unanswered to your receptionist's number, or look for it in their online account.",
+    off: [
+      { label: "Turn off every call", code: "*73" },
+      { label: "Turn off when on another call", code: "*91" },
+      { label: "Turn off when you don't pick up", code: "*93" },
+    ],
+    note: "Not every plan has the missed-call codes, and a traditional copper line often doesn't. If they don't take, ask your phone company to forward when busy or unanswered to your receptionist's number, or look for it in their online account.",
     confirm:
       "Some phone companies play \"This is a forwarded call, press 1 to accept\" before passing the call on. Call your phone company and ask them to turn off answer confirmation (also called call screening or forwarded call announcement) for calls forwarded to {n}. Some let you switch it off yourself in the call forwarding settings of their online account.",
   },
