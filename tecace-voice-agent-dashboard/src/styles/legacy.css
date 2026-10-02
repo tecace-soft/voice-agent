@@ -1089,6 +1089,14 @@ select.input {
 .readiness-list .is-advice > span:first-child {
   color: var(--warning);
 }
+/* a business's go-live request: above its checklist, and beside its stage in the accounts list */
+.golive-request {
+  margin: 0;
+  color: var(--primary);
+}
+.golive-pill {
+  margin-left: 6px;
+}
 
 /* a generated password, shown once */
 .notice {

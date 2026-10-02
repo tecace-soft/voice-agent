@@ -750,6 +750,14 @@ export async function initDb(): Promise<void> {
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_declined_at TIMESTAMPTZ`;
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_decline_note TEXT`;
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS live_at TIMESTAMPTZ`;
+  // The customer's "my part is done, switch my line on" and the admin's "not yet" — the onboarding
+  // stage's own request, kept apart from the demo stage's `onboarding_*` so a setup request and a
+  // go-live request can never be read as each other
+  // (docs/superpowers/specs/2026-09-29-request-go-live-and-autosave-design.md).
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS live_requested_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS live_request_note TEXT`;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS live_declined_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS live_decline_note TEXT`;
   // Billing, as the dashboard shows it: the plan the customer chose and the card on file. One row
   // per account, written when they request setup (`/demo/customers/:id/request-onboarding`) or from
   // the Billing page. The card is a MOCK until ax-billing (Stripe) is wired in: only what a receipt
@@ -1011,6 +1019,7 @@ async function migrateIfNeeded(): Promise<void> {
     await sql`SELECT 1 FROM sms_consents LIMIT 1`;
     await sql`SELECT call_sid FROM inbound_calls LIMIT 1`;
     await sql`SELECT onboarding_requested_at, onboarding_declined_at, live_at FROM users LIMIT 1`;
+    await sql`SELECT live_requested_at, live_declined_at FROM users LIMIT 1`;
     await sql`SELECT email_verified_at, signup_source FROM users LIMIT 1`;
     await sql`SELECT research_started_at FROM signup_requests LIMIT 1`;
     await sql`SELECT 1 FROM auth_tokens LIMIT 1`;

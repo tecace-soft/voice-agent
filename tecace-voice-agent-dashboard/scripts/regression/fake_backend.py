@@ -1081,22 +1081,28 @@ def readiness(account: dict) -> dict:
     has_number = number is not None
     published = account["id"] == USER["id"]
     items = [
-        {"id": "business_info", "ok": True, "required": True, "label": "Business information is filled in"},
-        {"id": "settings_published", "ok": published, "required": True, "label": "Call settings are published"},
-        {"id": "number_assigned", "ok": has_number, "required": True, "label": "A phone number is assigned",
-         **({"detail": number["phoneE164"]} if number else {})},
-        {"id": "published_matches_number", "ok": published and has_number, "required": True,
+        {"id": "business_info", "owner": "customer", "ok": True, "required": True,
+         "label": "Business information is filled in"},
+        {"id": "settings_published", "owner": "customer", "ok": published, "required": True,
+         "label": "Call settings are published"},
+        {"id": "number_assigned", "owner": "admin", "ok": has_number, "required": True,
+         "label": "A phone number is assigned", **({"detail": number["phoneE164"]} if number else {})},
+        {"id": "published_matches_number", "owner": "admin", "ok": published and has_number, "required": True,
          "label": "Published settings work with that number"},
     ]
     # Only once there is a number to have webhooks; required only for a number in the Twilio account.
     if number:
-        items.append({"id": "webhooks_configured", "ok": number["webhookState"] == "ok",
+        items.append({"id": "webhooks_configured", "owner": "admin", "ok": number["webhookState"] == "ok",
                       "required": bool(number["twilioSid"]), "label": "Calls to the number reach the receptionist",
                       **({} if number["webhookState"] == "ok" else
                          {"detail": "Its webhooks need configuring — an administrator does this on the Agent numbers page."})})
-    items.append({"id": "contact_number", "ok": False, "required": False,
+    items.append({"id": "contact_number", "owner": "customer", "ok": False, "required": False,
                   "label": "A number to reach the business is on file"})
-    return {"status": account["status"], "ready": all(i["ok"] or not i["required"] for i in items),
+    ticked = lambda i: i["ok"] or not i["required"]  # noqa: E731
+    return {"status": account["status"], "ready": all(ticked(i) for i in items),
+            "customerReady": all(ticked(i) for i in items if i["owner"] == "customer"),
+            # The go-live request (POST /business/request-live) and the admin's last "not yet".
+            "request": account.get("liveRequest"), "declined": account.get("liveDeclined"),
             "items": items}
 
 
@@ -1865,7 +1871,16 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
                              "message": "Not ready yet: " + "; ".join(i["label"].lower() for i in unmet) + "."}
             target["status"] = "production"
             target["liveAt"] = iso(NOW)
+            # Going live answers the request.
+            target["liveRequest"] = None
+            target["liveDeclined"] = None
             return 200, {"user": target, "readiness": check}
+        if action == "decline-live":
+            if target["status"] != "pre-production" or not target.get("liveRequest"):
+                return 409, {"error": "no_request", "message": "There's no go-live request to answer."}
+            target["liveRequest"] = None
+            target["liveDeclined"] = {"declinedAt": iso(NOW), "note": (payload.get("note") or "").strip() or None}
+            return 200, {"user": target}
         if action == "promote":
             if not target.get("businessId"):
                 return 409, {"error": "not_linked",
@@ -1905,6 +1920,25 @@ def route(method: str, path: str, query: dict, user: dict | None, body: bytes = 
         return 200, {"open": 1}
     if path == "/feedback" and method == "GET":
         return 200, {"feedback": FEEDBACK, "open": 1}
+    if path == "/business/request-live" and method == "POST":
+        # The business's own "my part is done" (routes/business.ts): refused to an admin, outside
+        # onboarding, and until every item the business owns is ticked.
+        if admin:
+            return 403, {"error": "own_account_only",
+                         "message": "Only the business can request go live. Use Go live on the Accounts page."}
+        if user["status"] != "pre-production":
+            return 409, {"error": "not_onboarding",
+                         "message": "Only a receptionist that is being set up can request go live."}
+        check = readiness(user)
+        if not check["customerReady"]:
+            unmet = [i for i in check["items"] if i["owner"] == "customer" and i["required"] and not i["ok"]]
+            return 409, {"error": "not_ready", "unmet": [i["id"] for i in unmet],
+                         "message": "Finish your part first: " + "; ".join(i["label"].lower() for i in unmet) + "."}
+        note = ((_demo_json(body) or {}).get("note") or "").strip() or None
+        previous = user.get("liveRequest")
+        user["liveRequest"] = {"requestedAt": previous["requestedAt"] if previous else iso(NOW), "note": note}
+        user["liveDeclined"] = None
+        return 200, readiness(user)
     if path == "/billing" or path.startswith("/billing/"):
         return billing_route(method, path, query, user, body)
     if path == "/business/readiness" and method == "GET":

@@ -256,6 +256,8 @@ describe("POST /auth/login", () => {
       lastLoginAt: expect.any(String),
       signupSource: "admin",
       emailVerified: false,
+      // An onboarding customer's open go-live request (Accounts badge); nobody else has one.
+      liveRequest: null,
       liveAt: null,
     });
     expect(body.user.passwordHash).toBeUndefined();

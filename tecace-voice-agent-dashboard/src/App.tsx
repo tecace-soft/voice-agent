@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { countOpenFeedback, countSetupRequests, countUnseenFailures, getTranscribeStats } from "./api/backend";
+import {
+  countOpenFeedback,
+  countSetupRequests,
+  countUnseenFailures,
+  getTranscribeStats,
+  listAccounts,
+} from "./api/backend";
 import type { AuthUser, MailboxScope, TranscribeStats } from "./api/types";
 import { useAuth } from "./auth";
 import { ChromeContext } from "./chrome";
@@ -79,7 +85,7 @@ const WIDE_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>(["demoProspects"]);
 const DEMO_OWNER_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>(["myOverview", "myCalls", "demoProspect", "changelog", "billing"]);
 // The one tab of their own page a demo-stage account has; the others are operator-only and render
 // nothing for them, which left a blank page the sidebar couldn't leave.
-const DEMO_OWNER_TAB: ProspectTab = "settings";
+const DEMO_OWNER_TAB: ProspectTab = "receptionist";
 
 const VIEW_TITLES: Record<ViewId, string> = {
   dashboard: "Overview",
@@ -96,10 +102,10 @@ const VIEW_TITLES: Record<ViewId, string> = {
   numbers: "Agent numbers",
   apiKeys: "API keys",
   accounts: "Accounts",
-  demoOverview: "Overview",
-  demoProspects: "Customers",
+  demoOverview: "Demo analytics",
+  demoProspects: "Prospects",
   demoProspect: "Detail",
-  demoPipeline: "CRM",
+  demoPipeline: "Prospects",
   myOverview: "Overview",
   myCalls: "Call activity",
   changelog: "Changelog",
@@ -237,14 +243,21 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
   // a count of failed runs can only ever grow, so it could never clear and stopped meaning
   // "something needs attention" the first time anything went wrong.
   const [unseenFailures, setUnseenFailures] = useState(0);
-  // Setup requests waiting for an answer (Demo › Customers badge). Admins only.
+  // Setup requests waiting for an answer (Sales › Prospects badge). Admins only.
   const [setupRequests, setSetupRequests] = useState(0);
+  // Go-live requests waiting for an answer (Accounts badge). Admins only.
+  const [liveRequests, setLiveRequests] = useState(0);
   const [passwordOpen, setPasswordOpen] = useState(false);
   useEffect(() => {
     if (!isAdmin) return;
     let active = true;
     countSetupRequests()
       .then((n) => active && setSetupRequests(n))
+      .catch(() => {
+        /* a badge is a nicety */
+      });
+    listAccounts()
+      .then((all) => active && setLiveRequests(all.filter((u) => u.status === "pre-production" && u.liveRequest).length))
       .catch(() => {
         /* a badge is a nicety */
       });
@@ -324,6 +337,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
         user={user}
         onSignOut={onSignOut}
         setupRequests={setupRequests}
+        liveRequests={liveRequests}
         onChangePassword={() => setPasswordOpen(true)}
       />
       {passwordOpen ? <ChangePasswordDialog onClose={() => setPasswordOpen(false)} /> : null}
@@ -346,7 +360,7 @@ function Dashboard({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
           {!studio && (
           <nav className="crumbs ta-label-1" aria-label="Breadcrumb">
             <span className="muted">
-              {demoOnly ? "My receptionist" : isDemoView ? "Demo" : view === "dashboard" || view === "calls" ? "Dashboard" : "Transcribe"}
+              {demoOnly ? "My receptionist" : isDemoView ? "Sales" : view === "dashboard" || view === "calls" ? "Dashboard" : "Transcribe"}
             </span>
             <span className="muted" aria-hidden="true">
               /

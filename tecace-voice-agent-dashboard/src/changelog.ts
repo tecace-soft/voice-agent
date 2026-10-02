@@ -32,8 +32,12 @@ export const CHANGELOG: Release[] = [
   {
     version: "0.0.15",
     date: "2026-10-02",
-    title: "Set up your receptionist yourself: pick a plan, add a card, start",
+    title: "Set up your receptionist yourself; a Sales section for prospects",
     items: [
+      {
+        kind: "new",
+        text: "Get a summary of each call by email: turn it on under Business settings › Call emails. It goes to the email you sign in with.",
+      },
       {
         kind: "new",
         text: "Request setup no longer waits for us. Pick a plan, add a card and your receptionist is yours to change and test straight away. Nothing is charged until your line is live; your 14-day free trial starts that day.",
@@ -75,17 +79,33 @@ export const CHANGELOG: Release[] = [
         text: "Approve and Decline on a prospect are only needed for setups you start yourself; a customer's own request moves them to onboarding without you.",
         admin: true,
       },
+      {
+        kind: "improved",
+        text: "Demo › Customers and CRM are one page, Sales › Prospects: a table or a board of the same prospects. The first tab, Needs you, holds what is on you (a setup request, an overdue follow-up, failed research), and a Next step column says what happens next instead of three status columns.",
+        admin: true,
+      },
+      {
+        kind: "improved",
+        text: "A prospect's page opens on an Overview: where the deal is, one card with the next thing to do (approve, follow up, research, send the link), the demo link with its minutes, the deal's stage, follow-up date and notes, and the contact. Each change saves as you make it. Calls, Receptionist, Research and Outreach email are the other tabs.",
+        admin: true,
+      },
+      {
+        kind: "new",
+        text: "Demo analytics replaces the Demo Overview: how many prospects opened their link, called, asked for setup and went live, the most active prospects, and the latest activity across all of them.",
+        admin: true,
+      },
+      {
+        kind: "new",
+        text: "New prospect asks for two things, the name and a website or Google Maps link; the contact can wait. Review every unreviewed call on a prospect in one press.",
+        admin: true,
+      },
     ],
   },
   {
     version: "0.0.14",
     date: "2026-10-02",
-    title: "A clearer sign-up page, and your earlier transfer number where calls use it",
+    title: "A clearer sign-up, demo and pricing page",
     items: [
-      {
-        kind: "new",
-        text: "Get a summary of each call by email: turn it on under Business settings › Call emails. It goes to the email you sign in with.",
-      },
       {
         kind: "improved",
         text: "The sign-up page (/start) has a new layout: the form sits beside how it works, each field shows an example, you can show the password you typed, and the free trial length is stated up front.",
@@ -97,26 +117,6 @@ export const CHANGELOG: Release[] = [
       {
         kind: "improved",
         text: "The pricing page you reach from a demo has the same look, with the business's name at the top and a clear way back to the demo.",
-      },
-      {
-        kind: "improved",
-        text: "Your earlier transfer number can be edited: click it to change its type or when it can be used, without adding a new number. Saving adds it to your transfers with your changes.",
-      },
-      {
-        kind: "improved",
-        text: "Rows under Transfer calls, Take a message and Text a link show \"Edit\" so it's clear you can click them to change them.",
-      },
-      {
-        kind: "fixed",
-        text: "Transfer calls lists the transfer number you set up before transfer scenarios for as long as calls still use it, instead of \"No transfers yet\". Add it to your transfers in one click; it stays in use until you publish.",
-      },
-      {
-        kind: "fixed",
-        text: "Call forwarding shows the right missed-call code for Verizon mobile phones (*71). The busy and no-answer codes it showed before (*90, *92) are for landlines and are now under Landline.",
-      },
-      {
-        kind: "improved",
-        text: "Call forwarding shows both ways to forward for your phone company at once, missed calls and every call, each with what it does, instead of making you pick one first.",
       },
     ],
   },
@@ -192,7 +192,7 @@ export const CHANGELOG: Release[] = [
   {
     version: "0.0.11",
     date: "2026-09-29",
-    title: "Guided setup; links, Back and refresh land where you were",
+    title: "Guided setup, Request go live, settings that save as you type, and links that land where you were",
     items: [
       {
         kind: "new",
@@ -205,6 +205,19 @@ export const CHANGELOG: Release[] = [
       {
         kind: "improved",
         text: "Customers: built for hundreds of customers — phase tabs with counts, a category filter, a created date, sorting by any column, and pages sized to fit the screen (or 25 / 50 / 100 per page). The list uses the full width and never scrolls sideways.",
+        admin: true,
+      },
+      {
+        kind: "new",
+        text: "Request go live: once your part of the checklist is done, ask us to switch your line on, with a note if you like. Launch instructions now shows your part and ours, and if we say not yet, you see why and can ask again.",
+      },
+      {
+        kind: "improved",
+        text: "Business information, Agent profile, FAQs and your own instructions save themselves a moment after you stop typing. Save now still saves at once, and a business name left empty isn't saved until you fill it in.",
+      },
+      {
+        kind: "new",
+        text: "Go live requests on Accounts: a count on the menu, a label on the account, and the business's note with Go live or Not yet in its stage panel.",
         admin: true,
       },
       {

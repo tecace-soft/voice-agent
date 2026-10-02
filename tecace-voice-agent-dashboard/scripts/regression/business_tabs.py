@@ -166,30 +166,59 @@ def main() -> int:
                     check("Business information: FAQs are their own section",
                           page.get_by_label(re.compile(r"^Question \d+$")).count() == 0)
 
+                    # ---- Autosave: a change saves itself a moment after typing stops, no button pressed
                     page.get_by_label("Phone", exact=True).first.fill("+1 207 555 0199")
-                    page.get_by_role("button", name="Save", exact=True).first.click()
-                    page.wait_for_timeout(900)
+                    page.wait_for_timeout(400)
+                    check("Business information: nothing is sent while typing",
+                          len(requests("/business/knowledge")) == 0)
+                    check("Business information: says the change is waiting",
+                          "Unsaved changes" in page.inner_text("main"))
+                    page.wait_for_timeout(2200)
                     saves = requests("/business/knowledge")
-                    check("Business information: Save PUTs /business/knowledge", len(saves) == 1, str(saves)[:200])
+                    check("Business information: autosave PUTs /business/knowledge once", len(saves) == 1, str(saves)[:200])
                     if saves:
                         payload = json.loads(saves[0][2] or "{}")
                         check("...carrying the whole profile, with the edit in it",
                               payload.get("profile", {}).get("phone") == "+1 207 555 0199"
                               and payload["profile"].get("name") == "Sam's Dental", str(payload)[:200])
+                    check("Business information: says it saved, without a Save press",
+                          "This is what the assistant now uses." in page.inner_text("main")
+                          and "Saved at" in page.inner_text("main"))
+                    check("Business information: Save now has nothing to do",
+                          page.get_by_role("button", name="Save now").first.is_disabled())
 
-                    check("Business information: says it saved",
-                          "Saved. This is what the assistant now uses." in page.inner_text("main"))
+                    # A cleared business name is held back, and says why.
+                    name_field = page.get_by_label("Business name", exact=True).first
+                    name_field.fill("")
+                    page.wait_for_timeout(2200)
+                    check("Business information: an empty name is not saved",
+                          len(requests("/business/knowledge")) == 1, str(requests("/business/knowledge"))[:200])
+                    check("...and it says why", "Not saved: Your business name is empty." in page.inner_text("main"))
+                    name_field.fill("Sam's Dental")
+                    page.get_by_role("button", name="Save now").first.click()
+                    page.wait_for_timeout(900)
+                    check("Business information: Save now saves at once",
+                          len(requests("/business/knowledge")) == 2, str(requests("/business/knowledge"))[:200])
 
                     # ---- FAQs, and the section is in the URL
                     open_section("FAQs")
                     check("FAQs: the section is in the address bar", page.url.endswith("#/business/faqs"), page.url)
                     check("FAQs: the caller question is there",
                           page.get_by_label("Question 1", exact=True).count() == 1)
-                    # An edit left unsaved here must survive another section's save.
+                    # Leaving the section saves what's waiting there, straight away.
                     page.get_by_label("Answer 1", exact=True).fill("Yes — call us to book your first visit.")
 
                     # ---- Agent profile: identity, then voice and language with the prompts
                     open_section("Agent profile")
+                    page.wait_for_timeout(600)
+                    faq_saves = requests("/business/knowledge")
+                    check("FAQs: leaving the section saves the answer", len(faq_saves) == 3, str(faq_saves)[:200])
+                    if faq_saves:
+                        faq_body = json.loads(faq_saves[-1][2] or "{}").get("profile", {})
+                        check("FAQs: the save sends the new answer, over the profile as last saved",
+                              faq_body.get("faqs", [{}])[0].get("a") == "Yes — call us to book your first visit."
+                              and faq_body.get("phone") == "+1 207 555 0199",
+                              str(faq_body)[:300])
                     check("Agent profile: the receptionist name is editable",
                           page.get_by_label("Receptionist name", exact=True).count() == 1)
                     check("Agent profile: no call-sound controls — a real call is already a phone call",
@@ -198,32 +227,21 @@ def main() -> int:
                     page.get_by_label("Greeting", exact=True).fill("Thanks for calling {business}, this is {agent}.")
                     check("Agent profile: shows what callers hear, placeholders filled",
                           "Thanks for calling Sam's Dental, this is Alex." in page.inner_text("body"))
-                    page.get_by_role("button", name="Save", exact=True).first.click()
-                    page.wait_for_timeout(900)
+                    page.wait_for_timeout(2400)
                     identity = requests("/business/identity")
-                    check("Agent profile: Save PUTs /business/identity with the name",
-                          bool(identity) and json.loads(identity[0][2]).get("agentName") == "Alex",
+                    check("Agent profile: autosave PUTs /business/identity with the name, once",
+                          len(identity) == 1 and json.loads(identity[0][2]).get("agentName") == "Alex",
                           str(identity)[:200])
                     prompts = requests("/business/prompts")
                     check("...then /business/prompts with the voice",
                           bool(prompts) and json.loads(prompts[-1][2]).get("voice") == "gleam",
                           str(prompts)[:200])
                     check("Agent profile: says it saved",
-                          "Saved. This is what the assistant now uses." in page.inner_text("main"))
+                          "This is what the assistant now uses." in page.inner_text("main"))
                     open_section("FAQs")
-                    check("FAQs: the unsaved answer survived saving another section",
+                    check("FAQs: the saved answer is still on screen",
                           page.get_by_label("Answer 1", exact=True).input_value()
                           == "Yes — call us to book your first visit.")
-                    page.get_by_role("button", name="Save", exact=True).first.click()
-                    page.wait_for_timeout(900)
-                    faq_saves = requests("/business/knowledge")
-                    if len(faq_saves) >= 2:
-                        faq_body = json.loads(faq_saves[-1][2] or "{}").get("profile", {})
-                        check("FAQs: Save sends the new answer",
-                              faq_body.get("faqs", [{}])[0].get("a") == "Yes — call us to book your first visit.",
-                              str(faq_body.get("faqs"))[:200])
-                    else:
-                        check("FAQs: Save sends the new answer", False, str(faq_saves)[:200])
 
                     # ---- Transfer calls: draft, a refusal under its field, publish
                     open_section("Transfer calls")
@@ -382,6 +400,48 @@ def main() -> int:
                     check("Call emails: the switch saves",
                           len(puts) == 1 and '"enabled":true' in puts[0][2].replace(" ", ""), str(puts))
                     check("Call emails: the switch says it saved", "applies from the next call" in page.inner_text("main"))
+
+                    # ---- Request go live: an account being set up, its part done, asks for its line
+                    fake_backend.USER["status"] = "pre-production"
+                    page.goto(f"{base}/#/business/business-info", wait_until="networkidle")
+                    # Only the hash changed, so the app is still the one that read the old stage.
+                    page.reload(wait_until="networkidle")
+                    page.wait_for_timeout(800)
+                    strip = page.get_by_role("status", name="Go live")
+                    check("Go live: the strip says their part is done and offers the request",
+                          strip.count() == 1 and "Your part is done." in strip.inner_text()
+                          and strip.get_by_role("button", name="Request go live").count() == 1,
+                          strip.inner_text()[:300] if strip.count() else page.inner_text("main")[:300])
+                    open_section("Launch instructions")
+                    body = page.inner_text("main")
+                    check("Go live: Launch instructions splits the checklist into your part and ours",
+                          "Your part" in body and "Our part, when you request go live" in body, body[:500])
+                    strip.get_by_role("button", name="Request go live").click()
+                    dialog = page.get_by_role("dialog")
+                    dialog.get_by_label("Anything we should know? (optional)").fill("Monday please")
+                    dialog.get_by_role("button", name="Send request").click()
+                    page.wait_for_timeout(800)
+                    asked = requests("/business/request-live", "POST")
+                    check("Go live: Send request POSTs /business/request-live with the note",
+                          len(asked) == 1 and json.loads(asked[0][2] or "{}").get("note") == "Monday please",
+                          str(asked)[:200])
+                    check("Go live: the strip and the checklist both say it's waiting",
+                          "Go live requested" in strip.inner_text() and "Waiting for us" in strip.inner_text()
+                          and page.inner_text("main").count("Waiting for us") >= 2,
+                          strip.inner_text()[:300])
+                    # The admin says not yet; the business reads the note and can ask again.
+                    fake_backend.USER["liveRequest"] = None
+                    fake_backend.USER["liveDeclined"] = {"declinedAt": "2026-09-29T10:00:00.000Z",
+                                                         "note": "Add a transfer number first"}
+                    page.reload(wait_until="networkidle")
+                    page.wait_for_timeout(800)
+                    strip = page.get_by_role("status", name="Go live")
+                    check("Go live: a not yet shows the admin's note and Ask again",
+                          "Not yet: Add a transfer number first" in strip.inner_text()
+                          and strip.get_by_role("button", name="Ask again").count() == 1,
+                          strip.inner_text()[:300])
+                    fake_backend.USER["status"] = "unassigned"
+                    fake_backend.USER["liveDeclined"] = None
 
                     check("...and nothing went to a demo endpoint",
                           not any("/demo/" in x[1] for x in sent),

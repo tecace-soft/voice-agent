@@ -204,6 +204,48 @@ def main() -> int:
                     check("...listing the number and the published settings",
                           "A phone number is assigned" in listed and "Call settings are published" in listed,
                           listed[:300])
+                    check("no Not yet while nobody has asked",
+                          panel.get_by_role("button", name="Not yet").count() == 0)
+
+                    # ---- a go-live request: the badge, the row, the panel, and the admin's not yet
+                    fake_backend.USER["liveRequest"] = {"requestedAt": "2026-09-29T09:00:00.000Z",
+                                                        "note": "Monday please"}
+
+                    def reopen():
+                        page.reload(wait_until="networkidle")
+                        page.wait_for_timeout(600)
+                        page.get_by_role("row").filter(has_text="Sam Customer").get_by_role(
+                            "button", name="Stage").click()
+                        page.wait_for_timeout(600)
+                        return page.get_by_role("group", name="Lifecycle for Sam Customer")
+
+                    panel = reopen()
+                    accounts_nav = page.locator("nav button[title='Accounts']")
+                    check("the Accounts item counts go-live requests",
+                          accounts_nav.locator(".nav-count").count() == 1
+                          and accounts_nav.locator(".nav-count").inner_text().strip() == "1",
+                          accounts_nav.inner_text() if accounts_nav.count() else "no Accounts item")
+                    check("the row says Go live requested",
+                          "Go live requested" in page.get_by_role("row").filter(has_text="Sam Customer").first.inner_text())
+                    check("the panel shows the request and its note",
+                          "Go live requested on" in panel.inner_text() and "Monday please" in panel.inner_text(),
+                          panel.inner_text()[:300])
+                    panel.get_by_role("button", name="Not yet").click()
+                    panel.get_by_label("Note to the business (optional)").fill("Add a transfer number first")
+                    panel.get_by_role("button", name="Send not yet").click()
+                    page.wait_for_timeout(800)
+                    declines = [s for s in sent if s[0] == "POST" and s[1].endswith("/decline-live")]
+                    check("Not yet POSTs /auth/users/<id>/decline-live with the note",
+                          len(declines) == 1
+                          and json.loads(declines[0][2] or "{}").get("note") == "Add a transfer number first",
+                          str(declines)[:200])
+                    check("...and the row no longer says requested",
+                          "Go live requested" not in page.get_by_role("row").filter(has_text="Sam Customer").first.inner_text())
+
+                    # Asked again; Go live is the yes, and answers it.
+                    fake_backend.USER["liveRequest"] = {"requestedAt": "2026-09-29T09:30:00.000Z", "note": None}
+                    fake_backend.USER["liveDeclined"] = None
+                    panel = reopen()
                     go_live = panel.get_by_role("button", name="Go live")
                     check("Go live is offered once every required item is ticked",
                           go_live.count() == 1 and not go_live.is_disabled())
@@ -216,6 +258,10 @@ def main() -> int:
                           .filter(has_text="Sam Customer").first.inner_text())
                     check("...and the page says the line is on",
                           "phone line is on" in page.inner_text("body"))
+                    check("...and going live answered the request",
+                          fake_backend.USER.get("liveRequest") is None
+                          and "Go live requested" not in page.get_by_role("row")
+                          .filter(has_text="Sam Customer").first.inner_text())
 
                     check("no page errors", not errors, "; ".join(errors[:3]))
                     browser.close()

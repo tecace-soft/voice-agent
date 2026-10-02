@@ -119,3 +119,37 @@ describe("evaluateReadiness", () => {
     expect(evaluateReadiness(input).items.map((item) => item.id)).not.toContain("webhooks_configured");
   });
 });
+
+// Who ticks each item: the customer's part is what they can do from their settings; the number and
+// how Twilio reaches it are the admin's, done at Go live.
+describe("owner and customerReady", () => {
+  it("names who ticks each item", () => {
+    const owners = Object.fromEntries(evaluateReadiness(READY).items.map((item) => [item.id, item.owner]));
+    expect(owners).toEqual({
+      business_info: "customer",
+      settings_published: "customer",
+      contact_number: "customer",
+      number_assigned: "admin",
+      published_matches_number: "admin",
+      webhooks_configured: "admin",
+    });
+  });
+
+  it("is customer-ready with their part done and no number yet", () => {
+    const result = evaluateReadiness({ ...READY, agentNumber: null, number: null });
+    expect(result.ready).toBe(false);
+    expect(result.customerReady).toBe(true);
+  });
+
+  it("is not customer-ready until they publish, and advice does not block it", () => {
+    const unpublished = { ...READY, agentNumber: null, number: null, settings: { ...READY.settings, published: null } };
+    expect(evaluateReadiness(unpublished).customerReady).toBe(false);
+    const noContact = {
+      ...READY,
+      agentNumber: null,
+      number: null,
+      profile: { isLive: true, transferNumber: null, profile: null },
+    };
+    expect(evaluateReadiness(noContact).customerReady).toBe(true);
+  });
+});

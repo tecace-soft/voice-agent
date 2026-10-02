@@ -25,6 +25,7 @@ import { deriveFromProfile } from "../business/derive.js";
 import { resolveSessionPrompts } from "../session/prompts.js";
 import { CallSettingsError, validateCallSettings } from "../business/callSettings.js";
 import { readinessFor } from "../db/readiness.js";
+import { liveRequestFor, MAX_ONBOARDING_NOTE, requestLive } from "../db/onboarding.js";
 import {
   findCallSettings,
   publishCallSettings,
@@ -109,9 +110,52 @@ export const business = new Elysia({ prefix: "/business" })
       const target = profileTargetFor(user, query.userId);
       const owner = target === user.id ? user : await findUserById(target);
       if (!owner) return status(404, { error: "not_found", message: "No such account." });
-      return { status: owner.status, ...(await readinessFor(target)) };
+      return { status: owner.status, ...(await readinessFor(target)), ...(await liveRequestFor(target)) };
     },
     { query: t.Object({ userId: t.Optional(t.String({ maxLength: 64 })) }) },
+  )
+
+  // "My part is done, switch my line on" — the onboarding customer's request, answered by an admin's
+  // Go live or "not yet" (routes/lifecycle.ts). Only once every item the customer owns is ticked, so
+  // a request always means the rest is the admin's to do. The customer's own: an admin who could
+  // send it could just as well press Go live.
+  .post(
+    "/request-live",
+    async ({ body, headers, status }) => {
+      const user = await authenticate(headers.authorization);
+      if (!user) return status(401, UNAUTHORIZED);
+      if (user.role === "admin") {
+        return status(403, {
+          error: "own_account_only",
+          message: "Only the business can request go live. Use Go live on the Accounts page.",
+        });
+      }
+      if (user.status !== "pre-production") {
+        return status(409, {
+          error: "not_onboarding",
+          message: "Only a receptionist that is being set up can request go live.",
+        });
+      }
+      const readiness = await readinessFor(user.id);
+      if (!readiness.customerReady) {
+        const unmet = readiness.items.filter((item) => item.owner === "customer" && item.required && !item.ok);
+        return status(409, {
+          error: "not_ready",
+          message: `Finish your part first: ${unmet.map((item) => item.label.toLowerCase()).join("; ")}.`,
+          unmet: unmet.map((item) => item.id),
+        });
+      }
+      if (!(await requestLive(user.id, body?.note))) {
+        return status(409, {
+          error: "not_onboarding",
+          message: "Only a receptionist that is being set up can request go live.",
+        });
+      }
+      return { status: user.status, ...readiness, ...(await liveRequestFor(user.id)) };
+    },
+    {
+      body: t.Optional(t.Object({ note: t.Optional(t.String({ maxLength: MAX_ONBOARDING_NOTE })) })),
+    },
   )
 
   // The agent's lookup: whose business is this dialled number?

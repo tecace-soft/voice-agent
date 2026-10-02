@@ -3,6 +3,7 @@ import {
   assignAgentNumber,
   buyAgentNumber,
   createAccount,
+  declineGoLive,
   getReadiness,
   goLiveAccount,
   inviteAccount,
@@ -157,10 +158,13 @@ function GoLive({
   user,
   busy,
   onGoLive,
+  onAnswered,
 }: {
   user: AuthUser;
   busy: boolean;
   onGoLive: () => Promise<void>;
+  /** After "not yet": the list re-reads, so the row's Go live requested pill goes. */
+  onAnswered: () => void;
 }) {
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [failed, setFailed] = useState(false);
@@ -175,9 +179,44 @@ function GoLive({
   useEffect(load, [load]);
 
   const needsNumber = readiness?.items.some((item) => item.id === "number_assigned" && !item.ok) ?? false;
+  // The business's "my part is done": what they asked, and the admin's two answers — Go live, or
+  // "not yet" with a note they read on their settings.
+  const request = readiness?.request ?? null;
+  const [declining, setDeclining] = useState(false);
+  const [declineNote, setDeclineNote] = useState("");
+  const [declineError, setDeclineError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+
+  async function decline() {
+    setSending(true);
+    setDeclineError(null);
+    try {
+      await declineGoLive(user.id, declineNote.trim() || undefined);
+      setDeclining(false);
+      setDeclineNote("");
+      load();
+      onAnswered();
+    } catch (e) {
+      setDeclineError(accountErrorMessage(e, "Couldn't send that."));
+    } finally {
+      setSending(false);
+    }
+  }
 
   return (
     <div className="lifecycle-note readiness" aria-label="Go live checklist">
+      {request && (
+        <p className="ta-label-1 golive-request" role="status">
+          Go live requested on {formatDateTime(request.requestedAt)}
+          {request.note ? <span className="muted"> · “{request.note}”</span> : null}
+        </p>
+      )}
+      {!request && readiness?.declined && (
+        <p className="ta-caption-1 muted">
+          You said not yet on {formatDateTime(readiness.declined.declinedAt)}
+          {readiness.declined.note ? `: “${readiness.declined.note}”` : "."}
+        </p>
+      )}
       <span className="field-label ta-caption-1">Go live checklist</span>
       {failed ? (
         <p className="ta-caption-1 muted">Couldn't read the checklist.</p>
@@ -211,7 +250,33 @@ function GoLive({
         >
           Go live
         </button>
+        {request && (
+          <button type="button" className="btn" disabled={busy || sending} onClick={() => setDeclining((open) => !open)}>
+            Not yet
+          </button>
+        )}
       </div>
+      {request && declining && (
+        <div className="inline-form lifecycle-assign" role="group" aria-label="Not yet">
+          <label className="field">
+            <span className="field-label ta-caption-1">Note to the business (optional)</span>
+            <input
+              className="input"
+              value={declineNote}
+              maxLength={1000}
+              onChange={(e) => setDeclineNote(e.target.value)}
+              placeholder="For example: add a transfer number first."
+              disabled={sending}
+            />
+          </label>
+          <div className="inline-form-actions">
+            <button type="button" className="btn btn-primary" disabled={sending} onClick={() => void decline()}>
+              {sending ? "Sending…" : "Send not yet"}
+            </button>
+          </div>
+          {declineError && <p className="error ta-caption-1 lifecycle-note">{declineError}</p>}
+        </div>
+      )}
     </div>
   );
 }
@@ -367,6 +432,7 @@ function LifecyclePanel({
   onStage,
   onPromote,
   onGoLive,
+  onAnswered,
 }: {
   user: AuthUser;
   demos: DemoOption[] | null;
@@ -375,6 +441,7 @@ function LifecyclePanel({
   onStage: (status: AccountStatus) => void;
   onPromote: () => void;
   onGoLive: () => Promise<void>;
+  onAnswered: () => void;
 }) {
   const linked = demos?.find((d) => d.id === user.businessId) ?? null;
   return (
@@ -442,7 +509,7 @@ function LifecyclePanel({
         Copying happens once. After it, their Business information is theirs: changes there do not
         reach the demo, and changes to the demo do not reach their receptionist.
       </p>
-      {user.status === "pre-production" && <GoLive user={user} busy={busy} onGoLive={onGoLive} />}
+      {user.status === "pre-production" && <GoLive user={user} busy={busy} onGoLive={onGoLive} onAnswered={onAnswered} />}
     </div>
   );
 }
@@ -847,6 +914,11 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
                           {ACCOUNT_STATUS_LABEL[user.status]}
                         </span>
                       )}
+                      {user.status === "pre-production" && user.liveRequest && (
+                        <span className="badge badge-admin golive-pill" title="They've asked for their line to be switched on">
+                          Go live requested
+                        </span>
+                      )}
                       {user.businessId && (
                         <div className="ta-caption-1 muted">
                           {demos?.find((d) => d.id === user.businessId)?.businessName ??
@@ -965,6 +1037,7 @@ export function AccountsPage({ me, onSignOut }: { me: AuthUser; onSignOut: () =>
                           onStage={(status) => void onStage(user, status)}
                           onPromote={() => void onPromote(user)}
                           onGoLive={() => onGoLive(user)}
+                          onAnswered={load}
                         />
                       </td>
                     </tr>

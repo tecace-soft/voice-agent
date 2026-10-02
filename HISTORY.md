@@ -13,16 +13,39 @@ Format:
 
 ---
 
+## 2026-10-02 16:30 · Michael · merge Main-Hans into master (again, rollback undone)
+- The problem behind the 11:27 rollback is fixed, so the rollback (3132fd6) is reverted and Main-Hans (0043ac8) merged on top: billing, self-serve onboarding, Request go live + autosave, the Sales section, `/start`/demo/pricing restyle, mockups and repo skills are back on master.
+- `users` now carries `email_call_summaries` (call summary emails) together with `live_requested_at`/`live_request_note`/`live_declined_*` and `live_at`; `business_tabs.py` runs both the Call emails and the Request go live checks.
+- Changelog: the call-emails item moved into 0.0.15 (the 14:38 entry below says 0.0.14). package.json stays 0.0.15.
+- ⚠ Deploy transcribe-backend before the dashboard (new `request-onboarding` body, see johnson's billing entry). Call emails still need `SMTP_*` + `DASHBOARD_URL` in production.
+
 ## 2026-10-02 15:35 · Michael · repo (Vercel deployment counter)
 - New root `scripts/vercel-deploys.mjs`: `node scripts/vercel-deploys.mjs [--list]` counts Vercel deployments in the rolling last 24h against the Hobby limit (100/day), per project, with and without canceled ones. Vercel's dashboard has no counter for this.
 - Auth: uses your logged-in Vercel CLI (`vercel login`, needs CLI ≥ 60 for `vercel api`); or set `VERCEL_TOKEN` in the shell or a repo-root `.env` (git-ignored).
 - Every push to master currently creates a deployment in ~7 Vercel projects (most are skipped/canceled), so each push uses ~7 of the 100.
+
+## 2026-10-02 15:00 · Hans · deploy (staging now follows Main-Hans)
+- Vercel `voice-agent-staging` (dashboard, root `tecace-voice-agent-dashboard`) and `va-staging-backend` (root `transcribe-backend`) are now connected to GitHub `tecace-soft/voice-agent` with production branch `Main-Hans`. Every push to Main-Hans deploys staging; no more CLI uploads.
+- Both have Ignored Build Step `[ "$VERCEL_GIT_COMMIT_REF" != "Main-Hans" ]`, so other branches don't build there.
+- ⚠ Don't `vercel deploy` an app folder to these projects by hand any more — with a root directory set, it would look for the subfolder inside the upload.
 
 ## 2026-10-02 14:38 · Michael · transcribe-backend + dashboard (call summary emails)
 - New column `users.email_call_summaries BOOLEAN NOT NULL DEFAULT false` (self-migrates); new routes `GET`/`PUT /business/call-emails` (`{enabled}` → `{enabled, email}`, admin `?userId=`).
 - `POST /calls` now emails the owner a summary + dashboard link when that switch is on. It awaits the send (5 s cap, because Vercel can stop un-awaited work); the 201 and body are unchanged and a mail failure never fails the call. `sendMail` takes an optional `{timeoutMs}`.
 - Dashboard: new settings section `call-emails` (Calls group, business only). `fake_backend.py`, `business_tabs.py` and `guided_setup.py` (menu is now 13 items) updated. Changelog 0.0.14.
 - ⚠ Production: emails only go out with `SMTP_*` and `DASHBOARD_URL` set on transcribe-backend.
+
+## 2026-10-02 14:00 · Hans · merge origin/Main-Hans into local Main-Hans (Request go live + autosave ⇄ billing, forwarding, Sales)
+- `users` keeps both column sets: `live_requested_at`/`live_request_note`/`live_declined_*` (go-live request) and `live_at`; `PublicUser` carries both `liveRequest` and `liveAt`. `billing_accounts` table added alongside.
+- Onboarding (pre-production) numbers now ANSWER as the business (origin's e9c4227 wins); the lifecycle test "keeps an onboarding customer's number off the phone line" is replaced by origin's.
+- `BusinessSettings`: autosave kept for business info / agent / FAQs / house rules; the forwarding press-to-accept switch still saves on the flip via `run`; the research card sits above Business information and is saved by autosave (no Save button).
+
+## 2026-10-02 · johnson · Sales section: Prospects, Demo analytics, prospect page (dashboard)
+- Rail: the admin "Demo" group is "Sales" with two items, Prospects (`#/demos/prospects`, was Customers) and Demo analytics (`#/demos/overview`, was Overview). CRM is the Prospects board (`#/demos/pipeline` redirects there). Routes unchanged; the sidebar group key stays `demos`.
+- Prospect page tabs renamed in the URL: `#/demos/prospects/<id>/<overview|calls|receptionist|research|email>`; the old `activity|settings|sources|share` still parse (`routing.ts` `LEGACY_TABS`). A settings section in the address still opens the Receptionist tab.
+- Deleted: `CustomerTable`, `NewCustomerDialog`, `PipelineScreen`, `OverviewScreen`, `TopCustomersChart`, `ActivityFeed`, `CrmDrawer`, `CrmTab`, `SharePanel`. New: `ProspectTable`, `NewProspectDialog`, `DemoAnalyticsScreen`, `ProspectOverview`, `OutreachEmailPanel`, `lib/nextStep.ts`. Details in `src/demos/PORTING.md`.
+- No API change. `demos_e2e.py` rewritten for the new screens; `tests/routing.test.ts` updated. Changelog 0.0.15 (same day).
+- ⚠ Not done from the mockups: field-level autosave in the Receptionist studio (it keeps its Save), the Accounts split into Customers / Team, and the Voicemail merge. Hours grouping on Business information is unchanged.
 
 ## 2026-10-02 11:27 · Michael · repo (master rolled back to 9db5c22)
 - Today's merge of `Main-Hans` into master (14644f4, then PR #2 d0b33ea) had an unseen problem. This commit sits on top of d0b33ea and restores every file to 9db5c22, so a normal `git pull` on master gets you the fixed state.
@@ -214,6 +237,12 @@ Format:
 - Customers: phase tabs + counts, category filter, created date, sort select + sortable headers, full width (`App.tsx` `WIDE_VIEWS` → `.content-wide`), `table-fixed` so it never scrolls sideways, pages sized to the window (Fit to screen / 25 / 50 / 100).
 - New shared kit `src/demos/components/ui/data-table.tsx`; the pattern is written down in `tecace-voice-agent-dashboard/CLAUDE.md` "List screens" — ⚠ build new list screens with it.
 - Regression: `demos_e2e.py` expects Cedar's link as "Cedar Bakery" (business name fallback, was "Unnamed"). All 9 pass, compare IDENTICAL, vitest 317/317. Changelog 0.0.11 item added.
+
+## 2026-09-29 11:50 · Hans · transcribe-backend, dashboard (Request go live; business settings autosave)
+- New `users` columns `live_requested_at`, `live_request_note`, `live_declined_at`, `live_decline_note` (additive, self-migrating). New routes: `POST /business/request-live {note?}` (the onboarding business itself; 409 `not_ready` until its own items are ticked, 403 for an admin) and `POST /auth/users/:id/decline-live {note?}` (admin "not yet"). Go live clears the request. Spec: `docs/superpowers/specs/2026-09-29-request-go-live-and-autosave-design.md`.
+- Additive fields: readiness items gain `owner: "customer"|"admin"`; `GET /business/readiness` gains `customerReady`, `request`, `declined`; `PublicUser` (every `/auth/*` user body) gains `liveRequest`. `Readiness`/`ReadinessItem` types moved to `src/api/types.ts` (re-exported from `api/backend.ts`) so the public page's shared settings can use them.
+- Dashboard: onboarding strip + Launch instructions "Your part / Our part" with **Request go live** (`settings/sections/RequestGoLive.tsx`); Accounts badge, row pill, **Not yet** in the stage panel.
+- ⚠ Business information, Agent profile, FAQs and House rules now **autosave** 1.5 s after typing stops (`settings/autosave.ts`, `useAutosave.ts`); the button is "Save now". These have no draft, so a live business's callers get an edit seconds after it's typed (an empty business name, or a question without its answer, is held back). Regression selectors: no more "Save" button in those sections; `business_tabs.py` and `accounts_lifecycle.py` updated, `fake_backend.py` has the new routes/fields.
 
 ## 2026-09-29 11:10 · Michael · transcribe-backend, openai-agent-app (real calls run on the composed session)
 - `GET /business/config?to=` gains `session` (null for a profile without a structured profile): `{live, backend, greetingLine, voice, language, tools, transfers:[{id,name,mode,numbers}], reachable, canBook, returnLeg:{live,backend,tools}}` from new `src/session/phone.ts` → `composeSession(channel:"phone")` on the PUBLISHED call settings. All existing flat fields are unchanged.

@@ -44,6 +44,8 @@ export interface AuthUser {
   /** Where the account came from: an admin, a claim from a demo page, or sign-up at /start. */
   signupSource?: "admin" | "claim" | "start";
   emailVerified?: boolean;
+  /** Onboarding: asked for the line to be switched on, not answered yet (Accounts badge). */
+  liveRequest?: { requestedAt: string; note: string | null } | null;
   /** When the line was switched on (production). The free trial counts from here. */
   liveAt?: string | null;
 }
@@ -498,6 +500,28 @@ export interface TestCallsResponse {
   calls: TestCallRecord[];
   usage: TestUsage;
 }
+
+/** One line of the Go live checklist (transcribe-backend `business/readiness.ts`). */
+export type ReadinessItem = {
+  id: string;
+  ok: boolean;
+  /** A required item blocks Go live; the others are advice. */
+  required: boolean;
+  /** Who ticks it: the business from its settings, or an admin at Go live (number, Twilio). */
+  owner?: "customer" | "admin";
+  label: string;
+  detail?: string;
+};
+export type Readiness = {
+  status: AccountStatus;
+  ready: boolean;
+  /** Every required item the business owns is ticked: it may request go live. */
+  customerReady?: boolean;
+  /** An open go-live request, and the last "not yet" (cleared by asking again). */
+  request?: { requestedAt: string; note: string | null } | null;
+  declined?: { declinedAt: string; note: string | null } | null;
+  items: ReadinessItem[];
+};
 
 // ---- Guided setup: the consultant interview (GET/POST /business/setup*) ----
 export type SetupTopic = "transfers" | "messages" | "appointments";

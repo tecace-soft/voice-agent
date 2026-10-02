@@ -13,7 +13,7 @@ import type { ViewId } from "./components/Sidebar";
 //   #/overview?mailbox=sam%40tecace.com
 //   #/overview?mailbox=unattributed        (runs reported before mailboxes existed)
 //   #/demos/prospects/<id>                 (a view that addresses one record)
-//   #/demos/prospects/<id>/share           (…and which of its tabs is open)
+//   #/demos/prospects/<id>/email           (…and which of its tabs is open)
 //   #/business/transfers                   (a settings section, optional)
 //   #/business?customer=sam%40tecace.com   (which business an admin is viewing)
 //   #/dashboard?customer=sam%40tecace.com  (…also on Dashboard › Overview)
@@ -75,8 +75,10 @@ export const SECTION_IDS = [
 export type SectionId = (typeof SECTION_IDS)[number];
 
 /** The tabs of a prospect's page (`demos/screens/ProspectScreen.tsx`). None shares a name with a section. */
-export const PROSPECT_TABS = ["activity", "settings", "sources", "share"] as const;
+export const PROSPECT_TABS = ["overview", "calls", "receptionist", "research", "email"] as const;
 export type ProspectTab = (typeof PROSPECT_TABS)[number];
+/** The tabs' names before 2026-10-02 (Activity, Settings, Sources, Share): an old link still opens the right one. */
+const LEGACY_TABS: Record<string, ProspectTab> = { activity: "overview", settings: "receptionist", sources: "research", share: "email" };
 const UNATTRIBUTED = "unattributed";
 
 export interface Route {
@@ -128,6 +130,7 @@ function matchPath(
       const wanted = segment.toLowerCase();
       if ((SECTION_IDS as readonly string[]).includes(wanted)) section = wanted as SectionId;
       else if (part === ":tab?" && (PROSPECT_TABS as readonly string[]).includes(wanted)) tab = wanted as ProspectTab;
+      else if (part === ":tab?" && LEGACY_TABS[wanted]) tab = LEGACY_TABS[wanted];
       else return null;
     } else if (part.toLowerCase() !== segment.toLowerCase()) return null;
   }

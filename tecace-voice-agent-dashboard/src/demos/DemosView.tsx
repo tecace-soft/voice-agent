@@ -1,12 +1,12 @@
 import type { ViewId } from "../components/Sidebar";
 import type { ProspectTab, SectionId } from "../routing";
 import { DemosGate } from "./DemosGate";
-import { OverviewScreen } from "./screens/OverviewScreen";
-import { PipelineScreen } from "./screens/PipelineScreen";
+import { DemoAnalyticsScreen } from "./screens/DemoAnalyticsScreen";
 import { MyReceptionistScreen } from "./screens/MyReceptionistScreen";
 import { ProspectScreen } from "./screens/ProspectScreen";
-import { ProspectsScreen } from "./screens/ProspectsScreen";
-import { isPromoId } from "./routes";
+import { PROSPECTS_VIEW_KEY, ProspectsScreen } from "./screens/ProspectsScreen";
+import { useEffect } from "react";
+import { demoHref, isPromoId } from "./routes";
 
 // Which Demos screen to show for a route. Everything goes through the gate (the .tw styling
 // boundary).
@@ -61,14 +61,27 @@ export function DemosView({
 
   return (
     <DemosGate>
-      {view === "demoOverview" && <OverviewScreen />}
+      {view === "demoOverview" && <DemoAnalyticsScreen />}
       {view === "demoProspects" && <ProspectsScreen />}
       {/* Only a well-formed id reaches ProspectScreen (kept verbatim), which puts it in a demo path. */}
       {view === "demoProspect" &&
         (id && isPromoId(id) ? (
           <ProspectScreen key={id} id={id} section={section} onSection={onSection} tab={tab} onTab={onTab} />
         ) : <ProspectsScreen />)}
-      {view === "demoPipeline" && <PipelineScreen />}
+      {/* The promo's CRM page is the Prospects board now; its old address still opens it there. */}
+      {view === "demoPipeline" && <PipelineRedirect />}
     </DemosGate>
   );
+}
+
+function PipelineRedirect() {
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(PROSPECTS_VIEW_KEY, JSON.stringify("board"));
+    } catch {
+      // Without storage the list opens on the table; the board is one click away.
+    }
+    window.location.replace(demoHref("demoProspects"));
+  }, []);
+  return null;
 }

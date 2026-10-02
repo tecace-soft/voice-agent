@@ -54,6 +54,9 @@ export interface UserRecord {
   emailVerifiedAt: string | null;
   /** Email a summary after each call the receptionist answers (Business settings › Call emails). */
   emailCallSummaries: boolean;
+  /** An onboarding customer's open go-live request (`requestLive`), null when there is none. */
+  liveRequestedAt: string | Date | null;
+  liveRequestNote: string | null;
   /** When the line was switched on (production). The trial counts from here. */
   liveAt: string | null;
 }
@@ -75,6 +78,8 @@ export interface PublicUser {
   lastLoginAt: string | null;
   signupSource: SignupSource;
   emailVerified: boolean;
+  /** Asked for their line to be switched on and not answered yet (Accounts badge and pill). */
+  liveRequest: { requestedAt: string; note: string | null } | null;
   liveAt: string | null;
 }
 
@@ -88,6 +93,9 @@ export const toPublicUser = (u: UserRecord): PublicUser => ({
   lastLoginAt: u.lastLoginAt,
   signupSource: u.signupSource ?? "admin",
   emailVerified: Boolean(u.emailVerifiedAt),
+  liveRequest: u.liveRequestedAt
+    ? { requestedAt: new Date(u.liveRequestedAt).toISOString(), note: u.liveRequestNote ?? null }
+    : null,
   liveAt: u.liveAt ?? null,
 });
 
@@ -108,7 +116,9 @@ const COLUMNS = sql`
   signup_source  AS "signupSource",
   email_verified_at AS "emailVerifiedAt",
   email_call_summaries AS "emailCallSummaries",
-  live_at        AS "liveAt"
+  live_requested_at AS "liveRequestedAt",
+  live_request_note AS "liveRequestNote",
+  live_at       AS "liveAt"
 `;
 
 export async function findUserByEmail(email: string): Promise<UserRecord | null> {

@@ -86,13 +86,20 @@ describe("settings sections", () => {
 
 describe("prospect tabs", () => {
   it("reads a tab on a prospect", () => {
-    expect(parseHash("#/demos/prospects/AbC/share")).toEqual({
+    expect(parseHash("#/demos/prospects/AbC/email")).toEqual({
       view: "demoProspect",
       mailbox: undefined,
       id: "AbC",
-      tab: "share",
+      tab: "email",
     });
-    expect(parseHash("#/demos/prospects/AbC/Sources").tab).toBe("sources");
+    expect(parseHash("#/demos/prospects/AbC/Research").tab).toBe("research");
+  });
+
+  it("opens an old tab name (Activity, Settings, Sources, Share) on its new tab", () => {
+    expect(parseHash("#/demos/prospects/AbC/activity").tab).toBe("overview");
+    expect(parseHash("#/demos/prospects/AbC/settings").tab).toBe("receptionist");
+    expect(parseHash("#/demos/prospects/AbC/sources").tab).toBe("research");
+    expect(parseHash("#/demos/prospects/AbC/share").tab).toBe("email");
   });
 
   it("refuses a tab name anywhere but a prospect", () => {
@@ -101,15 +108,15 @@ describe("prospect tabs", () => {
 
   it("writes a section over a tab (a section is on Settings)", () => {
     expect(
-      formatHash({ view: "demoProspect", mailbox: undefined, id: "AbC", tab: "settings", section: "faqs" }),
+      formatHash({ view: "demoProspect", mailbox: undefined, id: "AbC", tab: "receptionist", section: "faqs" }),
     ).toBe("#/demos/prospects/AbC/faqs");
-    expect(formatHash({ view: "demoProspect", mailbox: undefined, id: "AbC", tab: "activity" })).toBe(
-      "#/demos/prospects/AbC/activity",
+    expect(formatHash({ view: "demoProspect", mailbox: undefined, id: "AbC", tab: "overview" })).toBe(
+      "#/demos/prospects/AbC/overview",
     );
   });
 
   it("round-trips a tab with a mailbox scope", () => {
-    const route: Route = { view: "demoProspect", mailbox: "sam@tecace.com", id: "AbC", tab: "sources" };
+    const route: Route = { view: "demoProspect", mailbox: "sam@tecace.com", id: "AbC", tab: "research" };
     expect(parseHash(formatHash(route))).toEqual(route);
   });
 });

@@ -13,6 +13,7 @@ import {
   Rocket,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { Readiness, ReadinessItem } from "../../api/types";
 import type { SectionId } from "../../routing";
 import { displayPhone } from "../callSettings";
 import { SectionIntro, type Phase } from "../SettingsShell";
@@ -32,8 +33,6 @@ import { SectionIntro, type Phase } from "../SettingsShell";
 
 export type LaunchAudience = "operator" | "owner" | "public" | "business";
 
-export type LaunchChecklistItem = { done: boolean; label: string; hint?: string };
-
 type Props = {
   phase: Phase;
   audience: LaunchAudience;
@@ -42,8 +41,10 @@ type Props = {
   agentNumber: string | null;
   /** Things to ask on a test call, from the business's own FAQs. */
   questions: string[];
-  /** Onboarding: what's left before the line goes on. */
-  checklist?: LaunchChecklistItem[];
+  /** Onboarding: the Go live checklist (`GET /business/readiness`), split into your part and ours. */
+  readiness?: Readiness | null;
+  /** Onboarding: Request go live, under the checklist (RequestGoLive). */
+  requestSlot?: ReactNode;
   /** Demo: where "Go to billing" leads. Absent on the public page (no account to bill yet). */
   billingHref?: string;
   /** The owner's demo page (`/c/<id>`), where they call it from the browser. */
@@ -67,7 +68,7 @@ const STAGES: Stage[] = [
     id: "onboarding",
     label: "Onboarding",
     can: ["Change every setting", "Test calls in the app, with your draft", "Call your number to check what you published"],
-    next: "Moves on once the checklist is done and we switch your line on",
+    next: "Moves on when you request go live and we switch your line on",
   },
   {
     id: "live",
@@ -386,34 +387,80 @@ function TestAction(props: Props & { name: string }) {
   );
 }
 
-/** What moves this receptionist on: billing from a demo, the checklist in onboarding. */
+// What the business does about each of its own items, and where. The admin's items (the number, and
+// Twilio reaching it) are done at Go live, so they read as ours, never as something the business failed.
+const CUSTOMER_HINT: Partial<Record<string, { hint: string; section: SectionId }>> = {
+  business_info: { hint: "At least your business name and what you do.", section: "business-info" },
+  settings_published: {
+    hint: "Publish from Transfer calls, Text a link or Take a message — callers get what's published.",
+    section: "transfers",
+  },
+  contact_number: {
+    hint: "Recommended: a phone number on your business information, or a transfer number.",
+    section: "business-info",
+  },
+};
+
+function CheckRow({ item, ours, onOpen }: { item: ReadinessItem; ours: boolean; onOpen?: (id: SectionId) => void }) {
+  const fix = ours ? undefined : CUSTOMER_HINT[item.id];
+  const hint = item.ok ? null : ours ? (item.detail ?? "We do this when you request go live.") : fix?.hint;
+  return (
+    <li className="flex items-start gap-3">
+      <span
+        className={`ta-caption-2 mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full ${
+          item.ok ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+        }`}
+        aria-hidden
+      >
+        {item.ok ? <Check className="size-3" /> : null}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="ta-label-1 block">
+          {item.label}
+          {!item.required && !item.ok ? <span className="text-muted-foreground font-normal"> (recommended)</span> : null}
+        </span>
+        {hint ? <span className="ta-caption-1 text-muted-foreground">{hint}</span> : null}
+      </span>
+      {!item.ok && fix && onOpen ? (
+        <Button variant="ghost" size="sm" onClick={() => onOpen(fix.section)}>
+          Open
+        </Button>
+      ) : null}
+    </li>
+  );
+}
+
+/** What moves this receptionist on: billing from a demo, your part and ours in onboarding. */
 function NextStep(props: Props) {
   if (props.phase === "onboarding") {
-    const steps = props.checklist ?? [];
-    if (!steps.length) return null;
+    const items = props.readiness?.items ?? [];
+    if (!items.length) return null;
+    // An older backend sends no owner: the number and Twilio are ours, the rest theirs.
+    const ownerOf = (item: ReadinessItem) =>
+      item.owner ?? (["number_assigned", "published_matches_number", "webhooks_configured"].includes(item.id) ? "admin" : "customer");
+    const yours = items.filter((item) => ownerOf(item) === "customer");
+    const ours = items.filter((item) => ownerOf(item) === "admin");
     return (
       <Card icon={CircleCheck} title="Before your line goes live">
-        <ul className="space-y-2 p-4">
-          {steps.map((step) => (
-            <li key={step.label} className="flex items-start gap-3">
-              <span
-                className={`ta-caption-2 mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full ${
-                  step.done ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                }`}
-                aria-hidden
-              >
-                {step.done ? <Check className="size-3" /> : null}
-              </span>
-              <span>
-                <span className="ta-label-1 block">{step.label}</span>
-                {!step.done && step.hint ? <span className="ta-caption-1 text-muted-foreground">{step.hint}</span> : null}
-              </span>
-            </li>
-          ))}
-        </ul>
-        <p className="ta-caption-1 text-muted-foreground border-t px-4 py-3">
-          When everything is ticked, we switch your line on. Then forward your calls to your receptionist's number.
-        </p>
+        <div className="grid gap-5 p-4 md:grid-cols-2">
+          <div>
+            <p className="ta-label-1 text-primary mb-3">Your part</p>
+            <ul className="space-y-3">
+              {yours.map((item) => (
+                <CheckRow key={item.id} item={item} ours={false} onOpen={props.onOpenSection} />
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="ta-label-1 text-muted-foreground mb-3">Our part, when you request go live</p>
+            <ul className="space-y-3">
+              {ours.map((item) => (
+                <CheckRow key={item.id} item={item} ours />
+              ))}
+            </ul>
+          </div>
+        </div>
+        {props.requestSlot ? <div className="border-t p-4">{props.requestSlot}</div> : null}
       </Card>
     );
   }
