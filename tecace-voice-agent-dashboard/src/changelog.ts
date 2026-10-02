@@ -30,6 +30,17 @@ export type Release = {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.0.14",
+    date: "2026-10-02",
+    title: "A clearer sign-up page",
+    items: [
+      {
+        kind: "improved",
+        text: "The sign-up page (/start) has a new layout: the form sits beside how it works, each field shows an example, you can show the password you typed, and the free trial length is stated up front.",
+      },
+    ],
+  },
+  {
     version: "0.0.13",
     date: "2026-10-01",
     title: "Refill your details from research; your prompts up front",

@@ -13,6 +13,11 @@ Format:
 
 ---
 
+## 2026-10-02 · johnson · /start sign-up page redesign (dashboard)
+- `src/start/StartApp.tsx` re-laid out (hero, step cards, form beside them, footer); `src/signup/SignupForm.tsx` `Field` gained `icon` / `aside`, a password Show toggle (both modes), and icons + examples in `start` mode only. Selectors/labels used by `signup.py` and `public_page.py` unchanged; both pass.
+- New optional asset: drop `public/sample-call.mp3` and /start shows a "Hear a sample call" player (hidden while the file is missing). None is committed yet.
+- Changelog 0.0.14 / package.json 0.0.14.
+
 ## 2026-10-02 · johnson · repo-level Claude skill: design-taste-frontend (Taste Skill)
 - New `.claude/skills/design-taste-frontend/` vendored from Leonxlnx/taste-skill @ ce26fc2 (MIT). Anti-slop design rules for landing pages / portfolios / marketing pages; provenance in `VENDORED.md`.
 - `.gitignore`: `.claude/` → `.claude/*` + `!.claude/skills/`, so repo skills are committed while `settings.local.json` etc. stay ignored.
